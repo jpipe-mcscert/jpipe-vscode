@@ -1,9 +1,23 @@
 ## Changelog
 
+### v0.2.10 (2025-06-21)
+- Leader:  Sébastien Mosser
+  - Features:
+    - New compiler release
+    - Add export format (dot, jpipe, runner)
+    - slightly change graphical rendering (using different shapes and not only colors)
+
+### v0.2.9 (2025-03-05)
+- Leader: Cass Braun
+  - Features:
+    - Added go to definition from SVG
+    - Updated composition in langium grammar
+
 ### v0.2.8 (2025-03-05)
 - Leader: Sébastien Mosser
   - Features:
     - Fixing path issues for Windows
+    - Added goToDefinition from SVG to textEditor
 
 ### v0.2.7 (2025-02-24)
 - Leader: Cass Braun
@@ -34,9 +48,6 @@
     - Update to latest version of Langium
 
 ### v0.2.3 (2025-01-20)
-
- 
-### Unreleased
 - Leader: Cass Braun
   - Features:
     - Added ability to activate and deactivate installation checks on startup for Java and GraphViz
