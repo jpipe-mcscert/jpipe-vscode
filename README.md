@@ -30,12 +30,4 @@ You can find more information about the jPipe project on the main repository: [h
 
 ### Sponsors
 
-We acknowledge the support of the _Natural Sciences and Engineering Research Council of Canada_ (NSERC).
-
-<div align="center">
-
-![nserc](https://raw.githubusercontent.com/ace-design/jpipe/main/docs/sponsors/nserc.png)
-
-</div>
-
-
+We acknowledge the support of the _Natural Sciences and Engineering Research Council of Canada_ (NSERC), as well as McMaster University.
