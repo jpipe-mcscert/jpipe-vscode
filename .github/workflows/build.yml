@@ -32,6 +32,8 @@ jobs:
       - name: Package extension as VSIX artefact
         run: |
           npm install
+          npm run clean
+          npm install          
           npm run langium:generate
           npm run build
           cd packages/extension
