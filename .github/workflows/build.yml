@@ -32,6 +32,8 @@ jobs:
       
       - name: Package extension as VSIX artefact
         run: |
+          npm run langium:generate
+          npm run build
           cd packages/extension
           vsce package -o jpipe-extension.vsix
       
