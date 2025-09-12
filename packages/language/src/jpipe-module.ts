@@ -2,7 +2,6 @@ import { type Module, inject } from 'langium';
 import { createDefaultModule, createDefaultSharedModule, type DefaultSharedModuleContext, type LangiumServices, type LangiumSharedServices, type PartialLangiumServices } from 'langium/lsp';
 import { JpipeGeneratedModule, JpipeGeneratedSharedModule } from './generated/module.js';
 import { JpipeValidator, registerValidationChecks } from './jpipe-validator.js';
-import { JpipeScopeProvider } from './jpipe-scoping.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -27,9 +26,6 @@ export type JpipeServices = LangiumServices & JpipeAddedServices
 export const JpipeModule: Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> = {
     validation: {
         JpipeValidator: () => new JpipeValidator()
-    },
-    references: {
-        ScopeProvider: (services)    => new JpipeScopeProvider(services)
     }
 };
 

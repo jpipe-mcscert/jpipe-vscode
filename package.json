@@ -1,81 +1,29 @@
 {
-    "name": "jpipe",
-    "description": "Please enter a brief description here",
-    "displayName": "jPipe Language (McSCert)",
-    "author": "McMaster Centre for Software Certification (McSCert)",
-    "publisher": "mcscert",
-    "version": "1.0.0",
-    "license": "MIT",
-    "icon": "images/logo.png",
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/ace-design/jpipe-ide"
-    },
+    "name": "jpipe-workspace",
+    "description": "Base workspace package",
+    "version": "0.0.1",
     "type": "module",
+    "private": true,
     "scripts": {
-        "build": "tsc -b tsconfig.src.json && node esbuild.mjs",
-        "watch": "concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.src.json --watch\" \"node esbuild.mjs --watch\"",
-        "lint": "eslint src --ext ts",
-        "langium:generate": "langium generate",
-        "langium:generate:production": "langium generate --mode=production",
-        "langium:watch": "langium generate --watch",
-        "vscode:prepublish": "npm run langium:generate && npm run package",
-        "check-types": "tsc --noEmit",
-        "package": "npm run check-types && node esbuild.mjs --production --minify",
-        "publish": "vsce package -o jpipe-extension.vsix"
-    },
-    "dependencies": {
-        "langium": "~3.5.0",
-        "vscode-languageclient": "~9.0.1",
-        "vscode-languageserver": "~9.0.1"
+        "clean": "npm run clean --workspaces",
+        "watch": "tsc -b tsconfig.build.json --watch",
+        "build": "tsc -b tsconfig.build.json && npm run build --workspaces",
+        "build:clean": "npm run clean && npm run build",
+        "langium:generate": "npm run --workspace packages/language langium:generate",
+        "langium:watch": "npm run --workspace packages/language langium:watch",
+        "test": "npm run --workspace packages/language test"
     },
     "devDependencies": {
-        "@types/node": "^18.0.0",
-        "@typescript-eslint/parser": "~7.3.1",
-        "@typescript-eslint/eslint-plugin": "~7.3.1",
-        "eslint": "~8.57.0",
-        "langium-cli": "~3.5.0",
-        "typescript": "~5.1.6",
-        "@types/vscode": "~1.67.0",
-        "concurrently": "~8.2.1",
-        "esbuild": "~0.20.2"
+        "@types/node": "~20.17.48",
+        "shx": "~0.4.0",
+        "typescript": "~5.8.3"
     },
     "volta": {
-        "node": "18.19.1",
-        "npm": "10.2.4"
+        "node": "20.19.2",
+        "npm": "10.8.2"
     },
-    "engines": {
-        "vscode": "^1.67.0"
-    },
-    "categories": [
-        "Programming Languages"
-    ],
-    "contributes": {
-        "languages": [
-            {
-                "id": "jpipe",
-                "aliases": [
-                    "jpipe",
-                    "jpipe"
-                ],
-                "extensions": [".jd"],
-                "configuration": "./language-configuration.json",
-                "icon": {
-                    "dark": "images/icon_dark.svg",
-                    "light": "images/icon_light.svg"
-                }
-            }
-        ],
-        "grammars": [
-            {
-                "language": "jpipe",
-                "scopeName": "source.jpipe",
-                "path": "syntaxes/jpipe.tmLanguage.json"
-            }
-        ]
-    },
-    "activationEvents": [
-        "onLanguage:jpipe"
-    ],
-    "main": "./out/extension/main.cjs"
+    "workspaces": [
+        "packages/language",
+        "packages/extension"
+    ]
 }

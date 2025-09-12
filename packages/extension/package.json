@@ -1,0 +1,62 @@
+{
+    "name": "jpipe-extension",
+    "displayName": "jPipe Language (McSCert)",
+    "description": "Language Support for the jPipe language",
+    "version": "1.0.0-beta",
+    "type": "module",
+    "publisher": "mcscert",
+    "author": "McMaster Centre for Software Certification (McSCert)",
+    "license": "MIT",
+    "icons": "images/logo.png",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/jpipe-mcscert/jpipe-vscode"
+    },
+    "engines": {
+        "vscode": "^1.67.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "jpipe",
+            "aliases": ["jpipe", "jpipe"],
+            "extensions": [".jd"],
+            "configuration": "./language-configuration.json",
+            "icon": {
+                    "dark":  "images/icon_dark.svg",
+                    "light": "images/icon_light.svg"
+                }
+        }],
+        "grammars": [{
+            "language": "jpipe",
+            "scopeName": "source.jpipe",
+            "path": "syntaxes/jpipe.tmLanguage.json"
+        }]
+    },
+    "activationEvents": [
+        "onLanguage:jpipe"
+    ],
+    "main": "./out/extension/main.cjs",
+    "scripts": {
+        "clean": "shx rm -fr *.tsbuildinfo out syntaxes",
+        "vscode:prepublish": "npm run build",
+        "build:prepare": "shx mkdir -p ./syntaxes/ && shx cp -f ../language/syntaxes/jpipe.tmLanguage.json ./syntaxes/jpipe.tmLanguage.json",
+        "build": "npm run build:prepare && tsc -b tsconfig.json && node esbuild.mjs",
+        "build:clean": "npm run clean && npm run build",
+        "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json --watch\" \"node esbuild.mjs --watch\""
+    },
+    "dependencies": {
+        "jpipe-language": "0.0.1",
+        "vscode-languageclient": "~9.0.1",
+        "vscode-languageserver": "~9.0.1"
+    },
+    "devDependencies": {
+        "@types/vscode": "~1.67.0",
+        "concurrently": "~8.2.1"
+    },
+    "vsce": {
+      "dependencies": false
+    }
+}

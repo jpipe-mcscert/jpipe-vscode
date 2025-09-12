@@ -1,33 +1,17 @@
-<div align="center">
+# Workspace overview
 
-![mcscert](https://raw.githubusercontent.com/ace-design/jpipe/main/docs/sponsors/mcscert.png)
+Depending on the selection during the project generation you will have one or more packages contained in the packages directory.
+Please check the specific projects here:
 
-</div>
+- [packages/language](./packages/language/README.md) This package is always available and contains the language definition.
+- [packages/cli](./packages/cli/README.md) *Optional* Is only available if you chose to use the command-line interface.
+- [packages/extension](./packages/extension/langium-quickstart.md) *Optional* Contains the VSCode extension if you chose to create it.
 
-### Contributors
+## What's in the folder?
 
-  - [Dr. Sébastien Mosser](https://mosser.github.io/), Associate Professor, McMaster University
-  - [Nirmal Chaudhari](https://www.linkedin.com/in/nirmal2003/), B.Eng. Student, McMaster University
-  - [Cass Braun](https://www.linkedin.com/in/cass-braun/), B.Eng. Student, McMaster University
+Some file are contained in the root directory as well.
 
-### Required software
-
-The plugin automatically install the `jpipe` compiler. As such, you must have access on your computer to:
-
-  - Java 21, the latest _Long Term Support_ version of the Java language
-  - Graphviz, to get the diagrams produced out of the jPipe files
-
-### How to use the plugin?
-
-Simply open a file using the `.jd` extension.
-
-  - to preview a model, right click and select the `Preview` menu item
-  - you can use this to download as SVG or PNG too.
-
-### How to contribute?
-
-You can find more information about the jPipe project on the main repository: [https://github.com/ace-design/jpipe](https://github.com/ace-design/jpipe)
-
-### Sponsors
-
-We acknowledge the support of the _Natural Sciences and Engineering Research Council of Canada_ (NSERC), as well as McMaster University.
+- [package.json](./package.json) - The manifest file the main workspace package
+- [tsconfig.json](./tsconfig.json) - The base TypeScript compiler configuration
+- [tsconfig.build.json](./package.json) - Configuration used to build the complete source code.
+- [.gitignore](.gitignore) - Files ignored by git
