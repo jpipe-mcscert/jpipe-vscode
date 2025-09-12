@@ -3,7 +3,10 @@
 !.vscode/launch.json
 !.vscode/tasks.json
 node_modules/
+dist/
 out/
-src/language/generated/
+**/src/generated
 syntaxes/
+*.tsbuildinfo
+*.vsix
 .DS_Store
