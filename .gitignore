@@ -8,5 +8,5 @@ out/
 **/src/generated
 syntaxes/
 *.tsbuildinfo
-*.vsix
+**/*.vsix
 .DS_Store
