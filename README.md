@@ -4,6 +4,7 @@
 
 ![mcscert](https://raw.githubusercontent.com/jpipe-mcscert/assets/refs/heads/main/mcscert/m24-mcscert_left-col_png.png)
 
+[![Build](https://github.com/jpipe-mcscert/jpipe-vscode/actions/workflows/build.yml/badge.svg?branch=revamp)](https://github.com/jpipe-mcscert/jpipe-vscode/actions/workflows/build.yml)
 
 </div>
 
