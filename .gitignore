@@ -7,6 +7,6 @@ dist/
 out/
 **/src/generated
 syntaxes/
-*.tsbuildinfo
+**/*.tsbuildinfo
 **/*.vsix
 .DS_Store
