@@ -18,10 +18,10 @@ Pattern:
 type Body = JustificationBody | PatternBody
 
 JustificationBody:
-    (body+=Evidence | body+=Strategy | rels+=Relation)+;
+    (body+=Evidence | body+=Strategy | rels+=Relation | body+=Conclusion)+;
 
 PatternBody:
-    (body+=Evidence |  body+=Strategy |  body+=AbstractSupport | rels+=Relation)+;
+    (body+=Evidence |  body+=Strategy |  body+=AbstractSupport | rels+=Relation | body+=Conclusion)+;
 
 /**
  * Contents of justification / patterns
@@ -34,6 +34,10 @@ type JustificationElement = Evidence | Strategy | AbstractSupport
 
 Evidence: 
     'evidence' decl=JustificationElementDeclaration;
+
+
+Conclusion: 
+    'conclusion' decl=JustificationElementDeclaration;
 
 Strategy:
     'strategy' decl=JustificationElementDeclaration;

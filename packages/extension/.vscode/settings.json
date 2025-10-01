@@ -1,0 +1,7 @@
+{
+    "jpipe.cliPath": "/opt/homebrew/bin/jpipe",
+    "jpipe.checkJava": false,
+    "jpipe.developerMode": true,
+    "jpipe.logLevel": "error"
+}
+

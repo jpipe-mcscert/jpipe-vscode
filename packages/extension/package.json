@@ -25,15 +25,48 @@
             "extensions": [".jd"],
             "configuration": "./language-configuration.json",
             "icon": {
-                    "dark":  "images/icon_dark.svg",
-                    "light": "images/icon_light.svg"
-                }
+                "dark":  "images/icon_dark.svg",
+                "light": "images/icon_light.svg"
+            }
         }],
         "grammars": [{
-            "language": "jpipe",
+            "language": "jpipe", 
             "scopeName": "source.jpipe",
             "path": "syntaxes/jpipe.tmLanguage.json"
-        }]
+        }],
+        "commands": [
+            {
+                "command": "jpipe.vis.preview",
+                "title": "Open Diagram Preview",
+                "category": "jPipe"
+            },
+            {
+                "command": "jpipe.downloadSVG",
+                "title": "Download as SVG",
+                "category": "jPipe"
+            }
+        ],
+        "customEditors": [
+            {
+                "viewType": "jpipe.vis",
+                "displayName": "jPipe Diagram",
+                "selector": [
+                    {
+                        "filenamePattern": "*.jd"
+                    }
+                ]
+            }
+        ],
+        "configuration": {
+            "title": "jPipe",
+            "properties": {
+                "jpipe.cliPath": {
+                    "type": "string",
+                    "default": "jpipe",
+                    "description": "Path to the jpipe CLI executable"
+                }
+            }
+        }
     },
     "activationEvents": [
         "onLanguage:jpipe"
