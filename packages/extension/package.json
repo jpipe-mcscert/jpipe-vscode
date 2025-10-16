@@ -38,14 +38,37 @@
             {
                 "command": "jpipe.vis.preview",
                 "title": "Open Diagram Preview",
-                "category": "jPipe"
+                "category": "jPipe",
+                "icon": "$(open-preview)"
             },
             {
                 "command": "jpipe.downloadSVG",
                 "title": "Download as SVG",
-                "category": "jPipe"
+                "category": "jPipe",
+                "icon": "$(save)"
             }
         ],
+        "menus": {
+            "editor/title": [
+                {
+                    "command": "jpipe.vis.preview",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation"
+                }
+            ],
+            "editor/context": [
+                {
+                    "command": "jpipe.vis.preview",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation"
+                },
+                {
+                    "command": "jpipe.downloadSVG",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation"
+                }
+            ]
+        },
         "customEditors": [
             {
                 "viewType": "jpipe.vis",

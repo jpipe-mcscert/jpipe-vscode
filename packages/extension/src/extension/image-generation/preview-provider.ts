@@ -3,6 +3,7 @@ import { ImageGenerator } from './image-generator.js';
 
 export class PreviewProvider implements vscode.CustomTextEditorProvider {
     private static webviewPanel: vscode.WebviewPanel | undefined;
+    private static webviewDisposed: boolean = true;
     
     constructor(
         private readonly imageGenerator: ImageGenerator,
@@ -23,12 +24,14 @@ export class PreviewProvider implements vscode.CustomTextEditorProvider {
             return;
         }
         
-        if (PreviewProvider.webviewPanel) {
-            console.log('[jPipe Preview] Revealing existing panel');
-            PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, true);
-        } else {
+        // If webview was disposed or doesn't exist, create a new one
+        if (PreviewProvider.webviewDisposed || !PreviewProvider.webviewPanel) {
             console.log('[jPipe Preview] Creating new panel');
             PreviewProvider.webviewPanel = this.createWebviewPanel();
+            PreviewProvider.webviewDisposed = false;
+        } else {
+            console.log('[jPipe Preview] Revealing existing panel');
+            PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, true);
         }
         
         await this.updatePreview(editor.document);
@@ -61,6 +64,8 @@ export class PreviewProvider implements vscode.CustomTextEditorProvider {
         webviewPanel.onDidDispose(() => {
             changeSubscription.dispose();
             PreviewProvider.webviewPanel = undefined;
+            PreviewProvider.webviewDisposed = true;
+            console.log('[jPipe Preview] Webview panel disposed');
         });
     }
     
