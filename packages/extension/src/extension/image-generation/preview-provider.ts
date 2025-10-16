@@ -88,21 +88,110 @@ export class PreviewProvider {
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            overflow: hidden;
+            background-color: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground);
+        }
+        #controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 5px;
+            z-index: 1000;
+            background-color: var(--vscode-editor-background);
+            padding: 5px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        button {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        button:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+        button:active {
+            opacity: 0.8;
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+            overflow: auto;
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            background-color: var(--vscode-editor-background);
         }
-        svg {
-            max-width: 100%;
-            height: auto;
+        #svg-wrapper {
+            transform-origin: center center;
+            transition: transform 0.2s ease;
         }
     </style>
 </head>
 <body>
-    ${svg}
+    <div id="controls">
+        <button id="zoom-in" title="Zoom In">+</button>
+        <button id="zoom-out" title="Zoom Out">−</button>
+        <button id="zoom-reset" title="Reset Zoom">100%</button>
+    </div>
+    <div id="container">
+        <div id="svg-wrapper">
+            ${svg}
+        </div>
+    </div>
+    <script>
+        let scale = 1;
+        const wrapper = document.getElementById('svg-wrapper');
+        const zoomInBtn = document.getElementById('zoom-in');
+        const zoomOutBtn = document.getElementById('zoom-out');
+        const zoomResetBtn = document.getElementById('zoom-reset');
+        
+        function updateZoom() {
+            wrapper.style.transform = \`scale(\${scale})\`;
+            zoomResetBtn.textContent = Math.round(scale * 100) + '%';
+        }
+        
+        zoomInBtn.addEventListener('click', () => {
+            scale = Math.min(scale + 0.25, 3);
+            updateZoom();
+        });
+        
+        zoomOutBtn.addEventListener('click', () => {
+            scale = Math.max(scale - 0.25, 0);
+            updateZoom();
+        });
+        
+        zoomResetBtn.addEventListener('click', () => {
+            scale = 1;
+            updateZoom();
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === '=' || e.key === '+') {
+                e.preventDefault();
+                scale = Math.min(scale + 0.25, 3);
+                updateZoom();
+            } else if (e.key === '-') {
+                e.preventDefault();
+                scale = Math.max(scale - 0.25, 0.25);
+                updateZoom();
+            } else if (e.key === '0') {
+                e.preventDefault();
+                scale = 1;
+                updateZoom();
+            }
+        });
+    </script>
 </body>
 </html>`;
     }
