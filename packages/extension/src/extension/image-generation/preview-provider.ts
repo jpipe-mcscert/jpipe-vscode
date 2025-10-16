@@ -46,6 +46,8 @@ export class PreviewProvider {
             PreviewProvider.webviewPanel.webview.html = this.getHtmlForWebview(svg);
             
         } catch (error: any) {
+            const cleanError = error.message.replace(/.*\[31m/, '').replace(/\[0m.*/, '').replace(/.*Command failed.*?SVG\s+/, '');
+            vscode.window.showErrorMessage(`jPipe Error: ${cleanError}`);
             PreviewProvider.webviewPanel.webview.html = this.getErrorHtml(error.message);
         }
     }
@@ -70,6 +72,16 @@ export class PreviewProvider {
         panel.onDidDispose(() => {
             PreviewProvider.webviewPanel = undefined;
             PreviewProvider.webviewDisposed = true;
+        });
+        
+        const changeSubscription = vscode.workspace.onDidSaveTextDocument(async (document) => {
+            if (document.languageId === 'jpipe') {
+                await this.updatePreview(document);
+            }
+        });
+        
+        panel.onDidDispose(() => {
+            changeSubscription.dispose();
         });
         
         return panel;
@@ -209,7 +221,7 @@ export class PreviewProvider {
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 0;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -217,10 +229,30 @@ export class PreviewProvider {
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
         }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--vscode-editor-foreground);
+            border-top: 3px solid var(--vscode-button-background);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-text {
+            margin-left: 15px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
-    <p>Loading preview...</p>
+    <div style="display: flex; align-items: center;">
+        <div class="spinner"></div>
+        <div class="loading-text"></div>
+    </div>
 </body>
 </html>`;
     }
