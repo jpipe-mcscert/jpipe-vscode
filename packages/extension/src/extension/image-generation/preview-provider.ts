@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ImageGenerator } from './image-generator.js';
 
-export class PreviewProvider implements vscode.CustomTextEditorProvider {
+export class PreviewProvider {
     private static webviewPanel: vscode.WebviewPanel | undefined;
     private static webviewDisposed: boolean = true;
     
@@ -15,58 +15,22 @@ export class PreviewProvider implements vscode.CustomTextEditorProvider {
      */
     public async openPreview(): Promise<void> {
         const editor = vscode.window.activeTextEditor;
-        console.log('[jPipe Preview] Opening preview, editor:', editor?.document.uri.fsPath);
         
         if (!editor || editor.document.languageId !== 'jpipe') {
             const msg = `No active jPipe file (current: ${editor?.document.languageId || 'none'})`;
-            console.error('[jPipe Preview]', msg);
             vscode.window.showErrorMessage(msg);
             return;
         }
         
         // If webview was disposed or doesn't exist, create a new one
         if (PreviewProvider.webviewDisposed || !PreviewProvider.webviewPanel) {
-            console.log('[jPipe Preview] Creating new panel');
             PreviewProvider.webviewPanel = this.createWebviewPanel();
             PreviewProvider.webviewDisposed = false;
         } else {
-            console.log('[jPipe Preview] Revealing existing panel');
             PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, true);
         }
         
         await this.updatePreview(editor.document);
-    }
-    
-    /**
-     * Called when a custom editor is opened
-     */
-    public async resolveCustomTextEditor(
-        document: vscode.TextDocument,
-        webviewPanel: vscode.WebviewPanel,
-        _token: vscode.CancellationToken
-    ): Promise<void> {
-        PreviewProvider.webviewPanel = webviewPanel;
-        
-        // Open text editor alongside webview
-        await vscode.window.showTextDocument(document, vscode.ViewColumn.One, true);
-        
-        // Update preview
-        await this.updatePreview(document);
-        
-        // Watch for document changes
-        const changeSubscription = vscode.workspace.onDidChangeTextDocument(async (e) => {
-            if (e.document.uri.toString() === document.uri.toString()) {
-                await this.updatePreview(document);
-            }
-        });
-        
-        // Cleanup on close
-        webviewPanel.onDidDispose(() => {
-            changeSubscription.dispose();
-            PreviewProvider.webviewPanel = undefined;
-            PreviewProvider.webviewDisposed = true;
-            console.log('[jPipe Preview] Webview panel disposed');
-        });
     }
     
     /**
@@ -76,15 +40,12 @@ export class PreviewProvider implements vscode.CustomTextEditorProvider {
         if (!PreviewProvider.webviewPanel) return;
         
         try {
-            console.log('[jPipe Preview] Updating preview for:', document.uri.fsPath);
             PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
             
             const svg = await this.imageGenerator.generate(false, document);
-            console.log('[jPipe Preview] SVG generated, updating webview');
             PreviewProvider.webviewPanel.webview.html = this.getHtmlForWebview(svg);
             
         } catch (error: any) {
-            console.error('[jPipe Preview] Error updating preview:', error);
             PreviewProvider.webviewPanel.webview.html = this.getErrorHtml(error.message);
         }
     }
@@ -105,6 +66,11 @@ export class PreviewProvider implements vscode.CustomTextEditorProvider {
                 retainContextWhenHidden: true
             }
         );
+        
+        panel.onDidDispose(() => {
+            PreviewProvider.webviewPanel = undefined;
+            PreviewProvider.webviewDisposed = true;
+        });
         
         return panel;
     }

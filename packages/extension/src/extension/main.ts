@@ -28,11 +28,6 @@ export function activate(context: vscode.ExtensionContext): void {
             previewProvider.openPreview();
         })
     );
-    
-    // Register custom editor provider
-    context.subscriptions.push(
-        vscode.window.registerCustomEditorProvider('jpipe.vis', previewProvider)
-    );
 }
 
 // This function is called when the extension is deactivated.
