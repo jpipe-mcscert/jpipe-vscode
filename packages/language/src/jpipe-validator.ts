@@ -1,5 +1,5 @@
 import type { ValidationAcceptor, ValidationChecks } from 'langium';
-import type { JpipeAstType, JustificationElementDeclaration, Unit } 
+import type { JpipeAstType, Unit, Evidence, Strategy, Conclusion, SubConclusion, AbstractSupport } 
     from './generated/ast.js';
 import type { JpipeServices } from './jpipe-module.js';
 
@@ -11,7 +11,11 @@ export function registerValidationChecks(services: JpipeServices) {
     const validator = services.validation.JpipeValidator;
     const checks: ValidationChecks<JpipeAstType> = {
         Unit:                               validator.checkUnitNotEmpty,
-        JustificationElementDeclaration:    validator.checkLabelNotEmpty
+        Evidence:                           validator.checkLabelNotEmpty,
+        Strategy:                           validator.checkLabelNotEmpty,
+        Conclusion:                         validator.checkLabelNotEmpty,
+        SubConclusion:                      validator.checkLabelNotEmpty,
+        AbstractSupport:                    validator.checkLabelNotEmpty
     };
     registry.register(checks, validator);
 }
@@ -21,11 +25,11 @@ export function registerValidationChecks(services: JpipeServices) {
  */
 export class JpipeValidator {
 
-    checkLabelNotEmpty(declaration: JustificationElementDeclaration, 
+    checkLabelNotEmpty(element: Evidence | Strategy | Conclusion | SubConclusion | AbstractSupport, 
                         accept: ValidationAcceptor): void {
-        if (declaration.label?.length == 0) {
+        if (element.label?.length == 0) {
              accept('warning', 'Element label should not be empty', 
-                    { node: declaration, property: 'label' });
+                    { node: element, property: 'label' });
         }
     }
     

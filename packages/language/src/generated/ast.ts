@@ -26,6 +26,7 @@ export type JpipeKeywordNames =
     | "load"
     | "pattern"
     | "strategy"
+    | "sub-conclusion"
     | "supports"
     | "{"
     | "}";
@@ -35,12 +36,14 @@ export type JpipeTokenNames = JpipeTerminalNames | JpipeKeywordNames;
 export interface AbstractSupport extends langium.AstNode {
     readonly $container: PatternBody;
     readonly $type: 'AbstractSupport';
-    decl: JustificationElementDeclaration;
+    label: string;
+    name: string;
 }
 
 export const AbstractSupport = {
     $type: 'AbstractSupport',
-    decl: 'decl'
+    label: 'label',
+    name: 'name'
 } as const;
 
 export function isAbstractSupport(item: unknown): item is AbstractSupport {
@@ -60,12 +63,14 @@ export function isBody(item: unknown): item is Body {
 export interface Conclusion extends langium.AstNode {
     readonly $container: JustificationBody | PatternBody;
     readonly $type: 'Conclusion';
-    decl: JustificationElementDeclaration;
+    label: string;
+    name: string;
 }
 
 export const Conclusion = {
     $type: 'Conclusion',
-    decl: 'decl'
+    label: 'label',
+    name: 'name'
 } as const;
 
 export function isConclusion(item: unknown): item is Conclusion {
@@ -75,12 +80,14 @@ export function isConclusion(item: unknown): item is Conclusion {
 export interface Evidence extends langium.AstNode {
     readonly $container: JustificationBody | PatternBody;
     readonly $type: 'Evidence';
-    decl: JustificationElementDeclaration;
+    label: string;
+    name: string;
 }
 
 export const Evidence = {
     $type: 'Evidence',
-    decl: 'decl'
+    label: 'label',
+    name: 'name'
 } as const;
 
 export function isEvidence(item: unknown): item is Evidence {
@@ -109,7 +116,7 @@ export function isJustification(item: unknown): item is Justification {
 export interface JustificationBody extends langium.AstNode {
     readonly $container: Justification;
     readonly $type: 'JustificationBody';
-    body: Array<Conclusion | Evidence | Strategy>;
+    body: Array<Conclusion | Evidence | Strategy | SubConclusion>;
     rels: Array<Relation>;
 }
 
@@ -123,7 +130,10 @@ export function isJustificationBody(item: unknown): item is JustificationBody {
     return reflection.isInstance(item, JustificationBody.$type);
 }
 
-export type JustificationElement = AbstractSupport | Evidence | Strategy;
+/**
+ * Contents of justification / patterns
+ */
+export type JustificationElement = AbstractSupport | Conclusion | Evidence | Strategy | SubConclusion;
 
 export const JustificationElement = {
     $type: 'JustificationElement'
@@ -131,26 +141,6 @@ export const JustificationElement = {
 
 export function isJustificationElement(item: unknown): item is JustificationElement {
     return reflection.isInstance(item, JustificationElement.$type);
-}
-
-/**
- * Contents of justification / patterns
- */
-export interface JustificationElementDeclaration extends langium.AstNode {
-    readonly $container: AbstractSupport | Conclusion | Evidence | Strategy;
-    readonly $type: 'JustificationElementDeclaration';
-    label: string;
-    name: string;
-}
-
-export const JustificationElementDeclaration = {
-    $type: 'JustificationElementDeclaration',
-    label: 'label',
-    name: 'name'
-} as const;
-
-export function isJustificationElementDeclaration(item: unknown): item is JustificationElementDeclaration {
-    return reflection.isInstance(item, JustificationElementDeclaration.$type);
 }
 
 /**
@@ -193,7 +183,7 @@ export function isPattern(item: unknown): item is Pattern {
 export interface PatternBody extends langium.AstNode {
     readonly $container: Pattern;
     readonly $type: 'PatternBody';
-    body: Array<AbstractSupport | Conclusion | Evidence | Strategy>;
+    body: Array<AbstractSupport | Conclusion | Evidence | Strategy | SubConclusion>;
     rels: Array<Relation>;
 }
 
@@ -210,8 +200,8 @@ export function isPatternBody(item: unknown): item is PatternBody {
 export interface Relation extends langium.AstNode {
     readonly $container: JustificationBody | PatternBody;
     readonly $type: 'Relation';
-    from: langium.Reference<JustificationElementDeclaration>;
-    to: langium.Reference<JustificationElementDeclaration>;
+    from: langium.Reference<JustificationElement>;
+    to: langium.Reference<JustificationElement>;
 }
 
 export const Relation = {
@@ -227,16 +217,35 @@ export function isRelation(item: unknown): item is Relation {
 export interface Strategy extends langium.AstNode {
     readonly $container: JustificationBody | PatternBody;
     readonly $type: 'Strategy';
-    decl: JustificationElementDeclaration;
+    label: string;
+    name: string;
 }
 
 export const Strategy = {
     $type: 'Strategy',
-    decl: 'decl'
+    label: 'label',
+    name: 'name'
 } as const;
 
 export function isStrategy(item: unknown): item is Strategy {
     return reflection.isInstance(item, Strategy.$type);
+}
+
+export interface SubConclusion extends langium.AstNode {
+    readonly $container: JustificationBody | PatternBody;
+    readonly $type: 'SubConclusion';
+    label: string;
+    name: string;
+}
+
+export const SubConclusion = {
+    $type: 'SubConclusion',
+    label: 'label',
+    name: 'name'
+} as const;
+
+export function isSubConclusion(item: unknown): item is SubConclusion {
+    return reflection.isInstance(item, SubConclusion.$type);
 }
 
 export interface Unit extends langium.AstNode {
@@ -263,12 +272,12 @@ export type JpipeAstType = {
     Justification: Justification
     JustificationBody: JustificationBody
     JustificationElement: JustificationElement
-    JustificationElementDeclaration: JustificationElementDeclaration
     Load: Load
     Pattern: Pattern
     PatternBody: PatternBody
     Relation: Relation
     Strategy: Strategy
+    SubConclusion: SubConclusion
     Unit: Unit
 }
 
@@ -277,8 +286,11 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
         AbstractSupport: {
             name: AbstractSupport.$type,
             properties: {
-                decl: {
-                    name: AbstractSupport.decl
+                label: {
+                    name: AbstractSupport.label
+                },
+                name: {
+                    name: AbstractSupport.name
                 }
             },
             superTypes: [JustificationElement.$type]
@@ -292,17 +304,23 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
         Conclusion: {
             name: Conclusion.$type,
             properties: {
-                decl: {
-                    name: Conclusion.decl
+                label: {
+                    name: Conclusion.label
+                },
+                name: {
+                    name: Conclusion.name
                 }
             },
-            superTypes: []
+            superTypes: [JustificationElement.$type]
         },
         Evidence: {
             name: Evidence.$type,
             properties: {
-                decl: {
-                    name: Evidence.decl
+                label: {
+                    name: Evidence.label
+                },
+                name: {
+                    name: Evidence.name
                 }
             },
             superTypes: [JustificationElement.$type]
@@ -340,18 +358,6 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
         JustificationElement: {
             name: JustificationElement.$type,
             properties: {
-            },
-            superTypes: []
-        },
-        JustificationElementDeclaration: {
-            name: JustificationElementDeclaration.$type,
-            properties: {
-                label: {
-                    name: JustificationElementDeclaration.label
-                },
-                name: {
-                    name: JustificationElementDeclaration.name
-                }
             },
             superTypes: []
         },
@@ -399,11 +405,11 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
             properties: {
                 from: {
                     name: Relation.from,
-                    referenceType: JustificationElementDeclaration.$type
+                    referenceType: JustificationElement.$type
                 },
                 to: {
                     name: Relation.to,
-                    referenceType: JustificationElementDeclaration.$type
+                    referenceType: JustificationElement.$type
                 }
             },
             superTypes: []
@@ -411,8 +417,23 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
         Strategy: {
             name: Strategy.$type,
             properties: {
-                decl: {
-                    name: Strategy.decl
+                label: {
+                    name: Strategy.label
+                },
+                name: {
+                    name: Strategy.name
+                }
+            },
+            superTypes: [JustificationElement.$type]
+        },
+        SubConclusion: {
+            name: SubConclusion.$type,
+            properties: {
+                label: {
+                    name: SubConclusion.label
+                },
+                name: {
+                    name: SubConclusion.name
                 }
             },
             superTypes: [JustificationElement.$type]

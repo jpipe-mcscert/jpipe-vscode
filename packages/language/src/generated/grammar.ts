@@ -259,7 +259,19 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@7"
+                "$ref": "#/rules@6"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Assignment",
+            "feature": "body",
+            "operator": "+=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@8"
               },
               "arguments": []
             }
@@ -278,24 +290,24 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
           },
           {
             "$type": "Assignment",
-            "feature": "rels",
+            "feature": "body",
             "operator": "+=",
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@11"
+                "$ref": "#/rules@7"
               },
               "arguments": []
             }
           },
           {
             "$type": "Assignment",
-            "feature": "body",
+            "feature": "rels",
             "operator": "+=",
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@8"
+                "$ref": "#/rules@11"
               },
               "arguments": []
             }
@@ -320,7 +332,19 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@7"
+                "$ref": "#/rules@6"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Assignment",
+            "feature": "body",
+            "operator": "+=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@8"
               },
               "arguments": []
             }
@@ -333,6 +357,18 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
               "$type": "RuleCall",
               "rule": {
                 "$ref": "#/rules@9"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Assignment",
+            "feature": "body",
+            "operator": "+=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@7"
               },
               "arguments": []
             }
@@ -360,18 +396,6 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
               },
               "arguments": []
             }
-          },
-          {
-            "$type": "Assignment",
-            "feature": "body",
-            "operator": "+=",
-            "terminal": {
-              "$type": "RuleCall",
-              "rule": {
-                "$ref": "#/rules@8"
-              },
-              "arguments": []
-            }
           }
         ],
         "cardinality": "+"
@@ -382,10 +406,14 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
     },
     {
       "$type": "ParserRule",
-      "name": "JustificationElementDeclaration",
+      "name": "Evidence",
       "definition": {
         "$type": "Group",
         "elements": [
+          {
+            "$type": "Keyword",
+            "value": "evidence"
+          },
           {
             "$type": "Assignment",
             "feature": "name",
@@ -418,35 +446,6 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
       },
       "entry": false,
       "fragment": false,
-      "parameters": [],
-      "$comment": "/**\\n * Contents of justification / patterns\\n */"
-    },
-    {
-      "$type": "ParserRule",
-      "name": "Evidence",
-      "definition": {
-        "$type": "Group",
-        "elements": [
-          {
-            "$type": "Keyword",
-            "value": "evidence"
-          },
-          {
-            "$type": "Assignment",
-            "feature": "decl",
-            "operator": "=",
-            "terminal": {
-              "$type": "RuleCall",
-              "rule": {
-                "$ref": "#/rules@6"
-              },
-              "arguments": []
-            }
-          }
-        ]
-      },
-      "entry": false,
-      "fragment": false,
       "parameters": []
     },
     {
@@ -461,12 +460,28 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
           },
           {
             "$type": "Assignment",
-            "feature": "decl",
+            "feature": "name",
             "operator": "=",
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@6"
+                "$ref": "#/rules@13"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Keyword",
+            "value": "is"
+          },
+          {
+            "$type": "Assignment",
+            "feature": "label",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@14"
               },
               "arguments": []
             }
@@ -489,12 +504,72 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
           },
           {
             "$type": "Assignment",
-            "feature": "decl",
+            "feature": "name",
             "operator": "=",
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@6"
+                "$ref": "#/rules@13"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Keyword",
+            "value": "is"
+          },
+          {
+            "$type": "Assignment",
+            "feature": "label",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@14"
+              },
+              "arguments": []
+            }
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "SubConclusion",
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "Keyword",
+            "value": "sub-conclusion"
+          },
+          {
+            "$type": "Assignment",
+            "feature": "name",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@13"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Keyword",
+            "value": "is"
+          },
+          {
+            "$type": "Assignment",
+            "feature": "label",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@14"
               },
               "arguments": []
             }
@@ -517,12 +592,28 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
           },
           {
             "$type": "Assignment",
-            "feature": "decl",
+            "feature": "name",
             "operator": "=",
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@6"
+                "$ref": "#/rules@13"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Keyword",
+            "value": "is"
+          },
+          {
+            "$type": "Assignment",
+            "feature": "label",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@14"
               },
               "arguments": []
             }
@@ -546,7 +637,7 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
             "terminal": {
               "$type": "CrossReference",
               "type": {
-                "$ref": "#/rules@6"
+                "$ref": "#/types@1"
               },
               "terminal": {
                 "$type": "RuleCall",
@@ -570,7 +661,7 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
             "terminal": {
               "$type": "CrossReference",
               "type": {
-                "$ref": "#/rules@6"
+                "$ref": "#/types@1"
               },
               "terminal": {
                 "$type": "RuleCall",
@@ -676,7 +767,13 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
           {
             "$type": "SimpleType",
             "typeRef": {
-              "$ref": "#/rules@7"
+              "$ref": "#/rules@6"
+            }
+          },
+          {
+            "$type": "SimpleType",
+            "typeRef": {
+              "$ref": "#/rules@8"
             }
           },
           {
@@ -688,11 +785,18 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
           {
             "$type": "SimpleType",
             "typeRef": {
+              "$ref": "#/rules@7"
+            }
+          },
+          {
+            "$type": "SimpleType",
+            "typeRef": {
               "$ref": "#/rules@10"
             }
           }
         ]
-      }
+      },
+      "$comment": "/**\\n * Contents of justification / patterns\\n */"
     }
   ],
   "imports": [],
