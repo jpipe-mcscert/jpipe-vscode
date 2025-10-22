@@ -18,37 +18,35 @@ Pattern:
 type Body = JustificationBody | PatternBody
 
 JustificationBody:
-    (body+=Evidence | body+=Strategy | rels+=Relation | body+=Conclusion)+;
+    (body+=Evidence | body+=Strategy | body+=SubConclusion | body+=Conclusion | rels+=Relation)+;
 
 PatternBody:
-    (body+=Evidence |  body+=Strategy |  body+=AbstractSupport | rels+=Relation | body+=Conclusion)+;
+    (body+=Evidence | body+=Strategy | body+=SubConclusion | body+=Conclusion | body+=AbstractSupport | rels+=Relation)+;
 
 /**
  * Contents of justification / patterns
  */
 
-JustificationElementDeclaration:
-    name=ID 'is' label=STRING;
-
-type JustificationElement = Evidence | Strategy | AbstractSupport
+type JustificationElement = Evidence | Strategy | SubConclusion | Conclusion | AbstractSupport
 
 Evidence: 
-    'evidence' decl=JustificationElementDeclaration;
-
+    'evidence' name=ID 'is' label=STRING;
 
 Conclusion: 
-    'conclusion' decl=JustificationElementDeclaration;
+    'conclusion' name=ID 'is' label=STRING;
 
 Strategy:
-    'strategy' decl=JustificationElementDeclaration;
+    'strategy' name=ID 'is' label=STRING;
+
+SubConclusion:
+    'sub-conclusion' name=ID 'is' label=STRING;
+
 
 AbstractSupport:
-    '@support' decl=JustificationElementDeclaration;
+    '@support' name=ID 'is' label=STRING;
 
 Relation:
-    from=[JustificationElementDeclaration:ID] 'supports' to=[JustificationElementDeclaration:ID];
-
-
+    from=[JustificationElement:ID] 'supports' to=[JustificationElement:ID];
 
 hidden terminal WS: /\s+/;
 terminal ID: /[\w_]+/;
