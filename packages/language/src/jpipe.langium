@@ -1,30 +1,30 @@
 grammar Jpipe
 
 entry Unit:
-    (body+=Justification | body+=Pattern | imports+=Load)*;
+    (body+=Justification | body+=Template | imports+=Load)*;
 
 /**
- * Top-level elements: Justification, Patterns, File import
+ * Top-level elements: Justification, Templates, File import
  */
 Load:
     'load' filePath=STRING;
 
 Justification: 
-    'justification' name=ID ('implements' parent=[Pattern:ID])? '{' contents=JustificationBody '}';
+    'justification' name=ID ('implements' parent=[Template:ID])? '{' contents=JustificationBody '}';
 
-Pattern: 
-    'pattern' name=ID ('implements' parent=[Pattern:ID])? '{' contents=PatternBody '}';
+Template: 
+    'template' name=ID ('implements' parent=[Template:ID])? '{' contents=TemplateBody '}';
 
-type Body = JustificationBody | PatternBody
+type Body = JustificationBody | TemplateBody
 
 JustificationBody:
     (body+=Evidence | body+=Strategy | body+=SubConclusion | body+=Conclusion | rels+=Relation)+;
 
-PatternBody:
+TemplateBody:
     (body+=Evidence | body+=Strategy | body+=SubConclusion | body+=Conclusion | body+=AbstractSupport | rels+=Relation)+;
 
 /**
- * Contents of justification / patterns
+ * Contents of justification / templates
  */
 
 type JustificationElement = Evidence | Strategy | SubConclusion | Conclusion | AbstractSupport

@@ -24,17 +24,17 @@ export type JpipeKeywordNames =
     | "is"
     | "justification"
     | "load"
-    | "pattern"
     | "strategy"
     | "sub-conclusion"
     | "supports"
+    | "template"
     | "{"
     | "}";
 
 export type JpipeTokenNames = JpipeTerminalNames | JpipeKeywordNames;
 
 export interface AbstractSupport extends langium.AstNode {
-    readonly $container: PatternBody;
+    readonly $container: TemplateBody;
     readonly $type: 'AbstractSupport';
     label: string;
     name: string;
@@ -50,7 +50,7 @@ export function isAbstractSupport(item: unknown): item is AbstractSupport {
     return reflection.isInstance(item, AbstractSupport.$type);
 }
 
-export type Body = JustificationBody | PatternBody;
+export type Body = JustificationBody | TemplateBody;
 
 export const Body = {
     $type: 'Body'
@@ -61,7 +61,7 @@ export function isBody(item: unknown): item is Body {
 }
 
 export interface Conclusion extends langium.AstNode {
-    readonly $container: JustificationBody | PatternBody;
+    readonly $container: JustificationBody | TemplateBody;
     readonly $type: 'Conclusion';
     label: string;
     name: string;
@@ -78,7 +78,7 @@ export function isConclusion(item: unknown): item is Conclusion {
 }
 
 export interface Evidence extends langium.AstNode {
-    readonly $container: JustificationBody | PatternBody;
+    readonly $container: JustificationBody | TemplateBody;
     readonly $type: 'Evidence';
     label: string;
     name: string;
@@ -99,7 +99,7 @@ export interface Justification extends langium.AstNode {
     readonly $type: 'Justification';
     contents: JustificationBody;
     name: string;
-    parent?: langium.Reference<Pattern>;
+    parent?: langium.Reference<Template>;
 }
 
 export const Justification = {
@@ -131,7 +131,7 @@ export function isJustificationBody(item: unknown): item is JustificationBody {
 }
 
 /**
- * Contents of justification / patterns
+ * Contents of justification / templates
  */
 export type JustificationElement = AbstractSupport | Conclusion | Evidence | Strategy | SubConclusion;
 
@@ -144,7 +144,7 @@ export function isJustificationElement(item: unknown): item is JustificationElem
 }
 
 /**
- * Top-level elements: Justification, Patterns, File import
+ * Top-level elements: Justification, Templates, File import
  */
 export interface Load extends langium.AstNode {
     readonly $container: Unit;
@@ -161,44 +161,8 @@ export function isLoad(item: unknown): item is Load {
     return reflection.isInstance(item, Load.$type);
 }
 
-export interface Pattern extends langium.AstNode {
-    readonly $container: Unit;
-    readonly $type: 'Pattern';
-    contents: PatternBody;
-    name: string;
-    parent?: langium.Reference<Pattern>;
-}
-
-export const Pattern = {
-    $type: 'Pattern',
-    contents: 'contents',
-    name: 'name',
-    parent: 'parent'
-} as const;
-
-export function isPattern(item: unknown): item is Pattern {
-    return reflection.isInstance(item, Pattern.$type);
-}
-
-export interface PatternBody extends langium.AstNode {
-    readonly $container: Pattern;
-    readonly $type: 'PatternBody';
-    body: Array<AbstractSupport | Conclusion | Evidence | Strategy | SubConclusion>;
-    rels: Array<Relation>;
-}
-
-export const PatternBody = {
-    $type: 'PatternBody',
-    body: 'body',
-    rels: 'rels'
-} as const;
-
-export function isPatternBody(item: unknown): item is PatternBody {
-    return reflection.isInstance(item, PatternBody.$type);
-}
-
 export interface Relation extends langium.AstNode {
-    readonly $container: JustificationBody | PatternBody;
+    readonly $container: JustificationBody | TemplateBody;
     readonly $type: 'Relation';
     from: langium.Reference<JustificationElement>;
     to: langium.Reference<JustificationElement>;
@@ -215,7 +179,7 @@ export function isRelation(item: unknown): item is Relation {
 }
 
 export interface Strategy extends langium.AstNode {
-    readonly $container: JustificationBody | PatternBody;
+    readonly $container: JustificationBody | TemplateBody;
     readonly $type: 'Strategy';
     label: string;
     name: string;
@@ -232,7 +196,7 @@ export function isStrategy(item: unknown): item is Strategy {
 }
 
 export interface SubConclusion extends langium.AstNode {
-    readonly $container: JustificationBody | PatternBody;
+    readonly $container: JustificationBody | TemplateBody;
     readonly $type: 'SubConclusion';
     label: string;
     name: string;
@@ -248,9 +212,45 @@ export function isSubConclusion(item: unknown): item is SubConclusion {
     return reflection.isInstance(item, SubConclusion.$type);
 }
 
+export interface Template extends langium.AstNode {
+    readonly $container: Unit;
+    readonly $type: 'Template';
+    contents: TemplateBody;
+    name: string;
+    parent?: langium.Reference<Template>;
+}
+
+export const Template = {
+    $type: 'Template',
+    contents: 'contents',
+    name: 'name',
+    parent: 'parent'
+} as const;
+
+export function isTemplate(item: unknown): item is Template {
+    return reflection.isInstance(item, Template.$type);
+}
+
+export interface TemplateBody extends langium.AstNode {
+    readonly $container: Template;
+    readonly $type: 'TemplateBody';
+    body: Array<AbstractSupport | Conclusion | Evidence | Strategy | SubConclusion>;
+    rels: Array<Relation>;
+}
+
+export const TemplateBody = {
+    $type: 'TemplateBody',
+    body: 'body',
+    rels: 'rels'
+} as const;
+
+export function isTemplateBody(item: unknown): item is TemplateBody {
+    return reflection.isInstance(item, TemplateBody.$type);
+}
+
 export interface Unit extends langium.AstNode {
     readonly $type: 'Unit';
-    body: Array<Justification | Pattern>;
+    body: Array<Justification | Template>;
     imports: Array<Load>;
 }
 
@@ -273,11 +273,11 @@ export type JpipeAstType = {
     JustificationBody: JustificationBody
     JustificationElement: JustificationElement
     Load: Load
-    Pattern: Pattern
-    PatternBody: PatternBody
     Relation: Relation
     Strategy: Strategy
     SubConclusion: SubConclusion
+    Template: Template
+    TemplateBody: TemplateBody
     Unit: Unit
 }
 
@@ -336,7 +336,7 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
                 },
                 parent: {
                     name: Justification.parent,
-                    referenceType: Pattern.$type
+                    referenceType: Template.$type
                 }
             },
             superTypes: []
@@ -369,36 +369,6 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: []
-        },
-        Pattern: {
-            name: Pattern.$type,
-            properties: {
-                contents: {
-                    name: Pattern.contents
-                },
-                name: {
-                    name: Pattern.name
-                },
-                parent: {
-                    name: Pattern.parent,
-                    referenceType: Pattern.$type
-                }
-            },
-            superTypes: []
-        },
-        PatternBody: {
-            name: PatternBody.$type,
-            properties: {
-                body: {
-                    name: PatternBody.body,
-                    defaultValue: []
-                },
-                rels: {
-                    name: PatternBody.rels,
-                    defaultValue: []
-                }
-            },
-            superTypes: [Body.$type]
         },
         Relation: {
             name: Relation.$type,
@@ -437,6 +407,36 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: [JustificationElement.$type]
+        },
+        Template: {
+            name: Template.$type,
+            properties: {
+                contents: {
+                    name: Template.contents
+                },
+                name: {
+                    name: Template.name
+                },
+                parent: {
+                    name: Template.parent,
+                    referenceType: Template.$type
+                }
+            },
+            superTypes: []
+        },
+        TemplateBody: {
+            name: TemplateBody.$type,
+            properties: {
+                body: {
+                    name: TemplateBody.body,
+                    defaultValue: []
+                },
+                rels: {
+                    name: TemplateBody.rels,
+                    defaultValue: []
+                }
+            },
+            superTypes: [Body.$type]
         },
         Unit: {
             name: Unit.$type,

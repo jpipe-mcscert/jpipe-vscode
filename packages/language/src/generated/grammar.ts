@@ -88,7 +88,7 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
       "entry": false,
       "fragment": false,
       "parameters": [],
-      "$comment": "/**\\n * Top-level elements: Justification, Patterns, File import\\n */"
+      "$comment": "/**\\n * Top-level elements: Justification, Templates, File import\\n */"
     },
     {
       "$type": "ParserRule",
@@ -170,13 +170,13 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
     },
     {
       "$type": "ParserRule",
-      "name": "Pattern",
+      "name": "Template",
       "definition": {
         "$type": "Group",
         "elements": [
           {
             "$type": "Keyword",
-            "value": "pattern"
+            "value": "template"
           },
           {
             "$type": "Assignment",
@@ -321,7 +321,7 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
     },
     {
       "$type": "ParserRule",
-      "name": "PatternBody",
+      "name": "TemplateBody",
       "definition": {
         "$type": "Alternatives",
         "elements": [
@@ -796,7 +796,7 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
           }
         ]
       },
-      "$comment": "/**\\n * Contents of justification / patterns\\n */"
+      "$comment": "/**\\n * Contents of justification / templates\\n */"
     }
   ],
   "imports": [],
