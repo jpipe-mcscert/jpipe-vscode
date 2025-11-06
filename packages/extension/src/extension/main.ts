@@ -50,7 +50,8 @@ function startLanguageClient(context: vscode.ExtensionContext): LanguageClient {
     };
 
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: 'file', language: 'jpipe' }]
+        documentSelector: [{ scheme: 'file', language: 'jpipe' }],
+        outputChannel: vscode.window.createOutputChannel('jpipe Language Server')
     };
 
     const client = new LanguageClient(
@@ -60,6 +61,9 @@ function startLanguageClient(context: vscode.ExtensionContext): LanguageClient {
         clientOptions
     );
 
-    client.start();
+    client.start().catch((error: unknown) => {
+        vscode.window.showErrorMessage(`Failed to start language server: ${error}`);
+    });
+    
     return client;
 }

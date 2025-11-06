@@ -62,7 +62,8 @@ export function createJpipeServices(context: DefaultSharedModuleContext): {
         JpipeModule
     );
     shared.ServiceRegistry.register(Jpipe);
-    registerValidationChecks(Jpipe);
+    // TEMPORARILY DISABLED FOR DEBUGGING
+    // registerValidationChecks(Jpipe);
     if (!context.connection) {
         // We don't run inside a language server
         // Therefore, initialize the configuration provider instantly
