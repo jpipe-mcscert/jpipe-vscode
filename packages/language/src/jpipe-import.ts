@@ -21,20 +21,6 @@ export class JpipeImportService {
         this.services = services;
     }
 
-    private debugLog(message: string, ...args: any[]) {
-        const fullMessage = `[IMPORT-DEBUG] ${message}`;
-        // Try to use LSP connection console if available, otherwise fall back to console.error
-        if (this.services.shared?.lsp?.Connection) {
-            if (args.length > 0) {
-                this.services.shared.lsp.Connection.console.log(fullMessage + ' ' + args.map(a => String(a)).join(' '));
-            } else {
-                this.services.shared.lsp.Connection.console.log(fullMessage);
-            }
-        } else {
-            console.error(fullMessage, ...args);
-        }
-    }
-
     /**
      * Resolve an import file path to a Langium document.
      * ONLY resolves files that are explicitly listed in load statements.
@@ -51,16 +37,12 @@ export class JpipeImportService {
      * @returns The resolved document, or undefined if not found or not explicitly loaded
      */
     resolveImport(filePath: string, currentDoc: LangiumDocument): LangiumDocument | undefined {
-        this.debugLog('resolveImport called with filePath:', filePath);
-        
         // Remove quotes from filePath string
         const cleanPath = filePath.replace(/^["']|["']$/g, '');
-        this.debugLog('cleanPath:', cleanPath);
         
         // Get the current unit to verify this import is explicitly declared
         const currentUnit = currentDoc.parseResult.value as Unit | undefined;
         if (!currentUnit) {
-            this.debugLog('ERROR: No currentUnit found');
             return undefined;
         }
         
@@ -69,27 +51,22 @@ export class JpipeImportService {
             load => load.filePath.replace(/^["']|["']$/g, '') === cleanPath
         );
         if (!isExplicitlyLoaded) {
-            this.debugLog('REJECTED: File not in unit.imports');
             return undefined;
         }
-        this.debugLog('PASSED: File is explicitly loaded');
         
         // Resolve relative path to absolute path
         const currentUri = URI.parse(currentDoc.uri.toString());
         const currentDir = path.dirname(currentUri.path);
         const resolvedPath = path.resolve(currentDir, cleanPath);
-        this.debugLog('Resolving relative path:', cleanPath, 'from', currentDir, '->', resolvedPath);
         
         // Check if file exists and read it
         if (!fs.existsSync(resolvedPath)) {
-            this.debugLog('ERROR: File does not exist:', resolvedPath);
             return undefined;
         }
         
         try {
             // Read file content synchronously from file system
             const fileContent = fs.readFileSync(resolvedPath, 'utf-8');
-            this.debugLog('File read successfully, length:', fileContent.length);
             
             // Create document and parse it
             const resolvedUri = URI.file(resolvedPath);
@@ -104,10 +81,8 @@ export class JpipeImportService {
                 this.setDocumentOnAllNodes(doc.parseResult.value, doc);
             }
             
-            this.debugLog('SUCCESS: Document parsed from file system');
             return doc;
         } catch (error) {
-            this.debugLog('ERROR reading/parsing file:', String(error));
             return undefined;
         }
     }
@@ -134,28 +109,19 @@ export class JpipeImportService {
      * @returns Array of all templates from explicitly imported files only
      */
     getImportedTemplates(unit: Unit, currentDoc: LangiumDocument): Template[] {
-        this.debugLog('getImportedTemplates called, imports count:', unit.imports.length);
         const templates: Template[] = [];
         // Only iterate through explicitly declared load statements
         for (const load of unit.imports) {
-            this.debugLog('Processing import:', load.filePath);
             const importedDoc = this.resolveImport(load.filePath, currentDoc);
             if (importedDoc) {
-                this.debugLog('Import resolved successfully, getting templates');
                 const importedUnit = importedDoc.parseResult.value as Unit;
                 if (importedUnit) {
                     // Only get templates from this explicitly loaded file
                     const localTemplates = this.getLocalTemplates(importedUnit);
-                    this.debugLog('Found', localTemplates.length, 'templates in imported file');
                     templates.push(...localTemplates);
-                } else {
-                    this.debugLog('ERROR: No importedUnit found');
                 }
-            } else {
-                this.debugLog('Import resolution failed for:', load.filePath);
             }
         }
-        this.debugLog('getImportedTemplates returning', templates.length, 'templates');
         return templates;
     }
 
@@ -192,28 +158,19 @@ export class JpipeImportService {
         currentDoc: LangiumDocument,
         filterFn: (body: any) => boolean
     ): JustificationElement[] {
-        this.debugLog('getElementsFromImports called, imports count:', unit.imports.length);
         const elements: JustificationElement[] = [];
         // Only iterate through explicitly declared load statements
         for (const load of unit.imports) {
-            this.debugLog('Processing import for elements:', load.filePath);
             const importedDoc = this.resolveImport(load.filePath, currentDoc);
             if (importedDoc) {
-                this.debugLog('Import resolved successfully, getting elements');
                 const importedUnit = importedDoc.parseResult.value as Unit;
                 if (importedUnit) {
                     // Only get elements from this explicitly loaded file
                     const importedElems = this.getElementsFromImportedUnit(importedUnit, filterFn);
-                    this.debugLog('Found', importedElems.length, 'elements in imported file');
                     elements.push(...importedElems);
-                } else {
-                    this.debugLog('ERROR: No importedUnit found');
                 }
-            } else {
-                this.debugLog('Import resolution failed for:', load.filePath);
             }
         }
-        this.debugLog('getElementsFromImports returning', elements.length, 'elements');
         return elements;
     }
 
