@@ -1,10 +1,9 @@
 import { type Module, inject } from 'langium';
 import { createDefaultModule, createDefaultSharedModule, type DefaultSharedModuleContext, type LangiumServices, type LangiumSharedServices, type PartialLangiumServices } from 'langium/lsp';
 import { JpipeGeneratedModule, JpipeGeneratedSharedModule } from './generated/module.js';
-import { JpipeValidator, }
-  //  registerValidationChecks }
-     from './jpipe-validator.js';
+import { JpipeValidator, registerValidationChecks } from './jpipe-validator.js';
 import { JpipeScopeProvider } from './jpipe-scope.js';
+import { JpipeImportService } from './jpipe-import.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -12,6 +11,9 @@ import { JpipeScopeProvider } from './jpipe-scope.js';
 export type JpipeAddedServices = {
     validation: {
         JpipeValidator: JpipeValidator
+    },
+    references: {
+        JpipeImportService: JpipeImportService
     }
 }
 
@@ -31,7 +33,8 @@ export const JpipeModule: Module<JpipeServices, PartialLangiumServices & JpipeAd
         JpipeValidator: () => new JpipeValidator()
     },
     references: {
-        ScopeProvider: (services) => new JpipeScopeProvider(services)
+        ScopeProvider: (services) => new JpipeScopeProvider(services),
+        JpipeImportService: (services) => new JpipeImportService(services)
     }
 };
 
@@ -64,8 +67,7 @@ export function createJpipeServices(context: DefaultSharedModuleContext): {
         JpipeModule
     );
     shared.ServiceRegistry.register(Jpipe);
-    // TEMPORARILY DISABLED FOR DEBUGGING
-    // registerValidationChecks(Jpipe);
+    registerValidationChecks(Jpipe);
     if (!context.connection) {
         // We don't run inside a language server
         // Therefore, initialize the configuration provider instantly
