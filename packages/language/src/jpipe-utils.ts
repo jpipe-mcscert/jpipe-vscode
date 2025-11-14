@@ -8,7 +8,6 @@ import {
 
 /**
  * Get all elements from a Justification or Template, including implements chain (bubbling up).
- * Templates can only see template elements, not justification elements.
  */
 export function getAllElements(node: Justification | Template): JustificationElement[] {
     const local = getLocalElements(node);

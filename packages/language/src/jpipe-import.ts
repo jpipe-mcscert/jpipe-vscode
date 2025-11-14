@@ -21,14 +21,6 @@ export class JpipeImportService {
         this.services = services;
     }
 
-    /**
-     * Resolve an import file path to a Langium document.
-     * Only resolves files that are explicitly listed in load statements (unit.imports).
-     * 
-     * @param filePath The file path from the import statement (must be from unit.imports)
-     * @param currentDoc The current document making the import
-     * @returns The resolved document, or undefined if not found or not explicitly loaded
-     */
     resolveImport(filePath: string, currentDoc: LangiumDocument): LangiumDocument | undefined {
         const cleanPath = filePath.replace(/^["']|["']$/g, '');
         const currentUnit = currentDoc.parseResult.value as Unit | undefined;
@@ -36,7 +28,6 @@ export class JpipeImportService {
             return undefined;
         }
         
-        // Verify this file path is explicitly declared in unit.imports
         const isExplicitlyLoaded = currentUnit.imports.some(
             load => load.filePath.replace(/^["']|["']$/g, '') === cleanPath
         );
@@ -61,7 +52,6 @@ export class JpipeImportService {
             const parser = this.services.parser.LangiumParser;
             doc.parseResult = parser.parse(fileContent);
             
-            // Set $document property on all AST nodes for proper scope resolution and linking
             if (doc.parseResult.value) {
                 this.setDocumentOnAllNodes(doc.parseResult.value, doc);
             }
@@ -72,10 +62,6 @@ export class JpipeImportService {
         }
     }
 
-    /**
-     * Recursively set $document property on all AST nodes.
-     * Required for proper scope resolution and linking.
-     */
     private setDocumentOnAllNodes(node: AstNode, document: LangiumDocument): void {
         (node as any).$document = document;
         AstUtils.streamAst(node).forEach(child => {
@@ -83,10 +69,6 @@ export class JpipeImportService {
         });
     }
 
-    /**
-     * Get all templates from imported files.
-     * Only includes templates from files explicitly listed in load statements.
-     */
     getImportedTemplates(unit: Unit, currentDoc: LangiumDocument): Template[] {
         const templates: Template[] = [];
         for (const load of unit.imports) {
@@ -107,10 +89,6 @@ export class JpipeImportService {
         return this.getElementsFromImports(unit, currentDoc, isTemplate);
     }
 
-    /**
-     * Get elements from imported files, filtered by a predicate.
-     * Only includes elements from files explicitly listed in load statements.
-     */
     private getElementsFromImports(
         unit: Unit,
         currentDoc: LangiumDocument,
@@ -127,10 +105,6 @@ export class JpipeImportService {
         return elements;
     }
 
-    /**
-     * Get all elements from an imported unit, filtered by a predicate.
-     * Uses getAllElements to include inherited elements from parent templates.
-     */
     private getElementsFromImportedUnit(
         importedUnit: Unit,
         filterFn: (body: any) => boolean
