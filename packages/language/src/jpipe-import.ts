@@ -12,7 +12,7 @@ import {
 import { getAllElements } from './jpipe-utils.js';
 
 /**
- * Service for handling imports and resolving imported documents, templates, and elements.
+ * A service for handling imports and resolving imported documents, templates, and elements.
  */
 export class JpipeImportService {
     private readonly services: JpipeServices;
@@ -35,10 +35,29 @@ export class JpipeImportService {
             return undefined;
         }
         
-        // Resolve relative path to absolute path
-        const currentUri = URI.parse(currentDoc.uri.toString());
-        const currentDir = path.dirname(currentUri.path);
-        const resolvedPath = path.resolve(currentDir, cleanPath);
+
+        // handles path resolution and document parsing
+        return this.parseDocumentFromPath(cleanPath, currentDoc);
+    }
+
+    parseDocumentFromPath(filePath: string, relativeToDoc?: LangiumDocument): LangiumDocument | undefined {
+        let resolvedPath = filePath;
+        
+        // if we have a relative path and a reference document, resolve it
+        if (relativeToDoc && !path.isAbsolute(filePath)) {
+            const currentUri = URI.parse(relativeToDoc.uri.toString());
+            const currentDir = path.dirname(currentUri.path);
+            resolvedPath = path.resolve(currentDir, filePath);
+        } else if (!path.isAbsolute(filePath)) {
+            // if no reference document and not absolute, assume it's already resolved
+            resolvedPath = filePath;
+        }
+        
+        const resolvedUri = URI.file(resolvedPath);
+        const existingDoc = this.services.shared.workspace.LangiumDocuments.getDocument(resolvedUri);
+        if (existingDoc) {
+            return existingDoc;
+        }
         
         if (!fs.existsSync(resolvedPath)) {
             return undefined;
@@ -46,7 +65,6 @@ export class JpipeImportService {
         
         try {
             const fileContent = fs.readFileSync(resolvedPath, 'utf-8');
-            const resolvedUri = URI.file(resolvedPath);
             const docFactory = this.services.shared.workspace.LangiumDocumentFactory;
             const doc = docFactory.fromString(fileContent, resolvedUri);
             const parser = this.services.parser.LangiumParser;

@@ -4,6 +4,7 @@ import { JpipeGeneratedModule, JpipeGeneratedSharedModule } from './generated/mo
 import { JpipeValidator, registerValidationChecks } from './jpipe-validator.js';
 import { JpipeScopeProvider } from './jpipe-scope.js';
 import { JpipeImportService } from './jpipe-import.js';
+import { JpipeCompletionProvider } from './jpipe-completion.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -35,6 +36,9 @@ export const JpipeModule: Module<JpipeServices, PartialLangiumServices & JpipeAd
     references: {
         ScopeProvider: (services) => new JpipeScopeProvider(services),
         JpipeImportService: (services) => new JpipeImportService(services)
+    },
+    lsp: {
+        CompletionProvider: (services) => new JpipeCompletionProvider(services)
     }
 };
 
