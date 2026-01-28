@@ -38,14 +38,12 @@ export interface AbstractSupport extends langium.AstNode {
     readonly $type: 'AbstractSupport';
     label: string;
     name: string;
-    type: 'conclusion' | 'evidence' | 'strategy' | 'sub-conclusion';
 }
 
 export const AbstractSupport = {
     $type: 'AbstractSupport',
     label: 'label',
-    name: 'name',
-    type: 'type'
+    name: 'name'
 } as const;
 
 export function isAbstractSupport(item: unknown): item is AbstractSupport {
@@ -132,9 +130,6 @@ export function isJustificationBody(item: unknown): item is JustificationBody {
     return reflection.isInstance(item, JustificationBody.$type);
 }
 
-/**
- * Contents of justification / templates
- */
 export type JustificationElement = AbstractSupport | Conclusion | Evidence | Strategy | SubConclusion;
 
 export const JustificationElement = {
@@ -145,9 +140,6 @@ export function isJustificationElement(item: unknown): item is JustificationElem
     return reflection.isInstance(item, JustificationElement.$type);
 }
 
-/**
- * Top-level elements: Justification, Templates, File import
- */
 export interface Load extends langium.AstNode {
     readonly $container: Unit;
     readonly $type: 'Load';
@@ -293,9 +285,6 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
                 },
                 name: {
                     name: AbstractSupport.name
-                },
-                type: {
-                    name: AbstractSupport.type
                 }
             },
             superTypes: [JustificationElement.$type]

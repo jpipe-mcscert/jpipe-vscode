@@ -87,8 +87,7 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
       },
       "entry": false,
       "fragment": false,
-      "parameters": [],
-      "$comment": "/**\\n * Top-level elements: Justification, Templates, File import\\n */"
+      "parameters": []
     },
     {
       "$type": "ParserRule",
@@ -592,32 +591,6 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
           },
           {
             "$type": "Assignment",
-            "feature": "type",
-            "operator": "=",
-            "terminal": {
-              "$type": "Alternatives",
-              "elements": [
-                {
-                  "$type": "Keyword",
-                  "value": "evidence"
-                },
-                {
-                  "$type": "Keyword",
-                  "value": "strategy"
-                },
-                {
-                  "$type": "Keyword",
-                  "value": "conclusion"
-                },
-                {
-                  "$type": "Keyword",
-                  "value": "sub-conclusion"
-                }
-              ]
-            }
-          },
-          {
-            "$type": "Assignment",
             "feature": "name",
             "operator": "=",
             "terminal": {
@@ -821,10 +794,10 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
             }
           }
         ]
-      },
-      "$comment": "/**\\n * Contents of justification / templates\\n */"
+      }
     }
   ],
   "imports": [],
-  "interfaces": []
+  "interfaces": [],
+  "$comment": "/**\\n * jPipe Language Grammar\\n * \\n * Defines the syntax for the jPipe justification language. Key features:\\n * - Templates: Reusable justification structures that can be implemented by justifications\\n * - Justifications: Concrete implementations that can implement templates\\n * - @support annotation: Marks template elements that must be overridden (like abstract methods)\\n *   Syntax: @support name is \\"label\\"\\n *   @support elements can only be refined by evidence or sub-conclusion in justifications\\n * - Inheritance: Both templates and justifications can implement parent templates, creating\\n *   inheritance chains where elements bubble up\\n * - Relations: Elements can support each other using the \\"supports\\" keyword\\n */"
 }`));

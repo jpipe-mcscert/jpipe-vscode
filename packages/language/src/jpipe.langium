@@ -5,7 +5,8 @@
  * - Templates: Reusable justification structures that can be implemented by justifications
  * - Justifications: Concrete implementations that can implement templates
  * - @support annotation: Marks template elements that must be overridden (like abstract methods)
- *   Syntax: @support {type} name is "label" where type is evidence|strategy|conclusion|sub-conclusion
+ *   Syntax: @support name is "label"
+ *   @support elements can only be refined by evidence or sub-conclusion in justifications
  * - Inheritance: Both templates and justifications can implement parent templates, creating
  *   inheritance chains where elements bubble up
  * - Relations: Elements can support each other using the "supports" keyword
@@ -48,7 +49,7 @@ SubConclusion:
     'sub-conclusion' name=ID 'is' label=STRING;
 
 AbstractSupport:
-    '@support' type=('evidence' | 'strategy' | 'conclusion' | 'sub-conclusion') name=ID 'is' label=STRING;
+    '@support' name=ID 'is' label=STRING;
 
 Relation:
     from=[JustificationElement:ID] 'supports' to=[JustificationElement:ID];

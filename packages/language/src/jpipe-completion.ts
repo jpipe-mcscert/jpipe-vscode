@@ -326,10 +326,14 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         let keyword: string;
         let snippet: string;
 
+        // Handle @support elements (AbstractSupport)
+        // @support elements can be refined by evidence or sub-conclusion
+        // We'll suggest evidence as the default, but user can change to sub-conclusion
         if (isAbstractSupport(element)) {
             const supportElement = element as AbstractSupport;
-            keyword = supportElement.type;
-            snippet = `${keyword} ${supportElement.name} is "${supportElement.label}"`;
+            // Default to evidence, but user can change to sub-conclusion
+            keyword = 'evidence';
+            snippet = `evidence ${supportElement.name} is "${supportElement.label}"`;
         } else if (isEvidence(element)) {
             keyword = 'evidence';
             snippet = `evidence ${element.name} is "${element.label}"`;

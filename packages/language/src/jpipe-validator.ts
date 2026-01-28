@@ -107,22 +107,22 @@ export class JpipeValidator {
         for (const supportElement of requiredSupportElements) {
             if (!localElementNames.has(supportElement.name)) {
                 accept('error', 
-                    `Justification '${justification.name}' must override '@support ${supportElement.type} ${supportElement.name}' from template '${template.name}'.`, 
+                    `Justification '${justification.name}' must override '@support ${supportElement.name}' from template '${template.name}'.`, 
                     { node: justification, property: 'name' });
             }
         }
         
-        // Validate type matching for @support overrides
+        // Validate that @support elements can only be overridden with evidence or sub-conclusion
         for (const elem of localJustificationElements) {
             const templateElement = allTemplateElements.find(te => te.name === elem.name);
             
             if (templateElement && isAbstractSupport(templateElement)) {
-                const supportElement = templateElement as AbstractSupport;
                 const elemType = this.getElementType(elem);
                 
-                if (elemType && elemType !== supportElement.type) {
+                // @support elements can only be refined by evidence or sub-conclusion
+                if (elemType && elemType !== 'evidence' && elemType !== 'sub-conclusion') {
                     accept('error', 
-                        `Cannot override '${elem.name}' with type '${elemType}' in justification '${justification.name}'. Template '${template.name}' declares it as '@support ${supportElement.type}'.`, 
+                        `Cannot override '@support ${elem.name}' with type '${elemType}' in justification '${justification.name}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`, 
                         { node: elem, property: 'name' });
                 }
             }
