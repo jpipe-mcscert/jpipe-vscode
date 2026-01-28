@@ -328,7 +328,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         // Handle @support elements (AbstractSupport)
         // @support elements can be refined by evidence or sub-conclusion
-        // We'll suggest evidence as the default, but user can change to sub-conclusion
+        // suggest evidence as the default, but user can change to sub-conclusion
         if (isAbstractSupport(element)) {
             const supportElement = element as AbstractSupport;
             // Default to evidence, but user can change to sub-conclusion
