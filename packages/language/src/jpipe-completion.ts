@@ -1,17 +1,40 @@
-import { stream, type Stream, URI } from 'langium';
+/**
+ * Completion provider for the jPipe language
+ * 
+ * This provider enhances autocomplete in two ways:
+ * 1. Workspace-wide completion: Suggests elements from all .jd files in the workspace, not just
+ *    imported ones. Automatically adds load statements when selecting elements from other files.
+ * 2. Template implementation assistance: When typing inside a justification that implements a
+ *    template, provides autocomplete for all template elements (both @support and regular).
+ *    @support elements are marked as required and sorted first. The completion intelligently
+ *    replaces the typed prefix (e.g., typing "evid" and selecting "evidence e1" replaces "evid").
+ * 
+ */
+
+import { stream, type Stream, URI, AstUtils } from 'langium';
 import type { AstNodeDescription, ReferenceInfo, LangiumDocument } from 'langium';
 import { DefaultCompletionProvider, type CompletionContext, type CompletionValueItem } from 'langium/lsp';
-import { Position, type TextEdit } from 'vscode-languageserver';
+import { Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, CompletionParams } from 'vscode-languageserver';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import type { JpipeServices } from './jpipe-module.js';
-import { isJustification, isTemplate, isRelation, type Unit } from './generated/ast.js';
-import { getAllElements } from './jpipe-utils.js';
+import { 
+    isJustification, 
+    isTemplate, 
+    isRelation, 
+    isJustificationBody,
+    isEvidence,
+    isStrategy,
+    isConclusion,
+    isSubConclusion,
+    isAbstractSupport,
+    type Unit,
+    type Justification,
+    type JustificationElement,
+    type AbstractSupport
+} from './generated/ast.js';
+import { getAllElements, getLocalElements } from './jpipe-utils.js';
 
-/**
- * A custom completion provider that includes elements from all workspace files,
- * not just imported ones. Automatically adds load statements when needed.
- */
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private readonly services: JpipeServices;
 
@@ -58,10 +81,10 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             const currentPath = URI.parse(typeof currentDoc.uri === 'string' ? currentDoc.uri : currentDoc.uri.toString()).path;
             const currentDir = path.dirname(currentPath);
 
-            // Scan current directory and its subdirectories (depth 2)
+            // TODO: need a better scan protocol
             const files = this.scanDirectoryRecursive(currentDir, 2);
             
-            // Also scan sibling directories (same level as current directory) with depth 1
+            // fix this too for sibling dirs
             const parentDir = path.dirname(currentDir);
             if (parentDir !== currentDir) {
                 try {
@@ -227,6 +250,141 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         }
 
         return baseItem;
+    }
+
+    public override async getCompletion(
+        document: LangiumDocument,
+        params: CompletionParams,
+        cancelToken?: any
+    ): Promise<CompletionList | undefined> {
+        const result = await super.getCompletion(document, params, cancelToken);
+        
+        if (!result || cancelToken?.isCancellationRequested) {
+            return result;
+        }
+
+        const contexts = Array.from(this.buildContexts(document, params.position));
+        if (contexts.length === 0) {
+            return result;
+        }
+
+        const context = contexts[0];
+        const templateCompletions = this.getTemplateElementCompletions(context);
+        
+        if (templateCompletions.length > 0) {
+            return {
+                ...result,
+                items: [...templateCompletions, ...result.items],
+                isIncomplete: result.isIncomplete
+            };
+        }
+
+        return result;
+    }
+
+    private getTemplateElementCompletions(context: CompletionContext): CompletionItem[] {
+        const completions: CompletionItem[] = [];
+        
+        try {
+            const currentNode = context.node;
+            if (!currentNode) {
+                return completions;
+            }
+
+            const justificationBody = AstUtils.getContainerOfType(currentNode, isJustificationBody);
+            if (!justificationBody) return completions;
+
+            const justification = justificationBody.$container as Justification | undefined;
+            if (!justification || !isJustification(justification)) return completions;
+
+            const template = justification.parent?.ref;
+            if (!template) return completions;
+
+            const allTemplateElements = getAllElements(template);
+            const existingElements = getLocalElements(justification);
+            const existingElementNames = new Set(existingElements.map(el => el.name));
+
+            for (const element of allTemplateElements) {
+                if (!existingElementNames.has(element.name)) {
+                    const completion = this.createTemplateElementCompletion(element, context);
+                    if (completion) {
+                        completions.push(completion);
+                    }
+                }
+            }
+        } catch (error) {
+            // TODO: Make this better by logging errors for debugging instead of silently failing
+        }
+
+        return completions;
+    }
+
+    private createTemplateElementCompletion(
+        element: JustificationElement | AbstractSupport,
+        context: CompletionContext
+    ): CompletionItem | undefined {
+        let keyword: string;
+        let snippet: string;
+
+        if (isAbstractSupport(element)) {
+            const supportElement = element as AbstractSupport;
+            keyword = supportElement.type;
+            snippet = `${keyword} ${supportElement.name} is "${supportElement.label}"`;
+        } else if (isEvidence(element)) {
+            keyword = 'evidence';
+            snippet = `evidence ${element.name} is "${element.label}"`;
+        } else if (isStrategy(element)) {
+            keyword = 'strategy';
+            snippet = `strategy ${element.name} is "${element.label}"`;
+        } else if (isConclusion(element)) {
+            keyword = 'conclusion';
+            snippet = `conclusion ${element.name} is "${element.label}"`;
+        } else if (isSubConclusion(element)) {
+            keyword = 'sub-conclusion';
+            snippet = `sub-conclusion ${element.name} is "${element.label}"`;
+        } else {
+            return undefined;
+        }
+
+        const isRequired = isAbstractSupport(element);
+        const detail = isRequired 
+            ? `Required @support from template: ${element.name} is "${element.label}"`
+            : `From template: ${element.name} is "${element.label}"`;
+
+        const position = context.position;
+        const document = context.document;
+        const text = document.textDocument.getText();
+        const lines = text.split('\n');
+        const line = lines[position.line] || '';
+        
+        let startCol = position.character;
+        while (startCol > 0 && /[\w_]/.test(line[startCol - 1])) {
+            startCol--;
+        }
+        
+        let endCol = position.character;
+        while (endCol < line.length && /[\w_]/.test(line[endCol])) {
+            endCol++;
+        }
+        const textEdit: TextEdit = {
+            range: {
+                start: { line: position.line, character: startCol },
+                end: { line: position.line, character: endCol }
+            },
+            newText: snippet + '\n'
+        };
+
+        return {
+            label: `${keyword} ${element.name}`,
+            kind: CompletionItemKind.Property,
+            detail: detail,
+            insertText: snippet,
+            textEdit: textEdit,
+            sortText: isRequired ? `0_${keyword}_${element.name}` : `1_${keyword}_${element.name}`, // Sort required @support elements first
+            documentation: isRequired 
+                ? `Required @support element from template. Inserts: ${snippet}`
+                : `Element from template. Inserts: ${snippet}`
+        };
     }
 
     private findElementInfo(currentDoc: LangiumDocument, nodeDescription: AstNodeDescription): { sourceFile: string; isImported: boolean } | undefined {

@@ -1,4 +1,17 @@
-import { DefaultScopeProvider, AstUtils, type ReferenceInfo, type LangiumDocument, EMPTY_SCOPE } from 'langium';
+/**
+ * Scope provider for jPipe language references.
+ * 
+ * Handles resolution of references in jPipe files, including:
+ * - Relation references (from/to in "supports" statements): Resolves to elements within the
+ *   same justification/template and imported elements
+ * - Template parent references (implements): Resolves to templates in the current file and
+ *   imported templates
+ * 
+ * The scope includes both local elements and elements from imported files, enabling
+ * cross-file references without explicit imports for element names.
+ */
+
+import { DefaultScopeProvider, AstUtils, type ReferenceInfo, type LangiumDocument } from 'langium';
 import { type JpipeServices } from './jpipe-module.js';
 import {
     isJustification,
@@ -27,7 +40,6 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
             const justification = AstUtils.getContainerOfType(context.container, isJustification);
             if (justification) {
                 const localElems = getAllElements(justification);
-                // Justifications need both imported justifications and templates since they can implement imported templates
                 return this.createScopeForElements(localElems, context.container, (unit, doc) => {
                     const importedJustifications = this.importService.getImportedElements(unit, doc);
                     const importedTemplates = this.importService.getImportedTemplateElements(unit, doc);
@@ -50,13 +62,13 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
                 const importedTemplates = this.importService.getImportedTemplates(unit, document);
                 return this.createScopeFromTemplates([...localTemplates, ...importedTemplates]);
             }
-            // Fall back to default scope provider if document/unit lookup fails
             return super.getScope(context);
         }
 
-        return EMPTY_SCOPE;
+        return super.getScope(context);
     }
 
+    // TODO: Make this better by using Langium's built-in document traversal utilities instead of manual walking
     private getDocumentAndUnit(node: any): { document: LangiumDocument | undefined, unit: Unit | undefined } {
         let document = (node as any).$document as LangiumDocument | undefined;
         

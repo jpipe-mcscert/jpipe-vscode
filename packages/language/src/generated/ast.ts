@@ -38,12 +38,14 @@ export interface AbstractSupport extends langium.AstNode {
     readonly $type: 'AbstractSupport';
     label: string;
     name: string;
+    type: 'conclusion' | 'evidence' | 'strategy' | 'sub-conclusion';
 }
 
 export const AbstractSupport = {
     $type: 'AbstractSupport',
     label: 'label',
-    name: 'name'
+    name: 'name',
+    type: 'type'
 } as const;
 
 export function isAbstractSupport(item: unknown): item is AbstractSupport {
@@ -291,6 +293,9 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
                 },
                 name: {
                     name: AbstractSupport.name
+                },
+                type: {
+                    name: AbstractSupport.type
                 }
             },
             superTypes: [JustificationElement.$type]

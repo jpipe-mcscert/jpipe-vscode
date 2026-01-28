@@ -12,7 +12,7 @@ import {
 import { getAllElements } from './jpipe-utils.js';
 
 /**
- * A service for handling imports and resolving imported documents, templates, and elements.
+ * Import service for handling imports and resolving imported documents, templates, and elements.
  */
 export class JpipeImportService {
     private readonly services: JpipeServices;
@@ -130,7 +130,10 @@ export class JpipeImportService {
         const elements: JustificationElement[] = [];
         for (const body of importedUnit.body) {
             if (filterFn(body)) {
-                elements.push(...getAllElements(body));
+                // Only process Justification or Template
+                if (isJustification(body) || isTemplate(body)) {
+                    elements.push(...getAllElements(body));
+                }
             }
         }
         return elements;

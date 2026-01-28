@@ -592,6 +592,32 @@ export const JpipeGrammar = (): Grammar => loadedJpipeGrammar ?? (loadedJpipeGra
           },
           {
             "$type": "Assignment",
+            "feature": "type",
+            "operator": "=",
+            "terminal": {
+              "$type": "Alternatives",
+              "elements": [
+                {
+                  "$type": "Keyword",
+                  "value": "evidence"
+                },
+                {
+                  "$type": "Keyword",
+                  "value": "strategy"
+                },
+                {
+                  "$type": "Keyword",
+                  "value": "conclusion"
+                },
+                {
+                  "$type": "Keyword",
+                  "value": "sub-conclusion"
+                }
+              ]
+            }
+          },
+          {
+            "$type": "Assignment",
             "feature": "name",
             "operator": "=",
             "terminal": {

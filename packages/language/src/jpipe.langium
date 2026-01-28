@@ -1,11 +1,21 @@
+/**
+ * jPipe Language Grammar
+ * 
+ * Defines the syntax for the jPipe justification language. Key features:
+ * - Templates: Reusable justification structures that can be implemented by justifications
+ * - Justifications: Concrete implementations that can implement templates
+ * - @support annotation: Marks template elements that must be overridden (like abstract methods)
+ *   Syntax: @support {type} name is "label" where type is evidence|strategy|conclusion|sub-conclusion
+ * - Inheritance: Both templates and justifications can implement parent templates, creating
+ *   inheritance chains where elements bubble up
+ * - Relations: Elements can support each other using the "supports" keyword
+ */
+
 grammar Jpipe
 
 entry Unit:
     (body+=Justification | body+=Template | imports+=Load)*;
 
-/**
- * Top-level elements: Justification, Templates, File import
- */
 Load:
     'load' filePath=STRING;
 
@@ -23,10 +33,6 @@ JustificationBody:
 TemplateBody:
     (body+=Evidence | body+=Strategy | body+=SubConclusion | body+=Conclusion | body+=AbstractSupport | rels+=Relation)+;
 
-/**
- * Contents of justification / templates
- */
-
 type JustificationElement = Evidence | Strategy | SubConclusion | Conclusion | AbstractSupport
 
 Evidence: 
@@ -41,9 +47,8 @@ Strategy:
 SubConclusion:
     'sub-conclusion' name=ID 'is' label=STRING;
 
-
 AbstractSupport:
-    '@support' name=ID 'is' label=STRING;
+    '@support' type=('evidence' | 'strategy' | 'conclusion' | 'sub-conclusion') name=ID 'is' label=STRING;
 
 Relation:
     from=[JustificationElement:ID] 'supports' to=[JustificationElement:ID];

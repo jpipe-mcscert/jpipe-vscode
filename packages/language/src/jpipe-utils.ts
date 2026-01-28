@@ -1,3 +1,11 @@
+/**
+ * Utility functions for working with jPipe AST nodes.
+ * 
+ * These functions handle element retrieval from justifications and templates, including
+ * inheritance chains. When a justification implements a template (or a template implements
+ * another template), elements are inherited recursively up the chain.
+ */
+
 import {
     isJustification,
     isTemplate,
@@ -7,17 +15,17 @@ import {
 } from './generated/ast.js';
 
 /**
- * Get all elements from a Justification or Template, including implements chain (bubbling up).
+ * Recursively collects all elements from a justification or template, including those
+ * inherited from parent templates. Elements are returned in order: local first, then
+ * inherited (most specific to least specific).
  */
 export function getAllElements(node: Justification | Template): JustificationElement[] {
     const local = getLocalElements(node);
     
     if (isJustification(node) && node.parent?.ref) {
-        // For justifications: recursively get elements from parent template and its chain
         const parentElems = getAllElements(node.parent.ref);
         return [...local, ...parentElems];
     } else if (isTemplate(node) && node.parent?.ref) {
-        // For templates: recursively get elements from parent template and its chain
         const parentElems = getAllElements(node.parent.ref);
         return [...local, ...parentElems];
     }
@@ -26,10 +34,15 @@ export function getAllElements(node: Justification | Template): JustificationEle
 }
 
 /**
- * Get only local elements from a Justification or Template (no inheritance).
+ * Returns only the elements directly defined in the given justification or template,
+ * without any inherited elements from parent templates.
  */
 export function getLocalElements(node: Justification | Template): JustificationElement[] {
-    const body = isJustification(node) ? node.contents : isTemplate(node) ? node.contents : undefined;
+    const body = isJustification(node)
+        ? node.contents 
+        : isTemplate(node) 
+            ? node.contents 
+            : undefined;
     return (body?.body ?? []) as JustificationElement[];
 }
 
