@@ -72,25 +72,21 @@ export class ImageGenerator {
         }
     }
     
-    /**
-     * Find the diagram name from the document based on cursor position
-     */
-    private findDiagramName(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): string {
+    findDiagramName(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): string {
         const lines = document.getText().split('\n');
         const cursorLine = editor?.selection.active.line ?? 0;
         
         let diagramName: string | undefined;
         
-        // Search backwards from cursor to find diagram name
         for (let i = 0; i <= cursorLine && i < lines.length; i++) {
-            const match = /^\s*(justification|pattern)\s+(\w+)/i.exec(lines[i]);
+            const match = /^\s*(justification|template)\s+(\w+)/i.exec(lines[i]);
             if (match) {
                 diagramName = match[2];
             }
         }
         
         if (!diagramName) {
-            throw new Error('No diagram name found (justification or pattern declaration)');
+            throw new Error('No diagram name found (justification or template declaration)');
         }
         
         return diagramName;

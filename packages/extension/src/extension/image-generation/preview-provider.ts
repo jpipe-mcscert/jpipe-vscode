@@ -1,28 +1,29 @@
 import * as vscode from 'vscode';
 import { ImageGenerator } from './image-generator.js';
+import { DiagramStateMachine } from './diagram-state.js';
 
 export class PreviewProvider {
     private static webviewPanel: vscode.WebviewPanel | undefined;
     private static webviewDisposed: boolean = true;
+    private stateMachine: DiagramStateMachine;
+    private subscriptions: vscode.Disposable[] = [];
     
     constructor(
         private readonly imageGenerator: ImageGenerator,
-        _context: vscode.ExtensionContext
-    ) {}
+        context: vscode.ExtensionContext
+    ) {
+        this.stateMachine = new DiagramStateMachine();
+        this.setupEventListeners(context);
+    }
     
-    /**
-     * Open or focus the preview panel
-     */
     public async openPreview(): Promise<void> {
         const editor = vscode.window.activeTextEditor;
         
         if (!editor || editor.document.languageId !== 'jpipe') {
-            const msg = `No active jPipe file (current: ${editor?.document.languageId || 'none'})`;
-            vscode.window.showErrorMessage(msg);
+            vscode.window.showErrorMessage('No active jPipe file');
             return;
         }
         
-        // If webview was disposed or doesn't exist, create a new one
         if (PreviewProvider.webviewDisposed || !PreviewProvider.webviewPanel) {
             PreviewProvider.webviewPanel = this.createWebviewPanel();
             PreviewProvider.webviewDisposed = false;
@@ -30,21 +31,56 @@ export class PreviewProvider {
             PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, true);
         }
         
-        await this.updatePreview(editor.document);
+        await this.updatePreview(editor.document, editor);
     }
     
-    /**
-     * Update the preview with new SVG content
-     */
-    private async updatePreview(document: vscode.TextDocument): Promise<void> {
+    private setupEventListeners(context: vscode.ExtensionContext): void {
+        const saveListener = vscode.workspace.onDidSaveTextDocument((document) => {
+            if (document.languageId === 'jpipe') {
+                this.stateMachine.onFileSaved(document.uri.toString());
+                if (PreviewProvider.webviewPanel && !PreviewProvider.webviewDisposed) {
+                    const editor = vscode.window.visibleTextEditors.find(e => e.document === document);
+                    this.updatePreview(document, editor);
+                }
+            }
+        });
+        
+        const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
+            if (e.document.languageId === 'jpipe') {
+                this.stateMachine.onFileChanged(e.document.uri.toString());
+            }
+        });
+        
+        const cursorListener = vscode.window.onDidChangeTextEditorSelection((e) => {
+            if (e.textEditor.document.languageId === 'jpipe' && PreviewProvider.webviewPanel && !PreviewProvider.webviewDisposed) {
+                if (this.stateMachine.canRender()) {
+                    this.updatePreview(e.textEditor.document, e.textEditor);
+                } else {
+                    const msg = this.stateMachine.getMessage();
+                    if (msg) {
+                        vscode.window.showInformationMessage(msg);
+                    }
+                }
+            }
+        });
+        
+        const openListener = vscode.workspace.onDidOpenTextDocument((document) => {
+            if (document.languageId === 'jpipe') {
+                this.stateMachine.onFileOpened(document.uri.toString());
+            }
+        });
+        
+        this.subscriptions.push(saveListener, changeListener, cursorListener, openListener);
+        context.subscriptions.push(...this.subscriptions);
+    }
+    
+    private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         if (!PreviewProvider.webviewPanel) return;
         
         try {
             PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
-            
             const svg = await this.imageGenerator.generate(false, document);
             PreviewProvider.webviewPanel.webview.html = this.getHtmlForWebview(svg);
-            
         } catch (error: any) {
             const cleanError = error.message.replace(/.*\[31m/, '').replace(/\[0m.*/, '').replace(/.*Command failed.*?SVG\s+/, '');
             vscode.window.showErrorMessage(`jPipe Error: ${cleanError}`);
@@ -52,9 +88,6 @@ export class PreviewProvider {
         }
     }
     
-    /**
-     * Create the webview panel
-     */
     private createWebviewPanel(): vscode.WebviewPanel {
         const panel = vscode.window.createWebviewPanel(
             'jpipe.preview',
@@ -74,22 +107,9 @@ export class PreviewProvider {
             PreviewProvider.webviewDisposed = true;
         });
         
-        const changeSubscription = vscode.workspace.onDidSaveTextDocument(async (document) => {
-            if (document.languageId === 'jpipe') {
-                await this.updatePreview(document);
-            }
-        });
-        
-        panel.onDidDispose(() => {
-            changeSubscription.dispose();
-        });
-        
         return panel;
     }
     
-    /**
-     * Generate HTML to display SVG
-     */
     private getHtmlForWebview(svg: string): string {
         return `<!DOCTYPE html>
 <html lang="en">
@@ -178,7 +198,7 @@ export class PreviewProvider {
         });
         
         zoomOutBtn.addEventListener('click', () => {
-            scale = Math.max(scale - 0.25, 0);
+            scale = Math.max(scale - 0.25, 0.25);
             updateZoom();
         });
         
@@ -187,7 +207,6 @@ export class PreviewProvider {
             updateZoom();
         });
         
-        // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === '=' || e.key === '+') {
                 e.preventDefault();
@@ -208,9 +227,6 @@ export class PreviewProvider {
 </html>`;
     }
     
-    /**
-     * Generate loading HTML
-     */
     private getLoadingHtml(): string {
         return `<!DOCTYPE html>
 <html lang="en">
@@ -241,25 +257,14 @@ export class PreviewProvider {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .loading-text {
-            margin-left: 15px;
-            font-size: 14px;
-            opacity: 0.8;
-        }
     </style>
 </head>
 <body>
-    <div style="display: flex; align-items: center;">
-        <div class="spinner"></div>
-        <div class="loading-text"></div>
-    </div>
+    <div class="spinner"></div>
 </body>
 </html>`;
     }
     
-    /**
-     * Generate error HTML
-     */
     private getErrorHtml(message: string): string {
         return `<!DOCTYPE html>
 <html lang="en">
