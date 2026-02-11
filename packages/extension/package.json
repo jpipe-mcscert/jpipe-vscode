@@ -75,7 +75,17 @@
                 "jpipe.cliPath": {
                     "type": "string",
                     "default": "jpipe",
-                    "description": "Path to the jpipe CLI executable"
+                    "description": "Path to the jpipe CLI executable (takes priority over JAR)"
+                },
+                "jpipe.jarFile": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Path to the jpipe JAR file (fallback if CLI not set)"
+                },
+                "jpipe.setJavaVersion": {
+                    "type": "string",
+                    "default": "java",
+                    "description": "Path to Java executable (used with JAR file)"
                 }
             }
         }

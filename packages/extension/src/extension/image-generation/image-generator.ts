@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 
 const execAsync = promisify(exec);
 
@@ -34,12 +35,35 @@ export class ImageGenerator {
         const inputFile = document.uri.fsPath;
         const diagramName = this.findDiagramName(document, editor);
         
-        // Get CLI path from config
         const config = vscode.workspace.getConfiguration('jpipe');
         const cliPath = config.get<string>('cliPath', 'jpipe');
+        const jarFile = config.get<string>('jarFile', '');
+        const javaVersion = config.get<string>('setJavaVersion', 'java');
         
-        // Build command - use sh wrapper to avoid shebang issues
-        let command = `sh "${cliPath}" -i "${path.normalize(inputFile)}" -d ${diagramName} -f SVG`;
+        const cliConfig = config.inspect('cliPath');
+        const hasCustomCli = cliConfig?.globalValue || cliConfig?.workspaceValue;
+        const hasJar = jarFile && jarFile.trim() !== '';
+        
+        if (!hasCustomCli && !hasJar) {
+            vscode.window.showErrorMessage('Please configure a location for CLI or JAR file for jPipe!');
+            throw new Error('No jPipe executable configured. Please set jpipe.cliPath or jpipe.jarFile in settings.');
+        }
+        
+        let command: string;
+        
+        if (hasCustomCli && cliPath && cliPath.trim() !== '') {
+            command = `sh "${cliPath}" -i "${path.normalize(inputFile)}" -d ${diagramName} -f SVG`;
+        } else if (hasJar) {
+            if (fs.existsSync(jarFile)) {
+                command = `${javaVersion} -jar "${path.normalize(jarFile)}" -i "${path.normalize(inputFile)}" -d ${diagramName} -f SVG`;
+            } else {
+                vscode.window.showErrorMessage(`JAR file not found: ${jarFile}`);
+                throw new Error(`JAR file not found: ${jarFile}`);
+            }
+        } else {
+            vscode.window.showErrorMessage('Please configure a location for CLI or JAR file for jPipe!');
+            throw new Error('No jPipe executable configured. Please set jpipe.cliPath or jpipe.jarFile in settings.');
+        }
         
         if (saveToFile) {
             const outputPath = await this.promptForSaveLocation(diagramName);
