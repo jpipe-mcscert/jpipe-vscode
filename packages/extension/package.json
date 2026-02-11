@@ -69,17 +69,6 @@
                 }
             ]
         },
-        "customEditors": [
-            {
-                "viewType": "jpipe.vis",
-                "displayName": "jPipe Diagram",
-                "selector": [
-                    {
-                        "filenamePattern": "*.jd"
-                    }
-                ]
-            }
-        ],
         "configuration": {
             "title": "jPipe",
             "properties": {
