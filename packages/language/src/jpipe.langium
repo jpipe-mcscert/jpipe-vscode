@@ -15,10 +15,12 @@
 grammar Jpipe
 
 entry Unit:
-    (body+=Justification | body+=Template | imports+=Load)*;
+    (body+=Justification | body+=Template | imports+=Load | body += Composition)*;
 
 Load:
     'load' filePath=STRING;
+
+type Model = Justification | Template | OperatorCall
 
 Justification: 
     'justification' name=ID ('implements' parent=[Template:ID])? '{' contents=JustificationBody '}';
@@ -54,9 +56,21 @@ AbstractSupport:
 Relation:
     from=[JustificationElement:ID] 'supports' to=[JustificationElement:ID];
 
+
+Composition:
+    'composition' '{' (body+=OperatorCall)+ '}';
+
+OperatorCall:
+    kind=('justification'|'template') name=ID 'is' operator=('refine' | 'assemble') '(' operands+=[Model:ID] (',' operands+=[Model:ID])* ')' '{' config+=OperatorConfig+ '}';
+
+OperatorConfig:
+    key=ID ':' value=STRING;
+
+
 hidden terminal WS: /\s+/;
 terminal ID: /[\w_]+/;
 terminal STRING: /"(\\.|[^"\\])*"|'(\\.|[^'\\])*'/;
+
 
 hidden terminal ML_COMMENT: /\/\*[\s\S]*?\*\//;
 hidden terminal SL_COMMENT: /\/\/[^\n\r]*/;

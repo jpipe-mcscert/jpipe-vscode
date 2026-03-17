@@ -2,7 +2,7 @@
     "name": "jpipe-extension",
     "displayName": "jPipe Language (McSCert)",
     "description": "Language Support for the jPipe language",
-    "version": "1.0.0-beta",
+    "version": "1.0.0",
     "type": "module",
     "publisher": "mcscert",
     "author": "McMaster Centre for Software Certification (McSCert)",
@@ -103,7 +103,7 @@
         "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json --watch\" \"node esbuild.mjs --watch\""
     },
     "dependencies": {
-        "jpipe-language": "0.0.1",
+        "jpipe-language": "1.0.0",
         "vscode-languageclient": "~9.0.1",
         "vscode-languageserver": "~9.0.1"
     },

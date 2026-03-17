@@ -40,18 +40,16 @@ export class ImageGenerator {
         const jarFile = config.get<string>('jarFile', '');
         const javaVersion = config.get<string>('setJavaVersion', 'java');
         
-        const cliConfig = config.inspect('cliPath');
-        const hasCustomCli = cliConfig?.globalValue || cliConfig?.workspaceValue;
         const hasJar = jarFile && jarFile.trim() !== '';
         
-        if (!hasCustomCli && !hasJar) {
+        if (!cliPath && !hasJar) {
             vscode.window.showErrorMessage('Please configure a location for CLI or JAR file for jPipe!');
             throw new Error('No jPipe executable configured. Please set jpipe.cliPath or jpipe.jarFile in settings.');
         }
         
         let command: string;
         
-        if (hasCustomCli && cliPath && cliPath.trim() !== '') {
+        if (cliPath && cliPath.trim() !== '') {
             command = `sh "${cliPath}" -i "${path.normalize(inputFile)}" -d ${diagramName} -f SVG`;
         } else if (hasJar) {
             if (fs.existsSync(jarFile)) {
