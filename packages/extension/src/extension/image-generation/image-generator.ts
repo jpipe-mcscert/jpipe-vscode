@@ -3,20 +3,47 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 
 const execAsync = promisify(exec);
+
+/** Expand leading ~ to the user's home directory (Node does not do this by default). */
+function expandTilde(filePath: string): string {
+    const home = os.homedir();
+    if (filePath === '~') return home;
+    if (filePath.startsWith('~/') || filePath.startsWith('~\\')) return path.join(home, filePath.slice(2));
+    return filePath;
+}
+
+/** PATH that includes Homebrew so script shebangs (e.g. #!/usr/bin/env python3) can find interpreters. */
+function envWithPath(): NodeJS.ProcessEnv {
+    const prefix = '/opt/homebrew/bin:/usr/local/bin:';
+    const existing = process.env.PATH ?? '';
+    return { ...process.env, PATH: prefix + existing };
+}
+
+export enum ImageFormat {
+    PNG = 'PNG',
+    SVG = 'SVG',
+    JSON = 'JSON',
+}
 
 export class ImageGenerator {
     
     constructor() {}
     
     /**
-     * Generate SVG from the active jpipe file or provided document
+     * Generate an image from the active jpipe file or provided document
      * @param saveToFile If true, prompts user for save location
+     * @param format Output format (defaults to SVG)
      * @param document Optional document to use instead of active editor
-     * @returns The SVG content as a string
+     * @returns The generated content as a string (when not saving to file)
      */
-    public async generate(saveToFile: boolean = false, document?: vscode.TextDocument): Promise<string> {
+    public async generate(
+        saveToFile: boolean = false,
+        format: ImageFormat = ImageFormat.SVG,
+        document?: vscode.TextDocument
+    ): Promise<string> {
         let editor = vscode.window.activeTextEditor;
         
         // Use provided document or get from active editor
@@ -36,37 +63,55 @@ export class ImageGenerator {
         const diagramName = this.findDiagramName(document, editor);
         
         const config = vscode.workspace.getConfiguration('jpipe');
-        const cliPath = config.get<string>('cliPath', 'jpipe');
-        const jarFile = config.get<string>('jarFile', '');
+        const cliPath = (config.get<string>('cliPath', 'jpipe') ?? '').trim();
+        const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
         const javaVersion = config.get<string>('setJavaVersion', 'java');
         
-        const cliConfig = config.inspect('cliPath');
-        const hasCustomCli = cliConfig?.globalValue || cliConfig?.workspaceValue;
-        const hasJar = jarFile && jarFile.trim() !== '';
-        
-        if (!hasCustomCli && !hasJar) {
+        const hasJar = (config.get<string>('jarFile', '') ?? '').trim().length > 0;
+        const hasCliPath = cliPath.length > 0;
+        const cliPathIsAbsolute = hasCliPath && (path.isAbsolute(cliPath) || cliPath.includes(path.sep));
+
+        const useCli = hasCliPath || !hasJar;
+        const useJar = hasJar;
+
+        if (!useCli && !useJar) {
             vscode.window.showErrorMessage('Please configure a location for CLI or JAR file for jPipe!');
             throw new Error('No jPipe executable configured. Please set jpipe.cliPath or jpipe.jarFile in settings.');
         }
-        
+
         let command: string;
-        
-        if (hasCustomCli && cliPath && cliPath.trim() !== '') {
-            command = `sh "${cliPath}" -i "${path.normalize(inputFile)}" -d ${diagramName} -f SVG`;
-        } else if (hasJar) {
-            if (fs.existsSync(jarFile)) {
-                command = `${javaVersion} -jar "${path.normalize(jarFile)}" -i "${path.normalize(inputFile)}" -d ${diagramName} -f SVG`;
+        const formatFlag = format.toString().toUpperCase();
+        const inputArg = `-i "${path.normalize(inputFile)}"`;
+        const diagramArg = `-d ${diagramName}`;
+        const formatArg = `-f ${formatFlag}`;
+
+        if (useCli && (!useJar || hasCliPath)) {
+            let cliCmd: string;
+            if (cliPathIsAbsolute) {
+                cliCmd = path.normalize(cliPath);
             } else {
+                const bareName = (hasCliPath ? cliPath : 'jpipe').trim();
+                try {
+                    const { stdout } = await execAsync(`which ${bareName}`, { env: envWithPath() });
+                    cliCmd = stdout.trim();
+                } catch {
+                    cliCmd = bareName;
+                }
+            }
+            command = `"${cliCmd}" ${inputArg} ${diagramArg} ${formatArg}`;
+        } else if (useJar) {
+            if (!fs.existsSync(jarFile)) {
                 vscode.window.showErrorMessage(`JAR file not found: ${jarFile}`);
                 throw new Error(`JAR file not found: ${jarFile}`);
             }
+            command = `${javaVersion} -jar "${path.normalize(jarFile)}" ${inputArg} ${diagramArg} ${formatArg}`;
         } else {
             vscode.window.showErrorMessage('Please configure a location for CLI or JAR file for jPipe!');
             throw new Error('No jPipe executable configured. Please set jpipe.cliPath or jpipe.jarFile in settings.');
         }
         
         if (saveToFile) {
-            const outputPath = await this.promptForSaveLocation(diagramName);
+            const outputPath = await this.promptForSaveLocation(diagramName, format);
             if (outputPath) {
                 command += ` -o "${outputPath.fsPath}"`;
             }
@@ -85,12 +130,12 @@ export class ImageGenerator {
     }
     
     /**
-     * Generate and save SVG file
+     * Generate and save a file in the given format
      */
-    public async generateAndSave(): Promise<void> {
+    public async generateAndSave(format: ImageFormat = ImageFormat.SVG): Promise<void> {
         try {
-            await this.generate(true);
-            vscode.window.showInformationMessage('SVG saved successfully');
+            await this.generate(true, format);
+            vscode.window.showInformationMessage(`${format} saved successfully`);
         } catch (error: any) {
             vscode.window.showErrorMessage(error.message);
         }
@@ -119,21 +164,19 @@ export class ImageGenerator {
     /**
      * Prompt user for save location
      */
-    private async promptForSaveLocation(diagramName: string): Promise<vscode.Uri | undefined> {
+    private async promptForSaveLocation(diagramName: string, format: ImageFormat): Promise<vscode.Uri | undefined> {
         const editor = vscode.window.activeTextEditor;
         if (!editor) return undefined;
         
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+        const extension = format.toString().toLowerCase();
         const defaultUri = workspaceFolder 
-            ? vscode.Uri.joinPath(workspaceFolder.uri, `${diagramName}.svg`)
-            : vscode.Uri.file(`${diagramName}.svg`);
+            ? vscode.Uri.joinPath(workspaceFolder.uri, `${diagramName}.${extension}`)
+            : vscode.Uri.file(`${diagramName}.${extension}`);
         
         return await vscode.window.showSaveDialog({
             defaultUri: defaultUri,
-            saveLabel: 'Save SVG',
-            filters: {
-                'SVG': ['svg']
-            }
+            saveLabel: 'Save model'
         });
     }
 }

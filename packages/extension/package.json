@@ -53,7 +53,7 @@
                 {
                     "command": "jpipe.vis.preview",
                     "when": "resourceLangId == jpipe",
-                    "group": "navigation"
+                    "group": "navigation@0"
                 }
             ],
             "editor/context": [
