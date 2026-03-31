@@ -19,6 +19,11 @@
         "Programming Languages"
     ],
     "contributes": {
+        "configurationDefaults": {
+            "[jpipe]": {
+                "editor.wordBasedSuggestions": "off"
+            }
+        },
         "languages": [{
             "id": "jpipe",
             "aliases": ["jpipe", "jpipe"],

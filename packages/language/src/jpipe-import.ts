@@ -40,6 +40,15 @@ export class JpipeImportService {
         return this.parseDocumentFromPath(cleanPath, currentDoc);
     }
 
+    /**
+     * Resolve a file path relative to `relativeToDoc` and parse it, without enforcing
+     * "explicitly loaded by the root document" (used for transitive import traversal).
+     */
+    private parseTransitiveImport(filePath: string, relativeToDoc: LangiumDocument): LangiumDocument | undefined {
+        const cleanPath = filePath.replace(/^["']|["']$/g, '');
+        return this.parseDocumentFromPath(cleanPath, relativeToDoc);
+    }
+
     parseDocumentFromPath(filePath: string, relativeToDoc?: LangiumDocument): LangiumDocument | undefined {
         let resolvedPath = filePath;
         
@@ -88,11 +97,11 @@ export class JpipeImportService {
     }
 
     getImportedTemplates(unit: Unit, currentDoc: LangiumDocument): Template[] {
+        const importedDocs = this.getTransitiveImportedDocuments(unit, currentDoc);
         const templates: Template[] = [];
-        for (const load of unit.imports) {
-            const importedDoc = this.resolveImport(load.filePath, currentDoc);
-            if (importedDoc?.parseResult.value) {
-                const importedUnit = importedDoc.parseResult.value as Unit;
+        for (const doc of importedDocs) {
+            const importedUnit = doc.parseResult.value as Unit | undefined;
+            if (importedUnit) {
                 templates.push(...this.getLocalTemplates(importedUnit));
             }
         }
@@ -100,27 +109,68 @@ export class JpipeImportService {
     }
 
     getImportedElements(unit: Unit, currentDoc: LangiumDocument): JustificationElement[] {
-        return this.getElementsFromImports(unit, currentDoc, isJustification);
+        return this.getElementsFromImportsTransitive(unit, currentDoc, isJustification);
     }
 
     getImportedTemplateElements(unit: Unit, currentDoc: LangiumDocument): JustificationElement[] {
-        return this.getElementsFromImports(unit, currentDoc, isTemplate);
+        return this.getElementsFromImportsTransitive(unit, currentDoc, isTemplate);
     }
 
-    private getElementsFromImports(
+    private getElementsFromImportsTransitive(
         unit: Unit,
         currentDoc: LangiumDocument,
         filterFn: (body: any) => boolean
     ): JustificationElement[] {
+        const importedDocs = this.getTransitiveImportedDocuments(unit, currentDoc);
         const elements: JustificationElement[] = [];
-        for (const load of unit.imports) {
-            const importedDoc = this.resolveImport(load.filePath, currentDoc);
-            if (importedDoc?.parseResult.value) {
-                const importedUnit = importedDoc.parseResult.value as Unit;
+        for (const doc of importedDocs) {
+            const importedUnit = doc.parseResult.value as Unit | undefined;
+            if (importedUnit) {
                 elements.push(...this.getElementsFromImportedUnit(importedUnit, filterFn));
             }
         }
         return elements;
+    }
+
+    /**
+     * Traverse `load` edges starting from the current unit:
+     * - Start from direct loads of `currentDoc` (must be explicitly loaded by the root doc)
+     * - Then follow loads found inside imported docs (transitively), resolving relative to each doc
+     *
+     * This is a BFS over the import graph, bounded by a visited set.
+     */
+    private getTransitiveImportedDocuments(unit: Unit, currentDoc: LangiumDocument): LangiumDocument[] {
+        const out: LangiumDocument[] = [];
+        const visited = new Set<string>();
+
+        const enqueue: LangiumDocument[] = [];
+        for (const load of unit.imports) {
+            const doc = this.resolveImport(load.filePath, currentDoc);
+            const uri = doc?.uri?.toString();
+            if (doc && uri && !visited.has(uri)) {
+                visited.add(uri);
+                enqueue.push(doc);
+                out.push(doc);
+            }
+        }
+
+        // Follow transitive loads (BFS)
+        for (let i = 0; i < enqueue.length; i++) {
+            const doc = enqueue[i];
+            const u = doc.parseResult.value as Unit | undefined;
+            if (!u) continue;
+            for (const load of u.imports) {
+                const nextDoc = this.parseTransitiveImport(load.filePath, doc);
+                const uri = nextDoc?.uri?.toString();
+                if (nextDoc && uri && !visited.has(uri)) {
+                    visited.add(uri);
+                    enqueue.push(nextDoc);
+                    out.push(nextDoc);
+                }
+            }
+        }
+
+        return out;
     }
 
     private getElementsFromImportedUnit(

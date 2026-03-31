@@ -15,6 +15,7 @@ export class PreviewProvider {
     private stateMachine: DiagramStateMachine;
     private subscriptions: vscode.Disposable[] = [];
     private lastRenderedDocumentUri: string | undefined;
+    private lastGoodHtml: string | undefined;
     
     constructor(
         private readonly imageGenerator: ImageGenerator,
@@ -98,19 +99,74 @@ export class PreviewProvider {
         if (!PreviewProvider.webviewPanel) return;
         
         try {
-            PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
+            // Avoid blanking the whole preview on transient render errors:
+            // only show a full loading screen if we have nothing rendered yet.
+            if (!this.lastGoodHtml) {
+                PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
+            }
             let svg = await this.imageGenerator.generate(false, ImageFormat.SVG, document);
             svg = this.extractSvgFromOutput(svg);
             const diagramName = this.imageGenerator.findDiagramName(document, editor);
             let highlightName = await this.getSymbolNameAtCursor(document, editor);
             if (highlightName === diagramName) highlightName = null;
-            PreviewProvider.webviewPanel.webview.html = this.getHtmlForWebview(svg, highlightName ?? undefined, document.uri.fsPath, diagramName);
+            const html = this.getHtmlForWebview(svg, highlightName ?? undefined, document.uri.fsPath, diagramName);
+            PreviewProvider.webviewPanel.webview.html = html;
+            this.lastGoodHtml = html;
             this.lastRenderedDocumentUri = document.uri.toString();
         } catch (error: any) {
-            const cleanError = error.message.replace(/.*\[31m/, '').replace(/\[0m.*/, '').replace(/.*Command failed.*?SVG\s+/, '');
-            vscode.window.showErrorMessage(`jPipe Error: ${cleanError}`);
-            PreviewProvider.webviewPanel.webview.html = this.getErrorHtml(error.message);
-            this.lastRenderedDocumentUri = undefined;
+            const stdout = typeof error?.stdout === 'string' ? error.stdout : '';
+            const stderr = typeof error?.stderr === 'string' ? error.stderr : '';
+            const exitCode = typeof error?.exitCode === 'number'
+                ? error.exitCode
+                : (typeof error?.code === 'number' ? error.code : undefined);
+            const cleanMsg = String(error?.message ?? error)
+                .replace(/.*\[31m/, '')
+                .replace(/\[0m.*/, '')
+                .replace(/.*Command failed.*?SVG\s+/, '');
+
+            const svgFromError = this.extractSvgFromOutput(stdout);
+            const hasSvg = svgFromError.includes('<svg');
+            const diagramName = (() => {
+                try { return this.imageGenerator.findDiagramName(document, editor); } catch { return undefined; }
+            })();
+            let highlightName = await this.getSymbolNameAtCursor(document, editor);
+            if (highlightName === diagramName) highlightName = null;
+
+            if (hasSvg) {
+                const html = this.getHtmlForWebview(
+                    svgFromError,
+                    highlightName ?? undefined,
+                    document.uri.fsPath,
+                    diagramName,
+                    { hasError: true, exitCode }
+                );
+                PreviewProvider.webviewPanel.webview.html = html;
+                this.lastGoodHtml = html;
+                const msg = (stderr || cleanMsg).trim();
+                if (exitCode === 1) {
+                    vscode.window.showWarningMessage(msg ? `jPipe: model has errors (exit code 1): ${msg}` : 'jPipe: model has errors (exit code 1)');
+                } else if (exitCode === 42) {
+                    vscode.window.showErrorMessage(msg ? `jPipe: compiler crashed (exit code 42): ${msg}` : 'jPipe: compiler crashed (exit code 42)');
+                } else {
+                    vscode.window.showErrorMessage(msg ? `jPipe Error: ${msg}` : 'jPipe Error: render failed');
+                }
+                this.lastRenderedDocumentUri = document.uri.toString();
+            } else {
+                if (exitCode === 1) {
+                    vscode.window.showWarningMessage(`jPipe: model has errors (exit code 1): ${cleanMsg}`);
+                } else if (exitCode === 42) {
+                    vscode.window.showErrorMessage(`jPipe: compiler crashed (exit code 42): ${cleanMsg}`);
+                } else {
+                    vscode.window.showErrorMessage(`jPipe Error: ${cleanMsg}`);
+                }
+                // Keep the last successfully rendered preview visible; don't replace it with a full-screen error view.
+                if (this.lastGoodHtml) {
+                    PreviewProvider.webviewPanel.webview.html = this.lastGoodHtml;
+                } else {
+                    PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
+                }
+                this.lastRenderedDocumentUri = undefined;
+            }
         }
     }
     
@@ -192,7 +248,23 @@ export class PreviewProvider {
         panel.webview.onDidReceiveMessage((msg: { type?: string; format?: string; url?: string }) => {
             if (msg.type === 'download' && msg.format) {
                 const fmt = (ImageFormat as Record<string, ImageFormat>)[msg.format];
-                if (fmt !== undefined) this.imageGenerator.generateAndSave(fmt);
+                if (fmt !== undefined) {
+                    const activeDoc = vscode.window.activeTextEditor?.document;
+                    if (activeDoc?.languageId === 'jpipe') {
+                        this.imageGenerator.generateAndSave(fmt, activeDoc);
+                        return;
+                    }
+                    const lastUri = this.lastRenderedDocumentUri;
+                    if (lastUri) {
+                        vscode.workspace.openTextDocument(vscode.Uri.parse(lastUri))
+                            .then(
+                                doc => this.imageGenerator.generateAndSave(fmt, doc),
+                                () => this.imageGenerator.generateAndSave(fmt)
+                            );
+                        return;
+                    }
+                    this.imageGenerator.generateAndSave(fmt);
+                }
             }
             if (msg.type === 'openLink' && msg.url) {
                 vscode.env.openExternal(vscode.Uri.parse(msg.url));
@@ -202,10 +274,17 @@ export class PreviewProvider {
         return panel;
     }
     
-    private getHtmlForWebview(svg: string, highlightNodeName?: string, documentPath?: string, diagramName?: string): string {
+    private getHtmlForWebview(
+        svg: string,
+        highlightNodeName?: string,
+        documentPath?: string,
+        diagramName?: string,
+        render?: { hasError?: boolean; exitCode?: number }
+    ): string {
         const highlightJson = highlightNodeName != null ? JSON.stringify(highlightNodeName) : 'null';
         const pathToStripJson = documentPath != null ? JSON.stringify(documentPath) : 'null';
         const diagramNameJson = diagramName != null ? JSON.stringify(diagramName) : 'null';
+        const renderJson = render ? JSON.stringify(render) : 'null';
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -221,6 +300,9 @@ export class PreviewProvider {
             background: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
             font-family: var(--vscode-font-family), system-ui, sans-serif;
+        }
+        body.jpipe-render-error #container {
+            background: color-mix(in srgb, var(--vscode-errorForeground) 18%, var(--vscode-editor-background));
         }
         #toolbar {
             position: fixed;
@@ -391,6 +473,10 @@ export class PreviewProvider {
         </div>
     </div>
     <script>
+        const render = ${renderJson};
+        if (render && render.hasError) {
+            document.body.classList.add('jpipe-render-error');
+        }
         const wrapper = document.getElementById('svg-wrapper');
         const svgEl = wrapper && wrapper.querySelector('svg');
         var pathToStrip = ${pathToStripJson};
@@ -556,32 +642,6 @@ export class PreviewProvider {
 </head>
 <body>
     <div class="spinner"></div>
-</body>
-</html>`;
-    }
-    
-    private getErrorHtml(message: string): string {
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>jPipe Preview</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background-color: var(--vscode-editor-background);
-            color: var(--vscode-errorForeground);
-        }
-    </style>
-</head>
-<body>
-    <p>Error: ${message}</p>
 </body>
 </html>`;
     }

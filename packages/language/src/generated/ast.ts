@@ -17,13 +17,20 @@ export const JpipeTerminals = {
 export type JpipeTerminalNames = keyof typeof JpipeTerminals;
 
 export type JpipeKeywordNames =
+    | "("
+    | ")"
+    | ","
+    | ":"
     | "@support"
+    | "assemble"
+    | "composition"
     | "conclusion"
     | "evidence"
     | "implements"
     | "is"
     | "justification"
     | "load"
+    | "refine"
     | "strategy"
     | "sub-conclusion"
     | "supports"
@@ -58,6 +65,21 @@ export const Body = {
 
 export function isBody(item: unknown): item is Body {
     return reflection.isInstance(item, Body.$type);
+}
+
+export interface Composition extends langium.AstNode {
+    readonly $container: Unit;
+    readonly $type: 'Composition';
+    body: Array<OperatorCall>;
+}
+
+export const Composition = {
+    $type: 'Composition',
+    body: 'body'
+} as const;
+
+export function isComposition(item: unknown): item is Composition {
+    return reflection.isInstance(item, Composition.$type);
 }
 
 export interface Conclusion extends langium.AstNode {
@@ -155,6 +177,56 @@ export function isLoad(item: unknown): item is Load {
     return reflection.isInstance(item, Load.$type);
 }
 
+export type Model = Justification | OperatorCall | Template;
+
+export const Model = {
+    $type: 'Model'
+} as const;
+
+export function isModel(item: unknown): item is Model {
+    return reflection.isInstance(item, Model.$type);
+}
+
+export interface OperatorCall extends langium.AstNode {
+    readonly $container: Composition;
+    readonly $type: 'OperatorCall';
+    config: Array<OperatorConfig>;
+    kind: 'justification' | 'template';
+    name: string;
+    operands: Array<langium.Reference<Model>>;
+    operator: 'assemble' | 'refine';
+}
+
+export const OperatorCall = {
+    $type: 'OperatorCall',
+    config: 'config',
+    kind: 'kind',
+    name: 'name',
+    operands: 'operands',
+    operator: 'operator'
+} as const;
+
+export function isOperatorCall(item: unknown): item is OperatorCall {
+    return reflection.isInstance(item, OperatorCall.$type);
+}
+
+export interface OperatorConfig extends langium.AstNode {
+    readonly $container: OperatorCall;
+    readonly $type: 'OperatorConfig';
+    key: string;
+    value: string;
+}
+
+export const OperatorConfig = {
+    $type: 'OperatorConfig',
+    key: 'key',
+    value: 'value'
+} as const;
+
+export function isOperatorConfig(item: unknown): item is OperatorConfig {
+    return reflection.isInstance(item, OperatorConfig.$type);
+}
+
 export interface Relation extends langium.AstNode {
     readonly $container: JustificationBody | TemplateBody;
     readonly $type: 'Relation';
@@ -244,7 +316,7 @@ export function isTemplateBody(item: unknown): item is TemplateBody {
 
 export interface Unit extends langium.AstNode {
     readonly $type: 'Unit';
-    body: Array<Justification | Template>;
+    body: Array<Composition | Justification | Template>;
     imports: Array<Load>;
 }
 
@@ -261,12 +333,16 @@ export function isUnit(item: unknown): item is Unit {
 export type JpipeAstType = {
     AbstractSupport: AbstractSupport
     Body: Body
+    Composition: Composition
     Conclusion: Conclusion
     Evidence: Evidence
     Justification: Justification
     JustificationBody: JustificationBody
     JustificationElement: JustificationElement
     Load: Load
+    Model: Model
+    OperatorCall: OperatorCall
+    OperatorConfig: OperatorConfig
     Relation: Relation
     Strategy: Strategy
     SubConclusion: SubConclusion
@@ -292,6 +368,16 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
         Body: {
             name: Body.$type,
             properties: {
+            },
+            superTypes: []
+        },
+        Composition: {
+            name: Composition.$type,
+            properties: {
+                body: {
+                    name: Composition.body,
+                    defaultValue: []
+                }
             },
             superTypes: []
         },
@@ -333,7 +419,7 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
                     referenceType: Template.$type
                 }
             },
-            superTypes: []
+            superTypes: [Model.$type]
         },
         JustificationBody: {
             name: JustificationBody.$type,
@@ -360,6 +446,48 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
             properties: {
                 filePath: {
                     name: Load.filePath
+                }
+            },
+            superTypes: []
+        },
+        Model: {
+            name: Model.$type,
+            properties: {
+            },
+            superTypes: []
+        },
+        OperatorCall: {
+            name: OperatorCall.$type,
+            properties: {
+                config: {
+                    name: OperatorCall.config,
+                    defaultValue: []
+                },
+                kind: {
+                    name: OperatorCall.kind
+                },
+                name: {
+                    name: OperatorCall.name
+                },
+                operands: {
+                    name: OperatorCall.operands,
+                    defaultValue: [],
+                    referenceType: Model.$type
+                },
+                operator: {
+                    name: OperatorCall.operator
+                }
+            },
+            superTypes: [Model.$type]
+        },
+        OperatorConfig: {
+            name: OperatorConfig.$type,
+            properties: {
+                key: {
+                    name: OperatorConfig.key
+                },
+                value: {
+                    name: OperatorConfig.value
                 }
             },
             superTypes: []
@@ -416,7 +544,7 @@ export class JpipeAstReflection extends langium.AbstractAstReflection {
                     referenceType: Template.$type
                 }
             },
-            superTypes: []
+            superTypes: [Model.$type]
         },
         TemplateBody: {
             name: TemplateBody.$type,

@@ -15,9 +15,30 @@
  */
 
 import type { ValidationAcceptor, ValidationChecks } from 'langium';
-import type { JpipeAstType, Unit, Evidence, Strategy, Conclusion, SubConclusion, AbstractSupport, Template, Justification } 
-    from './generated/ast.js';
-import { isTemplate, isJustification, isAbstractSupport, isEvidence, isStrategy, isConclusion, isSubConclusion } from './generated/ast.js';
+import type {
+    JpipeAstType,
+    Unit,
+    Evidence,
+    Strategy,
+    Conclusion,
+    SubConclusion,
+    AbstractSupport,
+    Template,
+    Justification,
+    Relation,
+    JustificationBody,
+    TemplateBody,
+    JustificationElement
+} from './generated/ast.js';
+import {
+    isTemplate,
+    isJustification,
+    isAbstractSupport,
+    isEvidence,
+    isStrategy,
+    isConclusion,
+    isSubConclusion
+} from './generated/ast.js';
 import type { JpipeServices } from './jpipe-module.js';
 import { getAllElements, getLocalElements } from './jpipe-utils.js';
 
@@ -29,8 +50,8 @@ export function registerValidationChecks(services: JpipeServices) {
         Template:                           [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport],
         Justification:                      [validator.checkDuplicateJustificationName, validator.checkJustificationOverride],
         Evidence:                           validator.checkLabelNotEmpty,
-        Strategy:                           validator.checkLabelNotEmpty,
-        Conclusion:                         validator.checkLabelNotEmpty,
+        Strategy:                           [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
+        Conclusion:                         [validator.checkLabelNotEmpty, validator.checkConclusionIncomingFromStrategy],
         SubConclusion:                      validator.checkLabelNotEmpty,
         AbstractSupport:                    validator.checkLabelNotEmpty
     };
@@ -90,6 +111,86 @@ export class JpipeValidator {
             accept('error', `Duplicate justification name '${justification.name}'`, 
                     { node: justification, property: 'name' });
         }
+    }
+
+    /**
+     * A strategy must be supported by at least one evidence, sub-conclusion, or @support element.
+     */
+    checkStrategyIncomingSupport(strategy: Strategy, accept: ValidationAcceptor): void {
+        const body = strategy.$container as JustificationBody | TemplateBody | undefined;
+        if (!body?.rels) {
+            return;
+        }
+        const incoming = body.rels.filter(r => this.relationTargetsElement(r, strategy));
+        if (incoming.length === 0) {
+            accept(
+                'warning',
+                `Strategy '${strategy.name}' is not supported by any evidence, sub-conclusion, or @support.`,
+                { node: strategy, property: 'name' }
+            );
+            return;
+        }
+        for (const rel of incoming) {
+            const from = rel.from.ref as JustificationElement | undefined;
+            if (!from) {
+                continue;
+            }
+            if (!isEvidence(from) && !isSubConclusion(from) && !isAbstractSupport(from)) {
+                accept(
+                    'error',
+                    `Strategy '${strategy.name}' may only be supported by evidence, sub-conclusion, or @support (not ${this.elementKindLabel(from)}).`,
+                    { node: rel, property: 'from' }
+                );
+            }
+        }
+    }
+
+    /**
+     * A conclusion must be supported by at least one strategy.
+     */
+    checkConclusionIncomingFromStrategy(conclusion: Conclusion, accept: ValidationAcceptor): void {
+        const body = conclusion.$container as JustificationBody | TemplateBody | undefined;
+        if (!body?.rels) {
+            return;
+        }
+        const incoming = body.rels.filter(r => this.relationTargetsElement(r, conclusion));
+        if (incoming.length === 0) {
+            accept(
+                'warning',
+                `Conclusion '${conclusion.name}' is not supported by any strategy.`,
+                { node: conclusion, property: 'name' }
+            );
+            return;
+        }
+        const hasStrategy = incoming.some(rel => {
+            const from = rel.from.ref;
+            return from && isStrategy(from);
+        });
+        if (!hasStrategy) {
+            accept(
+                'error',
+                `Conclusion '${conclusion.name}' must be supported by at least one strategy.`,
+                { node: conclusion, property: 'name' }
+            );
+        }
+    }
+
+    private relationTargetsElement(rel: Relation, el: { name: string }): boolean {
+        const target = rel.to.ref as { name: string } | undefined;
+        if (target) {
+            return target.name === el.name;
+        }
+        const text = (rel.to.$refText ?? '').trim();
+        return text === el.name;
+    }
+
+    private elementKindLabel(elem: JustificationElement): string {
+        if (isEvidence(elem)) return 'evidence';
+        if (isStrategy(elem)) return 'strategy';
+        if (isConclusion(elem)) return 'conclusion';
+        if (isSubConclusion(elem)) return 'sub-conclusion';
+        if (isAbstractSupport(elem)) return '@support';
+        return 'element';
     }
 
     checkJustificationOverride(justification: Justification, accept: ValidationAcceptor): void {

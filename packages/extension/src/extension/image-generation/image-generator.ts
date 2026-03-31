@@ -111,10 +111,13 @@ export class ImageGenerator {
         }
         
         if (saveToFile) {
-            const outputPath = await this.promptForSaveLocation(diagramName, format);
-            if (outputPath) {
-                command += ` -o "${outputPath.fsPath}"`;
+            const outputPath = await this.promptForSaveLocation(document, diagramName, format);
+            if (!outputPath) {
+                const e = new Error('Save cancelled') as Error & { cancelled?: boolean };
+                e.cancelled = true;
+                throw e;
             }
+            command += ` -o "${outputPath.fsPath}"`;
         }
         
         console.log('[jPipe] Executing command:', command);
@@ -125,18 +128,27 @@ export class ImageGenerator {
             return stdout;
         } catch (error: any) {
             console.error('[jPipe] Error generating SVG:', error);
-            throw new Error(`Failed to generate SVG: ${error.message}`);
+            // Preserve stdout/stderr so the preview can still render a best-effort SVG (if any)
+            // and show diagnostics inline instead of blanking the whole viewer.
+            const e = new Error(`Failed to generate SVG: ${error.message}`) as Error & { stdout?: string; stderr?: string; exitCode?: number };
+            e.stdout = typeof error?.stdout === 'string' ? error.stdout : undefined;
+            e.stderr = typeof error?.stderr === 'string' ? error.stderr : undefined;
+            e.exitCode = typeof error?.code === 'number' ? error.code : undefined;
+            throw e;
         }
     }
     
     /**
      * Generate and save a file in the given format
      */
-    public async generateAndSave(format: ImageFormat = ImageFormat.SVG): Promise<void> {
+    public async generateAndSave(format: ImageFormat = ImageFormat.SVG, document?: vscode.TextDocument): Promise<void> {
         try {
-            await this.generate(true, format);
+            await this.generate(true, format, document);
             vscode.window.showInformationMessage(`${format} saved successfully`);
         } catch (error: any) {
+            if (error?.cancelled === true || String(error?.message ?? '') === 'Save cancelled') {
+                return;
+            }
             vscode.window.showErrorMessage(error.message);
         }
     }
@@ -164,11 +176,12 @@ export class ImageGenerator {
     /**
      * Prompt user for save location
      */
-    private async promptForSaveLocation(diagramName: string, format: ImageFormat): Promise<vscode.Uri | undefined> {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) return undefined;
-        
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    private async promptForSaveLocation(
+        document: vscode.TextDocument,
+        diagramName: string,
+        format: ImageFormat
+    ): Promise<vscode.Uri | undefined> {
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
         const extension = format.toString().toLowerCase();
         const defaultUri = workspaceFolder 
             ? vscode.Uri.joinPath(workspaceFolder.uri, `${diagramName}.${extension}`)
