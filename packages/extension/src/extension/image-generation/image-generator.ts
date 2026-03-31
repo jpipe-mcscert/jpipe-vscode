@@ -67,7 +67,7 @@ export class ImageGenerator {
         const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
         const javaVersion = config.get<string>('setJavaVersion', 'java');
         
-        const hasJar = (config.get<string>('jarFile', '') ?? '').trim().length > 0;
+        const hasJar = jarFile.length > 0;
         const hasCliPath = cliPath.length > 0;
         const cliPathIsAbsolute = hasCliPath && (path.isAbsolute(cliPath) || cliPath.includes(path.sep));
 
