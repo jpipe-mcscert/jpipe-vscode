@@ -2,7 +2,7 @@
 # Visit https://bit.ly/cffinit to generate yours today!
 
 cff-version: 1.2.0
-title: jPipe
+title: jPipe - IDE
 message: >-
   If you use this software, please cite it using the
   metadata from this file.
@@ -10,8 +10,14 @@ type: software
 authors:
   - given-names: Sébastien
     family-names: Mosser
-repository-code: 'https://github.com/ace-design/jpipe'
-url: 'https://github.com/ace-design/jpipe/wiki'
+  - given-names: Nirmal
+    family-names: Chaudhari
+  - given-names: Cass
+    family-names: Braun
+  - given-names: Andrew
+    family-names: Bovbel
+repository-code: 'https://github.com/jpipe-mcscert/jpipe-vscode'
+url: 'https://www.jpipe.org'
 abstract: >-
   The jPipe environment supports the definition of
   justification to support software maintenance activities.

@@ -1,228 +1,29 @@
 {
-    "name": "jpipe-extension",
-    "displayName": "jPipe Language (McSCert)",
-    "description": "Language Support for the jPipe language",
-    "author": "McMaster Centre for Software Certification (McSCert)",
-    "publisher": "mcscert",
-    "version": "0.2.10",
-    "license": "MIT",
-    "icon": "images/logo.png",
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/ace-design/jpipe"
-    },
+    "name": "jpipe-workspace",
+    "description": "Base workspace package",
+    "version": "1.0.0",
     "type": "module",
+    "private": true,
     "scripts": {
-        "build": "tsc -b tsconfig.json && node esbuild.mjs",
-        "lint": "eslint src --ext ts",
-        "langium:generate": "langium generate",
-        "langium:watch": "langium generate --watch",
-        "compile": "npm run check-types && node esbuild.mjs",
-        "check-types": "tsc --noEmit",
-        "watch": "npm-run-all -p watch:*",
-        "watch:esbuild": "node esbuild.mjs --watch",
-        "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-        "vscode:prepublish": "npm run langium:generate && npm run package",
-        "package": "npm run check-types && node esbuild.mjs --production"
-    },
-    "dependencies": {
-        "langium": "~3.4.0",
-        "vscode-languageclient": "~9.0.1",
-        "vscode-languageserver": "~9.0.1"
+        "clean": "npm run clean --workspaces",
+        "watch": "tsc -b tsconfig.build.json --watch",
+        "build": "tsc -b tsconfig.build.json && npm run build --workspaces",
+        "build:clean": "npm run clean && npm run build",
+        "langium:generate": "npm run --workspace packages/language langium:generate",
+        "langium:watch": "npm run --workspace packages/language langium:watch",
+        "test": "npm run --workspace packages/language test"
     },
     "devDependencies": {
-        "@types/node": "^18.19.71",
-        "@types/vscode": "~1.67.0",
-        "@typescript-eslint/eslint-plugin": "~6.4.1",
-        "@typescript-eslint/parser": "~6.4.1",
-        "concurrently": "~8.2.1",
-        "esbuild": "^0.19.12",
-        "eslint": "~8.47.0",
-        "langium-cli": "~3.4.0",
-        "typescript": "~5.1.6",
-        "vitest": "~1.0.0"
+        "@types/node": "~20.17.48",
+        "shx": "~0.4.0",
+        "typescript": "~5.8.3"
     },
-    "engines": {
-        "vscode": "^1.67.0",
-        "node": ">=18.0.0"
+    "volta": {
+        "node": "20.19.2",
+        "npm": "10.8.2"
     },
-    "categories": [
-        "Programming Languages"
-    ],
-    "contributes": {
-        "configuration": {
-            "title": "jPipe Configuration",
-            "properties": {
-                "jpipe.developerMode": {
-                    "type": "boolean",
-                    "scope": "window",
-                    "default": false,
-                    "markdownDescription": "When developer mode is turned on, all automatic fixes are disabled"
-                },
-                "jpipe.jarFile": {
-                    "type": "string",
-                    "scope": "window",
-                    "default": "",
-                    "markdownDescription": "Set the path to the jar file compiler"
-                },
-                "jpipe.setJavaVersion": {
-                    "type": "string",
-                    "scope": "window",
-                    "default": "java",
-                    "markdownDescription": "Set the path to the version of java being used"
-                },
-                "jpipe.checkGraphviz": {
-                    "type": "boolean",
-                    "scope": "window",
-                    "default": false,
-                    "markdownDescription": "Check for GraphViz installation on startup"
-                },
-                "jpipe.checkJava": {
-                    "type": "boolean",
-                    "scope": "window",
-                    "default": false,
-                    "markdownDescription": "Check for Java installation on startup"
-                },
-                "jpipe.logLevel": {
-                    "type": "string",
-                    "scope": "window",
-                    "enum": [
-                        "all",
-                        "error",
-                        "trace",
-                        "info",
-                        "debug"
-                    ],
-                    "default": "error",
-                    "markdownDescription": "Set the log level for compiler."
-                }
-            }
-        },
-        "languages": [
-            {
-                "id": "jpipe",
-                "aliases": [
-                    "jpipe",
-                    "jpipe"
-                ],
-                "extensions": [
-                    ".jd"
-                ],
-                "configuration": "./language-configuration.json",
-                "icon": {
-                    "dark": "images/icon_dark.svg",
-                    "light": "images/icon_light.svg"
-                }
-            }
-        ],
-        "grammars": [
-            {
-                "language": "jpipe",
-                "scopeName": "source.jpipe",
-                "path": "syntaxes/jpipe.tmLanguage.json"
-            }
-        ],
-        "customEditors": [
-            {
-                "viewType": "jpipe.vis",
-                "displayName": "jPipe Visualizer",
-                "selector": [
-                    {
-                        "filenamePattern": "*.jd"
-                    }
-                ],
-                "priority": "option",
-                "preview": "false"
-            }
-        ],
-        "commands": [
-            {
-                "command": "jpipe.downloadPNG",
-                "title": ".png"
-            },
-            {
-                "command": "jpipe.downloadSVG",
-                "title": ".svg"
-            },
-            {
-                "command": "jpipe.downloadJSON",
-                "title": ".json"
-            },
-            {
-                "command": "jpipe.downloadDOT",
-                "title": ".dot"
-            },
-            {
-                "command": "jpipe.downloadRUNNER",
-                "title": ".jd.py (runner)"
-            },
-            {
-                "command": "jpipe.downloadJPIPE",
-                "title": ".jd"
-            },
-            {
-                "command": "jpipe.vis.preview",
-                "title": "Preview Diagram",
-                "category": "jPipeVis",
-                "icon": "$(open-preview)"
-            },
-            {
-                "command": "jpipe.vis",
-                "title": "Visualize Jpipe",
-                "category": "jPipeVis",
-                "icon": "$(open-preview)"
-            }
-        ],
-        "submenus": [
-            {
-                "id": "jpipe.submenu.downloadImage",
-                "label": "Download as"
-            }
-        ],
-        "menus": {
-            "jpipe.submenu.downloadImage": [
-                {
-                    "command": "jpipe.downloadSVG"
-                },
-                {
-                    "command": "jpipe.downloadPNG"
-                },
-                {
-                    "command": "jpipe.downloadJSON"
-                },
-                {
-                    "command": "jpipe.downloadDOT"
-                },
-                {
-                    "command": "jpipe.downloadRUNNER"
-                },
-                {
-                    "command": "jpipe.downloadJPIPE"
-                }
-            ],
-            "editor/title": [
-                {
-                    "command": "jpipe.vis.preview",
-                    "group": "navigation",
-                    "when": "resourceLangId==jpipe"
-                }
-            ],
-            "editor/context": [
-                {
-                    "submenu": "jpipe.submenu.downloadImage",
-                    "group": "navigation",
-                    "when": "jpipe.inJustification || jpipe.atJustification"
-                },
-                {
-                    "command": "jpipe.vis.preview",
-                    "group": "navigation",
-                    "when": "jpipe.inJustification || jpipe.atJustification"
-                }
-            ]
-        }
-    },
-    "activationEvents": [
-        "onLanguage:jpipe"
-    ],
-    "main": "./out/extension/main.cjs"
+    "workspaces": [
+        "packages/language",
+        "packages/extension"
+    ]
 }

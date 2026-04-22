@@ -3,11 +3,10 @@
 !.vscode/launch.json
 !.vscode/tasks.json
 node_modules/
+dist/
 out/
-src/language/generated/
-static/bundle/
-static/monaco-editor-workers/
-static/worker/
+**/src/generated
 syntaxes/
-*.vsix
-
+**/*.tsbuildinfo
+**/*.vsix
+.DS_Store
