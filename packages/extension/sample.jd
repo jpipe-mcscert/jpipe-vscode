@@ -1,7 +1,0 @@
-justification j {
-    conclusion c is "c"
-    strategy s is "s"
-    evidence e1 is "ss"
-    s supports c
-    e1 supports s
-}w

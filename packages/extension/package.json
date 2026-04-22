@@ -2,7 +2,7 @@
     "name": "jpipe-extension",
     "displayName": "jPipe Language (McSCert)",
     "description": "Language Support for the jPipe language",
-    "version": "1.0.0-beta",
+    "version": "1.0.0",
     "type": "module",
     "publisher": "mcscert",
     "author": "McMaster Centre for Software Certification (McSCert)",
@@ -19,6 +19,11 @@
         "Programming Languages"
     ],
     "contributes": {
+        "configurationDefaults": {
+            "[jpipe]": {
+                "editor.wordBasedSuggestions": "off"
+            }
+        },
         "languages": [{
             "id": "jpipe",
             "aliases": ["jpipe", "jpipe"],
@@ -53,7 +58,7 @@
                 {
                     "command": "jpipe.vis.preview",
                     "when": "resourceLangId == jpipe",
-                    "group": "navigation"
+                    "group": "navigation@0"
                 }
             ],
             "editor/context": [
@@ -69,24 +74,23 @@
                 }
             ]
         },
-        "customEditors": [
-            {
-                "viewType": "jpipe.vis",
-                "displayName": "jPipe Diagram",
-                "selector": [
-                    {
-                        "filenamePattern": "*.jd"
-                    }
-                ]
-            }
-        ],
         "configuration": {
             "title": "jPipe",
             "properties": {
                 "jpipe.cliPath": {
                     "type": "string",
                     "default": "jpipe",
-                    "description": "Path to the jpipe CLI executable"
+                    "description": "Path to the jpipe CLI executable (takes priority over JAR)"
+                },
+                "jpipe.jarFile": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Path to the jpipe JAR file (fallback if CLI not set)"
+                },
+                "jpipe.setJavaVersion": {
+                    "type": "string",
+                    "default": "java",
+                    "description": "Path to Java executable (used with JAR file)"
                 }
             }
         }
@@ -104,7 +108,7 @@
         "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json --watch\" \"node esbuild.mjs --watch\""
     },
     "dependencies": {
-        "jpipe-language": "0.0.1",
+        "jpipe-language": "1.0.0",
         "vscode-languageclient": "~9.0.1",
         "vscode-languageserver": "~9.0.1"
     },

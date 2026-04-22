@@ -2,6 +2,9 @@ import { type Module, inject } from 'langium';
 import { createDefaultModule, createDefaultSharedModule, type DefaultSharedModuleContext, type LangiumServices, type LangiumSharedServices, type PartialLangiumServices } from 'langium/lsp';
 import { JpipeGeneratedModule, JpipeGeneratedSharedModule } from './generated/module.js';
 import { JpipeValidator, registerValidationChecks } from './jpipe-validator.js';
+import { JpipeScopeProvider } from './jpipe-scope.js';
+import { JpipeImportService } from './jpipe-import.js';
+import { JpipeCompletionProvider } from './jpipe-completion.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -9,6 +12,9 @@ import { JpipeValidator, registerValidationChecks } from './jpipe-validator.js';
 export type JpipeAddedServices = {
     validation: {
         JpipeValidator: JpipeValidator
+    },
+    references: {
+        JpipeImportService: JpipeImportService
     }
 }
 
@@ -26,6 +32,13 @@ export type JpipeServices = LangiumServices & JpipeAddedServices
 export const JpipeModule: Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> = {
     validation: {
         JpipeValidator: () => new JpipeValidator()
+    },
+    references: {
+        ScopeProvider: (services) => new JpipeScopeProvider(services),
+        JpipeImportService: (services) => new JpipeImportService(services)
+    },
+    lsp: {
+        CompletionProvider: (services) => new JpipeCompletionProvider(services)
     }
 };
 
