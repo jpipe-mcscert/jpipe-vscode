@@ -1,18 +1,19 @@
-/**
- * Utility functions for working with jPipe AST nodes.
- * 
- * These functions handle element retrieval from justifications and templates, including
- * inheritance chains. When a justification implements a template (or a template implements
- * another template), elements are inherited recursively up the chain.
- */
-
 import {
-    isJustification,
-    isTemplate,
     type Justification,
     type Template,
-    type JustificationElement
+    type JustificationElement,
+    type QualifiedId
 } from './generated/ast.js';
+
+/** Returns the colon-joined string form of a QualifiedId, e.g. ['t','abs'] → 't:abs'. */
+export function qualifiedIdText(id: QualifiedId): string {
+    return id.parts.join(':');
+}
+
+/** Returns the last segment of a QualifiedId — the local name ('t:abs' → 'abs', 'e1' → 'e1'). */
+export function localName(id: QualifiedId): string {
+    return id.parts.at(-1) ?? '';
+}
 
 /**
  * Recursively collects all elements from a justification or template, including those
@@ -21,15 +22,10 @@ import {
  */
 export function getAllElements(node: Justification | Template): JustificationElement[] {
     const local = getLocalElements(node);
-    
-    if (isJustification(node) && node.parent?.ref) {
-        const parentElems = getAllElements(node.parent.ref);
-        return [...local, ...parentElems];
-    } else if (isTemplate(node) && node.parent?.ref) {
-        const parentElems = getAllElements(node.parent.ref);
-        return [...local, ...parentElems];
+    const parentRef = node.parent?.ref;
+    if (parentRef) {
+        return [...local, ...getAllElements(parentRef)];
     }
-    
     return local;
 }
 
@@ -38,11 +34,5 @@ export function getAllElements(node: Justification | Template): JustificationEle
  * without any inherited elements from parent templates.
  */
 export function getLocalElements(node: Justification | Template): JustificationElement[] {
-    const body = isJustification(node)
-        ? node.contents 
-        : isTemplate(node) 
-            ? node.contents 
-            : undefined;
-    return (body?.body ?? []) as JustificationElement[];
+    return (node.contents?.body ?? []) as JustificationElement[];
 }
-

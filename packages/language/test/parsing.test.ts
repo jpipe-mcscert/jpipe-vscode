@@ -1,62 +1,192 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { EmptyFileSystem, type LangiumDocument } from "langium";
-import { expandToString as s } from "langium/generate";
 import { parseHelper } from "langium/test";
 import type { Unit } from "jpipe-language";
-import { createJpipeServices, isUnit } from "jpipe-language";
+import { createJpipeServices, isUnit, isAbstractSupport, isJustification, isTemplate } from "jpipe-language";
 
 let services: ReturnType<typeof createJpipeServices>;
-let parse:    ReturnType<typeof parseHelper<Unit>>;
-let document: LangiumDocument<Unit> | undefined;
+let parse: ReturnType<typeof parseHelper<Unit>>;
 
 beforeAll(async () => {
     services = createJpipeServices(EmptyFileSystem);
     parse = parseHelper<Unit>(services.Jpipe);
-
-    // activate the following if your linking test requires elements from a built-in library, for example
-    // await services.shared.workspace.WorkspaceManager.initializeWorkspace([]);
 });
+
+function assertValid(document: LangiumDocument<Unit>): Unit {
+    expect(document.parseResult.parserErrors).toHaveLength(0);
+    expect(isUnit(document.parseResult.value)).toBe(true);
+    return document.parseResult.value as Unit;
+}
 
 describe('Parsing tests', () => {
 
-    test.skip('parse simple Unit', async () => {
-        document = await parse(`
-            person Langium
-            Hello Langium!
+    test('parse minimal justification', async () => {
+        const doc = await parse(`
+            justification J {
+                conclusion c is "The claim"
+                strategy s is "The strategy"
+                evidence e is "The evidence"
+                e supports s
+                s supports c
+            }
         `);
+        const unit = assertValid(doc);
+        expect(unit.body).toHaveLength(1);
+        expect(isJustification(unit.body[0])).toBe(true);
+    });
 
-        // check for absence of parser errors the classic way:
-        //  deactivated, find a much more human readable way below!
-        // expect(document.parseResult.parserErrors).toHaveLength(0);
-
-        expect(
-            // here we use a (tagged) template expression to create a human readable representation
-            //  of the AST part we are interested in and that is to be compared to our expectation;
-            // prior to the tagged template expression we check for validity of the parsed document object
-            //  by means of the reusable function 'checkDocumentValid()' to sort out (critical) typos first;
-            checkDocumentValid(document) /* || 
-                // EDITED FOR COMPILATION PURPOSE
-                s`
-                Persons:
-                  ${document.parseResult.value?.persons?.map(p => p.name)?.join('\n  ')}
-                Greetings to:
-                  ${document.parseResult.value?.greetings?.map(g => g.person.$refText)?.join('\n  ')}
-            ` */
-        ).toBe(s`
-            Persons:
-              Langium
-            Greetings to:
-              Langium
+    test('parse template with @support', async () => {
+        const doc = await parse(`
+            template T {
+                conclusion c is "Claim"
+                strategy s is "Strategy"
+                @support abs is "Abstract leaf"
+                abs supports s
+                s supports c
+            }
         `);
+        const unit = assertValid(doc);
+        expect(unit.body).toHaveLength(1);
+        const t = unit.body[0];
+        expect(isTemplate(t)).toBe(true);
+        if (!isTemplate(t)) return;
+        const abstractElems = t.contents?.body.filter(isAbstractSupport) ?? [];
+        expect(abstractElems).toHaveLength(1);
+        expect(abstractElems[0].id.parts).toEqual(['abs']);
+    });
+
+    test('parse justification implementing template', async () => {
+        const doc = await parse(`
+            template T {
+                conclusion c is "Claim"
+                @support abs is "Abstract"
+                abs supports c
+            }
+            justification J implements T {
+                conclusion c is "Claim"
+                evidence abs is "Concrete"
+                abs supports c
+            }
+        `);
+        const unit = assertValid(doc);
+        expect(unit.body).toHaveLength(2);
+        const j = unit.body[1];
+        expect(isJustification(j)).toBe(true);
+        if (!isJustification(j)) return;
+        expect(j.parent?.$refText).toBe('T');
+    });
+
+    test('parse element with qualified id (override syntax)', async () => {
+        const doc = await parse(`
+            justification J {
+                conclusion c is "Claim"
+                evidence t:abs is "Override"
+                t:abs supports c
+            }
+        `);
+        const unit = assertValid(doc);
+        const j = unit.body[0];
+        if (!isJustification(j)) return;
+        const ev = j.contents?.body[1];
+        expect(ev?.id.parts).toEqual(['t', 'abs']);
+        expect(ev?.name).toBe('Override');
+    });
+
+    test('parse relation with qualified id endpoints', async () => {
+        const doc = await parse(`
+            justification J {
+                conclusion c is "Claim"
+                strategy s is "Strategy"
+                evidence t:abs is "Evidence"
+                t:abs supports s
+                s supports c
+            }
+        `);
+        const unit = assertValid(doc);
+        const j = unit.body[0];
+        if (!isJustification(j)) return;
+        const rel = j.contents?.rels[0];
+        expect(rel?.from.parts).toEqual(['t', 'abs']);
+        expect(rel?.to.parts).toEqual(['s']);
+    });
+
+    test('parse inline operator call', async () => {
+        const doc = await parse(`
+            template T {
+                conclusion c is "Claim"
+                @support abs is "Abstract"
+                abs supports c
+            }
+            justification J is refine(T) {
+                mapping: "abs=e"
+            }
+        `);
+        const unit = assertValid(doc);
+        const j = unit.body[1];
+        expect(isJustification(j)).toBe(true);
+        if (!isJustification(j)) return;
+        expect(j.contents).toBeUndefined();
+        expect(j.operator?.parts).toEqual(['refine']);
+        expect(j.params?.ids).toHaveLength(1);
+        expect(j.config?.entries).toHaveLength(1);
+        expect(j.config?.entries[0].key).toBe('mapping');
+    });
+
+    test('parse load without alias', async () => {
+        const doc = await parse(`
+            load "other.jd"
+            justification J {
+                conclusion c is "Claim"
+                strategy s is "Strategy"
+                evidence e is "Evidence"
+                e supports s
+                s supports c
+            }
+        `);
+        const unit = assertValid(doc);
+        expect(unit.imports).toHaveLength(1);
+        expect(unit.imports[0].path).toBe('other.jd');
+        expect(unit.imports[0].namespace).toBeUndefined();
+    });
+
+    test('parse load with namespace alias', async () => {
+        const doc = await parse(`
+            load "base.jd" as base
+            justification J {
+                conclusion c is "Claim"
+                strategy s is "Strategy"
+                evidence e is "Evidence"
+                e supports s
+                s supports c
+            }
+        `);
+        const unit = assertValid(doc);
+        expect(unit.imports[0].path).toBe('base.jd');
+        expect(unit.imports[0].namespace).toBe('base');
+    });
+
+    test('parse multiple models with mixed relations', async () => {
+        const doc = await parse(`
+            template T {
+                conclusion c is "Claim"
+                strategy s is "Strategy"
+                @support abs is "Abstract"
+                abs supports s
+                s supports c
+            }
+            justification J implements T {
+                conclusion c is "Claim"
+                strategy s is "Strategy"
+                evidence abs is "Concrete"
+                abs supports s
+                s supports c
+            }
+        `);
+        const unit = assertValid(doc);
+        expect(unit.body).toHaveLength(2);
+        const j = unit.body[1];
+        if (!isJustification(j)) return;
+        expect(j.contents?.body).toHaveLength(3);
+        expect(j.contents?.rels).toHaveLength(2);
     });
 });
-
-function checkDocumentValid(document: LangiumDocument): string | undefined {
-    return document.parseResult.parserErrors.length && s`
-        Parser errors:
-          ${document.parseResult.parserErrors.map(e => e.message).join('\n  ')}
-    `
-        || document.parseResult.value === undefined && `ParseResult is 'undefined'.`
-        || !isUnit(document.parseResult.value) && `Root AST object is a ${document.parseResult.value.$type}, expected a 'Unit'.`
-        || undefined;
-}
