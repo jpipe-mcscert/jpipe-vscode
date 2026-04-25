@@ -17,6 +17,8 @@ export class JpipeNameProvider extends DefaultNameProvider {
         const id = n['id'];
         if (typeof id === 'string') return id;
         if (id && typeof id === 'object' && Array.isArray((id as QualifiedId).parts)) {
+            // Return only the local segment: the preview client prepends diagramName + ':'
+            // to construct the SVG element id (e.g. 'abs' → 't:abs').
             return localName(id as QualifiedId);
         }
         return super.getName(node);

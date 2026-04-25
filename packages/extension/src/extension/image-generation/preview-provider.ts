@@ -106,7 +106,7 @@ export class PreviewProvider {
         try {
             if (this.viewMode === 'diagnostic') {
                 const output = await this.imageGenerator.generateDiagnostic(document);
-                PreviewProvider.webviewPanel.webview.html = this.getHtmlForDiagnostic(output);
+                PreviewProvider.webviewPanel.webview.html = this.getHtmlForDiagnostic(output, this.unsaved);
                 return;
             }
             // Avoid blanking the whole preview on transient render errors:
@@ -748,11 +748,12 @@ export class PreviewProvider {
 </html>`;
     }
     
-    private getHtmlForDiagnostic(output: string): string {
+    private getHtmlForDiagnostic(output: string, unsaved: boolean = false): string {
         const escaped = output
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')
             .replaceAll('>', '&gt;');
+        const unsavedJson = unsaved ? 'true' : 'false';
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -821,6 +822,19 @@ export class PreviewProvider {
             transition: opacity 0.15s ease; z-index: 2000;
         }
         .toolbar-btn[data-tooltip]:hover::after { opacity: 1; }
+        #unsaved-banner {
+            position: fixed;
+            top: 44px; left: 0; right: 0;
+            z-index: 999;
+            padding: 5px 12px;
+            font-size: 12px;
+            background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 15%, var(--vscode-editorWidget-background));
+            border-bottom: 1px solid var(--vscode-editorWarning-foreground);
+            color: var(--vscode-editorWarning-foreground);
+            display: none;
+        }
+        #unsaved-banner.visible { display: block; }
+        body.has-unsaved-banner #container { top: 72px; }
         #container {
             position: fixed;
             top: 44px; left: 0; right: 0; bottom: 0;
@@ -846,10 +860,29 @@ export class PreviewProvider {
             <button class="toolbar-btn active" id="mode-toggle" data-tooltip="Back to diagram view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6.5" cy="6.5" r="4"/><line x1="10" y1="10" x2="14" y2="14"/></svg></button>
         </div>
     </div>
+    <div id="unsaved-banner">⚠ Unsaved changes — diagnostic reflects last saved version</div>
     <div id="container">
         <pre id="diag-output">${escaped}</pre>
     </div>
     <script>
+        (function() {
+            var banner = document.getElementById('unsaved-banner');
+            function setUnsaved(val) {
+                if (!banner) return;
+                if (val) {
+                    banner.classList.add('visible');
+                    document.body.classList.add('has-unsaved-banner');
+                } else {
+                    banner.classList.remove('visible');
+                    document.body.classList.remove('has-unsaved-banner');
+                }
+            }
+            setUnsaved(${unsavedJson});
+            window.addEventListener('message', function(event) {
+                var msg = event.data;
+                if (msg && msg.type === 'setUnsaved') setUnsaved(!!msg.unsaved);
+            });
+        })();
         (function() {
             try {
                 var vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;

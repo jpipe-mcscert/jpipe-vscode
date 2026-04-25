@@ -206,7 +206,7 @@ export class ImageGenerator {
         this.logger.debug(`Executing: ${command}`);
         try {
             const { stdout, stderr } = await execAsync(command, { env: envWithPath() });
-            return (stdout || stderr || '(no output)').trim();
+            return [stdout, stderr].filter(Boolean).join('\n').trim() || '(no output)';
         } catch (e: any) {
             const out = (e.stdout ?? '').trim();
             const err = (e.stderr ?? '').trim();
