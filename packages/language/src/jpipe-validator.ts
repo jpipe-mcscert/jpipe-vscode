@@ -99,7 +99,7 @@ export class JpipeValidator {
     }
 
     checkStrategyIncomingSupport(strategy: Strategy, accept: ValidationAcceptor): void {
-        const body = strategy.$container as JustificationBody | TemplateBody | undefined;
+        const body = strategy.$container;
         if (!body?.rels) return;
 
         const incoming = body.rels.filter(r => this.relationTargetsElement(r, strategy));
@@ -121,7 +121,7 @@ export class JpipeValidator {
     }
 
     checkConclusionIncomingFromStrategy(conclusion: Conclusion, accept: ValidationAcceptor): void {
-        const body = conclusion.$container as JustificationBody | TemplateBody | undefined;
+        const body = conclusion.$container;
         if (!body?.rels) return;
 
         const incoming = body.rels.filter(r => this.relationTargetsElement(r, conclusion));
@@ -146,32 +146,30 @@ export class JpipeValidator {
         if (!justification.parent?.ref) return;
 
         const template = justification.parent.ref;
+        // $refText is the text written after 'implements', e.g. "a_template" or "base:t"
+        const parentRefText = justification.parent.$refText ?? template.id;
         const allTemplateElements = getAllElements(template);
         const requiredSupportElements = allTemplateElements.filter(
             (elem): elem is AbstractSupport => isAbstractSupport(elem)
         );
         const localElements = getLocalElements(justification);
-        const localElementIds = new Set(localElements.map(e => qualifiedIdText(e.id)));
+        // Override key = parentRefText + ':' + elementLocalName, e.g. "a_template:abs" or "base:t:abs"
+        const localById = new Map(localElements.map(e => [qualifiedIdText(e.id), e]));
 
         for (const supportElement of requiredSupportElements) {
-            if (!localElementIds.has(qualifiedIdText(supportElement.id))) {
+            const expectedKey = `${parentRefText}:${qualifiedIdText(supportElement.id)}`;
+            const override = localById.get(expectedKey);
+            if (!override) {
                 accept('error',
-                    `Justification '${justification.id}' must override '@support ${qualifiedIdText(supportElement.id)}' from template '${template.id}'.`,
+                    `Justification '${justification.id}' must override '@support ${qualifiedIdText(supportElement.id)}' from template '${template.id}'. Expected element with id '${expectedKey}'.`,
                     { node: justification, property: 'id' });
+                continue;
             }
-        }
-
-        for (const elem of localElements) {
-            const templateElement = allTemplateElements.find(
-                te => qualifiedIdText(te.id) === qualifiedIdText(elem.id)
-            );
-            if (templateElement && isAbstractSupport(templateElement)) {
-                const elemType = this.getElementType(elem);
-                if (elemType && elemType !== 'evidence' && elemType !== 'sub-conclusion') {
-                    accept('error',
-                        `Cannot override '@support ${qualifiedIdText(elem.id)}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
-                        { node: elem, property: 'id' });
-                }
+            const elemType = this.getElementType(override);
+            if (elemType && elemType !== 'evidence' && elemType !== 'sub-conclusion') {
+                accept('error',
+                    `Cannot override '@support ${qualifiedIdText(supportElement.id)}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
+                    { node: override, property: 'id' });
             }
         }
     }

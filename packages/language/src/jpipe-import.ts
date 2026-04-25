@@ -92,6 +92,25 @@ export class JpipeImportService {
         AstUtils.streamAst(node).forEach(assign);
     }
 
+    getTemplatesWithNamespace(
+        unit: Unit,
+        currentDoc: LangiumDocument
+    ): Array<{ template: Template; ns: string | undefined }> {
+        const result: Array<{ template: Template; ns: string | undefined }> = [];
+        for (const load of unit.imports) {
+            const doc = this.parseDocumentFromPath(load.path, currentDoc);
+            if (!doc) continue;
+            const importedUnit = doc.parseResult.value as Unit | undefined;
+            if (!importedUnit) continue;
+            for (const body of importedUnit.body) {
+                if (isTemplate(body)) {
+                    result.push({ template: body, ns: load.namespace ?? undefined });
+                }
+            }
+        }
+        return result;
+    }
+
     getImportedTemplates(unit: Unit, currentDoc: LangiumDocument): Template[] {
         const importedDocs = this.getTransitiveImportedDocuments(unit, currentDoc);
         const templates: Template[] = [];

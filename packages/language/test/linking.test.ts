@@ -1,9 +1,13 @@
+import * as path from 'node:path';
+import * as url from 'node:url';
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
 import { EmptyFileSystem, type LangiumDocument } from "langium";
 import { clearDocuments, parseHelper } from "langium/test";
 import type { Unit } from "jpipe-language";
 import { createJpipeServices, isUnit, isJustification, isTemplate } from "jpipe-language";
 import { getAllElements } from "../src/jpipe-utils.js";
+
+const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
 let services: ReturnType<typeof createJpipeServices>;
 let parse: ReturnType<typeof parseHelper<Unit>>;
@@ -88,6 +92,24 @@ describe('Linking tests', () => {
         expect(names).toContain('child_abs');
         expect(names).toContain('base_abs');
         expect(names).toContain('c');
+    });
+
+    test('namespace-qualified implements resolves cross-reference', async () => {
+        const examplesDir = path.resolve(__dirname, '../../../../jpipe-compiler/examples');
+        const userFile = path.join(examplesDir, '007_load_user.jd');
+        const doc = services.Jpipe.references.JpipeImportService.parseDocumentFromPath(userFile);
+        if (!doc) {
+            console.warn('Skipping: compiler examples not found at', examplesDir);
+            return;
+        }
+        expect(doc.parseResult.parserErrors).toHaveLength(0);
+        const unit = doc.parseResult.value as Unit;
+        expect(isUnit(unit)).toBe(true);
+        const j = unit.body[0];
+        expect(isJustification(j)).toBe(true);
+        if (!isJustification(j)) return;
+        // $refText must be the qualified name written in source
+        expect(j.parent?.$refText).toBe('base:t');
     });
 
     test('template parent reference resolves transitively', async () => {

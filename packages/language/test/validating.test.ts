@@ -126,9 +126,9 @@ describe('Validation tests', () => {
             }
             justification J implements T {
                 conclusion c is "Claim"
-                strategy abs is "Wrong type"
+                strategy T:abs is "Wrong type"
                 strategy s is "Strategy"
-                abs supports s
+                T:abs supports s
                 s supports c
             }
         `);
@@ -175,13 +175,35 @@ describe('Validation tests', () => {
             justification J implements T {
                 conclusion c is "Claim"
                 strategy s is "Strategy"
-                evidence abs is "Concrete evidence"
-                abs supports s
+                evidence T:abs is "Concrete evidence"
+                T:abs supports s
                 s supports c
             }
         `);
         assertNoParseErrors(doc);
         const errors = (doc.diagnostics ?? []).filter((d: Diagnostic) => d.severity === 1);
         expect(errors).toHaveLength(0);
+    });
+
+    test('unqualified override element triggers error (missing template prefix)', async () => {
+        const doc = await parse(`
+            template T {
+                conclusion c is "Claim"
+                strategy s is "Strategy"
+                @support abs is "Abstract"
+                abs supports s
+                s supports c
+            }
+            justification J implements T {
+                conclusion c is "Claim"
+                strategy s is "Strategy"
+                evidence abs is "Missing prefix"
+                abs supports s
+                s supports c
+            }
+        `);
+        assertNoParseErrors(doc);
+        const messages = diagnosticMessages(doc);
+        expect(messages.some(m => m.includes("Expected element with id 'T:abs'"))).toBe(true);
     });
 });

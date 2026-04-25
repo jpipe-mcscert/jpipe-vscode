@@ -24,9 +24,10 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
         if (context.property === 'parent' && (isJustification(context.container) || isTemplate(context.container))) {
             const { document, unit } = this.getDocumentAndUnit(context.container);
             if (document && unit) {
-                const localTemplates = this.getLocalTemplates(unit);
-                const importedTemplates = this.importService.getImportedTemplates(unit, document);
-                return this.createScopeFromTemplates([...localTemplates, ...importedTemplates]);
+                const localEntries = this.getLocalTemplates(unit)
+                    .map(t => ({ template: t, ns: undefined as string | undefined }));
+                const importedEntries = this.importService.getTemplatesWithNamespace(unit, document);
+                return this.createScopeFromTemplates([...localEntries, ...importedEntries]);
             }
             return super.getScope(context);
         }
@@ -49,8 +50,11 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
         return { document, unit };
     }
 
-    private createScopeFromTemplates(templates: Template[]) {
-        const desc = templates.map(t => this.descriptions.createDescription(t, t.id));
+    private createScopeFromTemplates(entries: Array<{ template: Template; ns: string | undefined }>) {
+        const desc = entries.map(({ template, ns }) => {
+            const key = ns ? `${ns}:${template.id}` : template.id;
+            return this.descriptions.createDescription(template, key);
+        });
         return this.createScope(desc);
     }
 

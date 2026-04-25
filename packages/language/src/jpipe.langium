@@ -7,11 +7,11 @@ Load:
     'load' path=STRING ('as' namespace=ID)?;
 
 Justification:
-    'justification' id=ID ('implements' parent=[Template:ID])?
+    'justification' id=ID ('implements' parent=[Template:QualifiedRef])?
     ( '{' contents=JustificationBody '}' | 'is' operator=QualifiedId '(' params=ParamsDecl? ')' config=RuleConfig? );
 
 Template:
-    'template' id=ID ('implements' parent=[Template:ID])?
+    'template' id=ID ('implements' parent=[Template:QualifiedRef])?
     ( '{' contents=TemplateBody '}' | 'is' operator=QualifiedId '(' params=ParamsDecl? ')' config=RuleConfig? );
 
 type Body = JustificationBody | TemplateBody
@@ -44,6 +44,9 @@ Relation:
 
 QualifiedId:
     parts+=ID (':' parts+=ID)*;
+
+QualifiedRef returns string:
+    ID (':' ID)*;
 
 ParamsDecl:
     ids+=QualifiedId (',' ids+=QualifiedId)*;
