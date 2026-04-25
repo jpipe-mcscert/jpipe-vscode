@@ -1,5 +1,6 @@
 import { URI, type LangiumDocument, AstUtils, type AstNode } from 'langium';
 import type { JpipeServices } from './jpipe-module.js';
+import type { JpipeServerLogger } from './jpipe-logger.js';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import {
@@ -16,9 +17,11 @@ import { getAllElements } from './jpipe-utils.js';
  */
 export class JpipeImportService {
     private readonly services: JpipeServices;
+    private readonly logger: JpipeServerLogger;
 
     public constructor(services: JpipeServices) {
         this.services = services;
+        this.logger = services.logger;
     }
 
     resolveImport(filePath: string, currentDoc: LangiumDocument): LangiumDocument | undefined {
@@ -65,6 +68,7 @@ export class JpipeImportService {
         }
 
         if (!fs.existsSync(resolvedPath)) {
+            this.logger.warn(`Import not found: ${resolvedPath}`);
             return undefined;
         }
 
@@ -79,9 +83,10 @@ export class JpipeImportService {
                 this.setDocumentOnAllNodes(doc.parseResult.value, doc);
             }
 
+            this.logger.debug(`Parsed import: ${resolvedPath}`);
             return doc;
         } catch (error) {
-            console.error('[jPipe] Failed to parse document:', error);
+            this.logger.error(`Failed to parse document: ${resolvedPath}: ${error instanceof Error ? error.message : String(error)}`);
             return undefined;
         }
     }
@@ -183,6 +188,7 @@ export class JpipeImportService {
             }
         }
 
+        this.logger.debug(`BFS import traversal: ${out.length} document(s) reachable`);
         return out;
     }
 

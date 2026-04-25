@@ -1,5 +1,6 @@
 import { DefaultScopeProvider, AstUtils, type ReferenceInfo, type LangiumDocument } from 'langium';
 import { type JpipeServices } from './jpipe-module.js';
+import type { JpipeServerLogger } from './jpipe-logger.js';
 import {
     isJustification,
     isTemplate,
@@ -12,10 +13,12 @@ import { getAllElements, qualifiedIdText } from './jpipe-utils.js';
 
 export class JpipeScopeProvider extends DefaultScopeProvider {
     private readonly services: JpipeServices;
+    private readonly logger: JpipeServerLogger;
 
     public constructor(services: JpipeServices) {
         super(services);
         this.services = services;
+        this.logger = services.logger;
     }
 
     private get importService() {
@@ -23,6 +26,7 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
     }
 
     override getScope(context: ReferenceInfo) {
+        this.logger.debug(`Scope resolution: property='${context.property}' container=${context.container.$type}`);
         if (context.property === 'parent' && (isJustification(context.container) || isTemplate(context.container))) {
             const { document, unit } = this.getDocumentAndUnit(context.container);
             if (document && unit) {

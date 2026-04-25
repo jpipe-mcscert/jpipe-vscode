@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node.js';
 import { ImageGenerator, ImageFormat } from './image-generator.js';
+import type { JpipeLogger } from '../logger.js';
 
 interface DocumentSymbol {
     name: string;
@@ -20,26 +21,29 @@ export class PreviewProvider {
     constructor(
         private readonly imageGenerator: ImageGenerator,
         private readonly languageClient: LanguageClient,
-        context: vscode.ExtensionContext
+        context: vscode.ExtensionContext,
+        private readonly logger: JpipeLogger
     ) {
         this.setupEventListeners(context);
     }
-    
+
     public async openPreview(): Promise<void> {
         const editor = vscode.window.activeTextEditor;
-        
+
         if (!editor || editor.document.languageId !== 'jpipe') {
             vscode.window.showErrorMessage('No active jPipe file');
             return;
         }
-        
+
         if (PreviewProvider.webviewDisposed || !PreviewProvider.webviewPanel) {
             PreviewProvider.webviewPanel = this.createWebviewPanel();
             PreviewProvider.webviewDisposed = false;
+            this.logger.info('Webview panel created');
         } else {
             PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, true);
         }
-        
+
+        this.logger.info(`Opening preview: ${editor.document.fileName}`);
         await this.updatePreview(editor.document, editor);
     }
     
@@ -97,7 +101,7 @@ export class PreviewProvider {
     
     private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         if (!PreviewProvider.webviewPanel) return;
-        
+
         try {
             // Avoid blanking the whole preview on transient render errors:
             // only show a full loading screen if we have nothing rendered yet.
@@ -107,6 +111,7 @@ export class PreviewProvider {
             let svg = await this.imageGenerator.generate(false, ImageFormat.SVG, document);
             svg = this.extractSvgFromOutput(svg);
             const diagramName = this.imageGenerator.findDiagramName(document, editor);
+            this.logger.debug(`Preview updated: '${diagramName}' in ${document.fileName}`);
             let highlightName = await this.getSymbolNameAtCursor(document, editor);
             if (highlightName === diagramName) highlightName = null;
             const html = this.getHtmlForWebview(svg, highlightName ?? undefined, document.uri.fsPath, diagramName, undefined, this.unsaved);
@@ -120,6 +125,7 @@ export class PreviewProvider {
             const exitCode = typeof error?.exitCode === 'number'
                 ? error.exitCode
                 : (typeof error?.code === 'number' ? error.code : undefined);
+            this.logRenderError(document.fileName, exitCode, error);
             const cleanMsg = String(error?.message ?? error)
                 .replace(/.*\[31m/, '')
                 .replace(/\[0m.*/, '')
@@ -172,12 +178,27 @@ export class PreviewProvider {
         }
     }
     
+    private logRenderError(fileName: string, exitCode: number | undefined, error: unknown): void {
+        if (exitCode === 1) {
+            this.logger.warn(`Render: model errors (exit 1) in ${fileName}`);
+        } else if (exitCode === 42) {
+            this.logger.error(`Render: compiler crash (exit 42) in ${fileName}`);
+        } else {
+            let msg: string;
+            if (error instanceof Error) { msg = error.message; }
+            else if (typeof error === 'string') { msg = error; }
+            else { msg = '[unknown error]'; }
+            this.logger.error(`Render failed in ${fileName}: ${msg}`);
+        }
+    }
+
     /** Update only which node is highlighted (no SVG reload). */
     private async updateHighlightOnly(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         if (!PreviewProvider.webviewPanel) return;
         const diagramName = this.imageGenerator.findDiagramName(document, editor);
         let name = await this.getSymbolNameAtCursor(document, editor);
         if (name === diagramName) name = null;
+        this.logger.trace(`Highlight-only update: '${name ?? '(none)'}' in '${diagramName}'`);
         PreviewProvider.webviewPanel.webview.postMessage({ type: 'highlight', name: name ?? null });
     }
     
@@ -245,6 +266,7 @@ export class PreviewProvider {
         panel.onDidDispose(() => {
             PreviewProvider.webviewPanel = undefined;
             PreviewProvider.webviewDisposed = true;
+            this.logger.info('Webview panel disposed');
         });
         
         panel.webview.onDidReceiveMessage((msg: { type?: string; format?: string; url?: string }) => {

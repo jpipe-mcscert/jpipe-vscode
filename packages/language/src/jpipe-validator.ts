@@ -21,6 +21,7 @@ import {
     isSubConclusion
 } from './generated/ast.js';
 import type { JpipeServices } from './jpipe-module.js';
+import type { JpipeServerLogger } from './jpipe-logger.js';
 import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
 
 export function registerValidationChecks(services: JpipeServices) {
@@ -40,6 +41,11 @@ export function registerValidationChecks(services: JpipeServices) {
 }
 
 export class JpipeValidator {
+    private readonly logger: JpipeServerLogger;
+
+    constructor(services: JpipeServices) {
+        this.logger = services.logger;
+    }
 
     checkLabelNotEmpty(element: Evidence | Strategy | Conclusion | SubConclusion | AbstractSupport,
                         accept: ValidationAcceptor): void {
@@ -57,6 +63,7 @@ export class JpipeValidator {
     }
 
     checkDuplicateTemplateName(template: Template, accept: ValidationAcceptor): void {
+        this.logger.debug(`Validating template '${template.id}'`);
         const unit = template.$container;
         if (!unit) return;
 
@@ -82,6 +89,7 @@ export class JpipeValidator {
     }
 
     checkDuplicateJustificationName(justification: Justification, accept: ValidationAcceptor): void {
+        this.logger.debug(`Validating justification '${justification.id}'`);
         const unit = justification.$container;
         if (!unit) return;
 
@@ -137,6 +145,7 @@ export class JpipeValidator {
     }
 
     checkJustificationOverride(justification: Justification, accept: ValidationAcceptor): void {
+        this.logger.debug(`Checking overrides for justification '${justification.id}'`);
         if (!justification.parent?.ref) return;
 
         const template = justification.parent.ref;

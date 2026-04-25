@@ -10,6 +10,7 @@ import {
 import { Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, CompletionParams } from 'vscode-languageserver';
 import * as path from 'node:path';
 import type { JpipeServices } from './jpipe-module.js';
+import type { JpipeServerLogger } from './jpipe-logger.js';
 import {
     isJustification,
     isTemplate,
@@ -31,6 +32,7 @@ import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils
 
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private readonly services: JpipeServices;
+    private readonly logger: JpipeServerLogger;
 
     /** So VS Code requests completion when `@` is typed (e.g. for `@support`). */
     override readonly completionOptions: CompletionProviderOptions = {
@@ -40,6 +42,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
     public constructor(services: JpipeServices) {
         super(services);
         this.services = services;
+        this.logger = services.logger;
     }
 
     private get importService() {
@@ -316,6 +319,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
     }
 
     private getTemplateElementCompletions(context: CompletionContext): CompletionItem[] {
+        this.logger.debug(`Completion request at line ${context.position.line}:${context.position.character}`);
         try {
             const currentNode = context.node;
             if (!currentNode) return [];
@@ -345,7 +349,8 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                 }
             }
             return completions;
-        } catch {
+        } catch (error) {
+            this.logger.error(`getTemplateElementCompletions failed: ${error instanceof Error ? error.message : String(error)}`);
             return [];
         }
     }

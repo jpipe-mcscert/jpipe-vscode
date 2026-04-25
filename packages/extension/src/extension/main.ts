@@ -4,18 +4,21 @@ import * as path from 'node:path';
 import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vscode-languageclient/node.js';
 import { ImageGenerator, ImageFormat } from './image-generation/image-generator.js';
 import { PreviewProvider } from './image-generation/preview-provider.js';
+import { JpipeLogger } from './logger.js';
 
 let client: LanguageClient;
 
 // This function is called when the extension is activated.
 export function activate(context: vscode.ExtensionContext): void {
-    client = startLanguageClient(context);
-    
+    const logger = new JpipeLogger(context);
+    logger.info('jPipe extension activated');
+
+    client = startLanguageClient(context, logger);
+
     // Create image generator and preview provider (client passed for cursor→node highlighting)
-    const imageGenerator = new ImageGenerator();
-    const previewProvider = new PreviewProvider(imageGenerator, client, context);
-    
-    // Register download commands for all supported formats
+    const imageGenerator = new ImageGenerator(logger);
+    const previewProvider = new PreviewProvider(imageGenerator, client, context, logger);
+
     context.subscriptions.push(
         vscode.commands.registerCommand('jpipe.downloadPNG',    () => imageGenerator.generateAndSave(ImageFormat.PNG)),
         vscode.commands.registerCommand('jpipe.downloadSVG',    () => imageGenerator.generateAndSave(ImageFormat.SVG)),
@@ -23,17 +26,8 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('jpipe.downloadJPEG',   () => imageGenerator.generateAndSave(ImageFormat.JPEG)),
         vscode.commands.registerCommand('jpipe.downloadDOT',    () => imageGenerator.generateAndSave(ImageFormat.DOT)),
         vscode.commands.registerCommand('jpipe.downloadPython', () => imageGenerator.generateAndSave(ImageFormat.PYTHON)),
-        vscode.commands.registerCommand('jpipe.downloadJPIPE',  () => imageGenerator.generateAndSave(ImageFormat.JPIPE))
-    );
-    
-    // Register preview command
-    context.subscriptions.push(
-        vscode.commands.registerCommand('jpipe.vis.preview', () => {
-            previewProvider.openPreview();
-        })
-    );
-
-    context.subscriptions.push(
+        vscode.commands.registerCommand('jpipe.downloadJPIPE',  () => imageGenerator.generateAndSave(ImageFormat.JPIPE)),
+        vscode.commands.registerCommand('jpipe.vis.preview', () => previewProvider.openPreview()),
         vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
             const { ok, message } = await imageGenerator.check();
             if (ok) {
@@ -53,15 +47,18 @@ export function deactivate(): Thenable<void> | undefined {
     return undefined;
 }
 
-function startLanguageClient(context: vscode.ExtensionContext): LanguageClient {
+function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogger): LanguageClient {
     const serverModule = context.asAbsolutePath(path.join('out', 'language', 'main.cjs'));
-    const debugOptions = { 
-        execArgv: ['--nolazy', `--inspect${process.env.DEBUG_BREAK ? '-brk' : ''}=${process.env.DEBUG_SOCKET || '6009'}`] 
+    const debugOptions = {
+        execArgv: ['--nolazy', `--inspect${process.env.DEBUG_BREAK ? '-brk' : ''}=${process.env.DEBUG_SOCKET || '6009'}`]
     };
 
+    const logLevel = vscode.workspace.getConfiguration('jpipe').get<string>('logLevel', 'info');
+    const serverEnv = { ...process.env, JPIPE_LOG_LEVEL: logLevel };
+
     const serverOptions: ServerOptions = {
-        run: { module: serverModule, transport: TransportKind.ipc },
-        debug: { module: serverModule, transport: TransportKind.ipc, options: debugOptions }
+        run:   { module: serverModule, transport: TransportKind.ipc, options: { env: serverEnv } },
+        debug: { module: serverModule, transport: TransportKind.ipc, options: { ...debugOptions, env: serverEnv } }
     };
 
     const outputChannel = vscode.window.createOutputChannel('jPipe Language Server');
@@ -81,13 +78,20 @@ function startLanguageClient(context: vscode.ExtensionContext): LanguageClient {
         clientOptions
     );
 
-    client.start().catch((error: unknown) => {
-        vscode.window.showErrorMessage(`Failed to start language server: ${error}`);
+    client.start().then(() => {
+        logger.info(`Language server started (log level: ${logLevel})`);
+    }).catch((error: unknown) => {
+        let msg: string;
+        if (error instanceof Error) { msg = error.message; }
+        else if (typeof error === 'string') { msg = error; }
+        else { msg = '[unknown error]'; }
+        logger.error(`Failed to start language server: ${msg}`);
+        vscode.window.showErrorMessage(`Failed to start language server: ${msg}`);
     });
 
     // Bring back protocol tracing (shows requests/notifications in trace channel).
     // Note: We intentionally don't await this; the client will apply it once connected.
     void client.setTrace(Trace.Verbose);
-    
+
     return client;
 }

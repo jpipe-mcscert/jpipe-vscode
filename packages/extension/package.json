@@ -177,6 +177,21 @@
                     "type": "string",
                     "default": "java",
                     "markdownDescription": "**[jar mode only]** Path to the `java` executable used to run the JAR. Defaults to `java` (resolved via `PATH`)."
+                },
+                "jpipe.logLevel": {
+                    "order": 5,
+                    "type": "string",
+                    "enum": ["off", "error", "warn", "info", "debug", "trace"],
+                    "enumDescriptions": [
+                        "No logging.",
+                        "Errors only.",
+                        "Errors and warnings.",
+                        "Errors, warnings, and key lifecycle events (default).",
+                        "Detailed operational info (commands, renders, imports).",
+                        "Everything, including per-cursor and per-completion events."
+                    ],
+                    "default": "info",
+                    "description": "Verbosity of the jPipe log channel (Output > jPipe). The language server log level (Output > jPipe Language Server) is set once at startup and requires a window reload to change."
                 }
             }
         }
