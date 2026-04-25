@@ -127,23 +127,29 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             }
         };
 
-        const parentOwner =
-            refInfo.property === 'parent'
-                ? AstUtils.getContainerOfType(refInfo.container, isJustification) ??
-                  AstUtils.getContainerOfType(refInfo.container, isTemplate)
-                : undefined;
-        if (parentOwner && (isJustification(parentOwner) || isTemplate(parentOwner))) {
-            return stream(this.parentTemplateCandidateDescriptions(unit, doc, descFor));
+        if (refInfo.property === 'parent') {
+            const parentOwner =
+                AstUtils.getContainerOfType(refInfo.container, isJustification) ??
+                AstUtils.getContainerOfType(refInfo.container, isTemplate);
+            if (parentOwner) {
+                return stream(this.parentTemplateCandidateDescriptions(unit, doc, descFor));
+            }
         }
 
-        // jPipe only references Template (implements). Relations use QualifiedId (plain data), not
-        // cross-references, so we never fall through to the workspace index for element references.
-        const refType = this.services.shared.AstReflection.getReferenceType(refInfo);
-        if (refType === TemplateRule.$type) {
-            return stream();
+        if (refInfo.property === 'from' || refInfo.property === 'to') {
+            const owner =
+                AstUtils.getContainerOfType(refInfo.container, isJustification) ??
+                AstUtils.getContainerOfType(refInfo.container, isTemplate);
+            if (owner) {
+                return stream(getAllElements(owner).flatMap(e => {
+                    const d = descFor(e);
+                    return d ? [d] : [];
+                }));
+            }
         }
 
-        return super.getReferenceCandidates(refInfo, context);
+        // Never fall through to the workspace index for jPipe cross-refs.
+        return stream();
     }
 
     /** Templates for `implements`: local + `load`ed first, then workspace index (dedupe by name). */

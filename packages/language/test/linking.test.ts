@@ -112,6 +112,64 @@ describe('Linking tests', () => {
         expect(j.parent?.$refText).toBe('base:t');
     });
 
+    test('relation from/to resolve to element nodes', async () => {
+        document = await parse(`
+            justification J {
+                conclusion c is "Claim"
+                strategy s is "Strategy"
+                evidence e is "Evidence"
+                e supports s
+                s supports c
+            }
+        `);
+        const unit = assertValid(document);
+        const j = unit.body[0];
+        if (!isJustification(j) || !j.contents) return;
+        const rel0 = j.contents.rels[0]; // e supports s
+        const rel1 = j.contents.rels[1]; // s supports c
+        expect(rel0.from.ref?.$type).toBe('Evidence');
+        expect(rel0.to.ref?.$type).toBe('Strategy');
+        expect(rel1.from.ref?.$type).toBe('Strategy');
+        expect(rel1.to.ref?.$type).toBe('Conclusion');
+    });
+
+    test('relation with unknown element produces linking error', async () => {
+        document = await parse(`
+            justification J {
+                conclusion c is "Claim"
+                strategy s is "Strategy"
+                unknownElem supports s
+                s supports c
+            }
+        `);
+        expect(document.parseResult.parserErrors).toHaveLength(0);
+        const j = document.parseResult.value?.body[0];
+        if (!isJustification(j) || !j.contents) return;
+        const rel = j.contents.rels[0]; // unknownElem supports s
+        expect(rel.from.ref).toBeUndefined();
+        expect(rel.from.error).toBeDefined();
+    });
+
+    test('relation in template resolves inherited element', async () => {
+        document = await parse(`
+            template Base {
+                conclusion c is "Root claim"
+                @support abs is "Abstract"
+                abs supports c
+            }
+            template Child implements Base {
+                strategy s is "Strategy"
+                s supports c
+            }
+        `);
+        const unit = assertValid(document);
+        const child = unit.body[1];
+        if (!isTemplate(child) || !child.contents) return;
+        const rel = child.contents.rels[0]; // s supports c
+        expect(rel.from.ref?.$type).toBe('Strategy');
+        expect(rel.to.ref?.$type).toBe('Conclusion');
+    });
+
     test('template parent reference resolves transitively', async () => {
         document = await parse(`
             template A {

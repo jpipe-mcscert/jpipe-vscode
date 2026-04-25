@@ -106,8 +106,8 @@ describe('Parsing tests', () => {
         const j = unit.body[0];
         if (!isJustification(j)) return;
         const rel = j.contents?.rels[0];
-        expect(rel?.from.parts).toEqual(['t', 'abs']);
-        expect(rel?.to.parts).toEqual(['s']);
+        expect(rel?.from.$refText).toBe('t:abs');
+        expect(rel?.to.$refText).toBe('s');
     });
 
     test('parse inline operator call', async () => {

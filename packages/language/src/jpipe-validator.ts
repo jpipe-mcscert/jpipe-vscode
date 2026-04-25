@@ -9,9 +9,6 @@ import type {
     AbstractSupport,
     Template,
     Justification,
-    Relation,
-    JustificationBody,
-    TemplateBody,
     JustificationElement
 } from './generated/ast.js';
 import {
@@ -102,7 +99,7 @@ export class JpipeValidator {
         const body = strategy.$container;
         if (!body?.rels) return;
 
-        const incoming = body.rels.filter(r => this.relationTargetsElement(r, strategy));
+        const incoming = body.rels.filter(r => r.to.ref === strategy);
         if (incoming.length === 0) {
             accept('warning',
                 `Strategy '${qualifiedIdText(strategy.id)}' is not supported by any evidence, sub-conclusion, or @support.`,
@@ -110,7 +107,7 @@ export class JpipeValidator {
             return;
         }
         for (const rel of incoming) {
-            const fromElem = this.resolveRelationFrom(rel, body);
+            const fromElem = rel.from.ref;
             if (!fromElem) continue;
             if (!isEvidence(fromElem) && !isSubConclusion(fromElem) && !isAbstractSupport(fromElem)) {
                 accept('error',
@@ -124,17 +121,14 @@ export class JpipeValidator {
         const body = conclusion.$container;
         if (!body?.rels) return;
 
-        const incoming = body.rels.filter(r => this.relationTargetsElement(r, conclusion));
+        const incoming = body.rels.filter(r => r.to.ref === conclusion);
         if (incoming.length === 0) {
             accept('warning',
                 `Conclusion '${qualifiedIdText(conclusion.id)}' is not supported by any strategy.`,
                 { node: conclusion, property: 'id' });
             return;
         }
-        const hasStrategy = incoming.some(rel => {
-            const fromElem = this.resolveRelationFrom(rel, body);
-            return fromElem !== undefined && isStrategy(fromElem);
-        });
+        const hasStrategy = incoming.some(rel => isStrategy(rel.from.ref));
         if (!hasStrategy) {
             accept('error',
                 `Conclusion '${qualifiedIdText(conclusion.id)}' must be supported by at least one strategy.`,
@@ -201,18 +195,6 @@ export class JpipeValidator {
         }
 
         return result;
-    }
-
-    private relationTargetsElement(rel: Relation, el: JustificationElement): boolean {
-        return qualifiedIdText(rel.to) === qualifiedIdText(el.id);
-    }
-
-    private resolveRelationFrom(
-        rel: Relation,
-        body: JustificationBody | TemplateBody
-    ): JustificationElement | undefined {
-        const fromId = qualifiedIdText(rel.from);
-        return body.body.find(e => qualifiedIdText(e.id) === fromId);
     }
 
     private elementKindLabel(elem: JustificationElement): string {

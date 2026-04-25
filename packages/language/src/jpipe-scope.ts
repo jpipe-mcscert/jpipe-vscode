@@ -1,11 +1,13 @@
-import { DefaultScopeProvider, type ReferenceInfo, type LangiumDocument } from 'langium';
+import { DefaultScopeProvider, AstUtils, type ReferenceInfo, type LangiumDocument } from 'langium';
 import { type JpipeServices } from './jpipe-module.js';
 import {
     isJustification,
     isTemplate,
+    type Justification,
     type Template,
     type Unit
 } from './generated/ast.js';
+import { getAllElements, qualifiedIdText } from './jpipe-utils.js';
 
 
 export class JpipeScopeProvider extends DefaultScopeProvider {
@@ -32,7 +34,23 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
             return super.getScope(context);
         }
 
+        if (context.property === 'from' || context.property === 'to') {
+            const owner = AstUtils.getContainerOfType(context.container, isJustification)
+                       ?? AstUtils.getContainerOfType(context.container, isTemplate);
+            if (owner) {
+                return this.createElementScope(owner);
+            }
+        }
+
         return super.getScope(context);
+    }
+
+    private createElementScope(owner: Justification | Template) {
+        const elements = getAllElements(owner);
+        const desc = elements.map(e =>
+            this.descriptions.createDescription(e, qualifiedIdText(e.id))
+        );
+        return this.createScope(desc);
     }
 
     private getDocumentAndUnit(node: any): { document: LangiumDocument | undefined, unit: Unit | undefined } {

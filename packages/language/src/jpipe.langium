@@ -40,7 +40,7 @@ AbstractSupport:
     '@support' id=QualifiedId 'is' name=STRING;
 
 Relation:
-    from=QualifiedId 'supports' to=QualifiedId;
+    from=[JustificationElement:QualifiedRef] 'supports' to=[JustificationElement:QualifiedRef];
 
 QualifiedId:
     parts+=ID (':' parts+=ID)*;
