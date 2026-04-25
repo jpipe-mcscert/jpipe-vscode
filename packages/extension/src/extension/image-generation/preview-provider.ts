@@ -628,21 +628,27 @@ export class PreviewProvider {
             var name = (symbolName && typeof symbolName === 'string') ? symbolName.trim() : '';
             if (!name) return;
             var matched = null;
-            svgEl.querySelectorAll('title').forEach(function(t) {
-                if (!matched && (t.textContent || '').trim() === name) {
-                    matched = t.closest('g.node') || t.closest('g.edge') || t.closest('g');
-                }
-            });
+            if (captionToStrip) {
+                var byId = document.getElementById(captionToStrip + ':' + name);
+                if (byId && svgEl.contains(byId)) matched = byId.closest('g.node') || byId.closest('g.edge') || byId;
+            }
+            if (!matched) {
+                var qualifiedName = captionToStrip ? captionToStrip + ':' + name : name;
+                svgEl.querySelectorAll('title').forEach(function(t) {
+                    if (!matched) {
+                        var txt = (t.textContent || '').trim();
+                        if (txt === qualifiedName || txt === name) {
+                            matched = t.closest('g.node') || t.closest('g.edge') || t.closest('g');
+                        }
+                    }
+                });
+            }
             if (!matched) {
                 svgEl.querySelectorAll('g.node text, g.edge text').forEach(function(t) {
                     if (!matched && (t.textContent || '').trim() === name) {
                         matched = t.closest('g.node') || t.closest('g.edge') || t.closest('g');
                     }
                 });
-            }
-            if (!matched) {
-                var byId = document.getElementById(name);
-                if (byId && svgEl.contains(byId)) matched = byId.closest('g') || byId;
             }
             if (matched) {
                 all.forEach(function(g) { if (g !== matched) g.classList.add('jpipe-dimmed'); });
