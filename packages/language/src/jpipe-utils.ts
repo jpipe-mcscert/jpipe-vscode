@@ -1,9 +1,27 @@
+import { type AstNode } from 'langium';
+import { DefaultNameProvider } from 'langium';
 import {
     type Justification,
     type Template,
     type JustificationElement,
     type QualifiedId
 } from './generated/ast.js';
+
+/**
+ * Name provider that returns the element's identifier (id field) rather than its label
+ * (name field), so LSP document symbols match the SVG node ids used by the preview panel.
+ */
+export class JpipeNameProvider extends DefaultNameProvider {
+    override getName(node: AstNode): string | undefined {
+        const n = node as unknown as Record<string, unknown>;
+        const id = n['id'];
+        if (typeof id === 'string') return id;
+        if (id && typeof id === 'object' && Array.isArray((id as QualifiedId).parts)) {
+            return localName(id as QualifiedId);
+        }
+        return super.getName(node);
+    }
+}
 
 /** Returns the colon-joined string form of a QualifiedId, e.g. ['t','abs'] → 't:abs'. */
 export function qualifiedIdText(id: QualifiedId): string {
