@@ -17,21 +17,30 @@ export function activate(context: vscode.ExtensionContext): void {
     
     // Register download commands for all supported formats
     context.subscriptions.push(
-        vscode.commands.registerCommand('jpipe.downloadPNG', () => {
-            imageGenerator.generateAndSave(ImageFormat.PNG);
-        }),
-        vscode.commands.registerCommand('jpipe.downloadSVG', () => {
-            imageGenerator.generateAndSave(ImageFormat.SVG);
-        }),
-        vscode.commands.registerCommand('jpipe.downloadJSON', () => {
-            imageGenerator.generateAndSave(ImageFormat.JSON);
-        })
+        vscode.commands.registerCommand('jpipe.downloadPNG',    () => imageGenerator.generateAndSave(ImageFormat.PNG)),
+        vscode.commands.registerCommand('jpipe.downloadSVG',    () => imageGenerator.generateAndSave(ImageFormat.SVG)),
+        vscode.commands.registerCommand('jpipe.downloadJSON',   () => imageGenerator.generateAndSave(ImageFormat.JSON)),
+        vscode.commands.registerCommand('jpipe.downloadJPEG',   () => imageGenerator.generateAndSave(ImageFormat.JPEG)),
+        vscode.commands.registerCommand('jpipe.downloadDOT',    () => imageGenerator.generateAndSave(ImageFormat.DOT)),
+        vscode.commands.registerCommand('jpipe.downloadPython', () => imageGenerator.generateAndSave(ImageFormat.PYTHON)),
+        vscode.commands.registerCommand('jpipe.downloadJPIPE',  () => imageGenerator.generateAndSave(ImageFormat.JPIPE))
     );
     
     // Register preview command
     context.subscriptions.push(
         vscode.commands.registerCommand('jpipe.vis.preview', () => {
             previewProvider.openPreview();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
+            const { ok, message } = await imageGenerator.check();
+            if (ok) {
+                vscode.window.showInformationMessage('jPipe is accessible.', { modal: true, detail: message });
+            } else {
+                vscode.window.showErrorMessage('Cannot access jPipe.', { modal: true, detail: message });
+            }
         })
     );
 }

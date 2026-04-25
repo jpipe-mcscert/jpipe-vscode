@@ -51,6 +51,48 @@
                 "title": "Download as SVG",
                 "category": "jPipe",
                 "icon": "$(save)"
+            },
+            {
+                "command": "jpipe.downloadPNG",
+                "title": "Download as PNG",
+                "category": "jPipe",
+                "icon": "$(save)"
+            },
+            {
+                "command": "jpipe.downloadJSON",
+                "title": "Download as JSON",
+                "category": "jPipe",
+                "icon": "$(save)"
+            },
+            {
+                "command": "jpipe.downloadJPEG",
+                "title": "Download as JPEG",
+                "category": "jPipe",
+                "icon": "$(save)"
+            },
+            {
+                "command": "jpipe.downloadDOT",
+                "title": "Download as DOT",
+                "category": "jPipe",
+                "icon": "$(save)"
+            },
+            {
+                "command": "jpipe.downloadPython",
+                "title": "Download as Python",
+                "category": "jPipe",
+                "icon": "$(save)"
+            },
+            {
+                "command": "jpipe.downloadJPIPE",
+                "title": "Download as jPipe",
+                "category": "jPipe",
+                "icon": "$(save)"
+            },
+            {
+                "command": "jpipe.checkInstallation",
+                "title": "Check jPipe Installation",
+                "category": "jPipe",
+                "icon": "$(check)"
             }
         ],
         "menus": {
@@ -71,26 +113,70 @@
                     "command": "jpipe.downloadSVG",
                     "when": "resourceLangId == jpipe",
                     "group": "navigation"
+                },
+                {
+                    "command": "jpipe.downloadPNG",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation"
+                },
+                {
+                    "command": "jpipe.downloadJSON",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation"
+                },
+                {
+                    "command": "jpipe.downloadJPEG",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation"
+                },
+                {
+                    "command": "jpipe.downloadDOT",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation"
+                },
+                {
+                    "command": "jpipe.downloadPython",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation"
+                },
+                {
+                    "command": "jpipe.downloadJPIPE",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation"
                 }
             ]
         },
         "configuration": {
             "title": "jPipe",
             "properties": {
+                "jpipe.executionMode": {
+                    "order": 1,
+                    "type": "string",
+                    "enum": ["cli", "jar"],
+                    "enumDescriptions": [
+                        "Use the jpipe CLI executable (recommended). Configure the path below with 'CLI: Path'.",
+                        "Use a JAR file (manual installation / developer mode). Configure the path below with 'JAR: File' and 'JAR: Java Executable'."
+                    ],
+                    "default": "cli",
+                    "markdownDescription": "How to invoke the jPipe compiler. Choose **cli** (recommended) or **jar** (manual installation).\n\n[Check jPipe installation](command:jpipe.checkInstallation)"
+                },
                 "jpipe.cliPath": {
+                    "order": 2,
                     "type": "string",
                     "default": "jpipe",
-                    "description": "Path to the jpipe CLI executable (takes priority over JAR)"
+                    "markdownDescription": "**[cli mode only]** Path to the `jpipe` CLI executable. Accepts a bare name (resolved via `PATH`), a relative path, or an absolute path."
                 },
                 "jpipe.jarFile": {
+                    "order": 3,
                     "type": "string",
                     "default": "",
-                    "description": "Path to the jpipe JAR file (fallback if CLI not set)"
+                    "markdownDescription": "**[jar mode only]** Absolute path to the `jpipe` JAR file."
                 },
-                "jpipe.setJavaVersion": {
+                "jpipe.javaExecutable": {
+                    "order": 4,
                     "type": "string",
                     "default": "java",
-                    "description": "Path to Java executable (used with JAR file)"
+                    "markdownDescription": "**[jar mode only]** Path to the `java` executable used to run the JAR. Defaults to `java` (resolved via `PATH`)."
                 }
             }
         }

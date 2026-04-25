@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node.js';
 import { ImageGenerator, ImageFormat } from './image-generator.js';
-import { DiagramStateMachine } from './diagram-state.js';
 
 interface DocumentSymbol {
     name: string;
@@ -12,17 +11,17 @@ interface DocumentSymbol {
 export class PreviewProvider {
     private static webviewPanel: vscode.WebviewPanel | undefined;
     private static webviewDisposed: boolean = true;
-    private stateMachine: DiagramStateMachine;
+    private unsaved: boolean = false;
     private subscriptions: vscode.Disposable[] = [];
     private lastRenderedDocumentUri: string | undefined;
+    private lastRenderedDiagramName: string | undefined;
     private lastGoodHtml: string | undefined;
-    
+
     constructor(
         private readonly imageGenerator: ImageGenerator,
         private readonly languageClient: LanguageClient,
         context: vscode.ExtensionContext
     ) {
-        this.stateMachine = new DiagramStateMachine();
         this.setupEventListeners(context);
     }
     
@@ -46,39 +45,40 @@ export class PreviewProvider {
     
     private setupEventListeners(context: vscode.ExtensionContext): void {
         const saveListener = vscode.workspace.onDidSaveTextDocument((document) => {
-            if (document.languageId === 'jpipe') {
-                this.stateMachine.onFileSaved(document.uri.toString());
-                if (PreviewProvider.webviewPanel && !PreviewProvider.webviewDisposed) {
-                    const editor = vscode.window.visibleTextEditors.find(e => e.document === document);
-                    this.updatePreview(document, editor);
-                }
-            }
+            if (document.languageId !== 'jpipe' || !PreviewProvider.webviewPanel || PreviewProvider.webviewDisposed) return;
+            this.unsaved = false;
+            PreviewProvider.webviewPanel.webview.postMessage({ type: 'setUnsaved', unsaved: false });
+            const editor = vscode.window.visibleTextEditors.find(e => e.document === document);
+            this.updatePreview(document, editor);
         });
-        
+
         const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
-            if (e.document.languageId === 'jpipe') {
-                this.stateMachine.onFileChanged(e.document.uri.toString());
-            }
+            if (e.document.languageId !== 'jpipe' || !PreviewProvider.webviewPanel || PreviewProvider.webviewDisposed) return;
+            this.unsaved = true;
+            PreviewProvider.webviewPanel.webview.postMessage({ type: 'setUnsaved', unsaved: true });
         });
-        
+
         const cursorListener = vscode.window.onDidChangeTextEditorSelection((e) => {
             if (e.textEditor.document.languageId !== 'jpipe' || !PreviewProvider.webviewPanel || PreviewProvider.webviewDisposed) return;
-            if (!this.stateMachine.canRender()) {
-                const msg = this.stateMachine.getMessage();
-                if (msg) vscode.window.showInformationMessage(msg);
+            const doc = e.textEditor.document;
+            const editor = e.textEditor;
+            const docUri = doc.uri.toString();
+            if (docUri !== this.lastRenderedDocumentUri) {
+                if (!this.unsaved) this.updatePreview(doc, editor);
                 return;
             }
-            const docUri = e.textEditor.document.uri.toString();
-            if (docUri === this.lastRenderedDocumentUri) {
-                this.updateHighlightOnly(e.textEditor.document, e.textEditor);
+            let currentDiagram: string | undefined;
+            try { currentDiagram = this.imageGenerator.findDiagramName(doc, editor); } catch { /* no diagram at cursor */ }
+            if (currentDiagram && currentDiagram !== this.lastRenderedDiagramName && !this.unsaved) {
+                this.updatePreview(doc, editor);
             } else {
-                this.updatePreview(e.textEditor.document, e.textEditor);
+                this.updateHighlightOnly(doc, editor);
             }
         });
-        
+
         const openListener = vscode.workspace.onDidOpenTextDocument((document) => {
             if (document.languageId === 'jpipe') {
-                this.stateMachine.onFileOpened(document.uri.toString());
+                this.unsaved = false;
             }
         });
         
@@ -109,10 +109,11 @@ export class PreviewProvider {
             const diagramName = this.imageGenerator.findDiagramName(document, editor);
             let highlightName = await this.getSymbolNameAtCursor(document, editor);
             if (highlightName === diagramName) highlightName = null;
-            const html = this.getHtmlForWebview(svg, highlightName ?? undefined, document.uri.fsPath, diagramName);
+            const html = this.getHtmlForWebview(svg, highlightName ?? undefined, document.uri.fsPath, diagramName, undefined, this.unsaved);
             PreviewProvider.webviewPanel.webview.html = html;
             this.lastGoodHtml = html;
             this.lastRenderedDocumentUri = document.uri.toString();
+            this.lastRenderedDiagramName = diagramName;
         } catch (error: any) {
             const stdout = typeof error?.stdout === 'string' ? error.stdout : '';
             const stderr = typeof error?.stderr === 'string' ? error.stderr : '';
@@ -138,7 +139,8 @@ export class PreviewProvider {
                     highlightName ?? undefined,
                     document.uri.fsPath,
                     diagramName,
-                    { hasError: true, exitCode }
+                    { hasError: true, exitCode },
+                    this.unsaved
                 );
                 PreviewProvider.webviewPanel.webview.html = html;
                 this.lastGoodHtml = html;
@@ -279,12 +281,14 @@ export class PreviewProvider {
         highlightNodeName?: string,
         documentPath?: string,
         diagramName?: string,
-        render?: { hasError?: boolean; exitCode?: number }
+        render?: { hasError?: boolean; exitCode?: number },
+        unsaved?: boolean
     ): string {
         const highlightJson = highlightNodeName != null ? JSON.stringify(highlightNodeName) : 'null';
         const pathToStripJson = documentPath != null ? JSON.stringify(documentPath) : 'null';
         const diagramNameJson = diagramName != null ? JSON.stringify(diagramName) : 'null';
         const renderJson = render ? JSON.stringify(render) : 'null';
+        const unsavedJson = unsaved ? 'true' : 'false';
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -369,6 +373,34 @@ export class PreviewProvider {
         }
         .toolbar-btn svg { width: 18px; height: 18px; }
         .toolbar-btn.zoom { width: 28px; }
+        .toolbar-btn.active {
+            background: var(--vscode-toolbar-activeBackground, rgba(128,128,128,0.3));
+            color: var(--vscode-focusBorder);
+        }
+        .toolbar-btn[data-tooltip] { position: relative; }
+        .toolbar-btn[data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--vscode-editorHoverWidget-background);
+            border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.4));
+            color: var(--vscode-editorHoverWidget-foreground);
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            z-index: 2000;
+        }
+        .toolbar-btn[data-tooltip]:hover::after { opacity: 1; }
+        #highlight-toggle .eye-open  { display: none; }
+        #highlight-toggle .eye-closed { display: flex; }
+        #highlight-toggle.active .eye-open  { display: flex; }
+        #highlight-toggle.active .eye-closed { display: none; }
         .download-wrap {
             position: relative;
         }
@@ -407,6 +439,7 @@ export class PreviewProvider {
             font-size: 12px;
             color: var(--vscode-descriptionForeground);
         }
+        body.has-unsaved-banner #container { top: 72px; }
         #container {
             position: fixed;
             top: 44px;
@@ -434,16 +467,22 @@ export class PreviewProvider {
             height: auto;
             object-fit: contain;
         }
-        #svg-wrapper .jpipe-highlight ellipse,
-        #svg-wrapper .jpipe-highlight path,
-        #svg-wrapper .jpipe-highlight polygon {
-            stroke: #e6b422 !important;
-            stroke-width: 4 !important;
+        #svg-wrapper g.node, #svg-wrapper g.edge { transition: opacity 0.15s ease; }
+        #svg-wrapper .jpipe-dimmed { opacity: 0.2; }
+        #unsaved-banner {
+            position: fixed;
+            top: 44px;
+            left: 0;
+            right: 0;
+            z-index: 999;
+            padding: 5px 12px;
+            font-size: 12px;
+            background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 15%, var(--vscode-editorWidget-background));
+            border-bottom: 1px solid var(--vscode-editorWarning-foreground);
+            color: var(--vscode-editorWarning-foreground);
+            display: none;
         }
-        #svg-wrapper .jpipe-highlight text { font-weight: bold; }
-        #svg-wrapper .jpipe-highlight {
-            filter: drop-shadow(0 0 8px #e6b422);
-        }
+        #unsaved-banner.visible { display: block; }
     </style>
 </head>
 <body>
@@ -453,12 +492,22 @@ export class PreviewProvider {
         </div>
         <div id="toolbar-right">
             <div class="toolbar-group download-wrap">
-                <button class="toolbar-btn" id="download-toggle" title="Download"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5l3-3H9V2H7v5.5H5l3 3zM2 12v2h12v-2H2z"/></svg></button>
+                <button class="toolbar-btn" id="download-toggle" data-tooltip="Download"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5l3-3H9V2H7v5.5H5l3 3zM2 12v2h12v-2H2z"/></svg></button>
                 <div id="download-drawer">
                     <button data-format="SVG">SVG</button>
                     <button data-format="PNG">PNG</button>
+                    <button data-format="JPEG">JPEG</button>
                     <button data-format="JSON">JSON</button>
+                    <button data-format="DOT">DOT</button>
+                    <button data-format="PYTHON">Python</button>
+                    <button data-format="JPIPE">jPipe</button>
                 </div>
+            </div>
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="highlight-toggle" data-tooltip="Highlight on cursor">
+                    <svg class="eye-open" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg>
+                    <svg class="eye-closed" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/><line x1="2" y1="2" x2="14" y2="14"/></svg>
+                </button>
             </div>
             <div class="toolbar-group">
                 <button class="toolbar-btn zoom" id="zoom-out" title="Zoom out">−</button>
@@ -467,6 +516,7 @@ export class PreviewProvider {
             </div>
         </div>
     </div>
+    <div id="unsaved-banner">⚠ Unsaved changes — showing last saved version</div>
     <div id="container">
         <div id="svg-wrapper">
             ${svg}
@@ -477,6 +527,24 @@ export class PreviewProvider {
         if (render && render.hasError) {
             document.body.classList.add('jpipe-render-error');
         }
+        (function() {
+            var banner = document.getElementById('unsaved-banner');
+            function setUnsaved(val) {
+                if (!banner) return;
+                if (val) {
+                    banner.classList.add('visible');
+                    document.body.classList.add('has-unsaved-banner');
+                } else {
+                    banner.classList.remove('visible');
+                    document.body.classList.remove('has-unsaved-banner');
+                }
+            }
+            setUnsaved(${unsavedJson});
+            window.addEventListener('message', function(event) {
+                var msg = event.data;
+                if (msg && msg.type === 'setUnsaved') setUnsaved(!!msg.unsaved);
+            });
+        })();
         const wrapper = document.getElementById('svg-wrapper');
         const svgEl = wrapper && wrapper.querySelector('svg');
         var pathToStrip = ${pathToStripJson};
@@ -497,30 +565,48 @@ export class PreviewProvider {
             });
         }
         
+        var highlightEnabled = false;
+        var lastHighlightName = null;
+        (function() {
+            var btn = document.getElementById('highlight-toggle');
+            if (!btn) return;
+            btn.addEventListener('click', function() {
+                highlightEnabled = !highlightEnabled;
+                btn.classList.toggle('active', highlightEnabled);
+                applyHighlight(lastHighlightName);
+            });
+        })();
+
         function applyHighlight(symbolName) {
+            lastHighlightName = symbolName;
             if (!svgEl) return;
-            svgEl.querySelectorAll('.jpipe-highlight').forEach(function(el) { el.classList.remove('jpipe-highlight'); });
-            const name = (symbolName && typeof symbolName === 'string') ? symbolName.trim() : '';
+            var all = Array.from(svgEl.querySelectorAll('g.node, g.edge'));
+            all.forEach(function(g) { g.classList.remove('jpipe-dimmed'); });
+            if (!highlightEnabled) return;
+            var name = (symbolName && typeof symbolName === 'string') ? symbolName.trim() : '';
             if (!name) return;
-            function addHighlight(g) {
-                if (g && !g.classList.contains('jpipe-highlight')) g.classList.add('jpipe-highlight');
-            }
+            var matched = null;
             svgEl.querySelectorAll('title').forEach(function(t) {
-                if ((t.textContent || '').trim() === name) {
-                    var g = t.closest('g.node') || t.closest('g');
-                    if (g) addHighlight(g);
+                if (!matched && (t.textContent || '').trim() === name) {
+                    matched = t.closest('g.node') || t.closest('g.edge') || t.closest('g');
                 }
             });
-            svgEl.querySelectorAll('g.node text, g text').forEach(function(t) {
-                if ((t.textContent || '').trim() === name) {
-                    var g = t.closest('g.node') || t.closest('g');
-                    if (g) addHighlight(g);
-                }
-            });
-            var byId = document.getElementById(name);
-            if (byId && svgEl.contains(byId)) addHighlight(byId.closest('g') || byId);
+            if (!matched) {
+                svgEl.querySelectorAll('g.node text, g.edge text').forEach(function(t) {
+                    if (!matched && (t.textContent || '').trim() === name) {
+                        matched = t.closest('g.node') || t.closest('g.edge') || t.closest('g');
+                    }
+                });
+            }
+            if (!matched) {
+                var byId = document.getElementById(name);
+                if (byId && svgEl.contains(byId)) matched = byId.closest('g') || byId;
+            }
+            if (matched) {
+                all.forEach(function(g) { if (g !== matched) g.classList.add('jpipe-dimmed'); });
+            }
         }
-        
+
         applyHighlight(${highlightJson});
         window.addEventListener('message', function(event) {
             var msg = event.data;
