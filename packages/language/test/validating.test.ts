@@ -185,6 +185,34 @@ describe('Validation tests', () => {
         expect(errors).toHaveLength(0);
     });
 
+    test('multi-level inheritance: intermediate override not re-required', async () => {
+        const doc = await parse(`
+            template root {
+                conclusion c is "Root conclusion"
+                strategy s is "Root strategy"
+                @support abs1 is "Root abstract #1"
+                @support abs2 is "Root abstract #2"
+                s    supports c
+                abs1 supports s
+                abs2 supports s
+            }
+            template intermediate implements root {
+                sub-conclusion root:abs1 is "Intermediate sub-conclusion"
+                strategy s is "Intermediate strategy"
+                @support abs_i is "Intermediate abstract"
+                s     supports root:abs1
+                abs_i supports s
+            }
+            justification leaf_intermediate implements intermediate {
+                evidence intermediate:abs_i is "Leaf support #3"
+                evidence root:abs2 is "Leaf evidence #2"
+            }
+        `);
+        assertNoParseErrors(doc);
+        const errors = (doc.diagnostics ?? []).filter((d: Diagnostic) => d.severity === 1);
+        expect(errors).toHaveLength(0);
+    });
+
     test('unqualified override element triggers error (missing template prefix)', async () => {
         const doc = await parse(`
             template T {

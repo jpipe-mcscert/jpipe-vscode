@@ -146,32 +146,61 @@ export class JpipeValidator {
         if (!justification.parent?.ref) return;
 
         const template = justification.parent.ref;
-        // $refText is the text written after 'implements', e.g. "a_template" or "base:t"
         const parentRefText = justification.parent.$refText ?? template.id;
-        const allTemplateElements = getAllElements(template);
-        const requiredSupportElements = allTemplateElements.filter(
-            (elem): elem is AbstractSupport => isAbstractSupport(elem)
-        );
         const localElements = getLocalElements(justification);
-        // Override key = parentRefText + ':' + elementLocalName, e.g. "a_template:abs" or "base:t:abs"
         const localById = new Map(localElements.map(e => [qualifiedIdText(e.id), e]));
 
-        for (const supportElement of requiredSupportElements) {
-            const expectedKey = `${parentRefText}:${qualifiedIdText(supportElement.id)}`;
-            const override = localById.get(expectedKey);
+        for (const req of this.getRequiredOverrides(template, parentRefText)) {
+            const override = localById.get(req.expectedKey);
             if (!override) {
                 accept('error',
-                    `Justification '${justification.id}' must override '@support ${qualifiedIdText(supportElement.id)}' from template '${template.id}'. Expected element with id '${expectedKey}'.`,
+                    `Justification '${justification.id}' must override '@support ${qualifiedIdText(req.support.id)}' from template '${req.sourceTemplateId}'. Expected element with id '${req.expectedKey}'.`,
                     { node: justification, property: 'id' });
                 continue;
             }
             const elemType = this.getElementType(override);
             if (elemType && elemType !== 'evidence' && elemType !== 'sub-conclusion') {
                 accept('error',
-                    `Cannot override '@support ${qualifiedIdText(supportElement.id)}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
+                    `Cannot override '@support ${qualifiedIdText(req.support.id)}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
                     { node: override, property: 'id' });
             }
         }
+    }
+
+    private getRequiredOverrides(
+        template: Template,
+        refText: string
+    ): Array<{ support: AbstractSupport; expectedKey: string; sourceTemplateId: string }> {
+        const local = template.contents?.body ?? [];
+        // Keys of non-abstract elements defined directly in this template (these override parent abstracts)
+        const localOverrideKeys = new Set(
+            local.filter(e => !isAbstractSupport(e)).map(e => qualifiedIdText(e.id))
+        );
+        const result: Array<{ support: AbstractSupport; expectedKey: string; sourceTemplateId: string }> = [];
+
+        // Abstract supports declared directly in this template
+        for (const elem of local) {
+            if (isAbstractSupport(elem)) {
+                result.push({
+                    support: elem,
+                    expectedKey: `${refText}:${qualifiedIdText(elem.id)}`,
+                    sourceTemplateId: template.id
+                });
+            }
+        }
+
+        // Propagate unresolved abstract supports from the parent chain
+        if (template.parent?.ref) {
+            const parentRefText = template.parent.$refText ?? template.parent.ref.id;
+            for (const req of this.getRequiredOverrides(template.parent.ref, parentRefText)) {
+                // Skip if this template already provides a non-abstract override for it
+                if (!localOverrideKeys.has(req.expectedKey)) {
+                    result.push(req);
+                }
+            }
+        }
+
+        return result;
     }
 
     private relationTargetsElement(rel: Relation, el: JustificationElement): boolean {
