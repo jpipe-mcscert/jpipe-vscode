@@ -23,9 +23,13 @@ function envWithPath(): NodeJS.ProcessEnv {
 }
 
 export enum ImageFormat {
-    PNG = 'PNG',
-    SVG = 'SVG',
-    JSON = 'JSON',
+    JPIPE  = 'JPIPE',
+    JSON   = 'JSON',
+    PNG    = 'PNG',
+    JPEG   = 'JPEG',
+    SVG    = 'SVG',
+    DOT    = 'DOT',
+    PYTHON = 'PYTHON',
 }
 
 export class ImageGenerator {
@@ -63,51 +67,39 @@ export class ImageGenerator {
         const diagramName = this.findDiagramName(document, editor);
         
         const config = vscode.workspace.getConfiguration('jpipe');
-        const cliPath = (config.get<string>('cliPath', 'jpipe') ?? '').trim();
-        const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
-        const javaVersion = config.get<string>('setJavaVersion', 'java');
-        
-        const hasJar = jarFile.length > 0;
-        const hasCliPath = cliPath.length > 0;
-        const cliPathIsAbsolute = hasCliPath && (path.isAbsolute(cliPath) || cliPath.includes(path.sep));
-
-        const useCli = hasCliPath || !hasJar;
-        const useJar = hasJar;
-
-        if (!useCli && !useJar) {
-            vscode.window.showErrorMessage('Please configure a location for CLI or JAR file for jPipe!');
-            throw new Error('No jPipe executable configured. Please set jpipe.cliPath or jpipe.jarFile in settings.');
-        }
+        const mode = config.get<string>('executionMode', 'cli');
 
         let command: string;
-        const formatFlag = format.toString().toUpperCase();
         const inputArg = `-i "${path.normalize(inputFile)}"`;
-        const diagramArg = `-d ${diagramName}`;
-        const formatArg = `-f ${formatFlag}`;
+        const modelArg = `-m ${diagramName}`;
+        const formatArg = `-f ${format.toString().toUpperCase()}`;
 
-        if (useCli && (!useJar || hasCliPath)) {
-            let cliCmd: string;
-            if (cliPathIsAbsolute) {
-                cliCmd = path.normalize(cliPath);
-            } else {
-                const bareName = (hasCliPath ? cliPath : 'jpipe').trim();
-                try {
-                    const { stdout } = await execAsync(`which ${bareName}`, { env: envWithPath() });
-                    cliCmd = stdout.trim();
-                } catch {
-                    cliCmd = bareName;
-                }
+        if (mode === 'jar') {
+            const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
+            const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
+            if (!jarFile) {
+                vscode.window.showErrorMessage('Please set jpipe.jarFile in settings.');
+                throw new Error('jpipe.jarFile is not configured.');
             }
-            command = `"${cliCmd}" ${inputArg} ${diagramArg} ${formatArg}`;
-        } else if (useJar) {
             if (!fs.existsSync(jarFile)) {
                 vscode.window.showErrorMessage(`JAR file not found: ${jarFile}`);
                 throw new Error(`JAR file not found: ${jarFile}`);
             }
-            command = `${javaVersion} -jar "${path.normalize(jarFile)}" ${inputArg} ${diagramArg} ${formatArg}`;
+            command = `"${javaExecutable}" -jar "${path.normalize(jarFile)}" process ${inputArg} ${modelArg} ${formatArg}`;
         } else {
-            vscode.window.showErrorMessage('Please configure a location for CLI or JAR file for jPipe!');
-            throw new Error('No jPipe executable configured. Please set jpipe.cliPath or jpipe.jarFile in settings.');
+            const cliPath = (config.get<string>('cliPath', 'jpipe') ?? 'jpipe').trim();
+            let cliCmd: string;
+            if (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) {
+                cliCmd = path.normalize(cliPath);
+            } else {
+                try {
+                    const { stdout } = await execAsync(`which ${cliPath}`, { env: envWithPath() });
+                    cliCmd = stdout.trim();
+                } catch {
+                    cliCmd = cliPath;
+                }
+            }
+            command = `"${cliCmd}" process ${inputArg} ${modelArg} ${formatArg}`;
         }
         
         if (saveToFile) {
@@ -141,6 +133,43 @@ export class ImageGenerator {
     /**
      * Generate and save a file in the given format
      */
+    public async check(): Promise<{ ok: boolean; message: string }> {
+        const config = vscode.workspace.getConfiguration('jpipe');
+        const mode = config.get<string>('executionMode', 'cli');
+
+        let command: string;
+        if (mode === 'jar') {
+            const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
+            const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
+            if (!jarFile) return { ok: false, message: 'jpipe.jarFile is not configured.' };
+            if (!fs.existsSync(jarFile)) return { ok: false, message: `JAR file not found: ${jarFile}` };
+            command = `"${javaExecutable}" -jar "${path.normalize(jarFile)}" --headless doctor`;
+        } else {
+            const cliPath = (config.get<string>('cliPath', 'jpipe') ?? 'jpipe').trim();
+            let cliCmd: string;
+            if (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) {
+                cliCmd = path.normalize(cliPath);
+            } else {
+                try {
+                    const { stdout } = await execAsync(`which ${cliPath}`, { env: envWithPath() });
+                    cliCmd = stdout.trim();
+                } catch {
+                    cliCmd = cliPath;
+                }
+            }
+            command = `"${cliCmd}" --headless doctor`;
+        }
+
+        try {
+            const { stdout, stderr } = await execAsync(command, { env: envWithPath() });
+            const output = (stdout + stderr).trim();
+            return { ok: true, message: output || 'jPipe is accessible.' };
+        } catch (error: any) {
+            const detail = (error?.stderr ?? error?.stdout ?? error?.message ?? String(error)).trim();
+            return { ok: false, message: `Cannot access jPipe: ${detail}` };
+        }
+    }
+
     public async generateAndSave(format: ImageFormat = ImageFormat.SVG, document?: vscode.TextDocument): Promise<void> {
         try {
             await this.generate(true, format, document);
@@ -182,7 +211,8 @@ export class ImageGenerator {
         format: ImageFormat
     ): Promise<vscode.Uri | undefined> {
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
-        const extension = format.toString().toLowerCase();
+        const extensionMap: Record<string, string> = { PYTHON: 'py', JPEG: 'jpeg', JPIPE: 'jd' };
+        const extension = extensionMap[format] ?? format.toString().toLowerCase();
         const defaultUri = workspaceFolder 
             ? vscode.Uri.joinPath(workspaceFolder.uri, `${diagramName}.${extension}`)
             : vscode.Uri.file(`${diagramName}.${extension}`);
