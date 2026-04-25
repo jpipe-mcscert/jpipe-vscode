@@ -10,6 +10,8 @@ export class JpipeServerLogger {
         this.rank = idx === -1 ? ORDER.indexOf('info') : idx;
     }
 
+    shouldLog(level: LogLevel): boolean { return ORDER.indexOf(level) <= this.rank; }
+
     error(msg: string): void { if (this.rank >= 1) console.error(`[jPipe] ERROR ${msg}`); }
     warn(msg: string):  void { if (this.rank >= 2) console.warn(`[jPipe] WARN  ${msg}`); }
     info(msg: string):  void { if (this.rank >= 3) console.log(`[jPipe] INFO  ${msg}`); }

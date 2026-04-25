@@ -63,6 +63,7 @@ function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogg
 
     const outputChannel = vscode.window.createOutputChannel('jPipe Language Server');
     const traceOutputChannel = vscode.window.createOutputChannel('jPipe Language Server (Trace)');
+    context.subscriptions.push(outputChannel, traceOutputChannel);
 
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: 'file', language: 'jpipe' }],

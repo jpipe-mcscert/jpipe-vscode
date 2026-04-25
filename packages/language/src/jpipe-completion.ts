@@ -319,7 +319,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
     }
 
     private getTemplateElementCompletions(context: CompletionContext): CompletionItem[] {
-        this.logger.debug(`Completion request at line ${context.position.line}:${context.position.character}`);
+        if (this.logger.shouldLog('debug')) this.logger.debug(`Completion request at line ${context.position.line}:${context.position.character}`);
         try {
             const currentNode = context.node;
             if (!currentNode) return [];

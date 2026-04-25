@@ -23,6 +23,8 @@ export class JpipeLogger {
         return idx === -1 ? ORDER.indexOf('info') : idx;
     }
 
+    shouldLog(level: LogLevel): boolean { return ORDER.indexOf(level) <= this.rank; }
+
     trace(msg: string): void { this.write(5, 'TRACE', msg); }
     debug(msg: string): void { this.write(4, 'DEBUG', msg); }
     info(msg: string):  void { this.write(3, 'INFO ', msg); }

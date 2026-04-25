@@ -125,7 +125,7 @@ export class ImageGenerator {
             this.logGenerationError(diagramName, error);
             // Preserve stdout/stderr so the preview can still render a best-effort SVG (if any)
             // and show diagnostics inline instead of blanking the whole viewer.
-            const e = new Error(`Failed to generate SVG: ${error.message}`) as Error & { stdout?: string; stderr?: string; exitCode?: number };
+            const e = new Error(`Failed to generate ${format}: ${error.message}`) as Error & { stdout?: string; stderr?: string; exitCode?: number };
             e.stdout = typeof error?.stdout === 'string' ? error.stdout : undefined;
             e.stderr = typeof error?.stderr === 'string' ? error.stderr : undefined;
             e.exitCode = typeof error?.code === 'number' ? error.code : undefined;

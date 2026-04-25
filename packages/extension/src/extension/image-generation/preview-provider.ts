@@ -198,7 +198,7 @@ export class PreviewProvider {
         const diagramName = this.imageGenerator.findDiagramName(document, editor);
         let name = await this.getSymbolNameAtCursor(document, editor);
         if (name === diagramName) name = null;
-        this.logger.trace(`Highlight-only update: '${name ?? '(none)'}' in '${diagramName}'`);
+        if (this.logger.shouldLog('trace')) this.logger.trace(`Highlight-only update: '${name ?? '(none)'}' in '${diagramName}'`);
         PreviewProvider.webviewPanel.webview.postMessage({ type: 'highlight', name: name ?? null });
     }
     

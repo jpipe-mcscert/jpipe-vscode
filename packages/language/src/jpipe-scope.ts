@@ -26,7 +26,7 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
     }
 
     override getScope(context: ReferenceInfo) {
-        this.logger.debug(`Scope resolution: property='${context.property}' container=${context.container.$type}`);
+        if (this.logger.shouldLog('debug')) this.logger.debug(`Scope resolution: property='${context.property}' container=${context.container.$type}`);
         if (context.property === 'parent' && (isJustification(context.container) || isTemplate(context.container))) {
             const { document, unit } = this.getDocumentAndUnit(context.container);
             if (document && unit) {
