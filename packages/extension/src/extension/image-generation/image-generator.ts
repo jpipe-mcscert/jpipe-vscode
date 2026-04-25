@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+import { JpipeLogger } from '../logger.js';
 
 const execAsync = promisify(exec);
 
@@ -33,8 +34,8 @@ export enum ImageFormat {
 }
 
 export class ImageGenerator {
-    
-    constructor() {}
+
+    constructor(private readonly logger: JpipeLogger) {}
     
     /**
      * Generate an image from the active jpipe file or provided document
@@ -95,13 +96,15 @@ export class ImageGenerator {
                 try {
                     const { stdout } = await execAsync(`which ${cliPath}`, { env: envWithPath() });
                     cliCmd = stdout.trim();
+                    this.logger.debug(`Resolved CLI '${cliPath}' → ${cliCmd}`);
                 } catch {
                     cliCmd = cliPath;
+                    this.logger.debug(`'which ${cliPath}' failed, using bare name`);
                 }
             }
             command = `"${cliCmd}" process ${inputArg} ${modelArg} ${formatArg}`;
         }
-        
+
         if (saveToFile) {
             const outputPath = await this.promptForSaveLocation(document, diagramName, format);
             if (!outputPath) {
@@ -111,18 +114,18 @@ export class ImageGenerator {
             }
             command += ` -o "${outputPath.fsPath}"`;
         }
-        
-        console.log('[jPipe] Executing command:', command);
-        
+
+        this.logger.debug(`Executing: ${command}`);
+
         try {
             const { stdout } = await execAsync(command);
-            console.log('[jPipe] Generated SVG successfully');
+            this.logger.info(`Generated ${format} for '${diagramName}' (${path.basename(document.uri.fsPath)})`);
             return stdout;
         } catch (error: any) {
-            console.error('[jPipe] Error generating SVG:', error);
+            this.logGenerationError(diagramName, error);
             // Preserve stdout/stderr so the preview can still render a best-effort SVG (if any)
             // and show diagnostics inline instead of blanking the whole viewer.
-            const e = new Error(`Failed to generate SVG: ${error.message}`) as Error & { stdout?: string; stderr?: string; exitCode?: number };
+            const e = new Error(`Failed to generate ${format}: ${error.message}`) as Error & { stdout?: string; stderr?: string; exitCode?: number };
             e.stdout = typeof error?.stdout === 'string' ? error.stdout : undefined;
             e.stderr = typeof error?.stderr === 'string' ? error.stderr : undefined;
             e.exitCode = typeof error?.code === 'number' ? error.code : undefined;
@@ -182,6 +185,17 @@ export class ImageGenerator {
         }
     }
     
+    private logGenerationError(diagramName: string, error: any): void {
+        const exitCode: number | undefined = typeof error?.code === 'number' ? error.code : undefined;
+        if (exitCode === 1) {
+            this.logger.warn(`Compiler exit 1 (model errors) for '${diagramName}'`);
+        } else if (exitCode === 42) {
+            this.logger.error(`Compiler exit 42 (crash) for '${diagramName}'`);
+        } else {
+            this.logger.error(`Generation failed for '${diagramName}': ${error instanceof Error ? error.message : String(exitCode ?? error)}`);
+        }
+    }
+
     findDiagramName(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): string {
         const lines = document.getText().split('\n');
         const cursorLine = editor?.selection.active.line ?? 0;

@@ -5,6 +5,7 @@ import { JpipeValidator, registerValidationChecks } from './jpipe-validator.js';
 import { JpipeScopeProvider } from './jpipe-scope.js';
 import { JpipeImportService } from './jpipe-import.js';
 import { JpipeCompletionProvider } from './jpipe-completion.js';
+import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -15,7 +16,8 @@ export type JpipeAddedServices = {
     },
     references: {
         JpipeImportService: JpipeImportService
-    }
+    },
+    logger: JpipeServerLogger
 }
 
 /**
@@ -24,23 +26,21 @@ export type JpipeAddedServices = {
  */
 export type JpipeServices = LangiumServices & JpipeAddedServices
 
-/**
- * Dependency injection module that overrides Langium default services and contributes the
- * declared custom services. The Langium defaults can be partially specified to override only
- * selected services, while the custom services must be fully specified.
- */
-export const JpipeModule: Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> = {
-    validation: {
-        JpipeValidator: () => new JpipeValidator()
-    },
-    references: {
-        ScopeProvider: (services) => new JpipeScopeProvider(services),
-        JpipeImportService: (services) => new JpipeImportService(services)
-    },
-    lsp: {
-        CompletionProvider: (services) => new JpipeCompletionProvider(services)
-    }
-};
+function buildJpipeModule(logger: JpipeServerLogger): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
+    return {
+        validation: {
+            JpipeValidator: (services) => new JpipeValidator(services)
+        },
+        references: {
+            ScopeProvider: (services) => new JpipeScopeProvider(services),
+            JpipeImportService: (services) => new JpipeImportService(services)
+        },
+        lsp: {
+            CompletionProvider: (services) => new JpipeCompletionProvider(services)
+        },
+        logger: () => logger
+    };
+}
 
 /**
  * Create the full set of services required by Langium.
@@ -55,12 +55,14 @@ export const JpipeModule: Module<JpipeServices, PartialLangiumServices & JpipeAd
  *  - Services specified in this file
  *
  * @param context Optional module context with the LSP connection
+ * @param logLevel Controls verbosity of the language server log (default: 'info')
  * @returns An object wrapping the shared services and the language-specific services
  */
-export function createJpipeServices(context: DefaultSharedModuleContext): {
+export function createJpipeServices(context: DefaultSharedModuleContext, logLevel: LogLevel = 'info'): {
     shared: LangiumSharedServices,
     Jpipe: JpipeServices
 } {
+    const logger = new JpipeServerLogger(logLevel);
     const shared = inject(
         createDefaultSharedModule(context),
         JpipeGeneratedSharedModule
@@ -68,7 +70,7 @@ export function createJpipeServices(context: DefaultSharedModuleContext): {
     const Jpipe = inject(
         createDefaultModule({ shared }),
         JpipeGeneratedModule,
-        JpipeModule
+        buildJpipeModule(logger)
     );
     shared.ServiceRegistry.register(Jpipe);
     registerValidationChecks(Jpipe);

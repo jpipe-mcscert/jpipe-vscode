@@ -11,9 +11,9 @@
 ## Contributors
 
   - [Dr. Sébastien Mosser](https://mosser.github.io/), Associate Professor, McMaster University
-  - [Nirmal Chaudhari](https://www.linkedin.com/in/nirmal2003/), B.Eng. Student, McMaster University
   - [Cass Braun](https://www.linkedin.com/in/cass-braun/), B.Eng. Student, McMaster University
   - [Andrew Bovbel](https://www.linkedin.com/in/andrewbovbel/), B.Eng. Student, McMaster University
+  - [Nirmal Chaudhari](https://www.linkedin.com/in/nirmal2003/), B.Eng. Student, McMaster University
 
 ## How to contribute?
 
