@@ -173,6 +173,47 @@ export class ImageGenerator {
         }
     }
 
+    public async generateDiagnostic(document: vscode.TextDocument): Promise<string> {
+        const inputFile = path.normalize(document.uri.fsPath);
+        const config = vscode.workspace.getConfiguration('jpipe');
+        const mode = config.get<string>('executionMode', 'cli');
+
+        let command: string;
+        const inputArg = `-i "${inputFile}"`;
+
+        if (mode === 'jar') {
+            const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
+            const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
+            if (!jarFile) return 'jpipe.jarFile is not configured.';
+            if (!fs.existsSync(jarFile)) return `JAR file not found: ${jarFile}`;
+            command = `"${javaExecutable}" -jar "${path.normalize(jarFile)}" diagnostic ${inputArg}`;
+        } else {
+            const cliPath = (config.get<string>('cliPath', 'jpipe') ?? 'jpipe').trim();
+            let cliCmd: string;
+            if (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) {
+                cliCmd = path.normalize(cliPath);
+            } else {
+                try {
+                    const { stdout } = await execAsync(`which ${cliPath}`, { env: envWithPath() });
+                    cliCmd = stdout.trim();
+                } catch {
+                    cliCmd = cliPath;
+                }
+            }
+            command = `"${cliCmd}" diagnostic ${inputArg}`;
+        }
+
+        this.logger.debug(`Executing: ${command}`);
+        try {
+            const { stdout, stderr } = await execAsync(command, { env: envWithPath() });
+            return [stdout, stderr].filter(Boolean).join('\n').trim() || '(no output)';
+        } catch (e: any) {
+            const out = (e.stdout ?? '').trim();
+            const err = (e.stderr ?? '').trim();
+            return [out, err].filter(Boolean).join('\n') || `Exit code ${e.code}`;
+        }
+    }
+
     public async generateAndSave(format: ImageFormat = ImageFormat.SVG, document?: vscode.TextDocument): Promise<void> {
         try {
             await this.generate(true, format, document);
