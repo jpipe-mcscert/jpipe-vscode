@@ -1,2 +1,18 @@
-.vscode/**
-.vscode-test/**
+#.vscode/**
+#.vscode-test/**
+
+# Ignore development files
+.vscode/
+.vscode-test
+.git/
+node_modules/
+src/
+tsconfig.json
+.eslintrc.json
+.gitignore
+.vscodeignore
+docs 
+**/*.map 
+
+# Ignore build artifacts (if necessary)
+out/test/
