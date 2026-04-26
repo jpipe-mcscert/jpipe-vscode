@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { EmptyFileSystem, type LangiumDocument } from 'langium';
 import { clearDocuments, expectCompletion, parseHelper } from 'langium/test';
@@ -438,7 +439,7 @@ describe('Load path completion', () => {
             await checkCompletion({
                 text: `load "<|>"`,
                 index: 0,
-                parseOptions: { documentUri: `file://${path.join(tmpDir, 'test.jd')}` },
+                parseOptions: { documentUri: pathToFileURL(path.join(tmpDir, 'test.jd')).toString() },
                 assert: (completions) => {
                     const labels = completions.items.map(i => i.label);
                     expect(labels.some(l => l.endsWith('models.jd'))).toBe(true);
@@ -460,7 +461,7 @@ describe('Load path completion', () => {
             await checkCompletion({
                 text: `load "<|>"`,
                 index: 0,
-                parseOptions: { documentUri: `file://${path.join(tmpDir, 'test.jd')}` },
+                parseOptions: { documentUri: pathToFileURL(path.join(tmpDir, 'test.jd')).toString() },
                 assert: (completions) => {
                     const labels = completions.items.map(i => i.label);
                     expect(labels.some(l => l.includes('templates'))).toBe(true);

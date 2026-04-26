@@ -304,7 +304,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             items.unshift(atSupportItem);
         }
 
-        const loadPathItems = this.getLoadPathCompletions(document, params);
+        const loadPathItems = await this.getLoadPathCompletions(document, params);
         if (loadPathItems.length > 0) {
             return { ...result, items: loadPathItems };
         }
@@ -353,17 +353,21 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             }
         }
 
-        for (const d of this.services.shared.workspace.IndexManager.allElements(JustificationRule.$type)) {
-            push(d.name, 'justification');
-        }
-        for (const d of this.services.shared.workspace.IndexManager.allElements(TemplateRule.$type)) {
-            push(d.name, 'template');
+        // Only hit the workspace index when the user has typed a prefix — avoids a full
+        // O(N) scan on the very first keystroke right after `is `.
+        if (partial.length > 0) {
+            for (const d of this.services.shared.workspace.IndexManager.allElements(JustificationRule.$type)) {
+                push(d.name, 'justification');
+            }
+            for (const d of this.services.shared.workspace.IndexManager.allElements(TemplateRule.$type)) {
+                push(d.name, 'template');
+            }
         }
 
         return out;
     }
 
-    private getLoadPathCompletions(document: LangiumDocument, params: CompletionParams): CompletionItem[] {
+    private async getLoadPathCompletions(document: LangiumDocument, params: CompletionParams): Promise<CompletionItem[]> {
         const pos = params.position;
         const linePfx = document.textDocument.getText({
             start: Position.create(pos.line, 0),
@@ -377,6 +381,10 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         const pathStartCol = linePfx.search(/["']/) + 1;
         const docPath = URI.parse(document.uri.toString()).path;
         const docDir = path.dirname(docPath);
+        const makeTextEdit = (p: string) => ({
+            range: { start: { line: pos.line, character: pathStartCol }, end: pos },
+            newText: p
+        });
 
         const currentUnit = document.parseResult.value as Unit | undefined;
         const alreadyLoaded = new Set(currentUnit?.imports.map(l => {
@@ -384,14 +392,22 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             return p.startsWith('../') ? p : `./${p}`;
         }) ?? []);
 
-        const makeTextEdit = (insertPath: string) => ({
-            range: { start: { line: pos.line, character: pathStartCol }, end: pos },
-            newText: insertPath
-        });
+        const workspaceItems = this.collectIndexedJdItems(docPath, docDir, partial, alreadyLoaded, makeTextEdit);
+        const seenLabels = new Set(workspaceItems.map(i => i.label));
+        const dirItems = await this.collectDirectoryJdItems(docDir, partial, alreadyLoaded, seenLabels, makeTextEdit);
 
-        // Workspace-wide: collect all .jd files already known to the index
+        return [...workspaceItems, ...dirItems];
+    }
+
+    private collectIndexedJdItems(
+        docPath: string,
+        docDir: string,
+        partial: string,
+        alreadyLoaded: Set<string>,
+        makeTextEdit: (p: string) => { range: { start: Position; end: Position }; newText: string }
+    ): CompletionItem[] {
         const seen = new Set<string>();
-        const workspaceItems: CompletionItem[] = [];
+        const items: CompletionItem[] = [];
         for (const type of [JustificationRule.$type, TemplateRule.$type]) {
             for (const desc of this.services.shared.workspace.IndexManager.allElements(type)) {
                 const targetUri = desc.documentUri?.toString();
@@ -403,7 +419,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                 const insertPath = rel.startsWith('../') ? rel : `./${rel}`;
                 if (alreadyLoaded.has(insertPath)) continue;
                 if (partial && !insertPath.includes(partial)) continue;
-                workspaceItems.push({
+                items.push({
                     label: insertPath,
                     kind: CompletionItemKind.File,
                     detail: '.jd file',
@@ -412,37 +428,48 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                 });
             }
         }
+        return items;
+    }
 
-        // Directory navigation: local filesystem for the typed partial path (supports ../
-        // navigation and discovering files not yet in the index)
+    private async collectDirectoryJdItems(
+        docDir: string,
+        partial: string,
+        alreadyLoaded: Set<string>,
+        seenLabels: Set<string>,
+        makeTextEdit: (p: string) => { range: { start: Position; end: Position }; newText: string }
+    ): Promise<CompletionItem[]> {
         const partialDir = path.dirname(partial);
         const filePrefix = path.basename(partial);
         const resolvedDir = path.resolve(docDir, partialDir === '.' ? '' : partialDir);
         let entries: fs.Dirent<string>[];
         try {
-            entries = fs.readdirSync(resolvedDir, { withFileTypes: true, encoding: 'utf-8' });
+            entries = await fs.promises.readdir(resolvedDir, { withFileTypes: true, encoding: 'utf-8' });
         } catch {
-            entries = [];
+            return [];
         }
-        const seenLabels = new Set(workspaceItems.map(i => i.label));
-        const dirItems: CompletionItem[] = entries
+        return entries
             .filter(e => (e.isDirectory() || e.name.endsWith('.jd')) && (!filePrefix || e.name.startsWith(filePrefix)))
-            .map(e => {
-                const isDir = e.isDirectory();
-                const relPath = path.relative(docDir, path.join(resolvedDir, e.name)).replaceAll('\\', '/');
-                const insertPath = relPath.startsWith('../') ? relPath : `./${relPath}`;
-                const label = isDir ? `${insertPath}/` : insertPath;
-                return {
-                    label,
-                    kind: isDir ? CompletionItemKind.Folder : CompletionItemKind.File,
-                    detail: isDir ? 'directory' : '.jd file',
-                    sortText: isDir ? `0_dir_${label}` : `1_file_${label}`,
-                    textEdit: makeTextEdit(label)
-                };
-            })
+            .map(e => this.makeLoadPathItem(e, docDir, resolvedDir, makeTextEdit))
             .filter(item => !seenLabels.has(item.label) && !alreadyLoaded.has(item.label));
+    }
 
-        return [...workspaceItems, ...dirItems];
+    private makeLoadPathItem(
+        entry: fs.Dirent<string>,
+        docDir: string,
+        resolvedDir: string,
+        makeTextEdit: (p: string) => { range: { start: Position; end: Position }; newText: string }
+    ): CompletionItem {
+        const isDir = entry.isDirectory();
+        const relPath = path.relative(docDir, path.join(resolvedDir, entry.name)).replaceAll('\\', '/');
+        const insertPath = relPath.startsWith('../') ? relPath : `./${relPath}`;
+        const label = isDir ? `${insertPath}/` : insertPath;
+        return {
+            label,
+            kind: isDir ? CompletionItemKind.Folder : CompletionItemKind.File,
+            detail: isDir ? 'directory' : '.jd file',
+            sortText: isDir ? `0_dir_${label}` : `1_file_${label}`,
+            textEdit: makeTextEdit(label)
+        };
     }
 
     private offsetInsideSomeTemplateBody(document: LangiumDocument, offset: number): boolean {
