@@ -1,5 +1,13 @@
 ## Changelog
 
+### v1.0.2 (2026-04-26)
+- Leader: Sébastien Mosser
+  - Bug Fixes:
+    - Fix broken URL in README
+    - Fix inconsistent version numbers across `package.json` files
+  - Documentation:
+    - Document version bump procedure in README
+
 ### v1.0.1 (2026-04-26)
 - Leader: Sébastien Mosser
   - Contributors: Andrew Bovbel
