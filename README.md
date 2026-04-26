@@ -13,22 +13,6 @@
   - [Andrew Bovbel](https://www.linkedin.com/in/andrewbovbel/), B.Eng. Student, McMaster University
   - [Nirmal Chaudhari](https://www.linkedin.com/in/nirmal2003/), B.Eng. Student, McMaster University
 
-
-## Using the plugin
-
-### Required software
-
-The plugin requires the `jpipe` compiler to be vailable on your computer:
-  - [https://www.jpipe.org/tutorials/install/](https://www.jpipe.org/tutorials/install/)
-
-### How to use the plugin?
-
-Simply open a file using the `.jd` extension.
-
-### Tutorials
-
-Please visit [https://www.jpipe.org/tutorials/](https://www.jpipe.org/tutorials/) for examples and guidance o how to develop justificiation models using jPipe.
-
 ## Contributing to the plugin
 
 You can find more information about the jPipe project on the main repository: [https://github.com/jpipe-mcscert](https://github.com/jpipe-mcscert)
@@ -82,6 +66,13 @@ mosser@azrael extension % code --install-extension jpipe-vscode.vsix
 ```
 mosser@azrael extension % vsce publish
 ```
+### AI assistance policy
+
+Parts of this codebase were developed with the assistance of Claude (Anthropic), an AI coding assistant. We are transparent about this use and welcome AI-assisted contributions, subject to the following conditions:
+
+- Pull requests must not be 100% AI-generated. Every contribution must reflect the understanding and judgement of a human author.
+- Human authors are fully responsible for the correctness, quality, and appropriateness of their contributions, regardless of whether AI tools were used in their preparation.
+- Reviewers may ask contributors to explain any part of their submission.
 
 ## Sponsors
 
