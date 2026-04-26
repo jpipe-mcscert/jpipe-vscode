@@ -2,9 +2,7 @@
 
 <div align="center">
 
-![mcscert](https://raw.githubusercontent.com/jpipe-mcscert/assets/refs/heads/main/mcscert/m24-mcscert_left-col_png.png)
-
-[![Build](https://github.com/jpipe-mcscert/jpipe-vscode/actions/workflows/build.yml/badge.svg)](https://github.com/jpipe-mcscert/jpipe-vscode/actions/workflows/build.yml)
+![mcscert](https://raw.githubusercontent.com/jpipe-mcscert/jpipe-vscode/main/packages/extension/images/mcscert.png)
 
 </div>
 
@@ -15,11 +13,27 @@
   - [Andrew Bovbel](https://www.linkedin.com/in/andrewbovbel/), B.Eng. Student, McMaster University
   - [Nirmal Chaudhari](https://www.linkedin.com/in/nirmal2003/), B.Eng. Student, McMaster University
 
-## How to contribute?
+
+## Using the plugin
+
+### Required software
+
+The plugin requires the `jpipe` compiler to be vailable on your computer:
+  - [https://www.jpipe.org/tutorials/install/](https://www.jpipe.org/tutorials/install/)
+
+### How to use the plugin?
+
+Simply open a file using the `.jd` extension.
+
+### Tutorials
+
+Please visit [https://www.jpipe.org/tutorials/](https://www.jpipe.org/tutorials/) for examples and guidance o how to develop justificiation models using jPipe.
+
+## Contributing to the plugin
 
 You can find more information about the jPipe project on the main repository: [https://github.com/jpipe-mcscert](https://github.com/jpipe-mcscert)
 
-## Repository Organization
+### Repository Organization
 
 - `packages/extension`: Code specific to the VS Code platform
   - Visualization of justification models (preview)
@@ -28,8 +42,6 @@ You can find more information about the jPipe project on the main repository: [h
   - jPipe grammar using Langium;
   - Validation rules
   - Scoping rules
-
-## Contributing to the project
 
 ### How to setup the development environment?
 
@@ -71,7 +83,7 @@ mosser@azrael extension % code --install-extension jpipe-vscode.vsix
 mosser@azrael extension % vsce publish
 ```
 
-### Sponsors
+## Sponsors
 
 We acknowledge the support of McMaster University, McMaster Centre for Software Certification, and the _Natural Sciences and Engineering Research Council of Canada_ (NSERC).
 

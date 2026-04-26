@@ -2,12 +2,12 @@
     "name": "jpipe-extension",
     "displayName": "jPipe Language (McSCert)",
     "description": "Language Support for the jPipe language",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "type": "module",
     "publisher": "mcscert",
     "author": "McMaster Centre for Software Certification (McSCert)",
     "license": "MIT",
-    "icons": "images/logo.png",
+    "icon": "images/logo.png",
     "repository": {
         "type": "git",
         "url": "https://github.com/jpipe-mcscert/jpipe-vscode"

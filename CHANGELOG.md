@@ -1,5 +1,27 @@
 ## Changelog
 
+### v1.0.1 (2026-04-26)
+- Leader: Sébastien Mosser
+  - Contributors: Andrew Bovbel
+  - Features:
+    - **Grammar:** Migrated Langium grammar to match ANTLR grammar parity
+    - **Grammar:** Support namespace-qualified `implements` with correct override validation
+    - **Grammar:** Convert `Relation` `from`/`to` from qualified identifiers to cross-references
+    - **Grammar:** Bumped to Langium 4.2
+    - **Language Server:** Import scoping for `load` statements (transitive, BFS-based)
+    - **Language Server:** `implements`-chain scoping for relations in justifications and templates
+    - **Language Server:** Improved completion for nodes with labels and recursive file loading
+    - **Language Server:** Structured logging with configurable log level
+    - **Extension:** Overhauled image generation pipeline and preview panel
+    - **Extension:** Diagnostic view toggle in the preview panel
+    - **Extension:** Zoom controls via toolbar buttons and `+`/`-` keys
+    - **Extension:** Preview panel diagram button and reopen fix
+  - Bug Fixes:
+    - Fix multi-level override validation for inherited abstract supports
+    - Fix SVG node highlighting to use id-based lookup (not label)
+    - Fix infinite loading loop when resolving transitive imports
+    - Fix error notifications with reload on generation failure
+
 ### v0.2.10 (2025-06-21)
 - Leader:  Sébastien Mosser
   - Features:
