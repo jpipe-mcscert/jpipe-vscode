@@ -69,17 +69,27 @@ mosser@azrael extension % vsce publish
 
 ### How to bump the version?
 
-The version must be updated in sync across three files:
+The version must be updated in sync across four locations:
 
 - `package.json` (monorepo root)
 - `packages/extension/package.json`
 - `packages/language/package.json`
+- The `jpipe-language` dependency inside `packages/extension/package.json` `dependencies` block
 
+The first three are handled by a single command:
 ```
 mosser@azrael jpipe-vscode % npm version <new-version> --no-git-tag-version --workspaces --include-workspace-root
 ```
 
-Replace `<new-version>` with the desired version (e.g. `1.1.0`) or a semver increment keyword (`patch`, `minor`, `major`).
+Then manually update the `jpipe-language` dependency version in `packages/extension/package.json` to match:
+```json
+"dependencies": {
+    "jpipe-language": "<new-version>",
+    ...
+}
+```
+
+Replace `<new-version>` with the desired version (e.g. `1.1.0`) or a semver increment keyword (`patch`, `minor`, `major`) for the npm command.
 
 ### AI assistance policy
 

@@ -2,7 +2,7 @@
     "name": "jpipe-extension",
     "displayName": "jPipe Language (McSCert)",
     "description": "Language Support for the jPipe language",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "type": "module",
     "publisher": "mcscert",
     "author": "McMaster Centre for Software Certification (McSCert)",
@@ -24,21 +24,30 @@
                 "editor.wordBasedSuggestions": "off"
             }
         },
-        "languages": [{
-            "id": "jpipe",
-            "aliases": ["jpipe", "jpipe"],
-            "extensions": [".jd"],
-            "configuration": "./language-configuration.json",
-            "icon": {
-                "dark":  "images/icon_dark.svg",
-                "light": "images/icon_light.svg"
+        "languages": [
+            {
+                "id": "jpipe",
+                "aliases": [
+                    "jpipe",
+                    "jpipe"
+                ],
+                "extensions": [
+                    ".jd"
+                ],
+                "configuration": "./language-configuration.json",
+                "icon": {
+                    "dark": "images/icon_dark.svg",
+                    "light": "images/icon_light.svg"
+                }
             }
-        }],
-        "grammars": [{
-            "language": "jpipe", 
-            "scopeName": "source.jpipe",
-            "path": "syntaxes/jpipe.tmLanguage.json"
-        }],
+        ],
+        "grammars": [
+            {
+                "language": "jpipe",
+                "scopeName": "source.jpipe",
+                "path": "syntaxes/jpipe.tmLanguage.json"
+            }
+        ],
         "commands": [
             {
                 "command": "jpipe.vis.preview",
@@ -152,7 +161,10 @@
                 "jpipe.executionMode": {
                     "order": 1,
                     "type": "string",
-                    "enum": ["cli", "jar"],
+                    "enum": [
+                        "cli",
+                        "jar"
+                    ],
                     "enumDescriptions": [
                         "Use the jpipe CLI executable (recommended). Configure the path below with 'CLI: Path'.",
                         "Use a JAR file (manual installation / developer mode). Configure the path below with 'JAR: File' and 'JAR: Java Executable'."
@@ -181,7 +193,14 @@
                 "jpipe.logLevel": {
                     "order": 5,
                     "type": "string",
-                    "enum": ["off", "error", "warn", "info", "debug", "trace"],
+                    "enum": [
+                        "off",
+                        "error",
+                        "warn",
+                        "info",
+                        "debug",
+                        "trace"
+                    ],
                     "enumDescriptions": [
                         "No logging.",
                         "Errors only.",
@@ -209,7 +228,7 @@
         "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json --watch\" \"node esbuild.mjs --watch\""
     },
     "dependencies": {
-        "jpipe-language": "1.0.0",
+        "jpipe-language": "1.0.3",
         "vscode-languageclient": "~9.0.1",
         "vscode-languageserver": "~9.0.1"
     },
@@ -218,6 +237,6 @@
         "concurrently": "~8.2.1"
     },
     "vsce": {
-      "dependencies": false
+        "dependencies": false
     }
 }
