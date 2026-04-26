@@ -8,6 +8,7 @@ import {
     type NextFeature
 } from 'langium/lsp';
 import { Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, CompletionParams } from 'vscode-languageserver';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
@@ -20,15 +21,17 @@ import {
     isConclusion,
     isSubConclusion,
     isAbstractSupport,
+    Justification as JustificationRule,
     Template as TemplateRule,
     type Unit,
     type Justification,
+    type Relation,
     type Template,
     type JustificationElement,
     type AbstractSupport,
     type QualifiedId
 } from './generated/ast.js';
-import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { getAllElements, getLocalElements, getRelationCandidates, qualifiedIdText } from './jpipe-utils.js';
 
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private readonly services: JpipeServices;
@@ -144,7 +147,14 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                 AstUtils.getContainerOfType(refInfo.container, isJustification) ??
                 AstUtils.getContainerOfType(refInfo.container, isTemplate);
             if (owner) {
-                return stream(getAllElements(owner).flatMap(e => {
+                const relation = refInfo.container as Relation;
+                let candidates = getRelationCandidates(owner);
+                if (refInfo.property === 'to' && relation.from?.ref) {
+                    candidates = this.filterRelationTargets(relation.from.ref, candidates);
+                } else if (refInfo.property === 'from' && relation.to?.ref) {
+                    candidates = this.filterRelationSources(relation.to.ref, candidates);
+                }
+                return stream(candidates.flatMap(e => {
                     const d = descFor(e);
                     return d ? [d] : [];
                 }));
@@ -153,6 +163,26 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         // Never fall through to the workspace index for jPipe cross-refs.
         return stream();
+    }
+
+    private filterRelationTargets(from: JustificationElement, candidates: JustificationElement[]): JustificationElement[] {
+        if (isEvidence(from) || isAbstractSupport(from) || isSubConclusion(from)) {
+            return candidates.filter(e => isStrategy(e));
+        }
+        if (isStrategy(from)) {
+            return candidates.filter(e => isSubConclusion(e) || isConclusion(e));
+        }
+        return candidates;
+    }
+
+    private filterRelationSources(to: JustificationElement, candidates: JustificationElement[]): JustificationElement[] {
+        if (isStrategy(to)) {
+            return candidates.filter(e => isEvidence(e) || isAbstractSupport(e) || isSubConclusion(e));
+        }
+        if (isSubConclusion(to) || isConclusion(to)) {
+            return candidates.filter(e => isStrategy(e));
+        }
+        return candidates;
     }
 
     /** Templates for `implements`: local + `load`ed first, then workspace index (dedupe by name). */
@@ -206,34 +236,42 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         return path.basename(p) || undefined;
     }
 
+    private nodeLabelFromDescription(desc: AstNodeDescription): string | undefined {
+        const n = desc.node as { name?: unknown } | undefined;
+        if (!n) return undefined;
+        const raw = typeof n.name === 'string' ? n.name : undefined;
+        if (!raw) return undefined;
+        return raw.length > 40 ? `"${raw.slice(0, 37)}…"` : `"${raw}"`;
+    }
+
     protected override createReferenceCompletionItem(
         nodeDescription: AstNodeDescription,
         refInfo: ReferenceInfo,
         context: CompletionContext
     ): CompletionValueItem {
         const baseItem = super.createReferenceCompletionItem(nodeDescription, refInfo, context);
-        const file = this.basenameFromDescription(nodeDescription);
-        const withFile: CompletionValueItem = {
+        const nodeLabel = this.nodeLabelFromDescription(nodeDescription);
+        const elementInfo = this.findElementInfo(context.document, nodeDescription);
+        const file = elementInfo ? this.basenameFromDescription(nodeDescription) : undefined;
+
+        const withLabel: CompletionValueItem = {
             ...baseItem,
             detail: baseItem.detail ?? nodeDescription.type,
             labelDetails: {
                 ...baseItem.labelDetails,
-                ...(file ? { detail: ` · ${file}` } : {}),
-                description: ` · ${nodeDescription.type}`
+                ...(nodeLabel ? { detail: ` · ${nodeLabel}` } : {}),
+                ...(file ? { description: ` · ${file}` } : { description: ` · ${nodeDescription.type}` })
             }
         };
 
-        const elementInfo = this.findElementInfo(context.document, nodeDescription);
-        if (!elementInfo) return withFile;
-
-        if (!elementInfo.isImported && elementInfo.sourceFile) {
+        if (elementInfo && !elementInfo.isImported && elementInfo.sourceFile) {
             return {
-                ...withFile,
+                ...withLabel,
                 additionalTextEdits: this.createLoadEdit(context.document, elementInfo.sourceFile)
             };
         }
 
-        return withFile;
+        return withLabel;
     }
 
     public override async getCompletion(
@@ -266,6 +304,19 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             items.unshift(atSupportItem);
         }
 
+        const loadPathItems = this.getLoadPathCompletions(document, params);
+        if (loadPathItems.length > 0) {
+            return { ...result, items: loadPathItems };
+        }
+
+        const operatorMatch = /(?:justification|template)\s+\w+\s+is\s+([\w:]*)$/.exec(linePfx);
+        if (operatorMatch) {
+            const operatorItems = this.getOperatorCompletions(document, operatorMatch[1]);
+            if (operatorItems.length > 0) {
+                items = [...operatorItems, ...items.filter(i => !operatorItems.some(o => o.label === i.label))];
+            }
+        }
+
         const contexts = Array.from(this.buildContexts(document, params.position));
         if (contexts.length > 0) {
             const templateCompletions = this.getTemplateElementCompletions(contexts[0]);
@@ -276,6 +327,122 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         items = this.deduplicateItems(items);
         return { ...result, items };
+    }
+
+    private getOperatorCompletions(document: LangiumDocument, partial: string): CompletionItem[] {
+        const unit = document.parseResult.value as Unit | undefined;
+        const seen = new Set<string>();
+        const out: CompletionItem[] = [];
+
+        const push = (name: string, kind: 'justification' | 'template') => {
+            if (seen.has(name)) return;
+            if (partial && !this.services.shared.lsp.FuzzyMatcher.match(partial, name)) return;
+            seen.add(name);
+            out.push({
+                label: name,
+                kind: CompletionItemKind.Function,
+                detail: kind,
+                sortText: `0_op_${name}`
+            });
+        };
+
+        if (unit) {
+            for (const body of unit.body) {
+                if (isJustification(body)) push(body.id, 'justification');
+                else if (isTemplate(body)) push(body.id, 'template');
+            }
+        }
+
+        for (const d of this.services.shared.workspace.IndexManager.allElements(JustificationRule.$type)) {
+            push(d.name, 'justification');
+        }
+        for (const d of this.services.shared.workspace.IndexManager.allElements(TemplateRule.$type)) {
+            push(d.name, 'template');
+        }
+
+        return out;
+    }
+
+    private getLoadPathCompletions(document: LangiumDocument, params: CompletionParams): CompletionItem[] {
+        const pos = params.position;
+        const linePfx = document.textDocument.getText({
+            start: Position.create(pos.line, 0),
+            end: pos
+        });
+
+        const m = /^\s*load\s+["']([^"']*)$/.exec(linePfx);
+        if (!m) return [];
+
+        const partial = m[1];
+        const pathStartCol = linePfx.search(/["']/) + 1;
+        const docPath = URI.parse(document.uri.toString()).path;
+        const docDir = path.dirname(docPath);
+
+        const currentUnit = document.parseResult.value as Unit | undefined;
+        const alreadyLoaded = new Set(currentUnit?.imports.map(l => {
+            const p = this.normalizePathForComparison(l.path);
+            return p.startsWith('../') ? p : `./${p}`;
+        }) ?? []);
+
+        const makeTextEdit = (insertPath: string) => ({
+            range: { start: { line: pos.line, character: pathStartCol }, end: pos },
+            newText: insertPath
+        });
+
+        // Workspace-wide: collect all .jd files already known to the index
+        const seen = new Set<string>();
+        const workspaceItems: CompletionItem[] = [];
+        for (const type of [JustificationRule.$type, TemplateRule.$type]) {
+            for (const desc of this.services.shared.workspace.IndexManager.allElements(type)) {
+                const targetUri = desc.documentUri?.toString();
+                if (!targetUri || seen.has(targetUri)) continue;
+                seen.add(targetUri);
+                const targetPath = URI.parse(targetUri).path;
+                if (targetPath === docPath || !targetPath.endsWith('.jd')) continue;
+                const rel = path.relative(docDir, targetPath).replaceAll('\\', '/');
+                const insertPath = rel.startsWith('../') ? rel : `./${rel}`;
+                if (alreadyLoaded.has(insertPath)) continue;
+                if (partial && !insertPath.includes(partial)) continue;
+                workspaceItems.push({
+                    label: insertPath,
+                    kind: CompletionItemKind.File,
+                    detail: '.jd file',
+                    sortText: `1_ws_${insertPath}`,
+                    textEdit: makeTextEdit(insertPath)
+                });
+            }
+        }
+
+        // Directory navigation: local filesystem for the typed partial path (supports ../
+        // navigation and discovering files not yet in the index)
+        const partialDir = path.dirname(partial);
+        const filePrefix = path.basename(partial);
+        const resolvedDir = path.resolve(docDir, partialDir === '.' ? '' : partialDir);
+        let entries: fs.Dirent<string>[];
+        try {
+            entries = fs.readdirSync(resolvedDir, { withFileTypes: true, encoding: 'utf-8' });
+        } catch {
+            entries = [];
+        }
+        const seenLabels = new Set(workspaceItems.map(i => i.label));
+        const dirItems: CompletionItem[] = entries
+            .filter(e => (e.isDirectory() || e.name.endsWith('.jd')) && (!filePrefix || e.name.startsWith(filePrefix)))
+            .map(e => {
+                const isDir = e.isDirectory();
+                const relPath = path.relative(docDir, path.join(resolvedDir, e.name)).replaceAll('\\', '/');
+                const insertPath = relPath.startsWith('../') ? relPath : `./${relPath}`;
+                const label = isDir ? `${insertPath}/` : insertPath;
+                return {
+                    label,
+                    kind: isDir ? CompletionItemKind.Folder : CompletionItemKind.File,
+                    detail: isDir ? 'directory' : '.jd file',
+                    sortText: isDir ? `0_dir_${label}` : `1_file_${label}`,
+                    textEdit: makeTextEdit(label)
+                };
+            })
+            .filter(item => !seenLabels.has(item.label) && !alreadyLoaded.has(item.label));
+
+        return [...workspaceItems, ...dirItems];
     }
 
     private offsetInsideSomeTemplateBody(document: LangiumDocument, offset: number): boolean {
