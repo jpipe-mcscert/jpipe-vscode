@@ -2,7 +2,7 @@
     "name": "jpipe-extension",
     "displayName": "jPipe Language (McSCert)",
     "description": "Language Support for the jPipe language",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "type": "module",
     "publisher": "mcscert",
     "author": "McMaster Centre for Software Certification (McSCert)",

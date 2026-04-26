@@ -66,6 +66,21 @@ mosser@azrael extension % code --install-extension jpipe-vscode.vsix
 ```
 mosser@azrael extension % vsce publish
 ```
+
+### How to bump the version?
+
+The version must be updated in sync across three files:
+
+- `package.json` (monorepo root)
+- `packages/extension/package.json`
+- `packages/language/package.json`
+
+```
+mosser@azrael jpipe-vscode % npm version <new-version> --no-git-tag-version --workspaces --include-workspace-root
+```
+
+Replace `<new-version>` with the desired version (e.g. `1.1.0`) or a semver increment keyword (`patch`, `minor`, `major`).
+
 ### AI assistance policy
 
 Parts of this codebase were developed with the assistance of Claude (Anthropic), an AI coding assistant. We are transparent about this use and welcome AI-assisted contributions, subject to the following conditions:
