@@ -1,6 +1,7 @@
 import { type AstNode } from 'langium';
 import { DefaultNameProvider } from 'langium';
 import {
+    isAbstractSupport,
     type Justification,
     type Template,
     type JustificationElement,
@@ -33,6 +34,25 @@ export function qualifiedIdText(id: QualifiedId): string {
 /** Returns the last segment of a QualifiedId — the local name ('t:abs' → 'abs', 'e1' → 'e1'). */
 export function localName(id: QualifiedId): string {
     return id.parts.at(-1) ?? '';
+}
+
+/**
+ * Returns the elements valid as `from`/`to` candidates in a Relation within the given
+ * justification or template: locally declared elements plus `@support` elements from
+ * the parent template chain (which can be referenced in relations by child models).
+ * Does NOT include inherited non-abstract elements, which belong to the parent's own body.
+ */
+export function getRelationCandidates(node: Justification | Template): JustificationElement[] {
+    const local = getLocalElements(node);
+    const abstractSupports: JustificationElement[] = [];
+    let parent = node.parent?.ref;
+    while (parent) {
+        for (const el of getLocalElements(parent)) {
+            if (isAbstractSupport(el)) abstractSupports.push(el);
+        }
+        parent = parent.parent?.ref;
+    }
+    return [...local, ...abstractSupports];
 }
 
 /**
