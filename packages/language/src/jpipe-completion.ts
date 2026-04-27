@@ -30,7 +30,7 @@ import {
     type JustificationElement,
     type AbstractSupport
 } from './generated/ast.js';
-import { getAllElements, getLocalElements, getRelationCandidates, qualifiedIdText } from './jpipe-utils.js';
+import { getLocalElements, qualifiedIdText } from './jpipe-utils.js';
 
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private readonly services: JpipeServices;
@@ -135,16 +135,34 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             if (owner) {
                 // Filtering by sibling ref is safe here: completion runs after linking.
                 const relation = refInfo.container as Relation;
-                let candidates = getRelationCandidates(owner);
+                const doc = context.document;
+                const unit = doc.parseResult.value as Unit | undefined;
+
+                // Build candidates with namespace-qualified keys.
+                // Only @support elements from parent templates are offered as candidates
+                // (same policy as the original getRelationCandidates), so the popup does
+                // not flood users with all inherited non-abstract elements.
+                const localElements = getLocalElements(owner);
+                const inheritedEntries = unit
+                    ? this.importService
+                        .getInheritedElementsWithKeys(owner, unit, doc)
+                        .filter(({ element }) => isAbstractSupport(element))
+                    : [];
+
+                let withKeys: Array<{ element: JustificationElement; key: string }> = [
+                    ...localElements.map(e => ({ element: e, key: qualifiedIdText(e.id) })),
+                    ...inheritedEntries
+                ];
+
                 if (refInfo.property === 'to' && relation.from?.ref) {
-                    candidates = this.filterRelationTargets(relation.from.ref, candidates);
+                    withKeys = withKeys.filter(({ element }) => this.filterRelationTargets(relation.from.ref!, [element]).length > 0);
                 } else if (refInfo.property === 'from' && relation.to?.ref) {
-                    candidates = this.filterRelationSources(relation.to.ref, candidates);
+                    withKeys = withKeys.filter(({ element }) => this.filterRelationSources(relation.to.ref!, [element]).length > 0);
                 }
-                return stream(candidates.flatMap(e => {
+
+                return stream(withKeys.flatMap(({ element, key }) => {
                     try {
-                        const key = qualifiedIdText(e.id);
-                        const d = this.services.workspace.AstNodeDescriptionProvider.createDescription(e, key);
+                        const d = this.services.workspace.AstNodeDescriptionProvider.createDescription(element, key);
                         return d ? [d] : [];
                     } catch {
                         return [];
@@ -517,21 +535,24 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             const justification = justificationBody.$container as Justification | undefined;
             if (!justification || !isJustification(justification)) return [];
 
-            const template = justification.parent?.ref;
-            if (!template) return [];
+            if (!justification.parent?.ref) return [];
 
-            const allTemplateElements = getAllElements(template);
-            const existingElements = getLocalElements(justification);
-            const existingIds = new Set(existingElements.map(el => qualifiedIdText(el.id)));
+            const doc = context.document;
+            const unit = doc.parseResult.value as Unit | undefined;
+            if (!unit) return [];
+
+            // Use namespace-qualified keys so snippets match the qualified-ID scheme.
+            const inheritedEntries = this.importService.getInheritedElementsWithKeys(justification, unit, doc);
+            const existingIds = new Set(getLocalElements(justification).map(el => qualifiedIdText(el.id)));
             const suggestedIds = new Set<string>();
 
             const completions: CompletionItem[] = [];
-            for (const element of allTemplateElements) {
-                const idText = qualifiedIdText(element.id);
-                if (existingIds.has(idText) || suggestedIds.has(idText)) continue;
-                const completion = this.createTemplateElementCompletion(element, context);
+            for (const { element, key } of inheritedEntries) {
+                if (!isAbstractSupport(element)) continue; // only @support elements require explicit override
+                if (existingIds.has(key) || suggestedIds.has(key)) continue;
+                const completion = this.createTemplateElementCompletion(element, key, context);
                 if (completion) {
-                    suggestedIds.add(idText);
+                    suggestedIds.add(key);
                     completions.push(completion);
                 }
             }
@@ -544,9 +565,9 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
     private createTemplateElementCompletion(
         element: JustificationElement | AbstractSupport,
+        idText: string,
         context: CompletionContext
     ): CompletionItem | undefined {
-        const idText = qualifiedIdText(element.id);
         let keyword: string;
         let snippet: string;
 

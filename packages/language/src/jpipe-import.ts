@@ -11,7 +11,7 @@ import {
     type JustificationElement,
     type Unit
 } from './generated/ast.js';
-import { getAllElements } from './jpipe-utils.js';
+import { getAllElements, qualifiedIdText } from './jpipe-utils.js';
 
 /**
  * Import service for handling imports and resolving imported documents, templates, and elements.
@@ -225,6 +225,51 @@ export class JpipeImportService {
             }
         }
         return elements;
+    }
+
+    /**
+     * Returns the namespace alias under which `template` was imported into `unit`,
+     * or undefined if it was loaded without an alias or is local.
+     */
+    getNamespaceForTemplate(template: Template, unit: Unit, currentDoc: LangiumDocument): string | undefined {
+        for (const load of unit.imports) {
+            if (!load.namespace) continue;
+            const doc = this.parseDocumentFromPath(load.path, currentDoc);
+            if (!doc) continue;
+            const importedUnit = doc.parseResult.value as Unit | undefined;
+            if (!importedUnit) continue;
+            if (importedUnit.body.includes(template)) return load.namespace;
+        }
+        return undefined;
+    }
+
+    /**
+     * Returns all elements inherited by `owner` through its parent chain, each annotated
+     * with the scope key to use in relations (accounting for namespace prefixes).
+     *
+     * Per ADR 0012 qualified-ID scheme:
+     *   - local template T    → key = T:elementId           e.g. "T:abs"
+     *   - namespaced template → key = ns:templateId:elementId  e.g. "base:t:abs"
+     */
+    getInheritedElementsWithKeys(
+        owner: Justification | Template,
+        unit: Unit,
+        currentDoc: LangiumDocument
+    ): Array<{ element: JustificationElement; key: string }> {
+        const result: Array<{ element: JustificationElement; key: string }> = [];
+        const visited = new Set<Template>();
+        let parent = owner.parent?.ref;
+        while (parent && !visited.has(parent)) {
+            visited.add(parent);
+            const ns = this.getNamespaceForTemplate(parent, unit, currentDoc);
+            // Include template name in the prefix: ns:templateId: or templateId:
+            const prefix = ns ? `${ns}:${parent.id}:` : `${parent.id}:`;
+            for (const el of (parent.contents?.body ?? []) as JustificationElement[]) {
+                result.push({ element: el, key: prefix + qualifiedIdText(el.id) });
+            }
+            parent = parent.parent?.ref;
+        }
+        return result;
     }
 
     private getLocalTemplates(unit: Unit): Template[] {
