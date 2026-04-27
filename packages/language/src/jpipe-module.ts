@@ -5,6 +5,8 @@ import { JpipeValidator, registerValidationChecks } from './jpipe-validator.js';
 import { JpipeScopeProvider } from './jpipe-scope.js';
 import { JpipeImportService } from './jpipe-import.js';
 import { JpipeCompletionProvider } from './jpipe-completion.js';
+import { JpipeDefinitionProvider } from './jpipe-definition-provider.js';
+import { JpipeDocumentSymbolProvider } from './jpipe-symbol-provider.js';
 import { JpipeNameProvider } from './jpipe-utils.js';
 import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 
@@ -38,7 +40,9 @@ function buildJpipeModule(logger: JpipeServerLogger): Module<JpipeServices, Part
             NameProvider: () => new JpipeNameProvider()
         },
         lsp: {
-            CompletionProvider: (services) => new JpipeCompletionProvider(services)
+            DefinitionProvider:     (services) => new JpipeDefinitionProvider(services),
+            DocumentSymbolProvider: (services) => new JpipeDocumentSymbolProvider(services),
+            CompletionProvider:     (services) => new JpipeCompletionProvider(services)
         },
         logger: () => logger
     };

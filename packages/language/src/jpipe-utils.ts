@@ -1,4 +1,4 @@
-import { type AstNode } from 'langium';
+import { type AstNode, type CstNode } from 'langium';
 import { DefaultNameProvider } from 'langium';
 import {
     isAbstractSupport,
@@ -18,11 +18,20 @@ export class JpipeNameProvider extends DefaultNameProvider {
         const id = n['id'];
         if (typeof id === 'string') return id;
         if (id && typeof id === 'object' && Array.isArray((id as QualifiedId).parts)) {
-            // Return only the local segment: the preview client prepends diagramName + ':'
-            // to construct the SVG element id (e.g. 'abs' → 't:abs').
-            return localName(id as QualifiedId);
+            return qualifiedIdText(id as QualifiedId);
         }
         return super.getName(node);
+    }
+
+    override getNameNode(node: AstNode): CstNode | undefined {
+        const id = (node as unknown as Record<string, unknown>)['id'];
+        // For QualifiedId nodes (Evidence, Strategy, etc.), the id is an AST node
+        // with its own $cstNode spanning the full colon-delimited identifier.
+        if (id && typeof id === 'object' && !Array.isArray(id)) {
+            const cst = (id as { $cstNode?: CstNode }).$cstNode;
+            if (cst) return cst;
+        }
+        return super.getNameNode(node);
     }
 }
 
