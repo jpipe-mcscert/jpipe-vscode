@@ -247,7 +247,7 @@ describe('Relation from/to completion', () => {
 
 describe('Operator completion', () => {
 
-    test('suggests local justification and template names after "is"', async () => {
+    test('suggests known operator names after "is" (not justification/template names)', async () => {
         await checkCompletion({
             text: `
                 template MyTemplate {
@@ -261,8 +261,10 @@ describe('Operator completion', () => {
             index: 0,
             assert: (completions) => {
                 const labels = completions.items.map(i => i.label);
-                expect(labels).toContain('MyTemplate');
-                expect(labels).toContain('MyJ');
+                expect(labels).toContain('assemble');
+                expect(labels).toContain('refine');
+                expect(labels).not.toContain('MyTemplate');
+                expect(labels).not.toContain('MyJ');
             }
         });
     });
@@ -270,19 +272,45 @@ describe('Operator completion', () => {
     test('filters operator suggestions by partial input', async () => {
         await checkCompletion({
             text: `
-                template AlphaTemplate {
-                    conclusion c is "Claim"
-                }
-                template BetaTemplate {
-                    conclusion c is "Claim"
-                }
-                justification Composed is Alpha<|>
+                justification Composed is ass<|>
             `,
             index: 0,
             assert: (completions) => {
                 const labels = completions.items.map(i => i.label);
-                expect(labels).toContain('AlphaTemplate');
-                expect(labels).not.toContain('BetaTemplate');
+                expect(labels).toContain('assemble');
+                expect(labels).not.toContain('refine');
+            }
+        });
+    });
+
+    test('suggests config keys for assemble operator', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification Composed is assemble(A) { <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).toContain('conclusionLabel');
+                expect(labels).toContain('strategyLabel');
+                expect(labels).not.toContain('hook');
+            }
+        });
+    });
+
+    test('suggests config keys for refine operator', async () => {
+        await checkCompletion({
+            text: `
+                template T { conclusion c is "C" }
+                justification Composed is refine(T) { <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).toContain('hook');
+                expect(labels).not.toContain('conclusionLabel');
+                expect(labels).not.toContain('strategyLabel');
             }
         });
     });

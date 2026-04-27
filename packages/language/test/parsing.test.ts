@@ -126,10 +126,10 @@ describe('Parsing tests', () => {
         expect(isJustification(j)).toBe(true);
         if (!isJustification(j)) return;
         expect(j.contents).toBeUndefined();
-        expect(j.operator?.parts).toEqual(['refine']);
-        expect(j.params?.ids).toHaveLength(1);
-        expect(j.config?.entries).toHaveLength(1);
-        expect(j.config?.entries[0].key).toBe('mapping');
+        expect(j.composition?.operator).toBe('refine');
+        expect(j.composition?.params?.refs).toHaveLength(1);
+        expect(j.composition?.config?.entries).toHaveLength(1);
+        expect(j.composition?.config?.entries[0].key).toBe('mapping');
     });
 
     test('parse load without alias', async () => {

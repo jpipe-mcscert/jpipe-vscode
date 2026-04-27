@@ -2,6 +2,7 @@ import type { ValidationAcceptor, ValidationChecks } from 'langium';
 import type {
     JpipeAstType,
     Unit,
+    Composition,
     Evidence,
     Strategy,
     Conclusion,
@@ -29,6 +30,7 @@ export function registerValidationChecks(services: JpipeServices) {
     const validator = services.validation.JpipeValidator;
     const checks: ValidationChecks<JpipeAstType> = {
         Unit:           validator.checkUnitNotEmpty,
+        Composition:    [validator.checkOperatorName, validator.checkConfigKeys],
         Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport],
         Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride],
         Evidence:       validator.checkLabelNotEmpty,
@@ -43,8 +45,50 @@ export function registerValidationChecks(services: JpipeServices) {
 export class JpipeValidator {
     private readonly logger: JpipeServerLogger;
 
+    private static readonly KNOWN_OPERATORS = new Set(['assemble', 'refine']);
+
+    private static readonly OPERATOR_ALLOWED_KEYS: Record<string, Set<string>> = {
+        assemble: new Set(['conclusionLabel', 'strategyLabel']),
+        refine:   new Set(['hook'])
+    };
+
+    private static readonly OPERATOR_REQUIRED_KEYS: Record<string, Set<string>> = {
+        assemble: new Set(['conclusionLabel', 'strategyLabel']),
+        refine:   new Set(['hook'])
+    };
+
     constructor(services: JpipeServices) {
         this.logger = services.logger;
+    }
+
+    checkOperatorName(composition: Composition, accept: ValidationAcceptor): void {
+        if (!JpipeValidator.KNOWN_OPERATORS.has(composition.operator)) {
+            accept('error',
+                `Unknown operator '${composition.operator}'. Expected: ${[...JpipeValidator.KNOWN_OPERATORS].join(', ')}.`,
+                { node: composition, property: 'operator' });
+        }
+    }
+
+    checkConfigKeys(composition: Composition, accept: ValidationAcceptor): void {
+        const op = composition.operator;
+        if (!JpipeValidator.KNOWN_OPERATORS.has(op)) return;
+        const allowed = JpipeValidator.OPERATOR_ALLOWED_KEYS[op] ?? new Set<string>();
+        const required = JpipeValidator.OPERATOR_REQUIRED_KEYS[op] ?? new Set<string>();
+        const present = new Set(composition.config?.entries.map(e => e.key) ?? []);
+        for (const entry of composition.config?.entries ?? []) {
+            if (!allowed.has(entry.key)) {
+                accept('error',
+                    `Unknown config key '${entry.key}' for operator '${op}'. Allowed: ${[...allowed].join(', ')}.`,
+                    { node: entry, property: 'key' });
+            }
+        }
+        for (const key of required) {
+            if (!present.has(key)) {
+                accept('error',
+                    `Missing required config key '${key}' for operator '${op}'.`,
+                    { node: composition, property: 'operator' });
+            }
+        }
     }
 
     checkLabelNotEmpty(element: Evidence | Strategy | Conclusion | SubConclusion | AbstractSupport,

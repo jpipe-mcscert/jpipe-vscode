@@ -1,9 +1,10 @@
-import { DefaultScopeProvider, AstUtils, type ReferenceInfo, type LangiumDocument } from 'langium';
+import { DefaultScopeProvider, AstUtils, type Scope, type ReferenceInfo, type LangiumDocument } from 'langium';
 import { type JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import {
     isJustification,
     isTemplate,
+    type Composition,
     type Justification,
     type Template,
     type Unit
@@ -27,33 +28,55 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
 
     override getScope(context: ReferenceInfo) {
         if (this.logger.shouldLog('debug')) this.logger.debug(`Scope resolution: property='${context.property}' container=${context.container.$type}`);
+
         if (context.property === 'parent' && (isJustification(context.container) || isTemplate(context.container))) {
-            const { document, unit } = this.getDocumentAndUnit(context.container);
-            if (document && unit) {
-                const localEntries = this.getLocalTemplates(unit)
-                    .map(t => ({ template: t, ns: undefined as string | undefined }));
-                const importedEntries = this.importService.getTemplatesWithNamespace(unit, document);
-                return this.createScopeFromTemplates([...localEntries, ...importedEntries]);
-            }
-            return super.getScope(context);
+            return this.parentScope(context.container) ?? super.getScope(context);
+        }
+
+        if (context.property === 'refs') {
+            return this.refsScope(context) ?? super.getScope(context);
         }
 
         if (context.property === 'from' || context.property === 'to') {
-            const owner = AstUtils.getContainerOfType(context.container, isJustification)
-                       ?? AstUtils.getContainerOfType(context.container, isTemplate);
-            if (owner) {
-                return this.createElementScope(owner);
-            }
+            return this.relationScope(context) ?? super.getScope(context);
         }
 
         return super.getScope(context);
     }
 
-    private createElementScope(owner: Justification | Template) {
+    private parentScope(owner: Justification | Template): Scope | undefined {
+        const { document, unit } = this.getDocumentAndUnit(owner);
+        if (!document || !unit) return undefined;
+        const localEntries = this.getLocalTemplates(unit).map(t => ({ template: t, ns: undefined as string | undefined }));
+        const importedEntries = this.importService.getTemplatesWithNamespace(unit, document);
+        return this.createScopeFromTemplates([...localEntries, ...importedEntries]);
+    }
+
+    private refsScope(context: ReferenceInfo): Scope | undefined {
+        const composition = context.container.$container as Composition;
+        const owner = composition.$container as Justification | Template;
+        const { document, unit } = this.getDocumentAndUnit(owner);
+        if (!document || !unit) return undefined;
+        const local = unit.body.filter((b): b is Justification | Template => isJustification(b) || isTemplate(b));
+        const imported = this.importService.getJustificationsAndTemplatesWithNamespace(unit, document);
+        const desc = [
+            ...local.map(n => this.descriptions.createDescription(n, n.id)),
+            ...imported.map(({ node, ns }) =>
+                this.descriptions.createDescription(node, ns ? `${ns}:${node.id}` : node.id))
+        ];
+        return this.createScope(desc);
+    }
+
+    private relationScope(context: ReferenceInfo): Scope | undefined {
+        const owner = AstUtils.getContainerOfType(context.container, isJustification)
+                   ?? AstUtils.getContainerOfType(context.container, isTemplate);
+        if (!owner) return undefined;
+        // Do NOT access sibling .ref here — scope is resolved during linking, before
+        // references are resolved, so reading a sibling .ref triggers a cycle.
+        // Relation-type filtering (e.g. evidence→strategy only) is done in the completion
+        // provider, which runs after linking is complete.
         const elements = getAllElements(owner);
-        const desc = elements.map(e =>
-            this.descriptions.createDescription(e, qualifiedIdText(e.id))
-        );
+        const desc = elements.map(e => this.descriptions.createDescription(e, qualifiedIdText(e.id)));
         return this.createScope(desc);
     }
 

@@ -8,11 +8,16 @@ Load:
 
 Justification:
     'justification' id=ID ('implements' parent=[Template:QualifiedRef])?
-    ( '{' contents=JustificationBody '}' | 'is' operator=QualifiedId '(' params=ParamsDecl? ')' config=RuleConfig? );
+    ( '{' contents=JustificationBody '}' | composition=Composition );
 
 Template:
     'template' id=ID ('implements' parent=[Template:QualifiedRef])?
-    ( '{' contents=TemplateBody '}' | 'is' operator=QualifiedId '(' params=ParamsDecl? ')' config=RuleConfig? );
+    ( '{' contents=TemplateBody '}' | composition=Composition );
+
+Composition:
+    'is' operator=ID '(' params=ParamsDecl? ')' config=RuleConfig?;
+
+type JustificationOrTemplate = Justification | Template;
 
 type Body = JustificationBody | TemplateBody
 
@@ -49,7 +54,7 @@ QualifiedRef returns string:
     ID (':' ID)*;
 
 ParamsDecl:
-    ids+=QualifiedId (',' ids+=QualifiedId)*;
+    refs+=[JustificationOrTemplate:QualifiedRef] (',' refs+=[JustificationOrTemplate:QualifiedRef])*;
 
 RuleConfig:
     '{' entries+=KeyValDecl+ '}';
