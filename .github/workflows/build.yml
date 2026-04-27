@@ -2,8 +2,10 @@
 
 name: Build VS Code extension
 
-on: 
-  push: 
+on:
+  push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:  # Can be triggered manually
 
@@ -19,7 +21,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-  
+
       - name: Set up node.js
         uses: actions/setup-node@v6
         with:
@@ -28,20 +30,19 @@ jobs:
       - name: Install vsce to package code
         run: |
           npm install -g @vscode/vsce
-      
+
       - name: Package extension as VSIX artefact
         run: |
           npm install
           npm run clean
-          npm install          
           npm run langium:generate
           npm run build
           cd packages/extension
           vsce package -o jpipe-extension.vsix
-      
+
       - name: Upload VSIX artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jpipe-extension-${{ github.sha }}.vsix
           path: packages/extension/jpipe-extension.vsix
-    
+          archive: false
