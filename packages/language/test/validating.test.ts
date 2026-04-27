@@ -234,4 +234,56 @@ describe('Validation tests', () => {
         const messages = diagnosticMessages(doc);
         expect(messages.some(m => m.includes("Expected element with id 'T:abs'"))).toBe(true);
     });
+
+    test('unknown composition operator triggers error', async () => {
+        const doc = await parse(`
+            justification A { conclusion c is "C" }
+            justification Composed is unknown(A) {
+                conclusionLabel: "C"
+                strategyLabel: "S"
+            }
+        `);
+        assertNoParseErrors(doc);
+        const messages = diagnosticMessages(doc);
+        expect(messages.some(m => m.includes("Unknown operator 'unknown'"))).toBe(true);
+    });
+
+    test('unknown config key triggers error', async () => {
+        const doc = await parse(`
+            justification A { conclusion c is "C" }
+            justification Composed is assemble(A) {
+                conclusionLabel: "C"
+                strategyLabel: "S"
+                wrongKey: "X"
+            }
+        `);
+        assertNoParseErrors(doc);
+        const messages = diagnosticMessages(doc);
+        expect(messages.some(m => m.includes("Unknown config key 'wrongKey'"))).toBe(true);
+    });
+
+    test('missing required config key triggers error', async () => {
+        const doc = await parse(`
+            justification A { conclusion c is "C" }
+            justification Composed is assemble(A) {
+                conclusionLabel: "C"
+            }
+        `);
+        assertNoParseErrors(doc);
+        const messages = diagnosticMessages(doc);
+        expect(messages.some(m => m.includes("Missing required config key 'strategyLabel'"))).toBe(true);
+    });
+
+    test('valid assemble composition passes validation', async () => {
+        const doc = await parse(`
+            justification A { conclusion c is "C" }
+            justification Composed is assemble(A) {
+                conclusionLabel: "C"
+                strategyLabel: "S"
+            }
+        `);
+        assertNoParseErrors(doc);
+        const messages = diagnosticMessages(doc);
+        expect(messages.some(m => m.includes('operator') || m.includes('config key'))).toBe(false);
+    });
 });

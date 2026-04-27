@@ -7,7 +7,7 @@ import {
     type CompletionValueItem,
     type NextFeature
 } from 'langium/lsp';
-import { Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, CompletionParams } from 'vscode-languageserver';
+import { Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, CompletionParams, InsertTextFormat } from 'vscode-languageserver';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { JpipeServices } from './jpipe-module.js';
@@ -28,8 +28,7 @@ import {
     type Relation,
     type Template,
     type JustificationElement,
-    type AbstractSupport,
-    type QualifiedId
+    type AbstractSupport
 } from './generated/ast.js';
 import { getAllElements, getLocalElements, getRelationCandidates, qualifiedIdText } from './jpipe-utils.js';
 
@@ -118,27 +117,14 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
     }
 
     protected override getReferenceCandidates(refInfo: ReferenceInfo, context: CompletionContext): Stream<AstNodeDescription> {
-        const doc = context.document;
-        const unit = doc.parseResult.value as Unit | undefined;
-        if (!unit) {
-            return super.getReferenceCandidates(refInfo, context);
-        }
-
-        const descFor = (node: { id: string | QualifiedId }): AstNodeDescription | undefined => {
-            try {
-                const key = typeof node.id === 'string' ? node.id : qualifiedIdText(node.id);
-                return this.services.workspace.AstNodeDescriptionProvider.createDescription(node as any, key);
-            } catch {
-                return undefined;
-            }
-        };
-
         if (refInfo.property === 'parent') {
+            const doc = context.document;
+            const unit = doc.parseResult.value as Unit | undefined;
             const parentOwner =
                 AstUtils.getContainerOfType(refInfo.container, isJustification) ??
                 AstUtils.getContainerOfType(refInfo.container, isTemplate);
-            if (parentOwner) {
-                return stream(this.parentTemplateCandidateDescriptions(unit, doc, descFor));
+            if (unit && parentOwner) {
+                return stream(this.parentTemplateCandidateDescriptions(unit, doc));
             }
         }
 
@@ -147,6 +133,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                 AstUtils.getContainerOfType(refInfo.container, isJustification) ??
                 AstUtils.getContainerOfType(refInfo.container, isTemplate);
             if (owner) {
+                // Filtering by sibling ref is safe here: completion runs after linking.
                 const relation = refInfo.container as Relation;
                 let candidates = getRelationCandidates(owner);
                 if (refInfo.property === 'to' && relation.from?.ref) {
@@ -155,42 +142,42 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                     candidates = this.filterRelationSources(relation.to.ref, candidates);
                 }
                 return stream(candidates.flatMap(e => {
-                    const d = descFor(e);
-                    return d ? [d] : [];
+                    try {
+                        const key = qualifiedIdText(e.id);
+                        const d = this.services.workspace.AstNodeDescriptionProvider.createDescription(e, key);
+                        return d ? [d] : [];
+                    } catch {
+                        return [];
+                    }
                 }));
             }
         }
 
-        // Never fall through to the workspace index for jPipe cross-refs.
-        return stream();
+        // For 'refs' and other cross-refs: delegate to the scope provider via super.
+        return super.getReferenceCandidates(refInfo, context);
     }
 
     private filterRelationTargets(from: JustificationElement, candidates: JustificationElement[]): JustificationElement[] {
-        if (isEvidence(from) || isAbstractSupport(from) || isSubConclusion(from)) {
-            return candidates.filter(e => isStrategy(e));
-        }
-        if (isStrategy(from)) {
-            return candidates.filter(e => isSubConclusion(e) || isConclusion(e));
-        }
+        if (isEvidence(from) || isAbstractSupport(from) || isSubConclusion(from)) return candidates.filter(e => isStrategy(e));
+        if (isStrategy(from)) return candidates.filter(e => isSubConclusion(e) || isConclusion(e));
         return candidates;
     }
 
     private filterRelationSources(to: JustificationElement, candidates: JustificationElement[]): JustificationElement[] {
-        if (isStrategy(to)) {
-            return candidates.filter(e => isEvidence(e) || isAbstractSupport(e) || isSubConclusion(e));
-        }
-        if (isSubConclusion(to) || isConclusion(to)) {
-            return candidates.filter(e => isStrategy(e));
-        }
+        if (isStrategy(to)) return candidates.filter(e => isEvidence(e) || isAbstractSupport(e) || isSubConclusion(e));
+        if (isSubConclusion(to) || isConclusion(to)) return candidates.filter(e => isStrategy(e));
         return candidates;
     }
 
     /** Templates for `implements`: local + `load`ed first, then workspace index (dedupe by name). */
-    private parentTemplateCandidateDescriptions(
-        unit: Unit,
-        doc: LangiumDocument,
-        descFor: (node: { id: string | QualifiedId }) => AstNodeDescription | undefined
-    ): AstNodeDescription[] {
+    private parentTemplateCandidateDescriptions(unit: Unit, doc: LangiumDocument): AstNodeDescription[] {
+        const descFor = (node: Template): AstNodeDescription | undefined => {
+            try {
+                return this.services.workspace.AstNodeDescriptionProvider.createDescription(node, node.id);
+            } catch {
+                return undefined;
+            }
+        };
         const localTemplates = unit.body.filter((b): b is Template => isTemplate(b));
         const importedTemplates = this.importService.getImportedTemplates(unit, doc);
         const seen = new Set<string>();
@@ -309,11 +296,23 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             return { ...result, items: loadPathItems };
         }
 
-        const operatorMatch = /(?:justification|template)\s+\w+\s+is\s+([\w:]*)$/.exec(linePfx);
+        const operatorMatch = /(?:justification|template)\s+\w+\s+is\s+(\w*)$/.exec(linePfx);
         if (operatorMatch) {
-            const operatorItems = this.getOperatorCompletions(document, operatorMatch[1]);
+            const operatorItems = this.getOperatorCompletions(operatorMatch[1]);
             if (operatorItems.length > 0) {
                 items = [...operatorItems, ...items.filter(i => !operatorItems.some(o => o.label === i.label))];
+            }
+        }
+
+        const textToCursor = document.textDocument.getText({
+            start: Position.create(0, 0),
+            end: pos
+        });
+        const configKeyMatch = /(?:justification|template)\s+\w+\s+is\s+(\w+)\s*\([^)]*\)\s*\{[^}]*(\w*)$/.exec(textToCursor);
+        if (configKeyMatch) {
+            const keyItems = this.getConfigKeyCompletions(configKeyMatch[1], configKeyMatch[2]);
+            if (keyItems.length > 0) {
+                items = [...keyItems, ...items.filter(i => !keyItems.some(k => k.label === i.label))];
             }
         }
 
@@ -329,42 +328,36 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         return { ...result, items };
     }
 
-    private getOperatorCompletions(document: LangiumDocument, partial: string): CompletionItem[] {
-        const unit = document.parseResult.value as Unit | undefined;
-        const seen = new Set<string>();
-        const out: CompletionItem[] = [];
+    private static readonly KNOWN_OPERATORS = ['assemble', 'refine'] as const;
 
-        const push = (name: string, kind: 'justification' | 'template') => {
-            if (seen.has(name)) return;
-            if (partial && !this.services.shared.lsp.FuzzyMatcher.match(partial, name)) return;
-            seen.add(name);
-            out.push({
-                label: name,
-                kind: CompletionItemKind.Function,
-                detail: kind,
-                sortText: `0_op_${name}`
-            });
-        };
+    private static readonly OPERATOR_CONFIG_KEYS: Record<string, string[]> = {
+        assemble: ['conclusionLabel', 'strategyLabel'],
+        refine: ['hook']
+    };
 
-        if (unit) {
-            for (const body of unit.body) {
-                if (isJustification(body)) push(body.id, 'justification');
-                else if (isTemplate(body)) push(body.id, 'template');
-            }
-        }
+    private getOperatorCompletions(partial: string): CompletionItem[] {
+        return JpipeCompletionProvider.KNOWN_OPERATORS
+            .filter(op => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, op))
+            .map(op => ({
+                label: op,
+                kind: CompletionItemKind.Keyword,
+                detail: 'composition operator',
+                sortText: `0_op_${op}`
+            }));
+    }
 
-        // Only hit the workspace index when the user has typed a prefix — avoids a full
-        // O(N) scan on the very first keystroke right after `is `.
-        if (partial.length > 0) {
-            for (const d of this.services.shared.workspace.IndexManager.allElements(JustificationRule.$type)) {
-                push(d.name, 'justification');
-            }
-            for (const d of this.services.shared.workspace.IndexManager.allElements(TemplateRule.$type)) {
-                push(d.name, 'template');
-            }
-        }
-
-        return out;
+    private getConfigKeyCompletions(operator: string, partial: string): CompletionItem[] {
+        const keys = JpipeCompletionProvider.OPERATOR_CONFIG_KEYS[operator] ?? [];
+        return keys
+            .filter((k: string) => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, k))
+            .map((k: string) => ({
+                label: k,
+                kind: CompletionItemKind.Property,
+                detail: `${operator} argument`,
+                sortText: `0_cfg_${k}`,
+                insertText: `${k}: "$0"`,
+                insertTextFormat: InsertTextFormat.Snippet
+            }));
     }
 
     private async getLoadPathCompletions(document: LangiumDocument, params: CompletionParams): Promise<CompletionItem[]> {

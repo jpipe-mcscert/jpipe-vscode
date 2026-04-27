@@ -6,6 +6,7 @@ import * as fs from 'node:fs';
 import {
     isJustification,
     isTemplate,
+    type Justification,
     type Template,
     type JustificationElement,
     type Unit
@@ -110,6 +111,25 @@ export class JpipeImportService {
             for (const body of importedUnit.body) {
                 if (isTemplate(body)) {
                     result.push({ template: body, ns: load.namespace ?? undefined });
+                }
+            }
+        }
+        return result;
+    }
+
+    getJustificationsAndTemplatesWithNamespace(
+        unit: Unit,
+        currentDoc: LangiumDocument
+    ): Array<{ node: Justification | Template; ns: string | undefined }> {
+        const result: Array<{ node: Justification | Template; ns: string | undefined }> = [];
+        for (const load of unit.imports) {
+            const doc = this.parseDocumentFromPath(load.path, currentDoc);
+            if (!doc) continue;
+            const importedUnit = doc.parseResult.value as Unit | undefined;
+            if (!importedUnit) continue;
+            for (const body of importedUnit.body) {
+                if (isJustification(body) || isTemplate(body)) {
+                    result.push({ node: body, ns: load.namespace ?? undefined });
                 }
             }
         }
