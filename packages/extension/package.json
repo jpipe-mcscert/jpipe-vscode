@@ -48,6 +48,45 @@
                 "path": "syntaxes/jpipe.tmLanguage.json"
             }
         ],
+        "semanticTokenTypes": [
+            {
+                "id": "jpipe-load",
+                "superType": "keyword",
+                "description": "Import keyword (load)"
+            },
+            {
+                "id": "jpipe-structure",
+                "superType": "keyword",
+                "description": "Structural keywords (justification, template, implements)"
+            },
+            {
+                "id": "jpipe-relation",
+                "superType": "keyword",
+                "description": "Relation keyword (supports)"
+            },
+            {
+                "id": "jpipe-abstract",
+                "superType": "keyword",
+                "description": "Abstract element keyword (@support)"
+            },
+            {
+                "id": "jpipe-element",
+                "superType": "keyword",
+                "description": "Element keywords (conclusion, evidence, strategy, sub-conclusion)"
+            }
+        ],
+        "semanticTokenScopes": [
+            {
+                "language": "jpipe",
+                "scopes": {
+                    "jpipe-load": ["keyword.control.import.jpipe"],
+                    "jpipe-structure": ["storage.type.jpipe"],
+                    "jpipe-relation": ["keyword.operator.jpipe"],
+                    "jpipe-abstract": ["storage.modifier.jpipe"],
+                    "jpipe-element": ["entity.name.type.jpipe"]
+                }
+            }
+        ],
         "commands": [
             {
                 "command": "jpipe.vis.preview",
