@@ -63,14 +63,19 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         }
 
         for (const load of unnamedLoads) {
-            defaultChildren.push(...this.buildUnnamedLoadModels(load, document));
+            const importedUnit = this.resolveImportedUnit(load, document);
+            if (importedUnit) {
+                const loadRange = load.$cstNode?.range ?? ZERO_RANGE;
+                defaultChildren.push(...this.buildImportedModelSymbols(importedUnit, loadRange));
+            }
         }
 
         const symbols: DocumentSymbol[] = [];
 
         if (defaultChildren.length > 0) {
+            const unitRange = unit.$cstNode?.range ?? ZERO_RANGE;
             symbols.push({
-                ...syntheticSymbol('(default)', SymbolKind.Module, ZERO_RANGE),
+                ...syntheticSymbol('(default)', SymbolKind.Module, unitRange),
                 children: defaultChildren,
             });
         }
@@ -83,14 +88,13 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         return symbols;
     }
 
-    private buildUnnamedLoadModels(load: Load, document: LangiumDocument): DocumentSymbol[] {
+    private resolveImportedUnit(load: Load, document: LangiumDocument): Unit | undefined {
         const importedDoc = this.importService.parseDocumentFromPath(load.path, document);
-        const importedUnit = importedDoc?.parseResult?.value as Unit | undefined;
-        if (!importedUnit) return [];
+        return importedDoc?.parseResult?.value as Unit | undefined;
+    }
 
-        const loadRange = load.$cstNode?.range ?? ZERO_RANGE;
+    private buildImportedModelSymbols(importedUnit: Unit, loadRange: Range): DocumentSymbol[] {
         const results: DocumentSymbol[] = [];
-
         for (const body of importedUnit.body) {
             if (!isJustification(body) && !isTemplate(body)) continue;
             const kind = isJustification(body) ? SymbolKind.Class : SymbolKind.Interface;
@@ -111,23 +115,10 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         loadRange: Range,
         document: LangiumDocument
     ): DocumentSymbol {
-        const importedDoc = this.importService.parseDocumentFromPath(load.path, document);
-        const importedUnit = importedDoc?.parseResult?.value as Unit | undefined;
-        const children: DocumentSymbol[] = [];
-
-        if (importedUnit) {
-            for (const body of importedUnit.body) {
-                if (!isJustification(body) && !isTemplate(body)) continue;
-                const kind = isJustification(body) ? SymbolKind.Class : SymbolKind.Interface;
-                const elementChildren = getLocalElements(body).map(e =>
-                    syntheticSymbol(qualifiedIdText(e.id), elementKind(e), loadRange)
-                );
-                children.push({
-                    ...syntheticSymbol(body.id, kind, loadRange),
-                    children: elementChildren.length > 0 ? elementChildren : undefined
-                });
-            }
-        }
+        const importedUnit = this.resolveImportedUnit(load, document);
+        const children = importedUnit
+            ? this.buildImportedModelSymbols(importedUnit, loadRange)
+            : [];
 
         return {
             ...syntheticSymbol(ns, SymbolKind.Module, loadRange),
@@ -146,17 +137,12 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         });
 
         // Inherited elements from parent templates (transitively).
-        // Label: "templateId:elementQualifiedId" — omits namespace, keeps template context.
+        // localKey = templateId:elementQualifiedId, omitting any namespace prefix.
         const { document: doc, unit } = this.getDocumentAndUnit(owner);
         const inherited = doc && unit
-            ? this.importService.getInheritedElementsWithKeys(owner, unit, doc).map(({ element }) => {
-                const parentTemplate = element.$container?.$container;
-                const templateId = parentTemplate && isTemplate(parentTemplate) ? parentTemplate.id : undefined;
-                const qualName = templateId
-                    ? `${templateId}:${qualifiedIdText(element.id)}`
-                    : qualifiedIdText(element.id);
-                return syntheticSymbol(`(inherited) ${qualName}`, elementKind(element), ownerRange);
-            })
+            ? this.importService.getInheritedElementsWithKeys(owner, unit, doc).map(({ element, localKey }) =>
+                syntheticSymbol(`(inherited) ${localKey}`, elementKind(element), ownerRange)
+            )
             : [];
 
         const children = [...local, ...inherited];

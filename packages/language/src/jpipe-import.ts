@@ -255,17 +255,19 @@ export class JpipeImportService {
         owner: Justification | Template,
         unit: Unit,
         currentDoc: LangiumDocument
-    ): Array<{ element: JustificationElement; key: string }> {
-        const result: Array<{ element: JustificationElement; key: string }> = [];
+    ): Array<{ element: JustificationElement; key: string; localKey: string }> {
+        const result: Array<{ element: JustificationElement; key: string; localKey: string }> = [];
         const visited = new Set<Template>();
         let parent = owner.parent?.ref;
         while (parent && !visited.has(parent)) {
             visited.add(parent);
             const ns = this.getNamespaceForTemplate(parent, unit, currentDoc);
-            // Include template name in the prefix: ns:templateId: or templateId:
+            // key includes namespace for scope resolution; localKey omits it for display.
             const prefix = ns ? `${ns}:${parent.id}:` : `${parent.id}:`;
+            const localPrefix = `${parent.id}:`;
             for (const el of (parent.contents?.body ?? []) as JustificationElement[]) {
-                result.push({ element: el, key: prefix + qualifiedIdText(el.id) });
+                const elId = qualifiedIdText(el.id);
+                result.push({ element: el, key: prefix + elId, localKey: localPrefix + elId });
             }
             parent = parent.parent?.ref;
         }
