@@ -11,6 +11,7 @@ import { JpipeNameProvider } from './jpipe-utils.js';
 import { JpipeHoverProvider } from './jpipe-hover-provider.js';
 import { JpipeSemanticTokenProvider } from './jpipe-semantic-token-provider.js';
 import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
+import { JpipeDocumentValidator } from './jpipe-document-validator.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -31,10 +32,11 @@ export type JpipeAddedServices = {
  */
 export type JpipeServices = LangiumServices & JpipeAddedServices
 
-function buildJpipeModule(logger: JpipeServerLogger): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
+function buildJpipeModule(logger: JpipeServerLogger, excludedDirs: string[] = []): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
     return {
         validation: {
-            JpipeValidator: (services) => new JpipeValidator(services)
+            JpipeValidator: (services) => new JpipeValidator(services),
+            DocumentValidator: (services) => new JpipeDocumentValidator(services, excludedDirs, logger)
         },
         references: {
             ScopeProvider: (services) => new JpipeScopeProvider(services),
@@ -73,6 +75,20 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
     Jpipe: JpipeServices
 } {
     const logger = new JpipeServerLogger(logLevel);
+    let excludedDirs: string[] = [];
+    try {
+        const raw = process.env.JPIPE_EXCLUDED_DIRS;
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.every((v: unknown) => typeof v === 'string')) {
+                excludedDirs = parsed;
+            } else {
+                logger.warn('JPIPE_EXCLUDED_DIRS must be a JSON array of strings; no directories will be excluded.');
+            }
+        }
+    } catch {
+        logger.warn('Failed to parse JPIPE_EXCLUDED_DIRS; no directories will be excluded from validation.');
+    }
     const shared = inject(
         createDefaultSharedModule(context),
         JpipeGeneratedSharedModule
@@ -80,7 +96,7 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
     const Jpipe = inject(
         createDefaultModule({ shared }),
         JpipeGeneratedModule,
-        buildJpipeModule(logger)
+        buildJpipeModule(logger, excludedDirs)
     );
     shared.ServiceRegistry.register(Jpipe);
     registerValidationChecks(Jpipe);
