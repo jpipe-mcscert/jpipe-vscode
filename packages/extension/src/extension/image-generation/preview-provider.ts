@@ -130,20 +130,35 @@ export class PreviewProvider {
     private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         if (!PreviewProvider.webviewPanel) return;
 
-        try {
-            if (this.viewMode === 'diagnostic') {
+        // Diagnostic mode bypasses diagram-name resolution
+        if (this.viewMode === 'diagnostic') {
+            try {
                 const output = await this.imageGenerator.generateDiagnostic(document);
                 PreviewProvider.webviewPanel.webview.html = this.getHtmlForDiagnostic(output, this.unsaved);
-                return;
-            }
+            } catch { /* ignore diagnostic errors */ }
+            return;
+        }
+
+        // Resolve diagram name using the caller's editor (correct cursor context).
+        // If the cursor is outside any diagram block, bail out silently so the
+        // current preview stays visible and no error notification is shown.
+        let diagramName: string;
+        try {
+            diagramName = this.imageGenerator.findDiagramName(document, editor);
+        } catch {
+            return;
+        }
+
+        try {
             // Avoid blanking the whole preview on transient render errors:
             // only show a full loading screen if we have nothing rendered yet.
             if (!this.lastGoodHtml) {
                 PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
             }
-            let svg = await this.imageGenerator.generate(false, ImageFormat.SVG, document);
+            // Pass the pre-resolved diagramName so generate() does not re-derive
+            // it from activeTextEditor (which may have a different cursor position).
+            let svg = await this.imageGenerator.generate(false, ImageFormat.SVG, document, diagramName);
             svg = this.extractSvgFromOutput(svg);
-            const diagramName = this.imageGenerator.findDiagramName(document, editor);
             this.logger.debug(`Preview updated: '${diagramName}' in ${document.fileName}`);
             let highlightName = await this.getSymbolNameAtCursor(document, editor);
             if (highlightName === diagramName) highlightName = null;
@@ -166,9 +181,6 @@ export class PreviewProvider {
 
             const svgFromError = this.extractSvgFromOutput(stdout);
             const hasSvg = svgFromError.includes('<svg');
-            const diagramName = (() => {
-                try { return this.imageGenerator.findDiagramName(document, editor); } catch { return undefined; }
-            })();
             let highlightName = await this.getSymbolNameAtCursor(document, editor);
             if (highlightName === diagramName) highlightName = null;
 
