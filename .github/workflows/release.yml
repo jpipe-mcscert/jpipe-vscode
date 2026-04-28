@@ -63,14 +63,14 @@ jobs:
       - name: Package extension as VSIX artefact
         run: |
           cd packages/extension
-          vsce package -o jpipe-extension.vsix
+          vsce package -o jpipe-extension-${{ github.ref_name }}.vsix
 
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create ${{ github.ref_name }} \
-            packages/extension/jpipe-extension.vsix \
+            packages/extension/jpipe-extension-${{ github.ref_name }}.vsix \
             --generate-notes \
             --title "Release ${{ github.ref_name }}"
 
