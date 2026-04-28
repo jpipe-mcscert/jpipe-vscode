@@ -47,10 +47,11 @@ export class ImageGenerator {
     public async generate(
         saveToFile: boolean = false,
         format: ImageFormat = ImageFormat.SVG,
-        document?: vscode.TextDocument
+        document?: vscode.TextDocument,
+        forcedDiagramName?: string
     ): Promise<string> {
         let editor = vscode.window.activeTextEditor;
-        
+
         // Use provided document or get from active editor
         if (!document) {
             if (!editor || editor.document.languageId !== 'jpipe') {
@@ -58,14 +59,14 @@ export class ImageGenerator {
             }
             document = editor.document;
         }
-        
+
         // If we don't have an editor, try to get one from visible text editors
         if (!editor) {
             editor = vscode.window.visibleTextEditors.find(e => e.document === document);
         }
 
         const inputFile = document.uri.fsPath;
-        const diagramName = this.findDiagramName(document, editor);
+        const diagramName = forcedDiagramName ?? this.findDiagramName(document, editor);
         
         const config = vscode.workspace.getConfiguration('jpipe');
         const mode = config.get<string>('executionMode', 'cli');
@@ -115,7 +116,7 @@ export class ImageGenerator {
             command += ` -o "${outputPath.fsPath}"`;
         }
 
-        this.logger.debug(`Executing: ${command}`);
+        this.logger.info(`Executing: ${command}`);
 
         try {
             const { stdout } = await execAsync(command);
@@ -203,7 +204,7 @@ export class ImageGenerator {
             command = `"${cliCmd}" diagnostic ${inputArg}`;
         }
 
-        this.logger.debug(`Executing: ${command}`);
+        this.logger.info(`Executing: ${command}`);
         try {
             const { stdout, stderr } = await execAsync(command, { env: envWithPath() });
             return [stdout, stderr].filter(Boolean).join('\n').trim() || '(no output)';
@@ -214,9 +215,9 @@ export class ImageGenerator {
         }
     }
 
-    public async generateAndSave(format: ImageFormat = ImageFormat.SVG, document?: vscode.TextDocument): Promise<void> {
+    public async generateAndSave(format: ImageFormat = ImageFormat.SVG, document?: vscode.TextDocument, forcedDiagramName?: string): Promise<void> {
         try {
-            await this.generate(true, format, document);
+            await this.generate(true, format, document, forcedDiagramName);
             vscode.window.showInformationMessage(`${format} saved successfully`);
         } catch (error: any) {
             if (error?.cancelled === true || String(error?.message ?? '') === 'Save cancelled') {
@@ -228,12 +229,18 @@ export class ImageGenerator {
     
     private logGenerationError(diagramName: string, error: any): void {
         const exitCode: number | undefined = typeof error?.code === 'number' ? error.code : undefined;
+        const stderr = typeof error?.stderr === 'string' ? error.stderr.trim() : '';
         if (exitCode === 1) {
             this.logger.warn(`Compiler exit 1 (model errors) for '${diagramName}'`);
         } else if (exitCode === 42) {
             this.logger.error(`Compiler exit 42 (crash) for '${diagramName}'`);
+            this.logger.reveal();
         } else {
             this.logger.error(`Generation failed for '${diagramName}': ${error instanceof Error ? error.message : String(exitCode ?? error)}`);
+            this.logger.reveal();
+        }
+        if (stderr) {
+            this.logger.warn(`Compiler stderr: ${stderr}`);
         }
     }
 

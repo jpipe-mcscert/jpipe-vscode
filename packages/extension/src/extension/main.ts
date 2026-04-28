@@ -19,14 +19,28 @@ export function activate(context: vscode.ExtensionContext): void {
     const imageGenerator = new ImageGenerator(logger);
     const previewProvider = new PreviewProvider(imageGenerator, client, context, logger);
 
+    async function resolveExportContext(): Promise<{ doc: vscode.TextDocument | undefined; diagramName: string | undefined }> {
+        const active = vscode.window.activeTextEditor?.document;
+        if (active?.languageId === 'jpipe') return { doc: active, diagramName: undefined };
+        const lastUri = previewProvider.getLastRenderedDocumentUri();
+        const lastDiagramName = previewProvider.getLastRenderedDiagramName();
+        if (lastUri) {
+            try {
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(lastUri));
+                return { doc, diagramName: lastDiagramName };
+            } catch { /* fall through */ }
+        }
+        return { doc: undefined, diagramName: undefined };
+    }
+
     context.subscriptions.push(
-        vscode.commands.registerCommand('jpipe.downloadPNG',    () => imageGenerator.generateAndSave(ImageFormat.PNG)),
-        vscode.commands.registerCommand('jpipe.downloadSVG',    () => imageGenerator.generateAndSave(ImageFormat.SVG)),
-        vscode.commands.registerCommand('jpipe.downloadJSON',   () => imageGenerator.generateAndSave(ImageFormat.JSON)),
-        vscode.commands.registerCommand('jpipe.downloadJPEG',   () => imageGenerator.generateAndSave(ImageFormat.JPEG)),
-        vscode.commands.registerCommand('jpipe.downloadDOT',    () => imageGenerator.generateAndSave(ImageFormat.DOT)),
-        vscode.commands.registerCommand('jpipe.downloadPython', () => imageGenerator.generateAndSave(ImageFormat.PYTHON)),
-        vscode.commands.registerCommand('jpipe.downloadJPIPE',  () => imageGenerator.generateAndSave(ImageFormat.JPIPE)),
+        vscode.commands.registerCommand('jpipe.downloadPNG',    async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.PNG,    doc, diagramName); }),
+        vscode.commands.registerCommand('jpipe.downloadSVG',    async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.SVG,    doc, diagramName); }),
+        vscode.commands.registerCommand('jpipe.downloadJSON',   async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.JSON,   doc, diagramName); }),
+        vscode.commands.registerCommand('jpipe.downloadJPEG',   async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.JPEG,   doc, diagramName); }),
+        vscode.commands.registerCommand('jpipe.downloadDOT',    async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.DOT,    doc, diagramName); }),
+        vscode.commands.registerCommand('jpipe.downloadPython', async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.PYTHON, doc, diagramName); }),
+        vscode.commands.registerCommand('jpipe.downloadJPIPE',  async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.JPIPE,  doc, diagramName); }),
         vscode.commands.registerCommand('jpipe.vis.preview', () => previewProvider.openPreview()),
         vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
             const { ok, message } = await imageGenerator.check();

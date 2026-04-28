@@ -8,6 +8,8 @@ import { JpipeCompletionProvider } from './jpipe-completion.js';
 import { JpipeDefinitionProvider } from './jpipe-definition-provider.js';
 import { JpipeDocumentSymbolProvider } from './jpipe-symbol-provider.js';
 import { JpipeNameProvider } from './jpipe-utils.js';
+import { JpipeHoverProvider } from './jpipe-hover-provider.js';
+import { JpipeSemanticTokenProvider } from './jpipe-semantic-token-provider.js';
 import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 
 /**
@@ -42,7 +44,9 @@ function buildJpipeModule(logger: JpipeServerLogger): Module<JpipeServices, Part
         lsp: {
             DefinitionProvider:     (services) => new JpipeDefinitionProvider(services),
             DocumentSymbolProvider: (services) => new JpipeDocumentSymbolProvider(services),
-            CompletionProvider:     (services) => new JpipeCompletionProvider(services)
+            CompletionProvider:     (services) => new JpipeCompletionProvider(services),
+            HoverProvider:          (services) => new JpipeHoverProvider(services),
+            SemanticTokenProvider:  (services) => new JpipeSemanticTokenProvider(services)
         },
         logger: () => logger
     };

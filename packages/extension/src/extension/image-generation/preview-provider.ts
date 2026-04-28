@@ -19,10 +19,18 @@ export class PreviewProvider {
     private lastRenderedDiagramName: string | undefined;
     private lastGoodHtml: string | undefined;
 
+    public getLastRenderedDocumentUri(): string | undefined {
+        return this.lastRenderedDocumentUri;
+    }
+
+    public getLastRenderedDiagramName(): string | undefined {
+        return this.lastRenderedDiagramName;
+    }
+
     constructor(
         private readonly imageGenerator: ImageGenerator,
         private readonly languageClient: LanguageClient,
-        context: vscode.ExtensionContext,
+        private readonly context: vscode.ExtensionContext,
         private readonly logger: JpipeLogger
     ) {
         this.setupEventListeners(context);
@@ -37,9 +45,11 @@ export class PreviewProvider {
         }
 
         if (PreviewProvider.webviewDisposed || !PreviewProvider.webviewPanel) {
+            const previousColumn = editor.viewColumn ?? vscode.ViewColumn.One;
             PreviewProvider.webviewPanel = this.createWebviewPanel();
             PreviewProvider.webviewDisposed = false;
             this.logger.info('Webview panel created');
+            await this.lockPreviewGroup(previousColumn);
         } else {
             PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, true);
         }
@@ -48,6 +58,23 @@ export class PreviewProvider {
         await this.updatePreview(editor.document, editor);
     }
     
+    private async lockPreviewGroup(restoreColumn: vscode.ViewColumn): Promise<void> {
+        const columnNames = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth'];
+        // Wait for VS Code to resolve ViewColumn.Beside to an actual column number on panel.viewColumn
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
+        const panelColumn = PreviewProvider.webviewPanel?.viewColumn;
+        if (panelColumn === undefined || (panelColumn as number) <= 0) return;
+        const colIndex = (panelColumn as number) - 1;
+        if (colIndex >= columnNames.length) return;
+        // Use executeCommand for focus so we can await it (panel.reveal() is fire-and-forget)
+        await vscode.commands.executeCommand(`workbench.action.focus${columnNames[colIndex]}EditorGroup`);
+        await vscode.commands.executeCommand('workbench.action.lockEditorGroup');
+        const restoreIndex = (restoreColumn as number) - 1;
+        if (restoreIndex >= 0 && restoreIndex < columnNames.length) {
+            await vscode.commands.executeCommand(`workbench.action.focus${columnNames[restoreIndex]}EditorGroup`);
+        }
+    }
+
     private setupEventListeners(context: vscode.ExtensionContext): void {
         const saveListener = vscode.workspace.onDidSaveTextDocument((document) => {
             if (document.languageId !== 'jpipe' || !PreviewProvider.webviewPanel || PreviewProvider.webviewDisposed) return;
@@ -103,20 +130,38 @@ export class PreviewProvider {
     private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         if (!PreviewProvider.webviewPanel) return;
 
-        try {
-            if (this.viewMode === 'diagnostic') {
+        // Diagnostic mode bypasses diagram-name resolution
+        if (this.viewMode === 'diagnostic') {
+            try {
                 const output = await this.imageGenerator.generateDiagnostic(document);
                 PreviewProvider.webviewPanel.webview.html = this.getHtmlForDiagnostic(output, this.unsaved);
-                return;
+            } catch { /* ignore diagnostic errors */ }
+            return;
+        }
+
+        // Resolve diagram name using the caller's editor (correct cursor context).
+        // If the cursor is outside any diagram block, bail out silently so the
+        // current preview stays visible and no error notification is shown.
+        let diagramName: string;
+        try {
+            diagramName = this.imageGenerator.findDiagramName(document, editor);
+        } catch {
+            if (!this.lastGoodHtml) {
+                PreviewProvider.webviewPanel.webview.html = this.getNodiagramHtml();
             }
+            return;
+        }
+
+        try {
             // Avoid blanking the whole preview on transient render errors:
             // only show a full loading screen if we have nothing rendered yet.
             if (!this.lastGoodHtml) {
                 PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
             }
-            let svg = await this.imageGenerator.generate(false, ImageFormat.SVG, document);
+            // Pass the pre-resolved diagramName so generate() does not re-derive
+            // it from activeTextEditor (which may have a different cursor position).
+            let svg = await this.imageGenerator.generate(false, ImageFormat.SVG, document, diagramName);
             svg = this.extractSvgFromOutput(svg);
-            const diagramName = this.imageGenerator.findDiagramName(document, editor);
             this.logger.debug(`Preview updated: '${diagramName}' in ${document.fileName}`);
             let highlightName = await this.getSymbolNameAtCursor(document, editor);
             if (highlightName === diagramName) highlightName = null;
@@ -139,9 +184,6 @@ export class PreviewProvider {
 
             const svgFromError = this.extractSvgFromOutput(stdout);
             const hasSvg = svgFromError.includes('<svg');
-            const diagramName = (() => {
-                try { return this.imageGenerator.findDiagramName(document, editor); } catch { return undefined; }
-            })();
             let highlightName = await this.getSymbolNameAtCursor(document, editor);
             if (highlightName === diagramName) highlightName = null;
 
@@ -165,6 +207,7 @@ export class PreviewProvider {
                     vscode.window.showErrorMessage(msg ? `jPipe Error: ${msg}` : 'jPipe Error: render failed');
                 }
                 this.lastRenderedDocumentUri = document.uri.toString();
+                this.lastRenderedDiagramName = diagramName;
             } else {
                 if (exitCode === 1) {
                     vscode.window.showWarningMessage(`jPipe: model has errors (exit code 1): ${cleanMsg}`);
@@ -180,6 +223,7 @@ export class PreviewProvider {
                     PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
                 }
                 this.lastRenderedDocumentUri = undefined;
+                this.lastRenderedDiagramName = undefined;
             }
         }
     }
@@ -265,9 +309,15 @@ export class PreviewProvider {
             },
             {
                 enableScripts: true,
-                retainContextWhenHidden: true
+                retainContextWhenHidden: true,
+                localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'images')]
             }
         );
+
+        panel.iconPath = {
+            light: vscode.Uri.joinPath(this.context.extensionUri, 'images', 'icon_light.svg'),
+            dark:  vscode.Uri.joinPath(this.context.extensionUri, 'images', 'icon_dark.svg')
+        };
         
         panel.onDidDispose(() => {
             PreviewProvider.webviewPanel = undefined;
@@ -280,15 +330,17 @@ export class PreviewProvider {
                 const fmt = (ImageFormat as Record<string, ImageFormat>)[msg.format];
                 if (fmt !== undefined) {
                     const activeDoc = vscode.window.activeTextEditor?.document;
-                    if (activeDoc?.languageId === 'jpipe') {
+                    if (activeDoc?.languageId === 'jpipe'
+                            && activeDoc.uri.toString() === this.lastRenderedDocumentUri) {
                         this.imageGenerator.generateAndSave(fmt, activeDoc);
                         return;
                     }
                     const lastUri = this.lastRenderedDocumentUri;
+                    const lastDiagramName = this.lastRenderedDiagramName;
                     if (lastUri) {
                         vscode.workspace.openTextDocument(vscode.Uri.parse(lastUri))
                             .then(
-                                doc => this.imageGenerator.generateAndSave(fmt, doc),
+                                doc => this.imageGenerator.generateAndSave(fmt, doc, lastDiagramName),
                                 () => this.imageGenerator.generateAndSave(fmt)
                             );
                         return;
@@ -897,6 +949,40 @@ export class PreviewProvider {
             } catch (err) {}
         })();
     </script>
+</body>
+</html>`;
+    }
+
+    private getNodiagramHtml(): string {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>jPipe Preview</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            background-color: var(--vscode-editor-background);
+            color: var(--vscode-foreground);
+            font-family: var(--vscode-font-family);
+        }
+        .message {
+            max-width: 32rem;
+            text-align: center;
+            opacity: 0.8;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="message">Move the cursor into a diagram block to preview it.</div>
 </body>
 </html>`;
     }
