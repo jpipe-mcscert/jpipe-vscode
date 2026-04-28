@@ -146,7 +146,9 @@ export class PreviewProvider {
         try {
             diagramName = this.imageGenerator.findDiagramName(document, editor);
         } catch {
-            if (!this.lastGoodHtml) {
+            if (this.lastGoodHtml) {
+                PreviewProvider.webviewPanel.webview.html = this.lastGoodHtml;
+            } else {
                 PreviewProvider.webviewPanel.webview.html = this.getNodiagramHtml();
             }
             return;
