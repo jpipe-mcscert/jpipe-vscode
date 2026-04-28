@@ -78,7 +78,14 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
     let excludedDirs: string[] = [];
     try {
         const raw = process.env.JPIPE_EXCLUDED_DIRS;
-        if (raw) excludedDirs = JSON.parse(raw) as string[];
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.every((v: unknown) => typeof v === 'string')) {
+                excludedDirs = parsed;
+            } else {
+                logger.warn('JPIPE_EXCLUDED_DIRS must be a JSON array of strings; no directories will be excluded.');
+            }
+        }
     } catch {
         logger.warn('Failed to parse JPIPE_EXCLUDED_DIRS; no directories will be excluded from validation.');
     }

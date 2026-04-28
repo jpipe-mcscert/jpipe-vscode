@@ -5,12 +5,14 @@ import { DiagnosticSeverity, type Diagnostic } from 'vscode-languageserver-types
 import type { JpipeServerLogger } from './jpipe-logger.js';
 
 export class JpipeDocumentValidator extends DefaultDocumentValidator {
-    private readonly excludedPaths: string[];
+    private readonly excludedUris: URI[];
     private readonly logger: JpipeServerLogger;
 
     constructor(services: LangiumCoreServices, excludedPaths: string[], logger: JpipeServerLogger) {
         super(services);
-        this.excludedPaths = excludedPaths;
+        this.excludedUris = excludedPaths.flatMap(p => {
+            try { return [URI.parse(p)]; } catch { logger.warn(`Ignoring invalid excluded-directory URI: ${p}`); return []; }
+        });
         this.logger = logger;
     }
 
@@ -19,7 +21,7 @@ export class JpipeDocumentValidator extends DefaultDocumentValidator {
         options?: ValidationOptions,
         cancelToken?: CancellationToken
     ): Promise<Diagnostic[]> {
-        if (this.excludedPaths.some(dir => UriUtils.contains(URI.parse(dir), document.uri))) {
+        if (this.excludedUris.some(dir => UriUtils.contains(dir, document.uri))) {
             this.logger.debug(`Skipping validation (excluded): ${document.uri.toString()}`);
             return [{
                 range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },

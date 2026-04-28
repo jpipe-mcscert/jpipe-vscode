@@ -65,24 +65,19 @@ export function activate(context: vscode.ExtensionContext): void {
                 openLabel: 'Exclude from Validation'
             });
             if (!uris || uris.length === 0) return;
-            const selectedFsPath = uris[0].fsPath;
-            const roots = vscode.workspace.workspaceFolders ?? [];
-            let relPath: string | undefined;
-            for (const folder of roots) {
-                const rel = path.relative(folder.uri.fsPath, selectedFsPath);
-                if (rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)) {
-                    relPath = rel;
-                    break;
-                }
-            }
-            if (relPath === undefined) {
+            const selectedUri = uris[0];
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(selectedUri);
+            if (!workspaceFolder) {
                 vscode.window.showWarningMessage('The selected directory must be inside the workspace.');
                 return;
             }
+            const roots = vscode.workspace.workspaceFolders ?? [];
+            const relPart = vscode.workspace.asRelativePath(selectedUri, false).replaceAll('\\', '/');
+            const entry = roots.length > 1 ? `${workspaceFolder.name}:${relPart}` : relPart;
             const config = vscode.workspace.getConfiguration('jpipe');
             const current = config.get<string[]>('excludedDirectories', []);
-            if (!current.includes(relPath)) {
-                await config.update('excludedDirectories', [...current, relPath], vscode.ConfigurationTarget.Workspace);
+            if (!current.includes(entry)) {
+                await config.update('excludedDirectories', [...current, entry], vscode.ConfigurationTarget.Workspace);
             }
         }),
         vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
@@ -107,11 +102,18 @@ export function deactivate(): Thenable<void> | undefined {
 function resolveExcludedDirectories(): string[] {
     const raw = vscode.workspace.getConfiguration('jpipe').get<string[]>('excludedDirectories', []);
     const roots = vscode.workspace.workspaceFolders ?? [];
+    const rootsByName = new Map(roots.map(f => [f.name, f]));
     const resolved: string[] = [];
-    for (const rel of raw) {
-        if (!rel) continue;
-        for (const folder of roots) {
-            resolved.push(vscode.Uri.joinPath(folder.uri, rel).toString());
+    for (const entry of raw) {
+        if (!entry) continue;
+        const colon = entry.indexOf(':');
+        if (colon > 0) {
+            const folderName = entry.slice(0, colon);
+            const rel = entry.slice(colon + 1);
+            const folder = rootsByName.get(folderName);
+            if (folder && rel) resolved.push(vscode.Uri.joinPath(folder.uri, rel).toString());
+        } else if (roots.length === 1) {
+            resolved.push(vscode.Uri.joinPath(roots[0].uri, entry).toString());
         }
     }
     return resolved;
