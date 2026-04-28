@@ -146,11 +146,17 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         });
 
         // Inherited elements from parent templates (transitively).
+        // Label: "templateId:elementQualifiedId" — omits namespace, keeps template context.
         const { document: doc, unit } = this.getDocumentAndUnit(owner);
         const inherited = doc && unit
-            ? this.importService.getInheritedElementsWithKeys(owner, unit, doc).map(({ element }) =>
-                syntheticSymbol(`(inherited) ${qualifiedIdText(element.id)}`, elementKind(element), ownerRange)
-            )
+            ? this.importService.getInheritedElementsWithKeys(owner, unit, doc).map(({ element }) => {
+                const parentTemplate = element.$container?.$container;
+                const templateId = parentTemplate && isTemplate(parentTemplate) ? parentTemplate.id : undefined;
+                const qualName = templateId
+                    ? `${templateId}:${qualifiedIdText(element.id)}`
+                    : qualifiedIdText(element.id);
+                return syntheticSymbol(`(inherited) ${qualName}`, elementKind(element), ownerRange);
+            })
             : [];
 
         const children = [...local, ...inherited];
