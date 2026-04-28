@@ -23,6 +23,10 @@ export class PreviewProvider {
         return this.lastRenderedDocumentUri;
     }
 
+    public getLastRenderedDiagramName(): string | undefined {
+        return this.lastRenderedDiagramName;
+    }
+
     constructor(
         private readonly imageGenerator: ImageGenerator,
         private readonly languageClient: LanguageClient,
@@ -56,17 +60,13 @@ export class PreviewProvider {
     
     private async lockPreviewGroup(restoreColumn: vscode.ViewColumn): Promise<void> {
         const columnNames = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth'];
-        // Give VS Code one tick to register the new panel in tabGroups
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
-        const group = vscode.window.tabGroups.all.find(g =>
-            g.tabs.some(t =>
-                t.input instanceof vscode.TabInputWebview &&
-                (t.input as vscode.TabInputWebview).viewType === 'jpipe.preview'
-            )
-        );
-        if (!group) return;
-        const colIndex = (group.viewColumn as number) - 1;
-        if (colIndex < 0 || colIndex >= columnNames.length) return;
+        // Wait for VS Code to resolve ViewColumn.Beside to an actual column number on panel.viewColumn
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
+        const panelColumn = PreviewProvider.webviewPanel?.viewColumn;
+        if (panelColumn === undefined || (panelColumn as number) <= 0) return;
+        const colIndex = (panelColumn as number) - 1;
+        if (colIndex >= columnNames.length) return;
+        // Use executeCommand for focus so we can await it (panel.reveal() is fire-and-forget)
         await vscode.commands.executeCommand(`workbench.action.focus${columnNames[colIndex]}EditorGroup`);
         await vscode.commands.executeCommand('workbench.action.lockEditorGroup');
         const restoreIndex = (restoreColumn as number) - 1;
@@ -318,10 +318,11 @@ export class PreviewProvider {
                         return;
                     }
                     const lastUri = this.lastRenderedDocumentUri;
+                    const lastDiagramName = this.lastRenderedDiagramName;
                     if (lastUri) {
                         vscode.workspace.openTextDocument(vscode.Uri.parse(lastUri))
                             .then(
-                                doc => this.imageGenerator.generateAndSave(fmt, doc),
+                                doc => this.imageGenerator.generateAndSave(fmt, doc, lastDiagramName),
                                 () => this.imageGenerator.generateAndSave(fmt)
                             );
                         return;
