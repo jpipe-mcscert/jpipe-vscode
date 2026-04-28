@@ -51,12 +51,12 @@
         "semanticTokenTypes": [
             {
                 "id": "jpipe-load",
-                "superType": "keyword",
+                "superType": "namespace",
                 "description": "Import keyword (load)"
             },
             {
                 "id": "jpipe-structure",
-                "superType": "keyword",
+                "superType": "type",
                 "description": "Structural keywords (justification, template, implements)"
             },
             {
@@ -79,11 +79,11 @@
             {
                 "language": "jpipe",
                 "scopes": {
-                    "jpipe-load": ["keyword.control.import.jpipe"],
-                    "jpipe-structure": ["storage.type.jpipe"],
-                    "jpipe-relation": ["keyword.operator.jpipe"],
+                    "jpipe-load": ["entity.name.namespace.jpipe"],
+                    "jpipe-structure": ["support.type.jpipe"],
+                    "jpipe-relation": ["variable.other.enummember.jpipe"],
                     "jpipe-abstract": ["storage.modifier.jpipe"],
-                    "jpipe-element": ["entity.name.type.jpipe"]
+                    "jpipe-element": ["entity.name.function.jpipe"]
                 }
             }
         ],
