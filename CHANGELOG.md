@@ -1,5 +1,22 @@
 ## Changelog
 
+### v1.1.0 (2026-04-28)
+- Leader: Sébastien Mosser
+  - Features:
+    - **Language Server:** Implement qualified names, hierarchical outline, and namespace-aware scoping
+    - **Language Server:** Remodel composition operators with proper grammar, scope, and completion
+    - **Language Server:** Improve completion for `supports` relations, operator calls, and load paths
+    - **Language Server:** Redesign outline with namespace grouping; prefix inherited elements with their source template id
+    - **Language Server:** Semantic token provider with 5 keyword groups and TextMate scope fallbacks
+    - **Extension:** Add `jpipe.excludedDirectories` setting to suppress validation in selected directories
+    - **Extension:** Lock preview panel group using the tabGroups API
+    - **Extension:** Grouped context menu, hover labels, shield logo, and export fallback
+    - **CI/CD:** Overhaul pipelines with deduplication and automated release
+  - Bug Fixes:
+    - Restore last diagram when switching back from diagnostic mode
+    - Fix silent early return in `updatePreview` when cursor is outside any diagram
+    - Fix panel lock via resolved `viewColumn`; pass diagram name on fallback export
+
 ### v1.0.2 (2026-04-26)
 - Leader: Sébastien Mosser
   - Bug Fixes:
