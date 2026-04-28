@@ -20,6 +20,8 @@ import {
 } from './generated/ast.js';
 import { getLocalElements, qualifiedIdText } from './jpipe-utils.js';
 
+const ZERO_RANGE: Range = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+
 function elementKind(e: JustificationElement): SymbolKind {
     if (isConclusion(e))      return SymbolKind.Constructor;
     if (isStrategy(e))        return SymbolKind.Method;
@@ -48,25 +50,59 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         const unit = document.parseResult?.value as Unit | undefined;
         if (!unit) return [];
 
-        const symbols: DocumentSymbol[] = [];
+        const unnamedLoads = unit.imports.filter(l => !l.namespace);
+        const namedLoads   = unit.imports.filter(l => !!l.namespace);
 
-        // 1. Named load statements → Module group containing imported models.
-        for (const load of unit.imports) {
-            const ns = load.namespace;
-            if (!ns || !load.$cstNode) continue;
-            const loadRange = load.$cstNode.range;
-            symbols.push(this.buildNamespaceSymbol(load, ns, loadRange, document));
-        }
+        // Default namespace: local models first, then models from unnamed loads.
+        const defaultChildren: DocumentSymbol[] = [];
 
-        // 2. Local Justifications and Templates.
         for (const body of unit.body) {
             if (!isJustification(body) && !isTemplate(body)) continue;
             if (!body.$cstNode) continue;
-            const sym = this.buildModelSymbol(body, document);
-            symbols.push(sym);
+            defaultChildren.push(this.buildModelSymbol(body));
+        }
+
+        for (const load of unnamedLoads) {
+            defaultChildren.push(...this.buildUnnamedLoadModels(load, document));
+        }
+
+        const symbols: DocumentSymbol[] = [];
+
+        if (defaultChildren.length > 0) {
+            symbols.push({
+                ...syntheticSymbol('(default)', SymbolKind.Module, ZERO_RANGE),
+                children: defaultChildren,
+            });
+        }
+
+        for (const load of namedLoads) {
+            if (!load.$cstNode || !load.namespace) continue;
+            symbols.push(this.buildNamespaceSymbol(load, load.namespace, load.$cstNode.range, document));
         }
 
         return symbols;
+    }
+
+    private buildUnnamedLoadModels(load: Load, document: LangiumDocument): DocumentSymbol[] {
+        const importedDoc = this.importService.parseDocumentFromPath(load.path, document);
+        const importedUnit = importedDoc?.parseResult?.value as Unit | undefined;
+        if (!importedUnit) return [];
+
+        const loadRange = load.$cstNode?.range ?? ZERO_RANGE;
+        const results: DocumentSymbol[] = [];
+
+        for (const body of importedUnit.body) {
+            if (!isJustification(body) && !isTemplate(body)) continue;
+            const kind = isJustification(body) ? SymbolKind.Class : SymbolKind.Interface;
+            const elementChildren = getLocalElements(body).map(e =>
+                syntheticSymbol(qualifiedIdText(e.id), elementKind(e), loadRange)
+            );
+            results.push({
+                ...syntheticSymbol(body.id, kind, loadRange),
+                children: elementChildren.length > 0 ? elementChildren : undefined,
+            });
+        }
+        return results;
     }
 
     private buildNamespaceSymbol(
@@ -83,12 +119,11 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
             for (const body of importedUnit.body) {
                 if (!isJustification(body) && !isTemplate(body)) continue;
                 const kind = isJustification(body) ? SymbolKind.Class : SymbolKind.Interface;
-                const name = `${ns}:${body.id}`;
                 const elementChildren = getLocalElements(body).map(e =>
-                    syntheticSymbol(`${ns}:${qualifiedIdText(e.id)}`, elementKind(e), loadRange)
+                    syntheticSymbol(qualifiedIdText(e.id), elementKind(e), loadRange)
                 );
                 children.push({
-                    ...syntheticSymbol(name, kind, loadRange),
+                    ...syntheticSymbol(body.id, kind, loadRange),
                     children: elementChildren.length > 0 ? elementChildren : undefined
                 });
             }
@@ -100,13 +135,9 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         };
     }
 
-    private buildModelSymbol(
-        owner: Justification | Template,
-        document: LangiumDocument
-    ): DocumentSymbol {
+    private buildModelSymbol(owner: Justification | Template): DocumentSymbol {
         const kind = isJustification(owner) ? SymbolKind.Class : SymbolKind.Interface;
         const ownerRange = owner.$cstNode!.range;
-        const nameRange = owner.$cstNode!.range;
 
         // Local elements.
         const local = getLocalElements(owner).map(e => {
@@ -114,13 +145,12 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
             return syntheticSymbol(qualifiedIdText(e.id), elementKind(e), range);
         });
 
-        // Inherited elements from parent templates.
+        // Inherited elements from parent templates (transitively).
         const { document: doc, unit } = this.getDocumentAndUnit(owner);
         const inherited = doc && unit
-            ? this.importService.getInheritedElementsWithKeys(owner, unit, doc).map(({ element, key }) => {
-                const range = ownerRange;
-                return syntheticSymbol(`(inherited) ${key}`, elementKind(element), range);
-            })
+            ? this.importService.getInheritedElementsWithKeys(owner, unit, doc).map(({ element }) =>
+                syntheticSymbol(`(inherited) ${qualifiedIdText(element.id)}`, elementKind(element), ownerRange)
+            )
             : [];
 
         const children = [...local, ...inherited];
@@ -129,7 +159,7 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
             name: owner.id,
             kind,
             range: ownerRange,
-            selectionRange: nameRange,
+            selectionRange: ownerRange,
             children: children.length > 0 ? children : undefined
         };
     }
