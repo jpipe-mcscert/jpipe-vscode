@@ -141,6 +141,12 @@
                 "title": "Check jPipe Installation",
                 "category": "jPipe",
                 "icon": "$(check)"
+            },
+            {
+                "command": "jpipe.addExcludedDirectory",
+                "title": "Add Excluded Directory",
+                "category": "jPipe",
+                "icon": "$(folder-opened)"
             }
         ],
         "submenus": [
@@ -255,6 +261,13 @@
                     ],
                     "default": "info",
                     "description": "Verbosity of the jPipe log channel (Output > jPipe). The language server log level (Output > jPipe Language Server) is set once at startup and requires a window reload to change."
+                },
+                "jpipe.excludedDirectories": {
+                    "order": 6,
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "default": [],
+                    "markdownDescription": "Directories (relative to workspace root) whose `.jd` files are excluded from validation. Files in excluded directories display a warning instead of errors. Changes require a window reload to take effect.\n\n[$(folder-opened) Browse for directory…](command:jpipe.addExcludedDirectory)"
                 }
             }
         }

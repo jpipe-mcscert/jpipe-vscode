@@ -15,6 +15,21 @@ export function activate(context: vscode.ExtensionContext): void {
 
     client = startLanguageClient(context, logger);
 
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('jpipe.excludedDirectories')) {
+                vscode.window.showInformationMessage(
+                    'jPipe: "Excluded Directories" changed. Reload the window to apply.',
+                    'Reload Window'
+                ).then(sel => {
+                    if (sel === 'Reload Window') {
+                        vscode.commands.executeCommand('workbench.action.reloadWindow');
+                    }
+                });
+            }
+        })
+    );
+
     // Create image generator and preview provider (client passed for cursor→node highlighting)
     const imageGenerator = new ImageGenerator(logger);
     const previewProvider = new PreviewProvider(imageGenerator, client, context, logger);
@@ -42,6 +57,34 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('jpipe.downloadPython', async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.PYTHON, doc, diagramName); }),
         vscode.commands.registerCommand('jpipe.downloadJPIPE',  async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.JPIPE,  doc, diagramName); }),
         vscode.commands.registerCommand('jpipe.vis.preview', () => previewProvider.openPreview()),
+        vscode.commands.registerCommand('jpipe.addExcludedDirectory', async () => {
+            const uris = await vscode.window.showOpenDialog({
+                canSelectFolders: true,
+                canSelectFiles: false,
+                canSelectMany: false,
+                openLabel: 'Exclude from Validation'
+            });
+            if (!uris || uris.length === 0) return;
+            const selectedFsPath = uris[0].fsPath;
+            const roots = vscode.workspace.workspaceFolders ?? [];
+            let relPath: string | undefined;
+            for (const folder of roots) {
+                const rel = path.relative(folder.uri.fsPath, selectedFsPath);
+                if (rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+                    relPath = rel;
+                    break;
+                }
+            }
+            if (relPath === undefined) {
+                vscode.window.showWarningMessage('The selected directory must be inside the workspace.');
+                return;
+            }
+            const config = vscode.workspace.getConfiguration('jpipe');
+            const current = config.get<string[]>('excludedDirectories', []);
+            if (!current.includes(relPath)) {
+                await config.update('excludedDirectories', [...current, relPath], vscode.ConfigurationTarget.Workspace);
+            }
+        }),
         vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
             const { ok, message } = await imageGenerator.check();
             if (ok) {
@@ -61,6 +104,19 @@ export function deactivate(): Thenable<void> | undefined {
     return undefined;
 }
 
+function resolveExcludedDirectories(): string[] {
+    const raw = vscode.workspace.getConfiguration('jpipe').get<string[]>('excludedDirectories', []);
+    const roots = vscode.workspace.workspaceFolders ?? [];
+    const resolved: string[] = [];
+    for (const rel of raw) {
+        if (!rel) continue;
+        for (const folder of roots) {
+            resolved.push(vscode.Uri.joinPath(folder.uri, rel).toString());
+        }
+    }
+    return resolved;
+}
+
 function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogger): LanguageClient {
     const serverModule = context.asAbsolutePath(path.join('out', 'language', 'main.cjs'));
     const debugOptions = {
@@ -68,7 +124,8 @@ function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogg
     };
 
     const logLevel = vscode.workspace.getConfiguration('jpipe').get<string>('logLevel', 'info');
-    const serverEnv = { ...process.env, JPIPE_LOG_LEVEL: logLevel };
+    const excludedDirs = resolveExcludedDirectories();
+    const serverEnv = { ...process.env, JPIPE_LOG_LEVEL: logLevel, JPIPE_EXCLUDED_DIRS: JSON.stringify(excludedDirs) };
 
     const serverOptions: ServerOptions = {
         run:   { module: serverModule, transport: TransportKind.ipc, options: { env: serverEnv } },
