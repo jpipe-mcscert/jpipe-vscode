@@ -146,6 +146,9 @@ export class PreviewProvider {
         try {
             diagramName = this.imageGenerator.findDiagramName(document, editor);
         } catch {
+            if (!this.lastGoodHtml) {
+                PreviewProvider.webviewPanel.webview.html = this.getNodiagramHtml();
+            }
             return;
         }
 
@@ -204,6 +207,7 @@ export class PreviewProvider {
                     vscode.window.showErrorMessage(msg ? `jPipe Error: ${msg}` : 'jPipe Error: render failed');
                 }
                 this.lastRenderedDocumentUri = document.uri.toString();
+                this.lastRenderedDiagramName = diagramName;
             } else {
                 if (exitCode === 1) {
                     vscode.window.showWarningMessage(`jPipe: model has errors (exit code 1): ${cleanMsg}`);
@@ -219,6 +223,7 @@ export class PreviewProvider {
                     PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
                 }
                 this.lastRenderedDocumentUri = undefined;
+                this.lastRenderedDiagramName = undefined;
             }
         }
     }
@@ -325,7 +330,8 @@ export class PreviewProvider {
                 const fmt = (ImageFormat as Record<string, ImageFormat>)[msg.format];
                 if (fmt !== undefined) {
                     const activeDoc = vscode.window.activeTextEditor?.document;
-                    if (activeDoc?.languageId === 'jpipe') {
+                    if (activeDoc?.languageId === 'jpipe'
+                            && activeDoc.uri.toString() === this.lastRenderedDocumentUri) {
                         this.imageGenerator.generateAndSave(fmt, activeDoc);
                         return;
                     }
@@ -943,6 +949,40 @@ export class PreviewProvider {
             } catch (err) {}
         })();
     </script>
+</body>
+</html>`;
+    }
+
+    private getNodiagramHtml(): string {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>jPipe Preview</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            background-color: var(--vscode-editor-background);
+            color: var(--vscode-foreground);
+            font-family: var(--vscode-font-family);
+        }
+        .message {
+            max-width: 32rem;
+            text-align: center;
+            opacity: 0.8;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="message">Move the cursor into a diagram block to preview it.</div>
 </body>
 </html>`;
     }
