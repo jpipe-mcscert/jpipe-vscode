@@ -75,4 +75,6 @@ jobs:
             --title "Release ${{ github.ref_name }}"
 
       - name: Publish to VS Code Marketplace
-        run: vsce publish -p ${{ secrets.VS_CODE_MARKETPLACE_SECRET }}
+        run: |
+          cd packages/extension
+          vsce publish -p ${{ secrets.VS_CODE_MARKETPLACE_SECRET }}
