@@ -1,0 +1,80 @@
+# workflow to release the VS Code extension to the marketplace
+
+name: Release VS Code Extension
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  NODEJS_VERSION: '22.22.2'
+
+permissions:
+  contents: write  # required for gh release create
+
+jobs:
+
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '${{env.NODEJS_VERSION}}'
+
+      - name: Install vsce to package code
+        run: npm install -g @vscode/vsce
+
+      - name: Check version consistency
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          ROOT_VERSION=$(node -p "require('./package.json').version")
+          EXT_VERSION=$(node -p "require('./packages/extension/package.json').version")
+          LANG_VERSION=$(node -p "require('./packages/language/package.json').version")
+          LANG_DEP=$(node -p "require('./packages/extension/package.json').dependencies['jpipe-language']")
+
+          echo "Tag version:        $TAG_VERSION"
+          echo "Root package:       $ROOT_VERSION"
+          echo "Extension package:  $EXT_VERSION"
+          echo "Language package:   $LANG_VERSION"
+          echo "Language dep:       $LANG_DEP"
+
+          if [ "$TAG_VERSION" != "$ROOT_VERSION" ] || \
+             [ "$TAG_VERSION" != "$EXT_VERSION" ] || \
+             [ "$TAG_VERSION" != "$LANG_VERSION" ] || \
+             [ "$TAG_VERSION" != "$LANG_DEP" ]; then
+            echo "::error::Version mismatch — tag=$TAG_VERSION root=$ROOT_VERSION ext=$EXT_VERSION lang=$LANG_VERSION dep=$LANG_DEP"
+            exit 1
+          fi
+
+      - name: Build and test
+        run: |
+          npm install
+          npm run clean
+          npm run langium:generate
+          npm run build
+          npm test
+
+      - name: Package extension as VSIX artefact
+        run: |
+          cd packages/extension
+          vsce package -o jpipe-extension-${{ github.ref_name }}.vsix
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            packages/extension/jpipe-extension-${{ github.ref_name }}.vsix \
+            --generate-notes \
+            --title "Release ${{ github.ref_name }}"
+
+      - name: Publish to VS Code Marketplace
+        run: |
+          cd packages/extension
+          vsce publish -p ${{ secrets.VS_CODE_MARKETPLACE_SECRET }}
