@@ -41,9 +41,11 @@ export class PreviewProvider {
         }
 
         if (PreviewProvider.webviewDisposed || !PreviewProvider.webviewPanel) {
+            const previousColumn = editor.viewColumn ?? vscode.ViewColumn.One;
             PreviewProvider.webviewPanel = this.createWebviewPanel();
             PreviewProvider.webviewDisposed = false;
             this.logger.info('Webview panel created');
+            await this.lockPreviewGroup(previousColumn);
         } else {
             PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, true);
         }
@@ -52,6 +54,27 @@ export class PreviewProvider {
         await this.updatePreview(editor.document, editor);
     }
     
+    private async lockPreviewGroup(restoreColumn: vscode.ViewColumn): Promise<void> {
+        const columnNames = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth'];
+        // Give VS Code one tick to register the new panel in tabGroups
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        const group = vscode.window.tabGroups.all.find(g =>
+            g.tabs.some(t =>
+                t.input instanceof vscode.TabInputWebview &&
+                (t.input as vscode.TabInputWebview).viewType === 'jpipe.preview'
+            )
+        );
+        if (!group) return;
+        const colIndex = (group.viewColumn as number) - 1;
+        if (colIndex < 0 || colIndex >= columnNames.length) return;
+        await vscode.commands.executeCommand(`workbench.action.focus${columnNames[colIndex]}EditorGroup`);
+        await vscode.commands.executeCommand('workbench.action.lockEditorGroup');
+        const restoreIndex = (restoreColumn as number) - 1;
+        if (restoreIndex >= 0 && restoreIndex < columnNames.length) {
+            await vscode.commands.executeCommand(`workbench.action.focus${columnNames[restoreIndex]}EditorGroup`);
+        }
+    }
+
     private setupEventListeners(context: vscode.ExtensionContext): void {
         const saveListener = vscode.workspace.onDidSaveTextDocument((document) => {
             if (document.languageId !== 'jpipe' || !PreviewProvider.webviewPanel || PreviewProvider.webviewDisposed) return;
