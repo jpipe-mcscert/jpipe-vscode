@@ -19,10 +19,14 @@ export class PreviewProvider {
     private lastRenderedDiagramName: string | undefined;
     private lastGoodHtml: string | undefined;
 
+    public getLastRenderedDocumentUri(): string | undefined {
+        return this.lastRenderedDocumentUri;
+    }
+
     constructor(
         private readonly imageGenerator: ImageGenerator,
         private readonly languageClient: LanguageClient,
-        context: vscode.ExtensionContext,
+        private readonly context: vscode.ExtensionContext,
         private readonly logger: JpipeLogger
     ) {
         this.setupEventListeners(context);
@@ -40,6 +44,10 @@ export class PreviewProvider {
             PreviewProvider.webviewPanel = this.createWebviewPanel();
             PreviewProvider.webviewDisposed = false;
             this.logger.info('Webview panel created');
+            // Focus the panel group, lock it, then restore focus to the editor
+            PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, false);
+            await vscode.commands.executeCommand('workbench.action.lockEditorGroup');
+            PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, true);
         } else {
             PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, true);
         }
@@ -265,9 +273,15 @@ export class PreviewProvider {
             },
             {
                 enableScripts: true,
-                retainContextWhenHidden: true
+                retainContextWhenHidden: true,
+                localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'images')]
             }
         );
+
+        panel.iconPath = {
+            light: vscode.Uri.joinPath(this.context.extensionUri, 'images', 'icon_light.svg'),
+            dark:  vscode.Uri.joinPath(this.context.extensionUri, 'images', 'icon_dark.svg')
+        };
         
         panel.onDidDispose(() => {
             PreviewProvider.webviewPanel = undefined;
@@ -328,6 +342,9 @@ export class PreviewProvider {
         const diagramNameJson = diagramName != null ? JSON.stringify(diagramName) : 'null';
         const renderJson = render ? JSON.stringify(render) : 'null';
         const unsavedJson = unsaved ? 'true' : 'false';
+        const iconUri = PreviewProvider.webviewPanel!.webview.asWebviewUri(
+            vscode.Uri.joinPath(this.context.extensionUri, 'images', 'icon_light.svg')
+        );
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -527,7 +544,7 @@ export class PreviewProvider {
 <body>
     <div id="toolbar">
         <div id="brand">
-            <a href="#" id="jpipe-link" title="Open jpipe.org">JPIPE</a>
+            <a href="#" id="jpipe-link" title="Open jpipe.org"><img src="${iconUri}" alt="jPipe" style="height:22px;width:auto;vertical-align:middle;"></a>
         </div>
         <div id="toolbar-right">
             <div class="toolbar-group download-wrap">
@@ -754,6 +771,9 @@ export class PreviewProvider {
             .replaceAll('<', '&lt;')
             .replaceAll('>', '&gt;');
         const unsavedJson = unsaved ? 'true' : 'false';
+        const iconUri = PreviewProvider.webviewPanel!.webview.asWebviewUri(
+            vscode.Uri.joinPath(this.context.extensionUri, 'images', 'icon_light.svg')
+        );
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -854,7 +874,7 @@ export class PreviewProvider {
 <body>
     <div id="toolbar">
         <div id="brand">
-            <a href="#" id="jpipe-link" title="Open jpipe.org">JPIPE</a>
+            <a href="#" id="jpipe-link" title="Open jpipe.org"><img src="${iconUri}" alt="jPipe" style="height:22px;width:auto;vertical-align:middle;"></a>
         </div>
         <div>
             <button class="toolbar-btn active" id="mode-toggle" data-tooltip="Back to diagram view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6.5" cy="6.5" r="4"/><line x1="10" y1="10" x2="14" y2="14"/></svg></button>

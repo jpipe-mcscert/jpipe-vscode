@@ -31,6 +31,8 @@ export class JpipeLogger {
     warn(msg: string):  void { this.write(2, 'WARN ', msg); }
     error(msg: string): void { this.write(1, 'ERROR', msg); }
 
+    reveal(): void { this.channel.show(true); }
+
     private write(rank: number, label: string, msg: string): void {
         if (rank > this.rank) return;
         this.channel.appendLine(`${new Date().toISOString()} [${label}] ${msg}`);

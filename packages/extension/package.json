@@ -104,6 +104,12 @@
                 "icon": "$(check)"
             }
         ],
+        "submenus": [
+            {
+                "id": "jpipe.submenu",
+                "label": "jPipe"
+            }
+        ],
         "menus": {
             "editor/title": [
                 {
@@ -114,44 +120,43 @@
             ],
             "editor/context": [
                 {
-                    "command": "jpipe.vis.preview",
+                    "submenu": "jpipe.submenu",
                     "when": "resourceLangId == jpipe",
                     "group": "navigation"
+                }
+            ],
+            "jpipe.submenu": [
+                {
+                    "command": "jpipe.vis.preview",
+                    "group": "1_view@1"
                 },
                 {
                     "command": "jpipe.downloadSVG",
-                    "when": "resourceLangId == jpipe",
-                    "group": "navigation"
+                    "group": "2_download@1"
                 },
                 {
                     "command": "jpipe.downloadPNG",
-                    "when": "resourceLangId == jpipe",
-                    "group": "navigation"
+                    "group": "2_download@2"
                 },
                 {
                     "command": "jpipe.downloadJSON",
-                    "when": "resourceLangId == jpipe",
-                    "group": "navigation"
+                    "group": "2_download@3"
                 },
                 {
                     "command": "jpipe.downloadJPEG",
-                    "when": "resourceLangId == jpipe",
-                    "group": "navigation"
+                    "group": "2_download@4"
                 },
                 {
                     "command": "jpipe.downloadDOT",
-                    "when": "resourceLangId == jpipe",
-                    "group": "navigation"
+                    "group": "2_download@5"
                 },
                 {
                     "command": "jpipe.downloadPython",
-                    "when": "resourceLangId == jpipe",
-                    "group": "navigation"
+                    "group": "2_download@6"
                 },
                 {
                     "command": "jpipe.downloadJPIPE",
-                    "when": "resourceLangId == jpipe",
-                    "group": "navigation"
+                    "group": "2_download@7"
                 }
             ]
         },

@@ -115,7 +115,7 @@ export class ImageGenerator {
             command += ` -o "${outputPath.fsPath}"`;
         }
 
-        this.logger.debug(`Executing: ${command}`);
+        this.logger.info(`Executing: ${command}`);
 
         try {
             const { stdout } = await execAsync(command);
@@ -203,7 +203,7 @@ export class ImageGenerator {
             command = `"${cliCmd}" diagnostic ${inputArg}`;
         }
 
-        this.logger.debug(`Executing: ${command}`);
+        this.logger.info(`Executing: ${command}`);
         try {
             const { stdout, stderr } = await execAsync(command, { env: envWithPath() });
             return [stdout, stderr].filter(Boolean).join('\n').trim() || '(no output)';
@@ -228,12 +228,18 @@ export class ImageGenerator {
     
     private logGenerationError(diagramName: string, error: any): void {
         const exitCode: number | undefined = typeof error?.code === 'number' ? error.code : undefined;
+        const stderr = typeof error?.stderr === 'string' ? error.stderr.trim() : '';
         if (exitCode === 1) {
             this.logger.warn(`Compiler exit 1 (model errors) for '${diagramName}'`);
         } else if (exitCode === 42) {
             this.logger.error(`Compiler exit 42 (crash) for '${diagramName}'`);
+            this.logger.reveal();
         } else {
             this.logger.error(`Generation failed for '${diagramName}': ${error instanceof Error ? error.message : String(exitCode ?? error)}`);
+            this.logger.reveal();
+        }
+        if (stderr) {
+            this.logger.warn(`Compiler stderr: ${stderr}`);
         }
     }
 
