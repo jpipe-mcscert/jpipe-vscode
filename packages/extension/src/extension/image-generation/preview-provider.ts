@@ -178,7 +178,7 @@ export class PreviewProvider {
                 ? error.exitCode
                 : (typeof error?.code === 'number' ? error.code : undefined);
             this.logRenderError(document.fileName, exitCode, error);
-            this.logger.reveal();
+            this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
 
             const svgFromError = this.extractSvgFromOutput(stdout);
             const hasSvg = svgFromError.includes('<svg');
