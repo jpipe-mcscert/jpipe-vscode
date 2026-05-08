@@ -174,15 +174,11 @@ export class PreviewProvider {
             this.lastRenderedDiagramName = diagramName;
         } catch (error: any) {
             const stdout = typeof error?.stdout === 'string' ? error.stdout : '';
-            const stderr = typeof error?.stderr === 'string' ? error.stderr : '';
             const exitCode = typeof error?.exitCode === 'number'
                 ? error.exitCode
                 : (typeof error?.code === 'number' ? error.code : undefined);
             this.logRenderError(document.fileName, exitCode, error);
-            const cleanMsg = String(error?.message ?? error)
-                .replace(/.*\[31m/, '')
-                .replace(/\[0m.*/, '')
-                .replace(/.*Command failed.*?SVG\s+/, '');
+            this.logger.reveal();
 
             const svgFromError = this.extractSvgFromOutput(stdout);
             const hasSvg = svgFromError.includes('<svg');
@@ -200,24 +196,9 @@ export class PreviewProvider {
                 );
                 PreviewProvider.webviewPanel.webview.html = html;
                 this.lastGoodHtml = html;
-                const msg = (stderr || cleanMsg).trim();
-                if (exitCode === 1) {
-                    vscode.window.showWarningMessage(msg ? `jPipe: model has errors (exit code 1): ${msg}` : 'jPipe: model has errors (exit code 1)');
-                } else if (exitCode === 42) {
-                    vscode.window.showErrorMessage(msg ? `jPipe: compiler crashed (exit code 42): ${msg}` : 'jPipe: compiler crashed (exit code 42)');
-                } else {
-                    vscode.window.showErrorMessage(msg ? `jPipe Error: ${msg}` : 'jPipe Error: render failed');
-                }
                 this.lastRenderedDocumentUri = document.uri.toString();
                 this.lastRenderedDiagramName = diagramName;
             } else {
-                if (exitCode === 1) {
-                    vscode.window.showWarningMessage(`jPipe: model has errors (exit code 1): ${cleanMsg}`);
-                } else if (exitCode === 42) {
-                    vscode.window.showErrorMessage(`jPipe: compiler crashed (exit code 42): ${cleanMsg}`);
-                } else {
-                    vscode.window.showErrorMessage(`jPipe Error: ${cleanMsg}`);
-                }
                 // Keep the last successfully rendered preview visible; don't replace it with a full-screen error view.
                 if (this.lastGoodHtml) {
                     PreviewProvider.webviewPanel.webview.html = this.lastGoodHtml;
