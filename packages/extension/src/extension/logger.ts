@@ -33,6 +33,9 @@ export class JpipeLogger {
 
     reveal(): void { this.channel.show(true); }
 
+    /** Reveal the output panel only if `level` would actually be written at the current logLevel. */
+    revealIfLogged(level: LogLevel): void { if (this.shouldLog(level)) this.channel.show(true); }
+
     private write(rank: number, label: string, msg: string): void {
         if (rank > this.rank) return;
         this.channel.appendLine(`${new Date().toISOString()} [${label}] ${msg}`);

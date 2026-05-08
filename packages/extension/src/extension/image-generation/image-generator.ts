@@ -223,7 +223,8 @@ export class ImageGenerator {
             if (error?.cancelled === true || String(error?.message ?? '') === 'Save cancelled') {
                 return;
             }
-            vscode.window.showErrorMessage(error.message);
+            this.logger.error(error.message);
+            this.logger.revealIfLogged('error');
         }
     }
     
@@ -232,12 +233,13 @@ export class ImageGenerator {
         const stderr = typeof error?.stderr === 'string' ? error.stderr.trim() : '';
         if (exitCode === 1) {
             this.logger.warn(`Compiler exit 1 (model errors) for '${diagramName}'`);
+            this.logger.revealIfLogged('warn');
         } else if (exitCode === 42) {
             this.logger.error(`Compiler exit 42 (crash) for '${diagramName}'`);
-            this.logger.reveal();
+            this.logger.revealIfLogged('error');
         } else {
             this.logger.error(`Generation failed for '${diagramName}': ${error instanceof Error ? error.message : String(exitCode ?? error)}`);
-            this.logger.reveal();
+            this.logger.revealIfLogged('error');
         }
         if (stderr) {
             this.logger.warn(`Compiler stderr: ${stderr}`);
