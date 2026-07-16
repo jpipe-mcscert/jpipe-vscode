@@ -52,32 +52,61 @@ function isAllowedHost(host: string): boolean {
     return ALLOWED_HOSTS.has(host) || host.endsWith('.githubusercontent.com');
 }
 
-/** Parse a release tag like `v2.1.0` / `2.0.0` into its major/minor/patch, or undefined. */
-function parseSemver(tag: string): [number, number, number] | undefined {
-    const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(tag.trim());
-    if (!m) return undefined;
-    return [Number(m[1]), Number(m[2]), Number(m[3])];
+interface Version {
+    nums: [number, number, number];
+    /** Prerelease identifiers (e.g. `rc.1`), or undefined for a stable release. */
+    pre: string | undefined;
 }
 
-/** Sort comparator: newest semver first. */
-function compareSemverDesc(a: JpipeRelease, b: JpipeRelease): number {
-    const sa = parseSemver(a.tag) ?? [0, 0, 0];
-    const sb = parseSemver(b.tag) ?? [0, 0, 0];
-    for (let i = 0; i < 3; i++) {
-        if (sb[i] !== sa[i]) return sb[i] - sa[i];
+/** Parse a release tag like `v2.1.0` or `v2.0.0-rc1` into its core version + prerelease. */
+function parseSemver(tag: string): Version | undefined {
+    const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(tag.trim());
+    if (!m) return undefined;
+    return { nums: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] };
+}
+
+/** Compare two prerelease strings per semver identifier rules (numeric < alphanumeric). */
+function comparePreRelease(a: string, b: string): number {
+    const as = a.split('.');
+    const bs = b.split('.');
+    for (let i = 0; i < Math.max(as.length, bs.length); i++) {
+        const x = as[i];
+        const y = bs[i];
+        if (x === undefined) return -1; // fewer identifiers = lower precedence
+        if (y === undefined) return 1;
+        const xn = /^\d+$/.test(x);
+        const yn = /^\d+$/.test(y);
+        if (xn && yn) { const d = Number(x) - Number(y); if (d !== 0) return Math.sign(d); }
+        else if (xn) return -1;
+        else if (yn) return 1;
+        else if (x !== y) return x < y ? -1 : 1;
     }
     return 0;
 }
 
-/** True when `candidate` is a strictly higher semver than `baseline`. */
-function isStrictlyNewer(candidate: string, baseline: string): boolean {
-    const c = parseSemver(candidate);
-    const b = parseSemver(baseline);
-    if (!c || !b) return false;
+/** Full semver precedence: >0 if `a` is newer than `b`, <0 if older, 0 if equal. */
+function comparePrecedence(a: string, b: string): number {
+    const va = parseSemver(a);
+    const vb = parseSemver(b);
+    if (!va || !vb) return 0;
     for (let i = 0; i < 3; i++) {
-        if (c[i] !== b[i]) return c[i] > b[i];
+        if (va.nums[i] !== vb.nums[i]) return va.nums[i] - vb.nums[i];
     }
-    return false;
+    // Same core version: a stable release outranks a prerelease of that version.
+    if (va.pre === undefined && vb.pre === undefined) return 0;
+    if (va.pre === undefined) return 1;
+    if (vb.pre === undefined) return -1;
+    return comparePreRelease(va.pre, vb.pre);
+}
+
+/** Sort comparator: newest version first (stable ahead of its own prereleases). */
+function compareSemverDesc(a: JpipeRelease, b: JpipeRelease): number {
+    return comparePrecedence(b.tag, a.tag);
+}
+
+/** True when `candidate` has strictly higher precedence than `baseline`. */
+function isStrictlyNewer(candidate: string, baseline: string): boolean {
+    return comparePrecedence(candidate, baseline) > 0;
 }
 
 /**
@@ -111,7 +140,7 @@ export class ReleaseManager {
             if (rel?.prerelease && !includePrereleases) continue;
             const tag: string = rel?.tag_name ?? '';
             const semver = parseSemver(tag);
-            if (!semver || semver[0] < MIN_MAJOR) continue;
+            if (!semver || semver.nums[0] < MIN_MAJOR) continue;
 
             const assets: any[] = Array.isArray(rel?.assets) ? rel.assets : [];
             const jar = assets.find(a => CLI_JAR_RE.test(a?.name ?? ''));
@@ -184,16 +213,19 @@ export class ReleaseManager {
     }
 
     /**
-     * If a managed compiler is installed and a strictly-newer stable release exists, show a
-     * non-blocking notification offering to update. Throttled to once per day and
+     * If the extension is in managed mode with a compiler installed and a strictly-newer
+     * release exists, show a non-blocking notification offering to update. Throttled and
      * silent on any failure (this runs opportunistically at activation).
      */
     public async maybeNotifyUpdate(runInstall: (preselectTag: string) => Promise<void>): Promise<void> {
+        const config = vscode.workspace.getConfiguration('jpipe');
+        // Managed-mode only: don't prompt when the user is running cli/jar even if a
+        // managed jar happens to be installed (matches jpipe.managedCheckForUpdates' scope).
+        if (config.get<string>('executionMode', 'cli') !== 'managed') return;
+        if (!config.get<boolean>('managedCheckForUpdates', true)) return;
+
         const installed = this.getInstalled();
         if (!installed) return;
-
-        const config = vscode.workspace.getConfiguration('jpipe');
-        if (!config.get<boolean>('managedCheckForUpdates', true)) return;
 
         const hours = config.get<number>('managedUpdateCheckIntervalHours', DEFAULT_UPDATE_INTERVAL_HOURS);
         const intervalMs = (typeof hours === 'number' && hours > 0 ? hours : DEFAULT_UPDATE_INTERVAL_HOURS) * 3_600_000;
