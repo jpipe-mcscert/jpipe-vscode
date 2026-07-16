@@ -1,6 +1,6 @@
 ## Changelog
 
-### v1.3.0 (Unreleased)
+### v1.3.0 (2026-07-16)
 - Leader: Sébastien Mosser
   - Features:
     - **No-install setup:** You can now let the extension fetch and update the jPipe compiler for you, straight from GitHub Releases — no manual JAR downloads. Pick a version from a list that shows each release's date. Especially handy on Windows (closes #13)
