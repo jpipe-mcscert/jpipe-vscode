@@ -6,8 +6,8 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { JpipeLogger } from '../logger.js';
 
-/** GitHub repository that publishes the jPipe compiler releases. */
-const RELEASE_REPO = 'jpipe-mcscert/jpipe-compiler';
+/** Default GitHub repository that publishes the jPipe compiler releases. */
+const DEFAULT_RELEASE_REPO = 'jpipe-mcscert/jpipe-compiler';
 
 /** Only 2.x+ releases expose the `process` / `diagnostic` / `--headless doctor` subcommands
  *  the extension drives; older `jpipe.jar` releases predate them and are hidden. */
@@ -27,8 +27,8 @@ const ALLOWED_HOSTS = new Set([
 const KEY_INSTALLED = 'jpipe.managedCompiler';
 const KEY_LAST_CHECK = 'jpipe.managedCompiler.lastUpdateCheck';
 
-/** Only check for a newer release once per this window (ms). */
-const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/** Fallback update-check interval (hours) when `jpipe.managedUpdateCheckIntervalHours` is unset. */
+const DEFAULT_UPDATE_INTERVAL_HOURS = 24;
 
 /** Follow at most this many HTTP redirects before giving up. */
 const MAX_REDIRECTS = 5;
@@ -91,9 +91,15 @@ export class ReleaseManager {
         private readonly logger: JpipeLogger
     ) {}
 
-    /** List installable (stable, v2.0.0+) releases, newest first. Throws on network/API failure. */
+    /**
+     * List installable releases (v2.0.0+ with a `jpipe-cli-*.jar` asset), newest first.
+     * Excludes pre-releases unless `jpipe.managedIncludePrereleases` is enabled; the rolling
+     * non-semver `unstable` tag is always excluded. Throws on network/API failure.
+     */
     public async listReleases(): Promise<JpipeRelease[]> {
-        const url = `https://api.github.com/repos/${RELEASE_REPO}/releases?per_page=100`;
+        const config = vscode.workspace.getConfiguration('jpipe');
+        const includePrereleases = config.get<boolean>('managedIncludePrereleases', false);
+        const url = `https://api.github.com/repos/${this.repo()}/releases?per_page=100`;
         const raw = await this.httpsGetJson(url);
         if (!Array.isArray(raw)) {
             throw new Error('Unexpected response from the GitHub releases API.');
@@ -101,7 +107,8 @@ export class ReleaseManager {
 
         const releases: JpipeRelease[] = [];
         for (const rel of raw as any[]) {
-            if (rel?.draft || rel?.prerelease) continue;
+            if (rel?.draft) continue;
+            if (rel?.prerelease && !includePrereleases) continue;
             const tag: string = rel?.tag_name ?? '';
             const semver = parseSemver(tag);
             if (!semver || semver[0] < MIN_MAJOR) continue;
@@ -182,8 +189,13 @@ export class ReleaseManager {
         const installed = this.getInstalled();
         if (!installed) return;
 
+        const config = vscode.workspace.getConfiguration('jpipe');
+        if (!config.get<boolean>('managedCheckForUpdates', true)) return;
+
+        const hours = config.get<number>('managedUpdateCheckIntervalHours', DEFAULT_UPDATE_INTERVAL_HOURS);
+        const intervalMs = (typeof hours === 'number' && hours > 0 ? hours : DEFAULT_UPDATE_INTERVAL_HOURS) * 3_600_000;
         const last = this.context.globalState.get<number>(KEY_LAST_CHECK, 0);
-        if (Date.now() - last < UPDATE_CHECK_INTERVAL_MS) return;
+        if (Date.now() - last < intervalMs) return;
         await this.context.globalState.update(KEY_LAST_CHECK, Date.now());
 
         try {
@@ -202,6 +214,12 @@ export class ReleaseManager {
     }
 
     // ---- internals -------------------------------------------------------
+
+    /** The `owner/repo` releases are pulled from (configurable for forks/testing). */
+    private repo(): string {
+        const configured = (vscode.workspace.getConfiguration('jpipe').get<string>('managedRepository', DEFAULT_RELEASE_REPO) ?? '').trim();
+        return configured || DEFAULT_RELEASE_REPO;
+    }
 
     private compilerRoot(): string {
         return path.join(this.context.globalStorageUri.fsPath, 'compiler');

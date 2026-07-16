@@ -9,9 +9,15 @@ import { ReleaseManager } from './release-manager.js';
 
 const execAsync = promisify(exec);
 
-/** Max time (ms) to wait for a jPipe CLI/JAR invocation before giving up, so a hung
+/** Fallback invocation timeout (seconds) when `jpipe.compilerTimeout` is unset. */
+const DEFAULT_TIMEOUT_SECONDS = 30;
+
+/** Max time (ms) to wait for a compiler invocation before giving up, so a hung
  *  compiler surfaces an error instead of freezing the preview panel indefinitely. */
-const CLI_TIMEOUT_MS = 30_000;
+function timeoutMs(config: vscode.WorkspaceConfiguration): number {
+    const seconds = config.get<number>('compilerTimeout', DEFAULT_TIMEOUT_SECONDS);
+    return (typeof seconds === 'number' && seconds > 0 ? seconds : DEFAULT_TIMEOUT_SECONDS) * 1000;
+}
 
 /** Expand leading ~ to the user's home directory (Node does not do this by default). */
 function expandTilde(filePath: string): string {
@@ -21,11 +27,17 @@ function expandTilde(filePath: string): string {
     return filePath;
 }
 
-/** PATH that includes Homebrew so script shebangs (e.g. #!/usr/bin/env python3) can find interpreters. */
+/**
+ * PATH augmented so the compiler can find external interpreters (e.g. `python3`, `dot`):
+ * user-configured `jpipe.extraPath` entries first, then the built-in Homebrew defaults,
+ * then the inherited PATH.
+ */
 function envWithPath(): NodeJS.ProcessEnv {
-    const prefix = '/opt/homebrew/bin:/usr/local/bin:';
+    const extra = vscode.workspace.getConfiguration('jpipe').get<string[]>('extraPath', []) ?? [];
+    const defaults = ['/opt/homebrew/bin', '/usr/local/bin'];
     const existing = process.env.PATH ?? '';
-    return { ...process.env, PATH: prefix + existing };
+    const prefix = [...extra.filter(Boolean), ...defaults].join(path.delimiter);
+    return { ...process.env, PATH: `${prefix}${path.delimiter}${existing}` };
 }
 
 export enum ImageFormat {
@@ -39,6 +51,9 @@ export enum ImageFormat {
 }
 
 export class ImageGenerator {
+
+    /** Destination of the most recent save-to-file generate(), so generateAndSave can open it. */
+    private lastExportUri: vscode.Uri | undefined;
 
     constructor(
         private readonly logger: JpipeLogger,
@@ -87,10 +102,12 @@ export class ImageGenerator {
         }
     }
 
-    /** Build the `"java" -jar "<jar>"` prefix shared by the `jar` and `managed` modes. */
+    /** Build the `"java" [jvmArgs…] -jar "<jar>"` prefix shared by the `jar` and `managed` modes. */
     private buildJarPrefix(config: vscode.WorkspaceConfiguration, jarFile: string): string {
         const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
-        return `"${javaExecutable}" -jar "${path.normalize(jarFile)}"`;
+        const jvmArgs = (config.get<string[]>('jvmArgs', []) ?? []).filter(Boolean);
+        const argsPart = jvmArgs.length ? ` ${jvmArgs.join(' ')}` : '';
+        return `"${javaExecutable}"${argsPart} -jar "${path.normalize(jarFile)}"`;
     }
     
     /**
@@ -138,6 +155,7 @@ export class ImageGenerator {
             throw e;
         }
 
+        this.lastExportUri = undefined;
         if (saveToFile) {
             const outputPath = await this.promptForSaveLocation(document, diagramName, format);
             if (!outputPath) {
@@ -146,12 +164,13 @@ export class ImageGenerator {
                 throw e;
             }
             command += ` -o "${outputPath.fsPath}"`;
+            this.lastExportUri = outputPath;
         }
 
         this.logger.info(`Executing: ${command}`);
 
         try {
-            const { stdout } = await execAsync(command, { env: envWithPath(), timeout: CLI_TIMEOUT_MS });
+            const { stdout } = await execAsync(command, { env: envWithPath(), timeout: timeoutMs(config) });
             this.logger.info(`Generated ${format} for '${diagramName}' (${path.basename(document.uri.fsPath)})`);
             return stdout;
         } catch (error: any) {
@@ -181,7 +200,7 @@ export class ImageGenerator {
         }
 
         try {
-            const { stdout, stderr } = await execAsync(command, { env: envWithPath(), timeout: CLI_TIMEOUT_MS });
+            const { stdout, stderr } = await execAsync(command, { env: envWithPath(), timeout: timeoutMs(config) });
             const output = (stdout + stderr).trim();
             return { ok: true, message: output || 'jPipe is accessible.' };
         } catch (error: any) {
@@ -205,7 +224,7 @@ export class ImageGenerator {
 
         this.logger.info(`Executing: ${command}`);
         try {
-            const { stdout, stderr } = await execAsync(command, { env: envWithPath(), timeout: CLI_TIMEOUT_MS });
+            const { stdout, stderr } = await execAsync(command, { env: envWithPath(), timeout: timeoutMs(config) });
             return [stdout, stderr].filter(Boolean).join('\n').trim() || '(no output)';
         } catch (e: any) {
             const out = (e.stdout ?? '').trim();
@@ -218,6 +237,10 @@ export class ImageGenerator {
         try {
             await this.generate(true, format, document, forcedDiagramName);
             vscode.window.showInformationMessage(`${format} saved successfully`);
+            const openAfter = vscode.workspace.getConfiguration('jpipe').get<boolean>('openAfterExport', false);
+            if (openAfter && this.lastExportUri) {
+                void vscode.commands.executeCommand('vscode.open', this.lastExportUri);
+            }
         } catch (error: any) {
             if (error?.cancelled === true || String(error?.message ?? '') === 'Save cancelled') {
                 return;

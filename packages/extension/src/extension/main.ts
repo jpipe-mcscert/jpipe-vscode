@@ -166,7 +166,13 @@ export function activate(context: vscode.ExtensionContext): void {
                 vscode.window.showErrorMessage('Cannot access jPipe.', { modal: true, detail });
             }
         }),
-        vscode.commands.registerCommand('jpipe.installFromRelease', () => installFromRelease())
+        vscode.commands.registerCommand('jpipe.installFromRelease', () => installFromRelease()),
+        vscode.commands.registerCommand('jpipe.export', async () => {
+            const configured = vscode.workspace.getConfiguration('jpipe').get<string>('defaultExportFormat', 'SVG');
+            const format = (ImageFormat as Record<string, ImageFormat>)[configured] ?? ImageFormat.SVG;
+            const { doc, diagramName } = await resolveExportContext();
+            imageGenerator.generateAndSave(format, doc, diagramName);
+        })
     );
 }
 

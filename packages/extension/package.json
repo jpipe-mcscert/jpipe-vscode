@@ -159,6 +159,12 @@
                 "icon": "$(cloud-download)"
             },
             {
+                "command": "jpipe.export",
+                "title": "Export Diagram (default format)",
+                "category": "jPipe",
+                "icon": "$(save)"
+            },
+            {
                 "command": "jpipe.addExcludedDirectory",
                 "title": "Add Excluded Directory",
                 "category": "jPipe",
@@ -221,76 +227,174 @@
                 }
             ]
         },
-        "configuration": {
-            "title": "jPipe",
-            "properties": {
-                "jpipe.executionMode": {
-                    "order": 1,
-                    "type": "string",
-                    "enum": [
-                        "cli",
-                        "jar",
-                        "managed"
-                    ],
-                    "enumDescriptions": [
-                        "Use the jpipe CLI executable (recommended). Configure the path below with 'CLI: Path'.",
-                        "Use a JAR file (manual installation / developer mode). Configure the path below with 'JAR: File' and 'JAR: Java Executable'.",
-                        "Use a compiler the extension downloads and manages from GitHub Releases. Install or switch versions via the 'Install Compiler from GitHub Release' command (requires Java)."
-                    ],
-                    "default": "cli",
-                    "markdownDescription": "How to invoke the jPipe compiler. Choose **cli** (recommended), **jar** (manual installation), or **managed** (downloaded automatically from GitHub Releases — easiest on Windows).\n\n[Install from GitHub Release](command:jpipe.installFromRelease) · [Check jPipe installation](command:jpipe.checkInstallation)"
-                },
-                "jpipe.cliPath": {
-                    "order": 2,
-                    "type": "string",
-                    "default": "jpipe",
-                    "markdownDescription": "**[cli mode only]** Path to the `jpipe` CLI executable. Accepts a bare name (resolved via `PATH`), a relative path, or an absolute path."
-                },
-                "jpipe.jarFile": {
-                    "order": 3,
-                    "type": "string",
-                    "default": "",
-                    "markdownDescription": "**[jar mode only]** Absolute path to the `jpipe` JAR file."
-                },
-                "jpipe.javaExecutable": {
-                    "order": 4,
-                    "type": "string",
-                    "default": "java",
-                    "markdownDescription": "**[jar mode only]** Path to the `java` executable used to run the JAR. Defaults to `java` (resolved via `PATH`)."
-                },
-                "jpipe.logLevel": {
-                    "order": 5,
-                    "type": "string",
-                    "enum": [
-                        "off",
-                        "error",
-                        "warn",
-                        "info",
-                        "debug",
-                        "trace"
-                    ],
-                    "enumDescriptions": [
-                        "No logging.",
-                        "Errors only.",
-                        "Errors and warnings.",
-                        "Errors, warnings, and key lifecycle events (default).",
-                        "Detailed operational info (commands, renders, imports).",
-                        "Everything, including per-cursor and per-completion events."
-                    ],
-                    "default": "info",
-                    "description": "Verbosity of the jPipe log channel (Output > jPipe). The language server log level (Output > jPipe Language Server) is set once at startup and requires a window reload to change."
-                },
-                "jpipe.excludedDirectories": {
-                    "order": 6,
-                    "type": "array",
-                    "items": {
-                        "type": "string"
+        "configuration": [
+            {
+                "title": "jPipe: Compiler",
+                "order": 1,
+                "properties": {
+                    "jpipe.executionMode": {
+                        "order": 1,
+                        "type": "string",
+                        "enum": [
+                            "cli",
+                            "jar",
+                            "managed"
+                        ],
+                        "enumDescriptions": [
+                            "Use the jpipe CLI executable (recommended). Configure the path below with 'CLI: Path'.",
+                            "Use a JAR file (manual installation / developer mode). Configure the path below with 'JAR: File' and 'JAR: Java Executable'.",
+                            "Use a compiler the extension downloads and manages from GitHub Releases. Install or switch versions via the 'Install Compiler from GitHub Release' command (requires Java)."
+                        ],
+                        "default": "cli",
+                        "markdownDescription": "How to invoke the jPipe compiler. Choose **cli** (recommended), **jar** (manual installation), or **managed** (downloaded automatically from GitHub Releases — easiest on Windows).\n\n[Install from GitHub Release](command:jpipe.installFromRelease) · [Check jPipe installation](command:jpipe.checkInstallation)"
                     },
-                    "default": [],
-                    "markdownDescription": "Directories (relative to workspace root) whose `.jd` files are excluded from validation. Files in excluded directories display a warning instead of errors. Changes require a window reload to take effect.\n\n[$(folder-opened) Browse for directory…](command:jpipe.addExcludedDirectory)"
+                    "jpipe.cliPath": {
+                        "order": 2,
+                        "type": "string",
+                        "default": "jpipe",
+                        "markdownDescription": "**[cli mode only]** Path to the `jpipe` CLI executable. Accepts a bare name (resolved via `PATH`), a relative path, or an absolute path."
+                    },
+                    "jpipe.jarFile": {
+                        "order": 3,
+                        "type": "string",
+                        "default": "",
+                        "markdownDescription": "**[jar mode only]** Absolute path to the `jpipe` JAR file."
+                    },
+                    "jpipe.javaExecutable": {
+                        "order": 4,
+                        "type": "string",
+                        "default": "java",
+                        "markdownDescription": "**[jar / managed mode]** Path to the `java` executable used to run the JAR. Defaults to `java` (resolved via `PATH`)."
+                    },
+                    "jpipe.compilerTimeout": {
+                        "order": 5,
+                        "type": "number",
+                        "default": 30,
+                        "minimum": 1,
+                        "markdownDescription": "Maximum time, in **seconds**, to wait for a compiler invocation before giving up. Increase for large models on slower machines."
+                    },
+                    "jpipe.jvmArgs": {
+                        "order": 6,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "markdownDescription": "**[jar / managed mode]** Extra arguments passed to `java` before `-jar` (e.g. `[\"-Xmx2g\"]` to raise the heap for large models)."
+                    },
+                    "jpipe.extraPath": {
+                        "order": 7,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "markdownDescription": "Additional directories prepended to `PATH` when running the compiler, so external interpreters (e.g. `python3`, `dot`) can be found. Complements the built-in defaults."
+                    }
+                }
+            },
+            {
+                "title": "jPipe: Managed Compiler",
+                "order": 2,
+                "properties": {
+                    "jpipe.managedCheckForUpdates": {
+                        "order": 1,
+                        "type": "boolean",
+                        "default": true,
+                        "markdownDescription": "When in **managed** mode, periodically check GitHub for a newer compiler release and offer to update."
+                    },
+                    "jpipe.managedUpdateCheckIntervalHours": {
+                        "order": 2,
+                        "type": "number",
+                        "default": 24,
+                        "minimum": 1,
+                        "markdownDescription": "How often, in **hours**, to check for a newer managed compiler release (only when 'Managed: Check For Updates' is enabled)."
+                    },
+                    "jpipe.managedIncludePrereleases": {
+                        "order": 3,
+                        "type": "boolean",
+                        "default": false,
+                        "markdownDescription": "Include pre-release (`-rc`) versions in the 'Install Compiler from GitHub Release' picker. The rolling `unstable` build is never listed."
+                    },
+                    "jpipe.managedRepository": {
+                        "order": 4,
+                        "type": "string",
+                        "default": "jpipe-mcscert/jpipe-compiler",
+                        "markdownDescription": "**[advanced]** GitHub `owner/repo` the managed compiler is downloaded from. Change only to use a fork or a testing repository."
+                    }
+                }
+            },
+            {
+                "title": "jPipe: Export",
+                "order": 3,
+                "properties": {
+                    "jpipe.defaultExportFormat": {
+                        "order": 1,
+                        "type": "string",
+                        "enum": [
+                            "SVG",
+                            "PNG",
+                            "JPEG",
+                            "JSON",
+                            "DOT",
+                            "PYTHON",
+                            "JPIPE"
+                        ],
+                        "default": "SVG",
+                        "markdownDescription": "Format used by the **jPipe: Export Diagram (default format)** command."
+                    },
+                    "jpipe.openAfterExport": {
+                        "order": 2,
+                        "type": "boolean",
+                        "default": false,
+                        "markdownDescription": "Open the exported file automatically after a successful export/download."
+                    }
+                }
+            },
+            {
+                "title": "jPipe: Validation",
+                "order": 4,
+                "properties": {
+                    "jpipe.excludedDirectories": {
+                        "order": 1,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "markdownDescription": "Directories (relative to workspace root) whose `.jd` files are excluded from validation. Files in excluded directories display a warning instead of errors. Changes require a window reload to take effect.\n\n[$(folder-opened) Browse for directory…](command:jpipe.addExcludedDirectory)"
+                    }
+                }
+            },
+            {
+                "title": "jPipe: Logging",
+                "order": 5,
+                "properties": {
+                    "jpipe.logLevel": {
+                        "order": 1,
+                        "type": "string",
+                        "enum": [
+                            "off",
+                            "error",
+                            "warn",
+                            "info",
+                            "debug",
+                            "trace"
+                        ],
+                        "enumDescriptions": [
+                            "No logging.",
+                            "Errors only.",
+                            "Errors and warnings.",
+                            "Errors, warnings, and key lifecycle events (default).",
+                            "Detailed operational info (commands, renders, imports).",
+                            "Everything, including per-cursor and per-completion events."
+                        ],
+                        "default": "info",
+                        "description": "Verbosity of the jPipe log channel (Output > jPipe). The language server log level (Output > jPipe Language Server) is set once at startup and requires a window reload to change."
+                    }
                 }
             }
-        }
+        ]
     },
     "activationEvents": [
         "onLanguage:jpipe"
