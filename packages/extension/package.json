@@ -238,7 +238,7 @@
                         "Use a compiler the extension downloads and manages from GitHub Releases. Install or switch versions via the 'Install Compiler from GitHub Release' command (requires Java)."
                     ],
                     "default": "cli",
-                    "markdownDescription": "How to invoke the jPipe compiler. Choose **cli** (recommended), **jar** (manual installation), or **managed** (downloaded automatically from GitHub Releases — easiest on Windows).\n\n[$(cloud-download) Install from GitHub Release](command:jpipe.installFromRelease) · [Check jPipe installation](command:jpipe.checkInstallation)"
+                    "markdownDescription": "How to invoke the jPipe compiler. Choose **cli** (recommended), **jar** (manual installation), or **managed** (downloaded automatically from GitHub Releases — easiest on Windows).\n\n[Install from GitHub Release](command:jpipe.installFromRelease) · [Check jPipe installation](command:jpipe.checkInstallation)"
                 },
                 "jpipe.cliPath": {
                     "order": 2,
