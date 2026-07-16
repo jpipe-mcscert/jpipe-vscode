@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vscode-languageclient/node.js';
 import { ImageGenerator, ImageFormat } from './image-generation/image-generator.js';
 import { PreviewProvider } from './image-generation/preview-provider.js';
+import { ReleaseManager, JpipeRelease } from './image-generation/release-manager.js';
 import { JpipeLogger } from './logger.js';
 
 let client: LanguageClient;
@@ -31,8 +32,71 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     // Create image generator and preview provider (client passed for cursor→node highlighting)
-    const imageGenerator = new ImageGenerator(logger);
+    const releaseManager = new ReleaseManager(context, logger);
+    const imageGenerator = new ImageGenerator(logger, releaseManager);
     const previewProvider = new PreviewProvider(imageGenerator, client, context, logger);
+
+    /**
+     * Interactive flow: pick a release from GitHub, download its jar into hidden global
+     * storage, record it, and switch the extension into `managed` execution mode.
+     * `preselectTag` (from the update prompt) auto-selects that release when present.
+     */
+    async function installFromRelease(preselectTag?: string): Promise<void> {
+        let releases: JpipeRelease[];
+        try {
+            releases = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: 'jPipe: fetching available releases…' },
+                () => releaseManager.listReleases()
+            );
+        } catch (err: unknown) {
+            vscode.window.showErrorMessage(`jPipe: could not list releases. ${err instanceof Error ? err.message : String(err)}`);
+            return;
+        }
+        if (releases.length === 0) {
+            vscode.window.showWarningMessage('jPipe: no compatible releases (v2.0.0+) were found.');
+            return;
+        }
+
+        const installed = releaseManager.getInstalled();
+        let chosen = preselectTag ? releases.find(r => r.tag === preselectTag) : undefined;
+        if (!chosen) {
+            const picked = await vscode.window.showQuickPick(
+                releases.map((r, i) => ({
+                    label: r.tag,
+                    description: [i === 0 ? '$(star-full) latest' : '', r.tag === installed?.tag ? '$(check) installed' : '']
+                        .filter(Boolean).join('  '),
+                    detail: r.name,
+                    release: r,
+                })),
+                { title: 'Select a jPipe compiler release to install', placeHolder: 'Downloaded and run internally — no manual path needed' }
+            );
+            if (!picked) return;
+            chosen = picked.release;
+        }
+
+        try {
+            const jarPath = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: `jPipe: downloading ${chosen.tag}…`, cancellable: false },
+                (progress) => {
+                    let last = 0;
+                    return releaseManager.download(chosen!, (fraction) => {
+                        const pct = Math.round(fraction * 100);
+                        progress.report({ increment: pct - last, message: `${pct}%` });
+                        last = pct;
+                    });
+                }
+            );
+            await releaseManager.setInstalled(chosen.tag, jarPath);
+            await vscode.workspace.getConfiguration('jpipe').update('executionMode', 'managed', vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage(`jPipe ${chosen.tag} installed and activated (managed mode).`);
+            logger.info(`Managed jPipe compiler set to ${chosen.tag} at ${jarPath}`);
+        } catch (err: unknown) {
+            vscode.window.showErrorMessage(`jPipe: download failed. ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+
+    // Opportunistic, throttled "newer version available" check (managed mode only).
+    void releaseManager.maybeNotifyUpdate(installFromRelease);
 
     async function resolveExportContext(): Promise<{ doc: vscode.TextDocument | undefined; diagramName: string | undefined }> {
         const active = vscode.window.activeTextEditor?.document;
@@ -82,12 +146,15 @@ export function activate(context: vscode.ExtensionContext): void {
         }),
         vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
             const { ok, message } = await imageGenerator.check();
+            const installed = releaseManager.getInstalled();
+            const detail = installed ? `Managed compiler: ${installed.tag}\n\n${message}` : message;
             if (ok) {
-                vscode.window.showInformationMessage('jPipe is accessible.', { modal: true, detail: message });
+                vscode.window.showInformationMessage('jPipe is accessible.', { modal: true, detail });
             } else {
-                vscode.window.showErrorMessage('Cannot access jPipe.', { modal: true, detail: message });
+                vscode.window.showErrorMessage('Cannot access jPipe.', { modal: true, detail });
             }
-        })
+        }),
+        vscode.commands.registerCommand('jpipe.installFromRelease', () => installFromRelease())
     );
 }
 

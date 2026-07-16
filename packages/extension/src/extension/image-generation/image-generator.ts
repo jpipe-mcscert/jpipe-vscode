@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { JpipeLogger } from '../logger.js';
+import { ReleaseManager } from './release-manager.js';
 
 const execAsync = promisify(exec);
 
@@ -39,7 +40,58 @@ export enum ImageFormat {
 
 export class ImageGenerator {
 
-    constructor(private readonly logger: JpipeLogger) {}
+    constructor(
+        private readonly logger: JpipeLogger,
+        private readonly releaseManager: ReleaseManager
+    ) {}
+
+    /**
+     * Resolve the command prefix (everything before the subcommand) for the configured
+     * execution mode: the resolved CLI, or `"java" -jar "<jar>"` for `jar` / `managed`.
+     * Throws with a user-facing message when the selected mode is misconfigured.
+     */
+    private async resolveExecPrefix(config: vscode.WorkspaceConfiguration): Promise<string> {
+        const mode = config.get<string>('executionMode', 'cli');
+
+        if (mode === 'jar') {
+            const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
+            if (!jarFile) throw new Error('jpipe.jarFile is not configured.');
+            if (!fs.existsSync(jarFile)) throw new Error(`JAR file not found: ${jarFile}`);
+            return this.buildJarPrefix(config, jarFile);
+        }
+
+        if (mode === 'managed') {
+            const installed = this.releaseManager.getInstalled();
+            if (!installed) {
+                throw new Error("No managed jPipe compiler installed. Run 'jPipe: Install Compiler from GitHub Release'.");
+            }
+            if (!fs.existsSync(installed.jarPath)) {
+                throw new Error(`Managed JAR file not found: ${installed.jarPath}`);
+            }
+            return this.buildJarPrefix(config, installed.jarPath);
+        }
+
+        // cli mode: resolve a bare name via `which`, otherwise use the given path as-is.
+        const cliPath = (config.get<string>('cliPath', 'jpipe') ?? 'jpipe').trim();
+        if (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) {
+            return `"${path.normalize(cliPath)}"`;
+        }
+        try {
+            const { stdout } = await execAsync(`which ${cliPath}`, { env: envWithPath() });
+            const cliCmd = stdout.trim();
+            this.logger.debug(`Resolved CLI '${cliPath}' → ${cliCmd}`);
+            return `"${cliCmd}"`;
+        } catch {
+            this.logger.debug(`'which ${cliPath}' failed, using bare name`);
+            return `"${cliPath}"`;
+        }
+    }
+
+    /** Build the `"java" -jar "<jar>"` prefix shared by the `jar` and `managed` modes. */
+    private buildJarPrefix(config: vscode.WorkspaceConfiguration, jarFile: string): string {
+        const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
+        return `"${javaExecutable}" -jar "${path.normalize(jarFile)}"`;
+    }
     
     /**
      * Generate an image from the active jpipe file or provided document
@@ -73,41 +125,17 @@ export class ImageGenerator {
         const diagramName = forcedDiagramName ?? this.findDiagramName(document, editor);
         
         const config = vscode.workspace.getConfiguration('jpipe');
-        const mode = config.get<string>('executionMode', 'cli');
-
-        let command: string;
         const inputArg = `-i "${path.normalize(inputFile)}"`;
         const modelArg = `-m ${diagramName}`;
         const formatArg = `-f ${format.toString().toUpperCase()}`;
 
-        if (mode === 'jar') {
-            const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
-            const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
-            if (!jarFile) {
-                vscode.window.showErrorMessage('Please set jpipe.jarFile in settings.');
-                throw new Error('jpipe.jarFile is not configured.');
-            }
-            if (!fs.existsSync(jarFile)) {
-                vscode.window.showErrorMessage(`JAR file not found: ${jarFile}`);
-                throw new Error(`JAR file not found: ${jarFile}`);
-            }
-            command = `"${javaExecutable}" -jar "${path.normalize(jarFile)}" process ${inputArg} ${modelArg} ${formatArg}`;
-        } else {
-            const cliPath = (config.get<string>('cliPath', 'jpipe') ?? 'jpipe').trim();
-            let cliCmd: string;
-            if (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) {
-                cliCmd = path.normalize(cliPath);
-            } else {
-                try {
-                    const { stdout } = await execAsync(`which ${cliPath}`, { env: envWithPath() });
-                    cliCmd = stdout.trim();
-                    this.logger.debug(`Resolved CLI '${cliPath}' → ${cliCmd}`);
-                } catch {
-                    cliCmd = cliPath;
-                    this.logger.debug(`'which ${cliPath}' failed, using bare name`);
-                }
-            }
-            command = `"${cliCmd}" process ${inputArg} ${modelArg} ${formatArg}`;
+        let command: string;
+        try {
+            const prefix = await this.resolveExecPrefix(config);
+            command = `${prefix} process ${inputArg} ${modelArg} ${formatArg}`;
+        } catch (e: any) {
+            vscode.window.showErrorMessage(e.message);
+            throw e;
         }
 
         if (saveToFile) {
@@ -143,29 +171,13 @@ export class ImageGenerator {
      */
     public async check(): Promise<{ ok: boolean; message: string }> {
         const config = vscode.workspace.getConfiguration('jpipe');
-        const mode = config.get<string>('executionMode', 'cli');
 
         let command: string;
-        if (mode === 'jar') {
-            const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
-            const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
-            if (!jarFile) return { ok: false, message: 'jpipe.jarFile is not configured.' };
-            if (!fs.existsSync(jarFile)) return { ok: false, message: `JAR file not found: ${jarFile}` };
-            command = `"${javaExecutable}" -jar "${path.normalize(jarFile)}" --headless doctor`;
-        } else {
-            const cliPath = (config.get<string>('cliPath', 'jpipe') ?? 'jpipe').trim();
-            let cliCmd: string;
-            if (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) {
-                cliCmd = path.normalize(cliPath);
-            } else {
-                try {
-                    const { stdout } = await execAsync(`which ${cliPath}`, { env: envWithPath() });
-                    cliCmd = stdout.trim();
-                } catch {
-                    cliCmd = cliPath;
-                }
-            }
-            command = `"${cliCmd}" --headless doctor`;
+        try {
+            const prefix = await this.resolveExecPrefix(config);
+            command = `${prefix} --headless doctor`;
+        } catch (e: any) {
+            return { ok: false, message: e.message };
         }
 
         try {
@@ -181,31 +193,14 @@ export class ImageGenerator {
     public async generateDiagnostic(document: vscode.TextDocument): Promise<string> {
         const inputFile = path.normalize(document.uri.fsPath);
         const config = vscode.workspace.getConfiguration('jpipe');
-        const mode = config.get<string>('executionMode', 'cli');
-
-        let command: string;
         const inputArg = `-i "${inputFile}"`;
 
-        if (mode === 'jar') {
-            const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
-            const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
-            if (!jarFile) return 'jpipe.jarFile is not configured.';
-            if (!fs.existsSync(jarFile)) return `JAR file not found: ${jarFile}`;
-            command = `"${javaExecutable}" -jar "${path.normalize(jarFile)}" diagnostic ${inputArg}`;
-        } else {
-            const cliPath = (config.get<string>('cliPath', 'jpipe') ?? 'jpipe').trim();
-            let cliCmd: string;
-            if (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) {
-                cliCmd = path.normalize(cliPath);
-            } else {
-                try {
-                    const { stdout } = await execAsync(`which ${cliPath}`, { env: envWithPath() });
-                    cliCmd = stdout.trim();
-                } catch {
-                    cliCmd = cliPath;
-                }
-            }
-            command = `"${cliCmd}" diagnostic ${inputArg}`;
+        let command: string;
+        try {
+            const prefix = await this.resolveExecPrefix(config);
+            command = `${prefix} diagnostic ${inputArg}`;
+        } catch (e: any) {
+            return e.message;
         }
 
         this.logger.info(`Executing: ${command}`);

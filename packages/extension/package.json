@@ -153,6 +153,12 @@
                 "icon": "$(check)"
             },
             {
+                "command": "jpipe.installFromRelease",
+                "title": "Install Compiler from GitHub Release",
+                "category": "jPipe",
+                "icon": "$(cloud-download)"
+            },
+            {
                 "command": "jpipe.addExcludedDirectory",
                 "title": "Add Excluded Directory",
                 "category": "jPipe",
@@ -223,14 +229,16 @@
                     "type": "string",
                     "enum": [
                         "cli",
-                        "jar"
+                        "jar",
+                        "managed"
                     ],
                     "enumDescriptions": [
                         "Use the jpipe CLI executable (recommended). Configure the path below with 'CLI: Path'.",
-                        "Use a JAR file (manual installation / developer mode). Configure the path below with 'JAR: File' and 'JAR: Java Executable'."
+                        "Use a JAR file (manual installation / developer mode). Configure the path below with 'JAR: File' and 'JAR: Java Executable'.",
+                        "Use a compiler the extension downloads and manages from GitHub Releases. Install or switch versions via the 'Install Compiler from GitHub Release' command (requires Java)."
                     ],
                     "default": "cli",
-                    "markdownDescription": "How to invoke the jPipe compiler. Choose **cli** (recommended) or **jar** (manual installation).\n\n[Check jPipe installation](command:jpipe.checkInstallation)"
+                    "markdownDescription": "How to invoke the jPipe compiler. Choose **cli** (recommended), **jar** (manual installation), or **managed** (downloaded automatically from GitHub Releases — easiest on Windows).\n\n[$(cloud-download) Install from GitHub Release](command:jpipe.installFromRelease) · [Check jPipe installation](command:jpipe.checkInstallation)"
                 },
                 "jpipe.cliPath": {
                     "order": 2,

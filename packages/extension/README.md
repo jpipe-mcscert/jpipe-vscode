@@ -20,6 +20,17 @@
 The plugin requires the `jpipe` compiler to be vailable on your computer:
   - [https://www.jpipe.org/tutorials/install/](https://www.jpipe.org/tutorials/install/)
 
+You can provide the compiler in three ways, selected via the `jpipe.executionMode` setting:
+
+  - **cli** (recommended): the `jpipe` executable on your `PATH` (`jpipe.cliPath`).
+  - **jar**: a JAR you downloaded yourself, run with `java` (`jpipe.jarFile`, `jpipe.javaExecutable`).
+  - **managed** (easiest on Windows): run the **jPipe: Install Compiler from GitHub Release**
+    command and pick a version. The extension downloads the selected compiler JAR over HTTPS
+    from the [jpipe-compiler releases](https://github.com/jpipe-mcscert/jpipe-compiler/releases)
+    into its own private storage and runs it with `java` — no manual path configuration. The
+    downloaded JAR is an executable; the extension only fetches it after you explicitly pick a
+    release, and periodically offers to update it. (Requires a Java runtime.)
+
 #### How to use the plugin?
 
 Simply open a file using the `.jd` extension.
