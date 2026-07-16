@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
@@ -7,7 +7,10 @@ import * as os from 'node:os';
 import { JpipeLogger } from '../logger.js';
 import { ReleaseManager } from './release-manager.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+/** Generous stdout cap so large SVG renders are not truncated (default is only 1 MB). */
+const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
 /** Fallback invocation timeout (seconds) when `jpipe.compilerTimeout` is unset. */
 const DEFAULT_TIMEOUT_SECONDS = 30;
@@ -36,8 +39,10 @@ function envWithPath(): NodeJS.ProcessEnv {
     const extra = vscode.workspace.getConfiguration('jpipe').get<string[]>('extraPath', []) ?? [];
     const defaults = ['/opt/homebrew/bin', '/usr/local/bin'];
     const existing = process.env.PATH ?? '';
-    const prefix = [...extra.filter(Boolean), ...defaults].join(path.delimiter);
-    return { ...process.env, PATH: `${prefix}${path.delimiter}${existing}` };
+    // Trim and drop empties so we never introduce an empty PATH segment (which POSIX
+    // shells treat as the current directory — a security footgun) or a trailing delimiter.
+    const segments = [...extra, ...defaults, existing].map(s => s.trim()).filter(Boolean);
+    return { ...process.env, PATH: segments.join(path.delimiter) };
 }
 
 export enum ImageFormat {
@@ -61,18 +66,19 @@ export class ImageGenerator {
     ) {}
 
     /**
-     * Resolve the command prefix (everything before the subcommand) for the configured
-     * execution mode: the resolved CLI, or `"java" -jar "<jar>"` for `jar` / `managed`.
-     * Throws with a user-facing message when the selected mode is misconfigured.
+     * Resolve the executable and its leading arguments for the configured execution mode:
+     * the CLI (`{ file: cli, args: [] }`), or `java [jvmArgs…] -jar <jar>` for `jar` / `managed`.
+     * Returned as an argv pair so callers can invoke via `execFile` (no shell) — user/workspace
+     * settings are never interpreted by a shell. Throws a user-facing message when misconfigured.
      */
-    private async resolveExecPrefix(config: vscode.WorkspaceConfiguration): Promise<string> {
+    private resolveExecCommand(config: vscode.WorkspaceConfiguration): { file: string; args: string[] } {
         const mode = config.get<string>('executionMode', 'cli');
 
         if (mode === 'jar') {
             const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
             if (!jarFile) throw new Error('jpipe.jarFile is not configured.');
             if (!fs.existsSync(jarFile)) throw new Error(`JAR file not found: ${jarFile}`);
-            return this.buildJarPrefix(config, jarFile);
+            return this.buildJarCommand(config, jarFile);
         }
 
         if (mode === 'managed') {
@@ -83,31 +89,20 @@ export class ImageGenerator {
             if (!fs.existsSync(installed.jarPath)) {
                 throw new Error(`Managed JAR file not found: ${installed.jarPath}`);
             }
-            return this.buildJarPrefix(config, installed.jarPath);
+            return this.buildJarCommand(config, installed.jarPath);
         }
 
-        // cli mode: resolve a bare name via `which`, otherwise use the given path as-is.
+        // cli mode: a bare name is resolved via PATH by execFile; a path is used directly.
         const cliPath = (config.get<string>('cliPath', 'jpipe') ?? 'jpipe').trim();
-        if (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) {
-            return `"${path.normalize(cliPath)}"`;
-        }
-        try {
-            const { stdout } = await execAsync(`which ${cliPath}`, { env: envWithPath() });
-            const cliCmd = stdout.trim();
-            this.logger.debug(`Resolved CLI '${cliPath}' → ${cliCmd}`);
-            return `"${cliCmd}"`;
-        } catch {
-            this.logger.debug(`'which ${cliPath}' failed, using bare name`);
-            return `"${cliPath}"`;
-        }
+        const file = (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) ? path.normalize(cliPath) : cliPath;
+        return { file, args: [] };
     }
 
-    /** Build the `"java" [jvmArgs…] -jar "<jar>"` prefix shared by the `jar` and `managed` modes. */
-    private buildJarPrefix(config: vscode.WorkspaceConfiguration, jarFile: string): string {
+    /** Build the `java [jvmArgs…] -jar <jar>` argv shared by the `jar` and `managed` modes. */
+    private buildJarCommand(config: vscode.WorkspaceConfiguration, jarFile: string): { file: string; args: string[] } {
         const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
-        const jvmArgs = (config.get<string[]>('jvmArgs', []) ?? []).filter(Boolean);
-        const argsPart = jvmArgs.length ? ` ${jvmArgs.join(' ')}` : '';
-        return `"${javaExecutable}"${argsPart} -jar "${path.normalize(jarFile)}"`;
+        const jvmArgs = (config.get<string[]>('jvmArgs', []) ?? []).map(a => a.trim()).filter(Boolean);
+        return { file: javaExecutable, args: [...jvmArgs, '-jar', path.normalize(jarFile)] };
     }
     
     /**
@@ -142,20 +137,23 @@ export class ImageGenerator {
         const diagramName = forcedDiagramName ?? this.findDiagramName(document, editor);
         
         const config = vscode.workspace.getConfiguration('jpipe');
-        const inputArg = `-i "${path.normalize(inputFile)}"`;
-        const modelArg = `-m ${diagramName}`;
-        const formatArg = `-f ${format.toString().toUpperCase()}`;
 
-        let command: string;
+        let resolved: { file: string; args: string[] };
         try {
-            const prefix = await this.resolveExecPrefix(config);
-            command = `${prefix} process ${inputArg} ${modelArg} ${formatArg}`;
+            resolved = this.resolveExecCommand(config);
         } catch (e: any) {
             vscode.window.showErrorMessage(e.message);
             throw e;
         }
 
-        this.lastExportUri = undefined;
+        const argv = [
+            ...resolved.args,
+            'process',
+            '-i', path.normalize(inputFile),
+            '-m', diagramName,
+            '-f', format.toString().toUpperCase(),
+        ];
+
         if (saveToFile) {
             const outputPath = await this.promptForSaveLocation(document, diagramName, format);
             if (!outputPath) {
@@ -163,14 +161,15 @@ export class ImageGenerator {
                 e.cancelled = true;
                 throw e;
             }
-            command += ` -o "${outputPath.fsPath}"`;
+            argv.push('-o', outputPath.fsPath);
+            // Recorded only on the save path so a concurrent preview render can't clear it.
             this.lastExportUri = outputPath;
         }
 
-        this.logger.info(`Executing: ${command}`);
+        this.logger.info(`Executing: ${resolved.file} ${argv.join(' ')}`);
 
         try {
-            const { stdout } = await execAsync(command, { env: envWithPath(), timeout: timeoutMs(config) });
+            const { stdout } = await execFileAsync(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             this.logger.info(`Generated ${format} for '${diagramName}' (${path.basename(document.uri.fsPath)})`);
             return stdout;
         } catch (error: any) {
@@ -191,16 +190,15 @@ export class ImageGenerator {
     public async check(): Promise<{ ok: boolean; message: string }> {
         const config = vscode.workspace.getConfiguration('jpipe');
 
-        let command: string;
+        let resolved: { file: string; args: string[] };
         try {
-            const prefix = await this.resolveExecPrefix(config);
-            command = `${prefix} --headless doctor`;
+            resolved = this.resolveExecCommand(config);
         } catch (e: any) {
             return { ok: false, message: e.message };
         }
 
         try {
-            const { stdout, stderr } = await execAsync(command, { env: envWithPath(), timeout: timeoutMs(config) });
+            const { stdout, stderr } = await execFileAsync(resolved.file, [...resolved.args, '--headless', 'doctor'], { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             const output = (stdout + stderr).trim();
             return { ok: true, message: output || 'jPipe is accessible.' };
         } catch (error: any) {
@@ -212,19 +210,18 @@ export class ImageGenerator {
     public async generateDiagnostic(document: vscode.TextDocument): Promise<string> {
         const inputFile = path.normalize(document.uri.fsPath);
         const config = vscode.workspace.getConfiguration('jpipe');
-        const inputArg = `-i "${inputFile}"`;
 
-        let command: string;
+        let resolved: { file: string; args: string[] };
         try {
-            const prefix = await this.resolveExecPrefix(config);
-            command = `${prefix} diagnostic ${inputArg}`;
+            resolved = this.resolveExecCommand(config);
         } catch (e: any) {
             return e.message;
         }
 
-        this.logger.info(`Executing: ${command}`);
+        const argv = [...resolved.args, 'diagnostic', '-i', inputFile];
+        this.logger.info(`Executing: ${resolved.file} ${argv.join(' ')}`);
         try {
-            const { stdout, stderr } = await execAsync(command, { env: envWithPath(), timeout: timeoutMs(config) });
+            const { stdout, stderr } = await execFileAsync(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             return [stdout, stderr].filter(Boolean).join('\n').trim() || '(no output)';
         } catch (e: any) {
             const out = (e.stdout ?? '').trim();

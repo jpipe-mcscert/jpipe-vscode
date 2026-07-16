@@ -159,6 +159,9 @@ export class ReleaseManager {
             await fs.promises.rm(partPath, { force: true });
             throw new Error(`Downloaded jar size mismatch for ${release.tag} (expected ${release.jarSize} bytes).`);
         }
+        // Remove any stale/partial file at the destination first: fs.rename fails on
+        // Windows when the target already exists, which would block re-download/retry.
+        await fs.promises.rm(destPath, { force: true });
         await fs.promises.rename(partPath, destPath);
         this.logger.info(`Installed jPipe ${release.tag} → ${destPath} (sha256: ${sha256})`);
         return destPath;
@@ -218,7 +221,12 @@ export class ReleaseManager {
     /** The `owner/repo` releases are pulled from (configurable for forks/testing). */
     private repo(): string {
         const configured = (vscode.workspace.getConfiguration('jpipe').get<string>('managedRepository', DEFAULT_RELEASE_REPO) ?? '').trim();
-        return configured || DEFAULT_RELEASE_REPO;
+        // Accept only a strict owner/repo slug; anything else could distort the API URL.
+        if (/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(configured)) return configured;
+        if (configured && configured !== DEFAULT_RELEASE_REPO) {
+            this.logger.warn(`Ignoring invalid jpipe.managedRepository '${configured}'; using ${DEFAULT_RELEASE_REPO}.`);
+        }
+        return DEFAULT_RELEASE_REPO;
     }
 
     private compilerRoot(): string {
