@@ -15,6 +15,10 @@
     - Removed a couple of icons that weren't rendering next to settings links
   - Documentation:
     - Corrected the version-bump steps in the README so releases no longer hit an npm 404
+  - Maintenance:
+    - **Now requires VS Code 1.85 or newer** (November 2023) — older editors are no longer supported
+    - Refreshed the build and test toolchain and cleared several security advisories in it (development-only; nothing that ships to users was affected)
+    - Removed an unused dependency to keep the download smaller
 
 ### v1.2.0 (2026-07-15)
 - Leader: Sébastien Mosser
