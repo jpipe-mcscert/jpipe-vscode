@@ -1,4 +1,4 @@
-import { type AstNode, type CstNode } from 'langium';
+import { type AstNode, type CstNode, URI } from 'langium';
 import { DefaultNameProvider } from 'langium';
 import {
     isAbstractSupport,
@@ -7,6 +7,20 @@ import {
     type JustificationElement,
     type QualifiedId
 } from './generated/ast.js';
+
+/**
+ * Returns the OS-native filesystem path for a document URI.
+ *
+ * Always use this (not `URI.path`) when a URI is going to be handed to Node's
+ * `path`/`fs` APIs. `URI.path` yields the URI path component, which on Windows is
+ * `/c:/Users/foo/model.jd` (leading slash before the drive letter, forward
+ * slashes) — feeding that to win32 `path.*`/`fs.*` produces a broken path.
+ * `URI.fsPath` yields the native `c:\Users\foo\model.jd`. On POSIX the two are
+ * identical, which is why the distinction only matters on Windows.
+ */
+export function fsPathOf(uri: URI | string): string {
+    return (typeof uri === 'string' ? URI.parse(uri) : uri).fsPath;
+}
 
 /**
  * Name provider that returns the element's identifier (id field) rather than its label

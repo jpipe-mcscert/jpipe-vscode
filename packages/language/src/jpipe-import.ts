@@ -11,7 +11,7 @@ import {
     type JustificationElement,
     type Unit
 } from './generated/ast.js';
-import { getAllElements, qualifiedIdText } from './jpipe-utils.js';
+import { fsPathOf, getAllElements, qualifiedIdText } from './jpipe-utils.js';
 
 /**
  * Import service for handling imports and resolving imported documents, templates, and elements.
@@ -55,8 +55,9 @@ export class JpipeImportService {
         let resolvedPath = filePath;
 
         if (relativeToDoc && !path.isAbsolute(filePath)) {
-            const currentUri = URI.parse(relativeToDoc.uri.toString());
-            const currentDir = path.dirname(currentUri.path);
+            // Use fsPath (native path), not URI.path — see fsPathOf docs. On Windows
+            // URI.path is `/c:/...` which breaks win32 path.resolve/fs.existsSync.
+            const currentDir = path.dirname(fsPathOf(relativeToDoc.uri));
             resolvedPath = path.resolve(currentDir, filePath);
         } else if (!path.isAbsolute(filePath)) {
             resolvedPath = filePath;
