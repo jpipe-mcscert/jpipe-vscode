@@ -105,10 +105,13 @@ describe('fsPathOf (Windows path safety)', () => {
             .toBe('c:\\proj\\base.jd');
     });
 
-    test('is identity-preserving for POSIX paths and accepts URI objects', () => {
+    test('preserves POSIX-style URI paths (modulo separators) and accepts URI objects', () => {
+        // A drive-letter-free URI has no leading-slash quirk to strip; fsPath keeps
+        // the same segments. Normalize separators so this holds on Windows too
+        // (where fsPath uses backslashes).
         const posixUri = 'file:///home/foo/model.jd';
-        expect(fsPathOf(posixUri)).toBe('/home/foo/model.jd');
-        expect(fsPathOf(posixUri)).toBe(URI.parse(posixUri).path);
-        expect(fsPathOf(URI.parse(posixUri))).toBe('/home/foo/model.jd');
+        const norm = (p: string) => p.replaceAll('\\', '/');
+        expect(norm(fsPathOf(posixUri))).toBe('/home/foo/model.jd');
+        expect(norm(fsPathOf(URI.parse(posixUri)))).toBe('/home/foo/model.jd');
     });
 });

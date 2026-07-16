@@ -15,8 +15,10 @@ import {
  * `path`/`fs` APIs. `URI.path` yields the URI path component, which on Windows is
  * `/c:/Users/foo/model.jd` (leading slash before the drive letter, forward
  * slashes) — feeding that to win32 `path.*`/`fs.*` produces a broken path.
- * `URI.fsPath` yields the native `c:\Users\foo\model.jd`. On POSIX the two are
- * identical, which is why the distinction only matters on Windows.
+ * `URI.fsPath` yields the native `c:\Users\foo\model.jd`. For POSIX-style file
+ * URIs the two are identical; they diverge for Windows drive-letter URIs
+ * (`file:///c:/…`) — including when parsed on a non-Windows host — which is where
+ * the distinction matters.
  */
 export function fsPathOf(uri: URI | string): string {
     return (typeof uri === 'string' ? URI.parse(uri) : uri).fsPath;
