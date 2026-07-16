@@ -117,6 +117,28 @@ vsce publish
 
 ---
 
+## Changelog Maintenance
+
+`CHANGELOG.md` is the source of truth for what shipped in each version. **Keep it current whenever a feature or fix is merged to `main`.**
+
+- Every user-facing change (feature, bug fix, or documentation) merged to `main` must have a corresponding entry.
+- Accumulate changes under a top `### vX.Y.Z (Unreleased)` heading while work is in flight; flip `(Unreleased)` to the release date when the version is tagged.
+- Follow the existing structure: `Leader:` line, then `Features:` / `Bug Fixes:` / `Documentation:` sub-lists. Prefix each item with the affected area in bold (e.g. **Language Server:**, **Extension:**, **Grammar:**, **CI/CD:**). Reference the closed issue/PR where relevant.
+- Bump the version in all three `package.json` files (root, `packages/extension`, `packages/language`) in the same change that finalizes the release entry — they must stay in sync.
+- SemVer: new capability → minor bump; fixes/docs only → patch bump.
+
+**Editorial style — write for users, not developers.** The changelog is read by people using the extension, not by contributors. Each entry should describe *what changed for the user* and *why it helps*, in plain language:
+
+- Lead with the benefit or the observable behaviour, not the mechanism. "Let the extension fetch and update the compiler for you" beats "Add managed compiler mode via `installFromRelease`".
+- Avoid internal jargon: no setting IDs (`jpipe.executionMode`), command IDs, method names, class names, or file paths in the entry text. Refer to features by their user-facing name ("execution mode setting", "Export command").
+- Use a short bold lead-in that names the capability in user terms (e.g. **No-install setup:**, **One-click export:**), then a sentence of plain explanation.
+- Keep it concrete and honest — say what a user can now do, and call out who benefits (e.g. "especially handy on Windows"). Reference the closed issue/PR in parentheses.
+- Roll several related commits into one readable bullet rather than mirroring the git history one-to-one.
+
+To reconstruct entries from history, mine `git log <last-tag>..HEAD` and group by merged PR — then translate the technical commit messages into user-facing prose per the style above.
+
+---
+
 ## Testing
 
 Tests live in `packages/language/test/`. They use Vitest with Langium's `parseHelper`.

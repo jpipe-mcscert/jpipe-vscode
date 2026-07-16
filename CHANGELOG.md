@@ -1,5 +1,21 @@
 ## Changelog
 
+### v1.3.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Features:
+    - **No-install setup:** You can now let the extension fetch and update the jPipe compiler for you, straight from GitHub Releases — no manual JAR downloads. Pick a version from a list that shows each release's date. Especially handy on Windows (closes #13)
+    - **Choose how the compiler runs:** A single "execution mode" setting lets you use a `jpipe` command on your PATH, point at your own JAR, or let the extension manage it — with clearer messages when the compiler is missing or misconfigured
+    - **Automatic update checks:** In managed mode the extension can check for newer compiler releases on a schedule you control, and optionally include pre-releases
+    - **Better environment control:** New settings for a compiler timeout, extra Java (JVM) arguments, and additional folders to search for tools like `python3` and `dot` when they aren't on your PATH
+    - **One-click export:** A new "Export" command uses your preferred format and can open the result automatically. Added JPEG, DOT, Python, and JPIPE to the download options
+    - **Installation check** now tells you which compiler it's actually using
+    - **Tidier settings page:** Options are grouped into clear sections — Compiler, Managed Compiler, Export, Validation, and Logging
+  - Bug Fixes:
+    - Hardened how the compiler is launched (no shell-injection, correct PATH handling, validated download source) and made update checks apply only in managed mode, with correct pre-release handling
+    - Removed a couple of icons that weren't rendering next to settings links
+  - Documentation:
+    - Corrected the version-bump steps in the README so releases no longer hit an npm 404
+
 ### v1.2.0 (2026-07-15)
 - Leader: Sébastien Mosser
   - Features:
