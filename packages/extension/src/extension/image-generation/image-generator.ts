@@ -8,6 +8,10 @@ import { JpipeLogger } from '../logger.js';
 
 const execAsync = promisify(exec);
 
+/** Max time (ms) to wait for a jPipe CLI/JAR invocation before giving up, so a hung
+ *  compiler surfaces an error instead of freezing the preview panel indefinitely. */
+const CLI_TIMEOUT_MS = 30_000;
+
 /** Expand leading ~ to the user's home directory (Node does not do this by default). */
 function expandTilde(filePath: string): string {
     const home = os.homedir();
@@ -119,7 +123,7 @@ export class ImageGenerator {
         this.logger.info(`Executing: ${command}`);
 
         try {
-            const { stdout } = await execAsync(command);
+            const { stdout } = await execAsync(command, { env: envWithPath(), timeout: CLI_TIMEOUT_MS });
             this.logger.info(`Generated ${format} for '${diagramName}' (${path.basename(document.uri.fsPath)})`);
             return stdout;
         } catch (error: any) {
@@ -165,7 +169,7 @@ export class ImageGenerator {
         }
 
         try {
-            const { stdout, stderr } = await execAsync(command, { env: envWithPath() });
+            const { stdout, stderr } = await execAsync(command, { env: envWithPath(), timeout: CLI_TIMEOUT_MS });
             const output = (stdout + stderr).trim();
             return { ok: true, message: output || 'jPipe is accessible.' };
         } catch (error: any) {
@@ -206,7 +210,7 @@ export class ImageGenerator {
 
         this.logger.info(`Executing: ${command}`);
         try {
-            const { stdout, stderr } = await execAsync(command, { env: envWithPath() });
+            const { stdout, stderr } = await execAsync(command, { env: envWithPath(), timeout: CLI_TIMEOUT_MS });
             return [stdout, stderr].filter(Boolean).join('\n').trim() || '(no output)';
         } catch (e: any) {
             const out = (e.stdout ?? '').trim();
