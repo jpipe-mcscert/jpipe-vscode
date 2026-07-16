@@ -396,9 +396,6 @@
             }
         ]
     },
-    "activationEvents": [
-        "onLanguage:jpipe"
-    ],
     "main": "./out/extension/main.cjs",
     "scripts": {
         "clean": "shx rm -fr *.tsbuildinfo out syntaxes",
