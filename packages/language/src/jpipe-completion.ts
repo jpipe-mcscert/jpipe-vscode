@@ -1,4 +1,4 @@
-import { stream, type Stream, URI, AstUtils, GrammarAST, type AstNode, type AstNodeDescription, type ReferenceInfo, type LangiumDocument } from 'langium';
+import { stream, type Stream, AstUtils, GrammarAST, type AstNode, type AstNodeDescription, type ReferenceInfo, type LangiumDocument } from 'langium';
 import {
     DefaultCompletionProvider,
     type CompletionAcceptor,
@@ -30,7 +30,7 @@ import {
     type JustificationElement,
     type AbstractSupport
 } from './generated/ast.js';
-import { getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { fsPathOf, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
 
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private readonly services: JpipeServices;
@@ -228,8 +228,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private basenameFromDescription(desc: AstNodeDescription): string | undefined {
         const uri = desc.documentUri;
         if (!uri) return undefined;
-        const s = typeof uri === 'string' ? uri : uri.toString();
-        const p = URI.parse(s).path;
+        const p = fsPathOf(uri);
         return path.basename(p) || undefined;
     }
 
@@ -237,7 +236,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         const doc = (node as { $document?: LangiumDocument }).$document;
         const uri = doc?.uri;
         if (!uri) return undefined;
-        const p = URI.parse(uri.toString()).path;
+        const p = fsPathOf(uri);
         return path.basename(p) || undefined;
     }
 
@@ -390,7 +389,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         const partial = m[1];
         const pathStartCol = linePfx.search(/["']/) + 1;
-        const docPath = URI.parse(document.uri.toString()).path;
+        const docPath = fsPathOf(document.uri);
         const docDir = path.dirname(docPath);
         const makeTextEdit = (p: string) => ({
             range: { start: { line: pos.line, character: pathStartCol }, end: pos },
@@ -424,7 +423,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                 const targetUri = desc.documentUri?.toString();
                 if (!targetUri || seen.has(targetUri)) continue;
                 seen.add(targetUri);
-                const targetPath = URI.parse(targetUri).path;
+                const targetPath = fsPathOf(targetUri);
                 if (targetPath === docPath || !targetPath.endsWith('.jd')) continue;
                 const rel = path.relative(docDir, targetPath).replaceAll('\\', '/');
                 const insertPath = rel.startsWith('../') ? rel : `./${rel}`;
@@ -621,11 +620,8 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         const currentUnit = currentDoc.parseResult.value as Unit | undefined;
         if (!currentUnit) return undefined;
 
-        const currentUri = typeof currentDoc.uri === 'string' ? currentDoc.uri : currentDoc.uri.toString();
-        const targetUri = typeof documentUri === 'string' ? documentUri : documentUri.toString();
-
-        const currentPath = URI.parse(currentUri).path;
-        const targetPath = URI.parse(targetUri).path;
+        const currentPath = fsPathOf(currentDoc.uri);
+        const targetPath = fsPathOf(documentUri);
 
         if (currentPath === targetPath) return undefined;
 

@@ -10,10 +10,12 @@ import {
     isConclusion,
     isEvidence,
     isJustification,
+    isLoad,
     isStrategy,
     isSubConclusion,
     isTemplate,
     type JustificationElement,
+    type Load,
     type QualifiedId,
     type Template,
     type Unit,
@@ -49,9 +51,32 @@ export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
             ));
         }
 
+        // Cursor on a `load "..."` path → navigate to the loaded file.
+        const loadLink = this.loadTargetLink(sourceCstNode);
+        if (loadLink) return loadLink;
+
         // Fallback: if cursor is on a multi-part element id declaration (e.g. t:abs),
         // navigate to the @support or element in the parent template being overridden.
         return this.overrideTargetLink(sourceCstNode);
+    }
+
+    private loadTargetLink(sourceCstNode: CstNode): LocationLink[] | undefined {
+        // Walk up from the CST node to find a containing `load` statement.
+        let node: AstNode | undefined = sourceCstNode.astNode;
+        while (node && !isLoad(node)) node = node.$container;
+        if (!node || !isLoad(node)) return undefined;
+        const load = node as Load;
+
+        const document = this.getDocument(load);
+        if (!document) return undefined;
+
+        const targetDoc = this.importService.parseDocumentFromPath(load.path, document);
+        if (!targetDoc) return undefined; // unresolved path (also flagged by the validator)
+
+        // Target the start of the loaded file; highlight the load statement as the source.
+        const fileStart = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+        const sourceRange = load.$cstNode?.range ?? sourceCstNode.range;
+        return [LocationLink.create(targetDoc.textDocument.uri, fileStart, fileStart, sourceRange)];
     }
 
     private overrideTargetLink(sourceCstNode: CstNode): LocationLink[] | undefined {

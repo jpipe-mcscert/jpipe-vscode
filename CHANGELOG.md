@@ -1,5 +1,19 @@
 ## Changelog
 
+### Unreleased
+- Leader: Sébastien Mosser
+  - Bug Fixes:
+    - **Language Server:** Resolve `load` imports via `URI.fsPath` so they work on Windows (drive-letter paths were malformed under `URI.path`, silently breaking imports and cross-references)
+  - Features:
+    - **Language Server:** Surface unresolved `load` paths as diagnostics instead of failing silently
+    - **Language Server:** Go-to-definition on a `load "..."` path navigates to the loaded document
+
+### v1.1.1 (2026-05-08)
+- Leader: Sébastien Mosser
+  - Features:
+    - **Extension:** Route compiler errors to the jPipe output channel instead of notification popups
+    - **Extension:** Gate the output-channel reveal on the configured `jpipe.logLevel` (panel no longer opens with no visible message)
+
 ### v1.1.0 (2026-04-28)
 - Leader: Sébastien Mosser
   - Features:
