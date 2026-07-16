@@ -146,8 +146,17 @@ export function activate(context: vscode.ExtensionContext): void {
         }),
         vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
             const { ok, message } = await imageGenerator.check();
+            const mode = vscode.workspace.getConfiguration('jpipe').get<string>('executionMode', 'cli');
             const installed = releaseManager.getInstalled();
-            const detail = installed ? `Managed compiler: ${installed.tag}\n\n${message}` : message;
+            let header: string;
+            if (mode === 'managed') {
+                header = `Access method: managed (GitHub Release${installed ? ` ${installed.tag}` : ' — none installed'})`;
+            } else if (mode === 'jar') {
+                header = 'Access method: jar';
+            } else {
+                header = 'Access method: cli';
+            }
+            const detail = `${header}\n\n${message}`;
             if (ok) {
                 vscode.window.showInformationMessage('jPipe is accessible.', { modal: true, detail });
             } else {
