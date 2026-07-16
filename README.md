@@ -76,9 +76,13 @@ The version must be updated in sync across four locations:
 - `packages/language/package.json`
 - The `jpipe-language` dependency inside `packages/extension/package.json` `dependencies` block
 
-The first three are handled by a single command:
+The first three are handled by a single command. Pass `--no-workspaces-update` so
+npm does **not** try to reinstall right away — without it, npm attempts to resolve
+the (still-old) `jpipe-language` dependency against the registry and fails with a
+`404 jpipe-language@<old-version>` error, because that package is workspace-local
+and never published:
 ```
-mosser@azrael jpipe-vscode % npm version <new-version> --no-git-tag-version --workspaces --include-workspace-root
+mosser@azrael jpipe-vscode % npm version <new-version> --no-git-tag-version --workspaces --include-workspace-root --no-workspaces-update
 ```
 
 Then manually update the `jpipe-language` dependency version in `packages/extension/package.json` to match:
@@ -87,6 +91,11 @@ Then manually update the `jpipe-language` dependency version in `packages/extens
     "jpipe-language": "<new-version>",
     ...
 }
+```
+
+Finally, reconcile the lockfile now that every version agrees:
+```
+mosser@azrael jpipe-vscode % npm install
 ```
 
 Replace `<new-version>` with the desired version (e.g. `1.1.0`) or a semver increment keyword (`patch`, `minor`, `major`) for the npm command.
