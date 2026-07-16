@@ -2,7 +2,7 @@
     "name": "jpipe-extension",
     "displayName": "jPipe Language (McSCert)",
     "description": "Language Support for the jPipe language",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "type": "module",
     "publisher": "mcscert",
     "author": "McMaster Centre for Software Certification (McSCert)",
@@ -79,11 +79,21 @@
             {
                 "language": "jpipe",
                 "scopes": {
-                    "jpipe-load": ["entity.name.namespace.jpipe"],
-                    "jpipe-structure": ["support.type.jpipe"],
-                    "jpipe-relation": ["variable.other.enummember.jpipe"],
-                    "jpipe-abstract": ["storage.modifier.jpipe"],
-                    "jpipe-element": ["entity.name.function.jpipe"]
+                    "jpipe-load": [
+                        "entity.name.namespace.jpipe"
+                    ],
+                    "jpipe-structure": [
+                        "support.type.jpipe"
+                    ],
+                    "jpipe-relation": [
+                        "variable.other.enummember.jpipe"
+                    ],
+                    "jpipe-abstract": [
+                        "storage.modifier.jpipe"
+                    ],
+                    "jpipe-element": [
+                        "entity.name.function.jpipe"
+                    ]
                 }
             }
         ],
@@ -265,7 +275,9 @@
                 "jpipe.excludedDirectories": {
                     "order": 6,
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "default": [],
                     "markdownDescription": "Directories (relative to workspace root) whose `.jd` files are excluded from validation. Files in excluded directories display a warning instead of errors. Changes require a window reload to take effect.\n\n[$(folder-opened) Browse for directory…](command:jpipe.addExcludedDirectory)"
                 }
@@ -285,7 +297,7 @@
         "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json --watch\" \"node esbuild.mjs --watch\""
     },
     "dependencies": {
-        "jpipe-language": "1.1.1",
+        "jpipe-language": "1.2.0",
         "vscode-languageclient": "~9.0.1",
         "vscode-languageserver": "~9.0.1"
     },

@@ -1,12 +1,15 @@
 ## Changelog
 
-### Unreleased
+### v1.2.0 (2026-07-15)
 - Leader: Sébastien Mosser
-  - Bug Fixes:
-    - **Language Server:** Resolve `load` imports via `URI.fsPath` so they work on Windows (drive-letter paths were malformed under `URI.path`, silently breaking imports and cross-references)
   - Features:
     - **Language Server:** Surface unresolved `load` paths as diagnostics instead of failing silently
     - **Language Server:** Go-to-definition on a `load "..."` path navigates to the loaded document
+    - **Extension:** Replace the diagnostic-view toolbar icon (magnifying glass → clipboard) to avoid confusion with the adjacent zoom controls
+  - Bug Fixes:
+    - **Language Server:** Resolve `load` imports via `URI.fsPath` so they work on Windows (drive-letter paths were malformed under `URI.path`, silently breaking imports and cross-references)
+    - **Extension:** Diagnostic-view toggle no longer freezes when a render fails — resolve the document before switching modes and retain last-good render metadata on error
+    - **Extension:** Add a 30s timeout to CLI/JAR invocations so a hung compiler can't freeze the preview panel
 
 ### v1.1.1 (2026-05-08)
 - Leader: Sébastien Mosser
