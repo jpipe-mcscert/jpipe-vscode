@@ -63,8 +63,11 @@ export function activate(context: vscode.ExtensionContext): void {
             const picked = await vscode.window.showQuickPick(
                 releases.map((r, i) => ({
                     label: r.tag,
-                    description: [i === 0 ? '$(star-full) latest' : '', r.tag === installed?.tag ? '$(check) installed' : '']
-                        .filter(Boolean).join('  '),
+                    description: [
+                        formatReleaseDate(r.publishedAt),
+                        i === 0 ? '$(star-full) latest' : '',
+                        r.tag === installed?.tag ? '$(check) installed' : '',
+                    ].filter(Boolean).join('  ·  '),
                     detail: r.name,
                     release: r,
                 })),
@@ -173,6 +176,14 @@ export function deactivate(): Thenable<void> | undefined {
         return client.stop();
     }
     return undefined;
+}
+
+/** Format a release's ISO `published_at` as a short local date (e.g. "Jul 16, 2026"). */
+function formatReleaseDate(iso: string): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function resolveExcludedDirectories(): string[] {
