@@ -27,6 +27,34 @@ export class PreviewProvider {
         return this.lastRenderedDiagramName;
     }
 
+    /**
+     * Resolve a jPipe document to (re)render, along with the editor that carries the
+     * relevant cursor context. Tries, in order: the active editor, any visible jPipe
+     * editor, and finally the last-rendered document (reopened without an editor).
+     * Returns undefined only when no jPipe document can be found at all.
+     *
+     * This exists so the toolbar toggle keeps working after the user clicks it: clicking
+     * a webview button focuses the webview, which makes `activeTextEditor` undefined.
+     */
+    private async resolveActiveJpipeDocument(): Promise<{ document: vscode.TextDocument; editor: vscode.TextEditor | undefined } | undefined> {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor?.document.languageId === 'jpipe') {
+            return { document: activeEditor.document, editor: activeEditor };
+        }
+        const visibleEditor = vscode.window.visibleTextEditors.find(e => e.document.languageId === 'jpipe');
+        if (visibleEditor) {
+            return { document: visibleEditor.document, editor: visibleEditor };
+        }
+        if (this.lastRenderedDocumentUri) {
+            try {
+                const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(this.lastRenderedDocumentUri));
+                const editor = vscode.window.visibleTextEditors.find(e => e.document === document);
+                return { document, editor };
+            } catch { /* fall through */ }
+        }
+        return undefined;
+    }
+
     constructor(
         private readonly imageGenerator: ImageGenerator,
         private readonly languageClient: LanguageClient,
@@ -132,10 +160,18 @@ export class PreviewProvider {
 
         // Diagnostic mode bypasses diagram-name resolution
         if (this.viewMode === 'diagnostic') {
+            // Show a loading indicator while the CLI runs so the panel never looks frozen.
+            PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
+            let output: string;
             try {
-                const output = await this.imageGenerator.generateDiagnostic(document);
-                PreviewProvider.webviewPanel.webview.html = this.getHtmlForDiagnostic(output, this.unsaved);
-            } catch { /* ignore diagnostic errors */ }
+                output = await this.imageGenerator.generateDiagnostic(document);
+            } catch (error) {
+                const msg = error instanceof Error ? error.message : String(error);
+                this.logger.error(`Diagnostic failed in ${document.fileName}: ${msg}`);
+                output = `Failed to run diagnostic:\n\n${msg}`;
+            }
+            if (this.viewMode !== 'diagnostic' || !PreviewProvider.webviewPanel) return;
+            PreviewProvider.webviewPanel.webview.html = this.getHtmlForDiagnostic(output, this.unsaved);
             return;
         }
 
@@ -200,13 +236,13 @@ export class PreviewProvider {
                 this.lastRenderedDiagramName = diagramName;
             } else {
                 // Keep the last successfully rendered preview visible; don't replace it with a full-screen error view.
+                // Intentionally retain lastRenderedDocumentUri/lastRenderedDiagramName: they describe what the panel
+                // is still showing (the last good diagram), so the diagnostic toggle always has a document to render.
                 if (this.lastGoodHtml) {
                     PreviewProvider.webviewPanel.webview.html = this.lastGoodHtml;
                 } else {
                     PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
                 }
-                this.lastRenderedDocumentUri = undefined;
-                this.lastRenderedDiagramName = undefined;
             }
         }
     }
@@ -335,15 +371,16 @@ export class PreviewProvider {
                 vscode.env.openExternal(vscode.Uri.parse(msg.url));
             }
             if (msg.type === 'toggleMode') {
-                this.viewMode = this.viewMode === 'diagram' ? 'diagnostic' : 'diagram';
-                const activeDoc = vscode.window.activeTextEditor?.document;
-                const docToUse = activeDoc?.languageId === 'jpipe' ? activeDoc : undefined;
-                if (docToUse) {
-                    this.updatePreview(docToUse, vscode.window.activeTextEditor);
-                } else if (this.lastRenderedDocumentUri) {
-                    vscode.workspace.openTextDocument(vscode.Uri.parse(this.lastRenderedDocumentUri))
-                        .then(doc => this.updatePreview(doc, undefined), () => {});
-                }
+                // Resolve a document BEFORE flipping viewMode so we never end up in a
+                // mode we can't render (which leaves the toggle looking frozen).
+                this.resolveActiveJpipeDocument().then(resolved => {
+                    if (!resolved) {
+                        this.logger.warn('Diagnostic toggle ignored: no jPipe document available to render');
+                        return;
+                    }
+                    this.viewMode = this.viewMode === 'diagram' ? 'diagnostic' : 'diagram';
+                    this.updatePreview(resolved.document, resolved.editor);
+                });
             }
         });
         
@@ -584,7 +621,7 @@ export class PreviewProvider {
                 </button>
             </div>
             <div class="toolbar-group">
-                <button class="toolbar-btn" id="mode-toggle" data-tooltip="Diagnostic view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6.5" cy="6.5" r="4"/><line x1="10" y1="10" x2="14" y2="14"/></svg></button>
+                <button class="toolbar-btn" id="mode-toggle" data-tooltip="Diagnostic view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><rect x="5.75" y="1" width="4.5" height="2.6" rx="0.8"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11.5" x2="10" y2="11.5"/></svg></button>
             </div>
             <div class="toolbar-group">
                 <button class="toolbar-btn zoom" id="zoom-out" title="Zoom out">−</button>
@@ -892,7 +929,7 @@ export class PreviewProvider {
             <a href="#" id="jpipe-link" title="Open jpipe.org">JPIPE</a>
         </div>
         <div>
-            <button class="toolbar-btn active" id="mode-toggle" data-tooltip="Back to diagram view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6.5" cy="6.5" r="4"/><line x1="10" y1="10" x2="14" y2="14"/></svg></button>
+            <button class="toolbar-btn active" id="mode-toggle" data-tooltip="Back to diagram view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><rect x="5.75" y="1" width="4.5" height="2.6" rx="0.8"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11.5" x2="10" y2="11.5"/></svg></button>
         </div>
     </div>
     <div id="unsaved-banner">⚠ Unsaved changes — diagnostic reflects last saved version</div>
