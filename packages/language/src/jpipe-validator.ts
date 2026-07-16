@@ -1,4 +1,4 @@
-import type { ValidationAcceptor, ValidationChecks } from 'langium';
+import { AstUtils, type ValidationAcceptor, type ValidationChecks } from 'langium';
 import type {
     JpipeAstType,
     Unit,
@@ -10,7 +10,8 @@ import type {
     AbstractSupport,
     Template,
     Justification,
-    JustificationElement
+    JustificationElement,
+    Load
 } from './generated/ast.js';
 import {
     isTemplate,
@@ -23,6 +24,7 @@ import {
 } from './generated/ast.js';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
+import type { JpipeImportService } from './jpipe-import.js';
 import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
 
 export function registerValidationChecks(services: JpipeServices) {
@@ -30,6 +32,7 @@ export function registerValidationChecks(services: JpipeServices) {
     const validator = services.validation.JpipeValidator;
     const checks: ValidationChecks<JpipeAstType> = {
         Unit:           validator.checkUnitNotEmpty,
+        Load:           validator.checkLoadResolves,
         Composition:    [validator.checkOperatorName, validator.checkConfigKeys],
         Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport],
         Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride],
@@ -44,6 +47,7 @@ export function registerValidationChecks(services: JpipeServices) {
 
 export class JpipeValidator {
     private readonly logger: JpipeServerLogger;
+    private readonly importService: JpipeImportService;
 
     private static readonly KNOWN_OPERATORS = new Set(['assemble', 'refine']);
 
@@ -59,6 +63,22 @@ export class JpipeValidator {
 
     constructor(services: JpipeServices) {
         this.logger = services.logger;
+        this.importService = services.references.JpipeImportService;
+    }
+
+    /**
+     * Flags a `load` statement whose target file cannot be found. Without this the
+     * failure is silent (only a server-log warning), so a typo'd or broken path —
+     * or a path that resolves incorrectly on Windows — looks like it did nothing.
+     */
+    checkLoadResolves(load: Load, accept: ValidationAcceptor): void {
+        const document = AstUtils.getDocument(load);
+        const resolved = this.importService.resolveExistingImportPath(load.path, document);
+        if (!resolved) {
+            accept('error',
+                `Cannot resolve load path '${load.path}': no such file.`,
+                { node: load, property: 'path' });
+        }
     }
 
     checkOperatorName(composition: Composition, accept: ValidationAcceptor): void {

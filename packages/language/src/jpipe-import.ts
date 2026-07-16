@@ -51,17 +51,36 @@ export class JpipeImportService {
         return this.parseDocumentFromPath(cleanPath, relativeToDoc);
     }
 
-    parseDocumentFromPath(filePath: string, relativeToDoc?: LangiumDocument): LangiumDocument | undefined {
-        let resolvedPath = filePath;
-
+    /**
+     * Resolve a (possibly relative) import path to an absolute OS-native filesystem
+     * path, relative to `relativeToDoc` when the path is not already absolute.
+     */
+    resolveFsPath(filePath: string, relativeToDoc?: LangiumDocument): string {
         if (relativeToDoc && !path.isAbsolute(filePath)) {
             // Use fsPath (native path), not URI.path — see fsPathOf docs. On Windows
             // URI.path is `/c:/...` which breaks win32 path.resolve/fs.existsSync.
             const currentDir = path.dirname(fsPathOf(relativeToDoc.uri));
-            resolvedPath = path.resolve(currentDir, filePath);
-        } else if (!path.isAbsolute(filePath)) {
-            resolvedPath = filePath;
+            return path.resolve(currentDir, filePath);
         }
+        return filePath;
+    }
+
+    /**
+     * Returns the resolved absolute path of an import if the target exists (either as
+     * an already-open document or a file on disk), otherwise undefined. Used by the
+     * validator to flag unresolvable `load` statements without parsing them.
+     */
+    resolveExistingImportPath(filePath: string, relativeToDoc?: LangiumDocument): string | undefined {
+        const resolvedPath = this.resolveFsPath(filePath, relativeToDoc);
+        const resolvedUri = URI.file(resolvedPath);
+        if (this.services.shared.workspace.LangiumDocuments.getDocument(resolvedUri)) {
+            return resolvedPath;
+        }
+        return fs.existsSync(resolvedPath) ? resolvedPath : undefined;
+    }
+
+    parseDocumentFromPath(filePath: string, relativeToDoc?: LangiumDocument): LangiumDocument | undefined {
+        const resolvedPath = this.resolveFsPath(filePath, relativeToDoc);
 
         const resolvedUri = URI.file(resolvedPath);
         const existingDoc = this.services.shared.workspace.LangiumDocuments.getDocument(resolvedUri);

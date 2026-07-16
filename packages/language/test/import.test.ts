@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { EmptyFileSystem, URI, type LangiumDocument } from 'langium';
 import { clearDocuments, parseHelper } from 'langium/test';
+import type { Diagnostic, LocationLink } from 'vscode-languageserver-types';
 import type { Unit } from 'jpipe-language';
 import { createJpipeServices, isUnit, isJustification, isTemplate } from 'jpipe-language';
 import { fsPathOf } from '../src/jpipe-utils.js';
@@ -17,6 +18,10 @@ beforeAll(async () => {
     services = createJpipeServices(EmptyFileSystem);
     parse = parseHelper<Unit>(services.Jpipe);
 });
+
+function diagnosticMessages(doc: LangiumDocument): string[] {
+    return (doc.diagnostics ?? []).map((d: Diagnostic) => d.message);
+}
 
 afterEach(async () => {
     if (document) await clearDocuments(services.shared, [document]);
@@ -113,5 +118,102 @@ describe('fsPathOf (Windows path safety)', () => {
         const norm = (p: string) => p.replaceAll('\\', '/');
         expect(norm(fsPathOf(posixUri))).toBe('/home/foo/model.jd');
         expect(norm(fsPathOf(URI.parse(posixUri)))).toBe('/home/foo/model.jd');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Load-path validation — a `load` pointing at a missing file must surface a
+// diagnostic instead of failing silently (only a server-log warning before).
+// ---------------------------------------------------------------------------
+
+describe('Load path validation', () => {
+
+    const parseWithValidation = (text: string, documentUri: string) =>
+        parseHelper<Unit>(services.Jpipe)(text, { validation: true, documentUri });
+
+    test('unresolvable load path reports an error diagnostic', async () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
+        try {
+            const rootUri = pathToFileURL(path.join(tmpDir, 'root.jd')).toString();
+            document = await parseWithValidation(`
+                load "./does-not-exist.jd"
+                justification J {
+                    conclusion c is "Claim"
+                    strategy s is "Strategy"
+                    evidence e is "Evidence"
+                    e supports s
+                    s supports c
+                }
+            `, rootUri);
+            expect(diagnosticMessages(document).some(m => m.includes('Cannot resolve load path'))).toBe(true);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true });
+        }
+    });
+
+    test('resolvable load path produces no load diagnostic', async () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
+        try {
+            fs.writeFileSync(path.join(tmpDir, 'base.jd'), `
+                template T {
+                    conclusion c is "Claim"
+                    @support abs is "Abstract"
+                    abs supports c
+                }
+            `);
+            const rootUri = pathToFileURL(path.join(tmpDir, 'root.jd')).toString();
+            document = await parseWithValidation(`
+                load "./base.jd"
+                justification J implements T {
+                    conclusion c is "Claim"
+                    evidence abs is "Concrete"
+                    abs supports c
+                }
+            `, rootUri);
+            expect(diagnosticMessages(document).some(m => m.includes('Cannot resolve load path'))).toBe(false);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true });
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Go-to-definition on a `load` path — the cursor on the path string should
+// navigate to the loaded file.
+// ---------------------------------------------------------------------------
+
+describe('Go-to-definition on load path', () => {
+
+    test('navigates from a load path to the loaded document', async () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
+        try {
+            const basePath = path.join(tmpDir, 'base.jd');
+            fs.writeFileSync(basePath, `
+                template T {
+                    conclusion c is "Claim"
+                    @support abs is "Abstract"
+                    abs supports c
+                }
+            `);
+            const rootUri = pathToFileURL(path.join(tmpDir, 'root.jd')).toString();
+            const text = `load "./base.jd"\njustification J implements T {\n    conclusion c is "Claim"\n    evidence abs is "Concrete"\n    abs supports c\n}`;
+            document = await parse(text, { documentUri: rootUri });
+
+            // Cursor inside the "./base.jd" string on line 0.
+            const character = text.indexOf('base.jd');
+            const defProvider = services.Jpipe.lsp.DefinitionProvider!;
+            const result = await defProvider.getDefinition(document, {
+                textDocument: { uri: rootUri },
+                position: { line: 0, character }
+            });
+
+            expect(result).toBeDefined();
+            expect(result!.length).toBeGreaterThan(0);
+            const targetUri = (result![0] as LocationLink).targetUri;
+            const norm = (p: string) => fsPathOf(p).replaceAll('\\', '/');
+            expect(norm(targetUri)).toBe(norm(pathToFileURL(basePath).toString()));
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true });
+        }
     });
 });
