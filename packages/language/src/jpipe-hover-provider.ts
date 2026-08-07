@@ -10,7 +10,7 @@ import {
 } from './generated/ast.js';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeImportService } from './jpipe-import.js';
-import { escapesBaseDirectory, GlobSyntaxError, isGlobPattern } from './jpipe-glob.js';
+import { GlobExpansionError, isGlobPattern } from './jpipe-glob.js';
 import { fsPathOf } from './jpipe-utils.js';
 
 /** Beyond this, a hover becomes a wall of text rather than an answer. */
@@ -99,14 +99,13 @@ export class JpipeHoverProvider extends AstNodeHoverProvider {
         try {
             matches = this.importService.expandLoadPath(load.path, document);
         } catch (error) {
-            const reason = error instanceof GlobSyntaxError ? error.description : String(error);
-            return `Invalid glob pattern \`${load.path}\` — ${reason}`;
+            // Same wording as the diagnostic, so the squiggle and the tooltip agree.
+            return error instanceof GlobExpansionError
+                ? error.describe(load.path)
+                : `Cannot expand load pattern \`${load.path}\``;
         }
         if (matches.length === 0) {
-            const hint = escapesBaseDirectory(load.path)
-                ? `\n\nPatterns only match files at or below \`${path.basename(baseDir)}/\`, this file's own directory — a pattern starting with \`..\` or an absolute path never matches, even though the equivalent literal path would load.`
-                : '';
-            return `No file matches \`${load.path}\`${hint}`;
+            return `No file matches \`${load.path}\``;
         }
 
         const shown = matches.slice(0, MAX_LISTED_MATCHES);

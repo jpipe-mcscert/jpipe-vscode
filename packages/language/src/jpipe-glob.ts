@@ -18,8 +18,19 @@
  * and the relative path uses `\` — so normalising both sides to `/` is equivalent on every platform.
  */
 
+/**
+ * A reason a pattern cannot be expanded.
+ *
+ * Each subclass knows how to word itself exactly as `LoadResolver.expandGlob` words the
+ * corresponding FATAL, so the diagnostic, the hover and a compiler run all say the same thing.
+ */
+export abstract class GlobExpansionError extends Error {
+    /** The message to show for `pattern`, in the compiler's wording. */
+    abstract describe(pattern: string): string;
+}
+
 /** Thrown for a malformed pattern. Mirrors Java's `PatternSyntaxException`. */
-export class GlobSyntaxError extends Error {
+export class GlobSyntaxError extends GlobExpansionError {
     /** Short reason, matching the JDK's wording so our diagnostic reads like the compiler's. */
     readonly description: string;
 
@@ -27,6 +38,38 @@ export class GlobSyntaxError extends Error {
         super(`${description} in glob pattern '${pattern}'`);
         this.name = 'GlobSyntaxError';
         this.description = description;
+    }
+
+    override describe(pattern: string): string {
+        return `Invalid glob in load pattern '${pattern}': ${this.description}`;
+    }
+}
+
+/** Thrown when a `..` segment survives anchoring, i.e. follows a wildcard. */
+export class GlobUpwardSegmentError extends GlobExpansionError {
+    constructor() {
+        super('Upward segment after a wildcard');
+        this.name = 'GlobUpwardSegmentError';
+    }
+
+    override describe(pattern: string): string {
+        return `'..' may only appear before the first wildcard in load pattern '${pattern}'`;
+    }
+}
+
+/** Thrown when a pattern's literal prefix does not name an existing directory. */
+export class GlobAnchorError extends GlobExpansionError {
+    /** The resolved directory that is missing — usually where the typo is. */
+    readonly root: string;
+
+    constructor(root: string) {
+        super(`Not a directory: ${root}`);
+        this.name = 'GlobAnchorError';
+        this.root = root;
+    }
+
+    override describe(pattern: string): string {
+        return `Cannot expand load pattern '${pattern}': '${this.root}' is not a directory`;
     }
 }
 
@@ -37,13 +80,71 @@ const GLOB_META = '*?[{';
 const REGEX_META = '.^$+{[]|()';
 
 /**
+ * Index of the first glob metacharacter in `path`, or -1 if it holds none.
+ *
+ * Single source of truth for what counts as a wildcard, shared by `isGlobPattern` and
+ * `anchorGlob` — as `LoadResolver.firstMetaChar` is on the compiler side.
+ */
+function firstMetaChar(path: string): number {
+    for (let i = 0; i < path.length; i++) {
+        if (GLOB_META.includes(path[i])) return i;
+    }
+    return -1;
+}
+
+/**
  * Whether `path` is a glob pattern rather than a literal path.
  *
  * Mirrors `LoadResolver.isGlob` exactly; the two must agree, otherwise a path one side treats as
  * literal the other treats as a pattern.
  */
 export function isGlobPattern(path: string): boolean {
-    return [...path].some(c => GLOB_META.includes(c));
+    return firstMetaChar(path) >= 0;
+}
+
+/** A pattern split into the directory a search starts from and the glob matched relative to it. */
+export interface GlobAnchor {
+    /** Literal path prefix, resolved against the declaring file's directory. May be `''`. */
+    readonly prefix: string;
+    /** The glob to match against paths relative to the resolved prefix. */
+    readonly pattern: string;
+}
+
+/**
+ * Splits a pattern at the last `/` preceding its first wildcard *character*.
+ *
+ * Everything before the cut is a literal path resolved exactly like a literal `load` — which is
+ * what lets a pattern climb out of the declaring file's directory (`../library/*.jd`) or name an
+ * absolute location. The remainder is matched relative to that directory, which is also the only
+ * subtree walked.
+ *
+ * Anchoring is meaning-preserving for patterns that only descend: matching `dir/X` against
+ * `dir/<glob>` relative to `<base>` is the same as matching `X` against `<glob>` relative to
+ * `<base>/dir`. Cutting before the first wildcard *character* rather than at a segment boundary
+ * is what keeps a construct spanning a separator, such as `{foo/bar,baz}/*.jd`, intact.
+ *
+ * Mirrors `LoadResolver.anchor`.
+ */
+export function anchorGlob(pattern: string): GlobAnchor {
+    const cut = pattern.lastIndexOf('/', firstMetaChar(pattern));
+    if (cut < 0) {
+        return { prefix: '', pattern };
+    }
+    // cut === 0 means an absolute pattern such as "/opt/*.jd": the literal prefix is the root
+    // itself, which slice(0, 0) would lose.
+    const prefix = cut === 0 ? '/' : pattern.slice(0, cut);
+    return { prefix, pattern: pattern.slice(cut + 1) };
+}
+
+/**
+ * Whether a pattern contains a `..` segment.
+ *
+ * Checked *after* anchoring: a directory walk only descends, so a `..` that survives (one
+ * following a wildcard, as in `*​/../foo.jd`) can never match. The caller reports that rather
+ * than letting it surface as a puzzling no-match. Mirrors `LoadResolver.hasUpwardSegment`.
+ */
+export function hasUpwardSegment(pattern: string): boolean {
+    return pattern.split('/').includes('..');
 }
 
 /** Compiles a Java NIO glob into an anchored `RegExp` over POSIX paths. */
@@ -195,20 +296,4 @@ export function globToRegExp(pattern: string): RegExp {
 /** Whether a `/`-separated path (relative to the pattern's base directory) matches `pattern`. */
 export function matchesGlob(pattern: string, relativePosixPath: string): boolean {
     return globToRegExp(pattern).test(relativePosixPath);
-}
-
-/**
- * Whether a pattern points outside the directory it is resolved against, which means it can never
- * match anything.
- *
- * The compiler expands a pattern with `Files.walk(base)` and matches `base.relativize(p)`, and
- * both of those only ever go *downwards* — so `../sibling/*.jd` and absolute patterns match
- * nothing, even though the equivalent literal paths resolve perfectly well. That asymmetry is
- * surprising enough to be worth calling out in the diagnostic rather than leaving the user
- * staring at "no file matches" for a directory they can see.
- */
-export function escapesBaseDirectory(pattern: string): boolean {
-    const normalized = pattern.replaceAll('\\', '/');
-    if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) return true;
-    return normalized === '..' || normalized.startsWith('../');
 }

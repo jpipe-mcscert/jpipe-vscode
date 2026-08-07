@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { escapesBaseDirectory, globToRegExp, isGlobPattern, matchesGlob, GlobSyntaxError } from '../src/jpipe-glob.js';
+import { anchorGlob, globToRegExp, hasUpwardSegment, isGlobPattern, matchesGlob, GlobSyntaxError } from '../src/jpipe-glob.js';
 
 /**
  * These assertions mirror the jPipe compiler's `LoadResolverGlobTest` and Java NIO's
@@ -93,21 +93,51 @@ describe('Java NIO glob semantics', () => {
     });
 });
 
-describe('escapesBaseDirectory', () => {
-    // Both the compiler and this port expand a pattern by walking *downwards* from the declaring
-    // file's directory, so anything pointing outside it can never match.
+describe('anchorGlob', () => {
+    // The table from ADR-0022's "Anchoring: where the walk starts". The literal prefix is
+    // resolved like a literal load path, which is what lets a pattern climb out of the declaring
+    // file's directory or name an absolute location.
     test.each([
-        ['../step_04/*.jd', true],
+        ['models/*.jd', 'models', '*.jd'],
+        ['**.jd', '', '**.jd'],
+        ['../library/*.jd', '../library', '*.jd'],
+        ['/opt/models/*.jd', '/opt/models', '*.jd'],
+        ['{a,b}/*.jd', '', '{a,b}/*.jd'],
+        ['globs/**/*.jd', 'globs', '**/*.jd'],
+        ['a/b/c/*.jd', 'a/b/c', '*.jd'],
+        ['/*.jd', '/', '*.jd']
+    ])('%s → prefix %o, pattern %o', (pattern, prefix, remainder) => {
+        expect(anchorGlob(pattern)).toEqual({ prefix, pattern: remainder });
+    });
+
+    // Cutting before the first wildcard *character* rather than at a separator is what keeps a
+    // brace group spanning a `/` intact.
+    test('never splits a wildcard construct', () => {
+        expect(anchorGlob('{foo/bar,baz}/*.jd')).toEqual({ prefix: '', pattern: '{foo/bar,baz}/*.jd' });
+    });
+
+    test('anchoring preserves meaning for descending patterns', () => {
+        // `dir/X` against `dir/<glob>` from base == `X` against `<glob>` from base/dir.
+        const { pattern } = anchorGlob('globs/**/*.jd');
+        expect(matchesGlob('globs/**/*.jd', 'globs/nested/deep.jd')).toBe(true);
+        expect(matchesGlob(pattern, 'nested/deep.jd')).toBe(true);
+        expect(matchesGlob(pattern, 'deep.jd')).toBe(false);
+    });
+});
+
+describe('hasUpwardSegment', () => {
+    // Checked after anchoring: a `..` that survives follows a wildcard, and a downward walk can
+    // never satisfy it.
+    test.each([
+        ['*/../a.jd', true],
         ['..', true],
-        ['../*.jd', true],
-        ['/abs/models/*.jd', true],
-        ['C:/models/*.jd', true],
-        ['globs/*.jd', false],
-        ['./globs/*.jd', false],
-        ['**.jd', false],
-        ['*.jd', false]
+        ['a/../b.jd', true],
+        ['*.jd', false],
+        ['**/*.jd', false],
+        ['..a/*.jd', false],
+        ['a../*.jd', false]
     ])('%s → %s', (pattern, expected) => {
-        expect(escapesBaseDirectory(pattern)).toBe(expected);
+        expect(hasUpwardSegment(pattern)).toBe(expected);
     });
 });
 

@@ -106,6 +106,68 @@ describe('Glob expansion in load', () => {
         expect(expand(dir, 'globs/model_alpha.jd', doc)).toEqual(['globs/model_alpha.jd']);
     });
 
+    // The capability this feature exists for: a pattern's literal prefix is resolved like a
+    // literal load path, so it may climb out of the declaring file's directory.
+    // `LoadResolverGlobTest.upwardPatternMatchesFilesOutsideTheSourceDirectory`.
+    test('a parent-relative pattern matches files in a sibling directory', async () => {
+        const dir = makeWorkspace();
+        fs.mkdirSync(path.join(dir, 'here'), { recursive: true });
+        const doc = await parse('load "../globs/*.jd"\n', {
+            documentUri: pathToFileURL(path.join(dir, 'here', 'root.jd')).toString(),
+            validation: true
+        });
+        document = doc;
+
+        expect(expand(dir, '../globs/*.jd', doc)).toEqual([
+            'globs/model_alpha.jd',
+            'globs/model_beta.jd'
+        ]);
+        expect(messages(doc).some(m => m.includes('No file matches'))).toBe(false);
+    });
+
+    // `LoadResolverGlobTest.upwardRecursivePatternMatchesEveryDepth`.
+    test('a parent-relative recursive pattern reaches every depth', async () => {
+        const dir = makeWorkspace();
+        fs.mkdirSync(path.join(dir, 'here'), { recursive: true });
+        const doc = await parse('load "../globs/**.jd"\n', {
+            documentUri: pathToFileURL(path.join(dir, 'here', 'root.jd')).toString(),
+            validation: true
+        });
+        document = doc;
+
+        expect(expand(dir, '../globs/**.jd', doc)).toEqual([
+            'globs/model_alpha.jd',
+            'globs/model_beta.jd',
+            'globs/nested/model_gamma.jd'
+        ]);
+    });
+
+    // `LoadResolverGlobTest.absolutePatternIsAnchoredAtItsOwnRoot`.
+    test('an absolute pattern is anchored at its own root', async () => {
+        const dir = makeWorkspace();
+        const doc = await parseRoot(dir, 'load "/tmp/*.jd"\n');
+        const absolute = `${path.join(dir, 'globs')}/*.jd`;
+
+        expect(expand(dir, absolute, doc)).toEqual([
+            'globs/model_alpha.jd',
+            'globs/model_beta.jd'
+        ]);
+    });
+
+    // `LoadResolverGlobTest.anchoredPatternDoesNotWalkSiblingDirectories` — anchoring narrows the
+    // walk, so a sibling of the anchor is never even visited.
+    test('anchoring does not reach into sibling directories', async () => {
+        const dir = makeWorkspace();
+        fs.mkdirSync(path.join(dir, 'other'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'other', 'stray.jd'), template('stray'));
+        const doc = await parseRoot(dir, 'load "globs/*.jd"\n');
+
+        expect(expand(dir, 'globs/*.jd', doc)).toEqual([
+            'globs/model_alpha.jd',
+            'globs/model_beta.jd'
+        ]);
+    });
+
     test('non-.jd files can match, as in the compiler', async () => {
         const dir = makeWorkspace();
         fs.writeFileSync(path.join(dir, 'globs', 'README.md'), '# not a model\n');
@@ -139,30 +201,57 @@ describe('Glob load diagnostics', () => {
         expect(messages(doc).some(m => m.startsWith("Invalid glob in load pattern 'globs/[.jd'"))).toBe(true);
     });
 
-    // Reproduces a real report: a sibling-directory pattern. `../step_04/model.jd` loads fine, so
-    // `../step_04/*.jd` matching nothing needs explaining. Verified against jpipe 2.2.0, which
-    // reports the identical "No file matches load pattern '../step_04/*.jd'".
-    test('a parent-relative pattern explains why it cannot match', async () => {
-        const dir = makeWorkspace();
-        fs.mkdirSync(path.join(dir, 'sibling'), { recursive: true });
-        fs.writeFileSync(path.join(dir, 'sibling', 'other.jd'), template('other'));
-        fs.mkdirSync(path.join(dir, 'here'), { recursive: true });
-        document = await parse('load "../sibling/*.jd"\n', {
-            documentUri: pathToFileURL(path.join(dir, 'here', 'root.jd')).toString(),
-            validation: true
-        });
-
-        const message = messages(document).find(m => m.startsWith('No file matches load pattern'));
-        expect(message).toBeDefined();
-        expect(message).toContain("No file matches load pattern '../sibling/*.jd'");
-        expect(message).toContain("at or below this file's own directory");
-    });
-
-    test('an ordinary no-match keeps the compiler wording verbatim, with no hint', async () => {
+    test('a no-match keeps the compiler wording verbatim', async () => {
         const dir = makeWorkspace();
         const doc = await parseRoot(dir, 'load "globs/none_*.jd"\n');
 
         expect(messages(doc)).toContainEqual("No file matches load pattern 'globs/none_*.jd'");
+    });
+
+    // `LoadResolverGlobTest.upwardSegmentAfterAWildcardIsAFatalError`.
+    test('a .. after a wildcard is rejected as unsatisfiable', async () => {
+        const dir = makeWorkspace();
+        const doc = await parseRoot(dir, 'load "*/../globs/model_alpha.jd"\n');
+
+        expect(messages(doc)).toContainEqual(
+            "'..' may only appear before the first wildcard in load pattern '*/../globs/model_alpha.jd'");
+    });
+
+    // `LoadResolverGlobTest.patternAnchoredAtAMissingDirectoryIsAFatalError` — the message names
+    // the directory, which is where the typo usually is.
+    test('a pattern anchored at a missing directory names that directory', async () => {
+        const dir = makeWorkspace();
+        const doc = await parseRoot(dir, 'load "nope/*.jd"\n');
+
+        const message = messages(doc).find(m => m.startsWith('Cannot expand load pattern'));
+        expect(message).toContain("Cannot expand load pattern 'nope/*.jd'");
+        expect(message).toContain('is not a directory');
+        expect(message).toContain(path.join(dir, 'nope'));
+    });
+
+    // `**.jd` naturally matches the file declaring it, which the compiler rejects
+    // (`LoadResolverGlobTest.globMatchingTheSourceFileIsReportedAsACycle`). Verified against
+    // jpipe 2.4.0-SNAPSHOT, which reports the same.
+    test('a pattern matching its own file is reported as a cycle', async () => {
+        const dir = makeWorkspace();
+        const self = path.join(dir, 'globs', 'root.jd');
+        fs.writeFileSync(self, 'load "**.jd"\n');
+        document = await parse('load "**.jd"\n', {
+            documentUri: pathToFileURL(self).toString(), validation: true
+        });
+
+        expect(messages(document)).toContainEqual(`Circular load detected: ${self}`);
+    });
+
+    test('a literal path loading its own file is reported as a cycle too', async () => {
+        const dir = makeWorkspace();
+        const self = path.join(dir, 'globs', 'root.jd');
+        fs.writeFileSync(self, 'load "./root.jd"\n');
+        document = await parse('load "./root.jd"\n', {
+            documentUri: pathToFileURL(self).toString(), validation: true
+        });
+
+        expect(messages(document)).toContainEqual(`Circular load detected: ${self}`);
     });
 
     test('a missing literal path keeps its original message', async () => {

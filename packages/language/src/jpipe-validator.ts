@@ -1,15 +1,5 @@
-import { AstUtils, type ValidationAcceptor, type ValidationChecks } from 'langium';
-import { escapesBaseDirectory, GlobSyntaxError, isGlobPattern } from './jpipe-glob.js';
-
-/**
- * Explains the one no-match case users cannot diagnose by looking: a pattern reaching outside the
- * declaring file's directory. A literal `../sibling/model.jd` loads fine, so `../sibling/*.jd`
- * failing looks like a bug rather than a rule.
- */
-const OUTSIDE_BASE_HINT = (pattern: string): string =>
-    escapesBaseDirectory(pattern)
-        ? ". Patterns only match files at or below this file's own directory, so one starting with '..' or an absolute path never matches — the jPipe compiler expands them the same way."
-        : '';
+import { AstUtils, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
+import { GlobExpansionError, isGlobPattern } from './jpipe-glob.js';
 import type {
     JpipeAstType,
     Unit,
@@ -94,6 +84,8 @@ export class JpipeValidator {
                 accept('error',
                     `Cannot resolve load path '${load.path}': no such file.`,
                     { node: load, property: 'path' });
+            } else {
+                this.checkNotSelfLoad([resolved], load, document, accept);
             }
             return;
         }
@@ -102,18 +94,39 @@ export class JpipeValidator {
         try {
             matches = this.importService.expandLoadPath(load.path, document);
         } catch (error) {
-            const reason = error instanceof GlobSyntaxError ? error.description : String(error);
-            accept('error',
-                `Invalid glob in load pattern '${load.path}': ${reason}`,
-                { node: load, property: 'path' });
+            // Each expansion error words itself as the compiler words the matching FATAL.
+            const message = error instanceof GlobExpansionError
+                ? error.describe(load.path)
+                : `Cannot expand load pattern '${load.path}': ${error instanceof Error ? error.message : String(error)}`;
+            accept('error', message, { node: load, property: 'path' });
             return;
         }
         if (matches.length === 0) {
-            // The bare compiler wording first, so the two tools stay searchable alike; the hint is
-            // added only where the reason is non-obvious.
             accept('error',
-                `No file matches load pattern '${load.path}'${OUTSIDE_BASE_HINT(load.path)}`,
+                `No file matches load pattern '${load.path}'`,
                 { node: load, property: 'path' });
+            return;
+        }
+
+        this.checkNotSelfLoad(matches, load, document, accept);
+    }
+
+    /**
+     * Reports a `load` that resolves to the file declaring it.
+     *
+     * A wide pattern such as `**.jd` naturally matches its own file, which the compiler rejects
+     * as a cycle (`LoadResolver.expandOne` seeds its visited set with the source path). Reported
+     * here so the editor does not stay silent about a model the compiler will refuse to build.
+     */
+    private checkNotSelfLoad(
+        resolvedPaths: string[],
+        load: Load,
+        document: LangiumDocument,
+        accept: ValidationAcceptor
+    ): void {
+        const self = resolvedPaths.find(candidate => this.importService.isSameFile(candidate, document));
+        if (self) {
+            accept('error', `Circular load detected: ${self}`, { node: load, property: 'path' });
         }
     }
 
