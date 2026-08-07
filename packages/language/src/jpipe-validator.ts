@@ -1,4 +1,5 @@
-import { AstUtils, type ValidationAcceptor, type ValidationChecks } from 'langium';
+import { AstUtils, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
+import { GlobExpansionError, isGlobPattern } from './jpipe-glob.js';
 import type {
     JpipeAstType,
     Unit,
@@ -67,17 +68,65 @@ export class JpipeValidator {
     }
 
     /**
-     * Flags a `load` statement whose target file cannot be found. Without this the
-     * failure is silent (only a server-log warning), so a typo'd or broken path —
-     * or a path that resolves incorrectly on Windows — looks like it did nothing.
+     * Flags a `load` statement that resolves to nothing. Without this the failure is silent
+     * (only a server-log warning), so a typo'd or broken path — or a path that resolves
+     * incorrectly on Windows — looks like it did nothing.
+     *
+     * Messages deliberately mirror the compiler's own wording (`LoadResolver.expand`), so the
+     * same text turns up whether the user hits the problem in the editor or in a build.
      */
     checkLoadResolves(load: Load, accept: ValidationAcceptor): void {
         const document = AstUtils.getDocument(load);
-        const resolved = this.importService.resolveExistingImportPath(load.path, document);
-        if (!resolved) {
+
+        if (!isGlobPattern(load.path)) {
+            const resolved = this.importService.resolveExistingImportPath(load.path, document);
+            if (!resolved) {
+                accept('error',
+                    `Cannot resolve load path '${load.path}': no such file.`,
+                    { node: load, property: 'path' });
+            } else {
+                this.checkNotSelfLoad([resolved], load, document, accept);
+            }
+            return;
+        }
+
+        let matches: string[];
+        try {
+            matches = this.importService.expandLoadPath(load.path, document);
+        } catch (error) {
+            // Each expansion error words itself as the compiler words the matching FATAL.
+            const message = error instanceof GlobExpansionError
+                ? error.describe(load.path)
+                : `Cannot expand load pattern '${load.path}': ${error instanceof Error ? error.message : String(error)}`;
+            accept('error', message, { node: load, property: 'path' });
+            return;
+        }
+        if (matches.length === 0) {
             accept('error',
-                `Cannot resolve load path '${load.path}': no such file.`,
+                `No file matches load pattern '${load.path}'`,
                 { node: load, property: 'path' });
+            return;
+        }
+
+        this.checkNotSelfLoad(matches, load, document, accept);
+    }
+
+    /**
+     * Reports a `load` that resolves to the file declaring it.
+     *
+     * A wide pattern such as `**.jd` naturally matches its own file, which the compiler rejects
+     * as a cycle (`LoadResolver.expandOne` seeds its visited set with the source path). Reported
+     * here so the editor does not stay silent about a model the compiler will refuse to build.
+     */
+    private checkNotSelfLoad(
+        resolvedPaths: string[],
+        load: Load,
+        document: LangiumDocument,
+        accept: ValidationAcceptor
+    ): void {
+        const self = resolvedPaths.find(candidate => this.importService.isSameFile(candidate, document));
+        if (self) {
+            accept('error', `Circular load detected: ${self}`, { node: load, property: 'path' });
         }
     }
 

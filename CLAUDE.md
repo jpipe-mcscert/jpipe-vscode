@@ -53,7 +53,7 @@ The grammar (`packages/language/src/jpipe.langium`) defines:
 | **Conclusion** | `conclusion name is "label"` | Root; must be supported by ≥1 strategy |
 | **AbstractSupport** | `@support name is "label"` | Like abstract method; only in templates |
 | **Relation** | `from supports to` | Directed support edge |
-| **Load** | `load "path/to/file.jd"` | Import another `.jd` file |
+| **Load** | `load "path/to/file.jd"` | Import another `.jd` file; the path may be a glob (see below) |
 | **Composition** | `composition { ... }` | Assembles/refines models with operators |
 
 Inheritance: both justifications and templates may `implements` a parent template. `getAllElements` traverses the chain.
@@ -67,6 +67,18 @@ Inheritance: both justifications and templates may `implements` a parent templat
 
 ### Import resolution
 `JpipeImportService` does a BFS over `load` edges. Direct imports must appear in the root document; transitive imports are followed freely. Resolution is path-based (no workspace index for imports).
+
+### Glob patterns in `load` follow **Java NIO**, not minimatch
+A `load` path containing `*`, `?`, `[` or `{` is a pattern. The compiler expands it with
+`FileSystems.getDefault().getPathMatcher("glob:" + pattern)` (see its `LoadResolver.java` and ADR 0022), so `jpipe-glob.ts` is a port of OpenJDK's `Globs.toUnixRegexPattern` and **must stay faithful to it** — the IDE and the compiler have to agree on which files a model loads.
+
+The trap: `minimatch`/`picomatch` treat `**` as special only when it is a whole path segment, so they would read `models/**.jd` as `models/*.jd` and miss nested files. Under Java, `models/**.jd` matches *every* depth including the top level, while `models/**/*.jd` matches nested files only. If you touch the matcher, re-run `test/glob-matcher.test.ts`, whose cases are ported from the compiler's own `LoadResolverGlobTest`.
+
+**Anchoring** (`anchorGlob`): a pattern is split at the last `/` before its first wildcard *character*. The literal prefix is resolved like a literal load path — so a pattern may climb out of the declaring file's directory (`../library/*.jd`) or be absolute — and the remainder is matched relative to that anchor, which is also the only subtree walked. Cutting before the wildcard character rather than at a segment boundary is what keeps `{foo/bar,baz}/*.jd` intact. Anchoring is meaning-preserving for descending patterns.
+
+Four failure modes are errors, worded exactly as the compiler words them: malformed pattern, a `..` surviving anchoring (it follows a wildcard, so a downward walk can never satisfy it), an anchor that is not a directory, and zero matches. A load resolving to its own file is reported as `Circular load detected`. Results are sorted. Expansion prunes `node_modules`, `out`, `.git` and dot-directories (the compiler does not, but it runs once per build whereas this runs while the user types), and is memoised, with `DocumentBuilder.onUpdate` clearing the cache.
+
+`load` glob resolution deliberately powers hover but **not** go-to-definition: F12 on a pattern returns nothing, because "go to definition" names one target and a pattern does not. The hover lists the matches as clickable links instead.
 
 ### Completion scoping
 The `JpipeCompletionProvider` deliberately never falls through to Langium's global workspace index for `JustificationElement` or `Template` references — it restricts candidates to local + explicitly loaded files only. The one exception is `implements` in the `parentTemplateCandidateDescriptions` method, which does consult the workspace index and can auto-insert a `load` statement.
