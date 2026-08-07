@@ -471,9 +471,9 @@
     },
     "devDependencies": {
         "@types/vscode": "~1.85.0",
-        "concurrently": "~8.2.1",
+        "concurrently": "~10.0.4",
         "esbuild": "~0.28.1",
-        "vitest": "~3.2.7"
+        "vitest": "~4.1.10"
     },
     "vsce": {
         "dependencies": false
