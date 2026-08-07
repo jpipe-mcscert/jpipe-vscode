@@ -53,6 +53,21 @@ describe('parseSemver', () => {
         expect(parseSemver('')).toBeUndefined();
         expect(parseSemver('v2.0')).toBeUndefined();
     });
+
+    // Unanchored, these would be read as the release they resemble and offered as that release.
+    test('rejects a tag with trailing junk rather than reading the version out of it', () => {
+        expect(parseSemver('v2.1.0nightly')).toBeUndefined();
+        expect(parseSemver('v2.1.0.1')).toBeUndefined();
+        expect(parseSemver('v2.1.0 (do not use)')).toBeUndefined();
+    });
+
+    test('accepts build metadata and drops it, as semver requires', () => {
+        // Build metadata is valid but takes no part in precedence.
+        expect(parseSemver('v2.1.0+build.5')?.nums).toEqual([2, 1, 0]);
+        expect(parseSemver('v2.1.0+build.5')?.pre).toBeUndefined();
+        expect(parseSemver('v2.0.0-rc.1+exp')?.pre).toBe('rc.1');
+        expect(comparePrecedence('v2.1.0+build.5', 'v2.1.0')).toBe(0);
+    });
 });
 
 describe('comparePrecedence', () => {
@@ -141,8 +156,9 @@ describe('selectInstallableReleases', () => {
     });
 
     test('hides tags that are not versions at all', () => {
-        // The rolling `unstable` tag must never appear in the picker.
-        const payload = [apiRelease('v2.0.0'), apiRelease('unstable')];
+        // The rolling `unstable` tag must never appear in the picker, and neither must a tag
+        // that merely starts with a version.
+        const payload = [apiRelease('v2.0.0'), apiRelease('unstable'), apiRelease('v2.1.0nightly')];
         expect(tags(selectInstallableReleases(payload, false))).toEqual(['v2.0.0']);
     });
 

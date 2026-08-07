@@ -67,15 +67,17 @@ export function readEnv(env: NodeJS.ProcessEnv, name: string): string | undefine
  * extension. Returns undefined when nothing matches, leaving the caller to spawn the original
  * name and get Node's own ENOENT.
  *
- * A name that already carries an extension is tried verbatim first. A name that does not is
- * *never* tried bare — an extension-less file on Windows is not executable, and Scoop ships
- * exactly such a file (a bash shim) next to the `.cmd` we actually want.
+ * A name that already carries an extension is an exact filename: it is looked up as written and
+ * never has a suffix appended, so a configured `tool.exe` can only ever resolve to `tool.exe` and
+ * not to some `tool.exe.cmd` that happens to sit beside it.
+ *
+ * A name that does not carry one is *never* tried bare — an extension-less file on Windows is not
+ * executable, and Scoop ships exactly such a file (a bash shim) next to the `.cmd` we want.
  */
 export function resolveWindowsExecutable(command: string, deps: LaunchEnvironment): string | undefined {
     const win = path.win32;
-    const extensions = launchableExtensions(deps.env);
     const hasExtension = /\.[^\\/.]+$/.test(win.basename(command));
-    const suffixes = hasExtension ? ['', ...extensions] : extensions;
+    const suffixes = hasExtension ? [''] : launchableExtensions(deps.env);
 
     // A command with any directory component is a path, not something to look up on PATH.
     const directories = command.includes('/') || command.includes('\\')

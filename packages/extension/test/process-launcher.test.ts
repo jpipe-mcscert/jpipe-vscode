@@ -85,6 +85,27 @@ describe('resolveWindowsExecutable', () => {
         expect(resolveWindowsExecutable('C:\\tools\\jpipe.cmd', deps)).toBe('C:\\tools\\jpipe.cmd');
     });
 
+    // A name carrying an extension is an exact filename, not a base to append to. Otherwise a
+    // configured `tool.exe` that does not exist could resolve to a `tool.exe.cmd` sitting beside
+    // it — launching a different file than the user named.
+    test('never appends a suffix to a name that already has an extension', () => {
+        const deps = windows([`${SHIMS}\\tool.exe.cmd`, `${SHIMS}\\tool.exe.bat`]);
+        expect(resolveWindowsExecutable('tool.exe', deps)).toBeUndefined();
+    });
+
+    test('an extensioned name still resolves when it exists exactly', () => {
+        const deps = windows([`${SHIMS}\\tool.exe`, `${SHIMS}\\tool.exe.cmd`]);
+        expect(resolveWindowsExecutable('tool.exe', deps)?.toLowerCase())
+            .toBe(`${SHIMS}\\tool.exe`.toLowerCase());
+    });
+
+    test('a dot in a directory name does not count as an extension', () => {
+        // basename() is what is inspected, so `my.tools\jpipe` is still a bare command name.
+        const deps = windows(['C:\\my.tools\\jpipe.cmd']);
+        expect(resolveWindowsExecutable('C:\\my.tools\\jpipe', deps)?.toLowerCase())
+            .toBe('C:\\my.tools\\jpipe.cmd'.toLowerCase());
+    });
+
     test('returns undefined when nothing matches', () => {
         expect(resolveWindowsExecutable('absent', windows([]))).toBeUndefined();
     });

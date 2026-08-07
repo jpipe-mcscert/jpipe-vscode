@@ -45,9 +45,16 @@ interface Version {
     pre: string | undefined;
 }
 
-/** Parse a release tag like `v2.1.0` or `v2.0.0-rc1` into its core version + prerelease. */
+/**
+ * Parse a release tag like `v2.1.0` or `v2.0.0-rc1` into its core version + prerelease.
+ *
+ * Anchored at both ends, so a tag with trailing junk (`v2.1.0nightly`) is rejected outright
+ * rather than silently read as the release it resembles and offered as that release. Build
+ * metadata is accepted and then discarded, which is what semver says: it takes no part in
+ * precedence.
+ */
 export function parseSemver(tag: string): { nums: [number, number, number]; pre: string | undefined } | undefined {
-    const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(tag.trim());
+    const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(tag.trim());
     if (!m) return undefined;
     return { nums: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] };
 }
