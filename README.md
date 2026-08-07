@@ -29,10 +29,35 @@ You can find more information about the jPipe project on the main repository: [h
 
 ### How to setup the development environment?
 
+#### Prerequisite: Volta
+
+The Node.js toolchain is pinned in `package.json`, and [Volta](https://volta.sh) is what
+enforces that pin. Install it **before** anything else:
+
+```
+mosser@azrael ~ % brew install volta      # or: curl https://get.volta.sh | bash
+mosser@azrael ~ % volta setup
+```
+
+`volta setup` wires Volta into your shell — open a new terminal afterwards. From then on,
+running `node` or `npm` inside this repository automatically uses the pinned versions
+(currently Node 22.22.2 / npm 10.9.7), downloading them on first use. These are the same
+versions the CI workflows use, so what builds locally is what builds in CI.
+
+This is not optional tidiness. Without Volta you get whatever `node` your `PATH` happens to
+point at, which may not be a version this project builds under — on Node 26, for instance,
+`npm run langium:generate` fails with `TypeError: Invalid URL` inside `langium-cli`'s
+configuration validation.
+
+#### Installing the dependencies
+
 ```
 mosser@azrael jpipe-vscode % npm install
 mosser@azrael jpipe-vscode % npm install -g @vscode/vsce
 ```
+
+`vsce` is installed globally, outside the pinned toolchain, and is only needed to package
+or publish the extension.
 
 ### How to build and run the project?
 
