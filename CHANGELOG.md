@@ -1,5 +1,16 @@
 ## Changelog
 
+### v1.4.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Features:
+    - **Truly silent folders:** Folders excluded from validation now produce no errors *and* no warnings — previously every file in them still reported "this file is in an excluded directory". A folder of deliberately-broken counter-examples no longer fills the Problems panel, which is what compiler developers need
+    - **You can see which folders are excluded:** Excluded folders and their contents are dimmed and marked with a `⊘` badge in the Explorer, on editor tabs and in Open Editors — so a file that isn't being checked always says so, without costing you a diagnostic
+    - **Exclude a folder from the Explorer:** Right-click any folder to exclude it from validation, or to put it back. A new "Remove Excluded Directory" command drops an entry without hand-editing your settings
+    - **Changes apply immediately:** Excluding or re-including a folder now takes effect at once — the "reload the window to apply" step is gone
+  - Bug Fixes:
+    - A blank entry in the excluded-directories setting no longer silences validation for the entire workspace
+    - Excluded directories are re-resolved when workspace folders are added or removed
+
 ### v1.3.0 (2026-07-16)
 - Leader: Sébastien Mosser
   - Features:

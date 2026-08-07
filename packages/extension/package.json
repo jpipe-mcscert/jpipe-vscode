@@ -169,6 +169,22 @@
                 "title": "Add Excluded Directory",
                 "category": "jPipe",
                 "icon": "$(folder-opened)"
+            },
+            {
+                "command": "jpipe.removeExcludedDirectory",
+                "title": "Remove Excluded Directory",
+                "category": "jPipe",
+                "icon": "$(folder)"
+            },
+            {
+                "command": "jpipe.excludeFolder",
+                "title": "Exclude from jPipe Validation",
+                "category": "jPipe"
+            },
+            {
+                "command": "jpipe.includeFolder",
+                "title": "Include in jPipe Validation",
+                "category": "jPipe"
             }
         ],
         "submenus": [
@@ -178,6 +194,28 @@
             }
         ],
         "menus": {
+            "explorer/context": [
+                {
+                    "command": "jpipe.excludeFolder",
+                    "when": "explorerResourceIsFolder && resourcePath not in jpipe.excludedPaths",
+                    "group": "jpipe@1"
+                },
+                {
+                    "command": "jpipe.includeFolder",
+                    "when": "explorerResourceIsFolder && resourcePath in jpipe.excludedPaths",
+                    "group": "jpipe@1"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "jpipe.excludeFolder",
+                    "when": "false"
+                },
+                {
+                    "command": "jpipe.includeFolder",
+                    "when": "false"
+                }
+            ],
             "editor/title": [
                 {
                     "command": "jpipe.vis.preview",
@@ -362,7 +400,7 @@
                             "type": "string"
                         },
                         "default": [],
-                        "markdownDescription": "Directories (relative to workspace root) whose `.jd` files are excluded from validation. Files in excluded directories display a warning instead of errors. Changes require a window reload to take effect.\n\n[Browse for directory…](command:jpipe.addExcludedDirectory)"
+                        "markdownDescription": "Directories (relative to workspace root) whose `.jd` files are excluded from validation. Nothing in these directories is checked — no errors and no warnings — which is what you want for folders of deliberate counter-examples. They are dimmed and marked `⊘` in the Explorer, and changes take effect immediately.\n\nYou can also right-click any folder in the Explorer to exclude or re-include it.\n\n[Browse for directory…](command:jpipe.addExcludedDirectory)"
                     }
                 }
             },

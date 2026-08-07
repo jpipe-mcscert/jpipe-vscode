@@ -12,6 +12,7 @@ import { JpipeHoverProvider } from './jpipe-hover-provider.js';
 import { JpipeSemanticTokenProvider } from './jpipe-semantic-token-provider.js';
 import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 import { JpipeDocumentValidator } from './jpipe-document-validator.js';
+import { JpipeExclusionService } from './jpipe-exclusions.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -23,7 +24,8 @@ export type JpipeAddedServices = {
     references: {
         JpipeImportService: JpipeImportService
     },
-    logger: JpipeServerLogger
+    logger: JpipeServerLogger,
+    exclusions: JpipeExclusionService
 }
 
 /**
@@ -32,11 +34,11 @@ export type JpipeAddedServices = {
  */
 export type JpipeServices = LangiumServices & JpipeAddedServices
 
-function buildJpipeModule(logger: JpipeServerLogger, excludedDirs: string[] = []): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
+function buildJpipeModule(logger: JpipeServerLogger, exclusions: JpipeExclusionService): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
     return {
         validation: {
             JpipeValidator: (services) => new JpipeValidator(services),
-            DocumentValidator: (services) => new JpipeDocumentValidator(services, excludedDirs, logger)
+            DocumentValidator: (services) => new JpipeDocumentValidator(services, exclusions, logger)
         },
         references: {
             ScopeProvider: (services) => new JpipeScopeProvider(services),
@@ -50,7 +52,8 @@ function buildJpipeModule(logger: JpipeServerLogger, excludedDirs: string[] = []
             HoverProvider:          (services) => new JpipeHoverProvider(services),
             SemanticTokenProvider:  (services) => new JpipeSemanticTokenProvider(services)
         },
-        logger: () => logger
+        logger: () => logger,
+        exclusions: () => exclusions
     };
 }
 
@@ -75,20 +78,7 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
     Jpipe: JpipeServices
 } {
     const logger = new JpipeServerLogger(logLevel);
-    let excludedDirs: string[] = [];
-    try {
-        const raw = process.env.JPIPE_EXCLUDED_DIRS;
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed) && parsed.every((v: unknown) => typeof v === 'string')) {
-                excludedDirs = parsed;
-            } else {
-                logger.warn('JPIPE_EXCLUDED_DIRS must be a JSON array of strings; no directories will be excluded.');
-            }
-        }
-    } catch {
-        logger.warn('Failed to parse JPIPE_EXCLUDED_DIRS; no directories will be excluded from validation.');
-    }
+    const exclusions = new JpipeExclusionService(logger);
     const shared = inject(
         createDefaultSharedModule(context),
         JpipeGeneratedSharedModule
@@ -96,7 +86,7 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
     const Jpipe = inject(
         createDefaultModule({ shared }),
         JpipeGeneratedModule,
-        buildJpipeModule(logger, excludedDirs)
+        buildJpipeModule(logger, exclusions)
     );
     shared.ServiceRegistry.register(Jpipe);
     registerValidationChecks(Jpipe);

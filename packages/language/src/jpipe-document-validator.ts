@@ -1,18 +1,17 @@
-import { DefaultDocumentValidator, URI, UriUtils } from 'langium';
+import { DefaultDocumentValidator } from 'langium';
 import type { LangiumDocument, LangiumCoreServices, ValidationOptions } from 'langium';
 import type { CancellationToken } from 'vscode-languageserver-protocol';
-import { DiagnosticSeverity, type Diagnostic } from 'vscode-languageserver-types';
+import type { Diagnostic } from 'vscode-languageserver-types';
 import type { JpipeServerLogger } from './jpipe-logger.js';
+import type { JpipeExclusionService } from './jpipe-exclusions.js';
 
 export class JpipeDocumentValidator extends DefaultDocumentValidator {
-    private readonly excludedUris: URI[];
+    private readonly exclusions: JpipeExclusionService;
     private readonly logger: JpipeServerLogger;
 
-    constructor(services: LangiumCoreServices, excludedPaths: string[], logger: JpipeServerLogger) {
+    constructor(services: LangiumCoreServices, exclusions: JpipeExclusionService, logger: JpipeServerLogger) {
         super(services);
-        this.excludedUris = excludedPaths.flatMap(p => {
-            try { return [URI.parse(p)]; } catch { logger.warn(`Ignoring invalid excluded-directory URI: ${p}`); return []; }
-        });
+        this.exclusions = exclusions;
         this.logger = logger;
     }
 
@@ -21,14 +20,12 @@ export class JpipeDocumentValidator extends DefaultDocumentValidator {
         options?: ValidationOptions,
         cancelToken?: CancellationToken
     ): Promise<Diagnostic[]> {
-        if (this.excludedUris.some(dir => UriUtils.contains(dir, document.uri))) {
+        if (this.exclusions.isExcluded(document.uri)) {
             this.logger.debug(`Skipping validation (excluded): ${document.uri.toString()}`);
-            return [{
-                range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
-                severity: DiagnosticSeverity.Warning,
-                message: 'This file is in an excluded directory and is not validated by jPipe.',
-                source: 'jpipe'
-            }];
+            // An empty array (rather than `undefined`) is what clears diagnostics already
+            // published for this document: Langium only sends `publishDiagnostics` when
+            // `document.diagnostics` is set.
+            return [];
         }
         return super.validateDocument(document, options, cancelToken);
     }

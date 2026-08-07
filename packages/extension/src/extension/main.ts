@@ -1,32 +1,47 @@
 import type { LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node.js';
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vscode-languageclient/node.js';
+import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn, State } from 'vscode-languageclient/node.js';
 import { ImageGenerator, ImageFormat } from './image-generation/image-generator.js';
 import { PreviewProvider } from './image-generation/preview-provider.js';
 import { ReleaseManager, JpipeRelease } from './image-generation/release-manager.js';
+import { ExclusionManager, ExclusionDecorationProvider } from './exclusions.js';
 import { JpipeLogger } from './logger.js';
 
 let client: LanguageClient;
+
+/** Notification understood by the language server (see packages/extension/src/language/main.ts). */
+const SET_EXCLUDED_DIRECTORIES = 'jpipe/setExcludedDirectories';
 
 // This function is called when the extension is activated.
 export function activate(context: vscode.ExtensionContext): void {
     const logger = new JpipeLogger(context);
     logger.info('jPipe extension activated');
 
-    client = startLanguageClient(context, logger);
+    const exclusions = new ExclusionManager();
+    const decorations = new ExclusionDecorationProvider(exclusions);
+    context.subscriptions.push(
+        exclusions,
+        decorations,
+        vscode.window.registerFileDecorationProvider(decorations)
+    );
+
+    client = startLanguageClient(context, logger, exclusions);
+
+    /** Keep the menu `when` clauses in step with the setting. */
+    function publishExcludedPaths(): void {
+        void vscode.commands.executeCommand('setContext', 'jpipe.excludedPaths', exclusions.getExcludedResourcePaths());
+    }
+    publishExcludedPaths();
 
     context.subscriptions.push(
-        vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('jpipe.excludedDirectories')) {
-                vscode.window.showInformationMessage(
-                    'jPipe: "Excluded Directories" changed. Reload the window to apply.',
-                    'Reload Window'
-                ).then(sel => {
-                    if (sel === 'Reload Window') {
-                        vscode.commands.executeCommand('workbench.action.reloadWindow');
-                    }
-                });
+        exclusions.onDidChange(() => {
+            publishExcludedPaths();
+            const dirs = exclusions.getResolvedUris();
+            logger.debug(`Excluded directories: ${dirs.length === 0 ? '(none)' : dirs.join(', ')}`);
+            if (client.state === State.Running) {
+                // Applied without a restart: the server re-validates and clears/restores diagnostics.
+                void client.sendNotification(SET_EXCLUDED_DIRECTORIES, dirs);
             }
         })
     );
@@ -101,6 +116,22 @@ export function activate(context: vscode.ExtensionContext): void {
     // Opportunistic, throttled "newer version available" check (managed mode only).
     void releaseManager.maybeNotifyUpdate(installFromRelease);
 
+    /** Exclude `folder` from validation, reporting the two ways this can fail to apply. */
+    async function excludeFolder(folder?: vscode.Uri): Promise<void> {
+        if (!folder) return;
+        if (!await exclusions.addFolder(folder)) {
+            vscode.window.showWarningMessage('The selected directory must be inside the workspace.');
+            return;
+        }
+        // A bare relative entry can only be resolved against a single root; in a multi-root
+        // workspace the entry is stored as `rootName:path`, which needs that root to be present.
+        if (!exclusions.isExcludedRoot(folder)) {
+            vscode.window.showWarningMessage(`jPipe could not resolve ${vscode.workspace.asRelativePath(folder, false)} against a workspace folder.`);
+            return;
+        }
+        vscode.window.showInformationMessage(`jPipe no longer validates ${vscode.workspace.asRelativePath(folder, false)}.`);
+    }
+
     async function resolveExportContext(): Promise<{ doc: vscode.TextDocument | undefined; diagramName: string | undefined }> {
         const active = vscode.window.activeTextEditor?.document;
         if (active?.languageId === 'jpipe') return { doc: active, diagramName: undefined };
@@ -132,20 +163,27 @@ export function activate(context: vscode.ExtensionContext): void {
                 openLabel: 'Exclude from Validation'
             });
             if (!uris || uris.length === 0) return;
-            const selectedUri = uris[0];
-            const workspaceFolder = vscode.workspace.getWorkspaceFolder(selectedUri);
-            if (!workspaceFolder) {
-                vscode.window.showWarningMessage('The selected directory must be inside the workspace.');
+            await excludeFolder(uris[0]);
+        }),
+        vscode.commands.registerCommand('jpipe.excludeFolder', (uri?: vscode.Uri) => excludeFolder(uri)),
+        // Invoked from the Explorer context menu, which always passes the folder's Uri.
+        vscode.commands.registerCommand('jpipe.includeFolder', async (uri?: vscode.Uri) => {
+            if (!uri) return;
+            if (await exclusions.removeFolder(uri)) {
+                vscode.window.showInformationMessage(`jPipe now validates ${vscode.workspace.asRelativePath(uri, false)}.`);
+            }
+        }),
+        vscode.commands.registerCommand('jpipe.removeExcludedDirectory', async () => {
+            const entries = exclusions.getEntries();
+            if (entries.length === 0) {
+                vscode.window.showInformationMessage('jPipe: no directories are excluded from validation.');
                 return;
             }
-            const roots = vscode.workspace.workspaceFolders ?? [];
-            const relPart = vscode.workspace.asRelativePath(selectedUri, false).replaceAll('\\', '/');
-            const entry = roots.length > 1 ? `${workspaceFolder.name}:${relPart}` : relPart;
-            const config = vscode.workspace.getConfiguration('jpipe');
-            const current = config.get<string[]>('excludedDirectories', []);
-            if (!current.includes(entry)) {
-                await config.update('excludedDirectories', [...current, entry], vscode.ConfigurationTarget.Workspace);
-            }
+            const picked = await vscode.window.showQuickPick(entries, {
+                title: 'Remove a directory from the jPipe validation exclusions',
+                placeHolder: 'Its .jd files will be validated again'
+            });
+            if (picked) await exclusions.removeEntry(picked);
         }),
         vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
             const { ok, message } = await imageGenerator.check();
@@ -192,35 +230,14 @@ function formatReleaseDate(iso: string): string {
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function resolveExcludedDirectories(): string[] {
-    const raw = vscode.workspace.getConfiguration('jpipe').get<string[]>('excludedDirectories', []);
-    const roots = vscode.workspace.workspaceFolders ?? [];
-    const rootsByName = new Map(roots.map(f => [f.name, f]));
-    const resolved: string[] = [];
-    for (const entry of raw) {
-        if (!entry) continue;
-        const colon = entry.indexOf(':');
-        if (colon > 0) {
-            const folderName = entry.slice(0, colon);
-            const rel = entry.slice(colon + 1);
-            const folder = rootsByName.get(folderName);
-            if (folder && rel) resolved.push(vscode.Uri.joinPath(folder.uri, rel).toString());
-        } else if (roots.length === 1) {
-            resolved.push(vscode.Uri.joinPath(roots[0].uri, entry).toString());
-        }
-    }
-    return resolved;
-}
-
-function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogger): LanguageClient {
+function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogger, exclusions: ExclusionManager): LanguageClient {
     const serverModule = context.asAbsolutePath(path.join('out', 'language', 'main.cjs'));
     const debugOptions = {
         execArgv: ['--nolazy', `--inspect${process.env.DEBUG_BREAK ? '-brk' : ''}=${process.env.DEBUG_SOCKET || '6009'}`]
     };
 
     const logLevel = vscode.workspace.getConfiguration('jpipe').get<string>('logLevel', 'info');
-    const excludedDirs = resolveExcludedDirectories();
-    const serverEnv = { ...process.env, JPIPE_LOG_LEVEL: logLevel, JPIPE_EXCLUDED_DIRS: JSON.stringify(excludedDirs) };
+    const serverEnv = { ...process.env, JPIPE_LOG_LEVEL: logLevel };
 
     const serverOptions: ServerOptions = {
         run:   { module: serverModule, transport: TransportKind.ipc, options: { env: serverEnv } },
@@ -235,7 +252,9 @@ function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogg
         documentSelector: [{ scheme: 'file', language: 'jpipe' }],
         outputChannel,
         traceOutputChannel,
-        revealOutputChannelOn: RevealOutputChannelOn.Info
+        revealOutputChannelOn: RevealOutputChannelOn.Info,
+        // Sent with `initialize` so excluded files are never validated, not even once at startup.
+        initializationOptions: { excludedDirectories: exclusions.getResolvedUris() }
     };
 
     const client = new LanguageClient(
