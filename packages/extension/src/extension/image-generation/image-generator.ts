@@ -1,13 +1,40 @@
 import * as vscode from 'vscode';
-import { execFile } from 'node:child_process';
+import { execFile, type ExecFileOptions } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { JpipeLogger } from '../logger.js';
 import { ReleaseManager } from './release-manager.js';
+import { planLaunchHere } from '../process-launcher.js';
+import {
+    buildPathEnv,
+    findDiagramName as findDiagramNameIn,
+    resolveExecCommand as resolveExecCommandFrom,
+    type CompilerSettings
+} from './compiler-invocation.js';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Runs the compiler, still without a shell.
+ *
+ * `planLaunchHere` only alters anything on Windows, where a command may be a batch shim that
+ * `CreateProcessW` cannot start (see `process-launcher.ts`).
+ */
+function runCompiler(
+    file: string,
+    args: string[],
+    options: { env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number }
+): Promise<{ stdout: string; stderr: string }> {
+    const plan = planLaunchHere(file, args, options.env);
+    // Annotated so the promisified overload resolving to string (not Buffer) is the one chosen.
+    const execOptions: ExecFileOptions = {
+        ...options,
+        windowsVerbatimArguments: plan.windowsVerbatimArguments
+    };
+    return execFileAsync(plan.file, plan.args, execOptions);
+}
 
 /** Generous stdout cap so large SVG renders are not truncated (default is only 1 MB). */
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
@@ -22,27 +49,10 @@ function timeoutMs(config: vscode.WorkspaceConfiguration): number {
     return (typeof seconds === 'number' && seconds > 0 ? seconds : DEFAULT_TIMEOUT_SECONDS) * 1000;
 }
 
-/** Expand leading ~ to the user's home directory (Node does not do this by default). */
-function expandTilde(filePath: string): string {
-    const home = os.homedir();
-    if (filePath === '~') return home;
-    if (filePath.startsWith('~/') || filePath.startsWith('~\\')) return path.join(home, filePath.slice(2));
-    return filePath;
-}
-
-/**
- * PATH augmented so the compiler can find external interpreters (e.g. `python3`, `dot`):
- * user-configured `jpipe.extraPath` entries first, then the built-in Homebrew defaults,
- * then the inherited PATH.
- */
+/** PATH augmented so the compiler can find external interpreters (e.g. `python3`, `dot`). */
 function envWithPath(): NodeJS.ProcessEnv {
     const extra = vscode.workspace.getConfiguration('jpipe').get<string[]>('extraPath', []) ?? [];
-    const defaults = ['/opt/homebrew/bin', '/usr/local/bin'];
-    const existing = process.env.PATH ?? '';
-    // Trim and drop empties so we never introduce an empty PATH segment (which POSIX
-    // shells treat as the current directory — a security footgun) or a trailing delimiter.
-    const segments = [...extra, ...defaults, existing].map(s => s.trim()).filter(Boolean);
-    return { ...process.env, PATH: segments.join(path.delimiter) };
+    return buildPathEnv(process.env, extra, process.platform);
 }
 
 export enum ImageFormat {
@@ -72,37 +82,18 @@ export class ImageGenerator {
      * settings are never interpreted by a shell. Throws a user-facing message when misconfigured.
      */
     private resolveExecCommand(config: vscode.WorkspaceConfiguration): { file: string; args: string[] } {
-        const mode = config.get<string>('executionMode', 'cli');
-
-        if (mode === 'jar') {
-            const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
-            if (!jarFile) throw new Error('jpipe.jarFile is not configured.');
-            if (!fs.existsSync(jarFile)) throw new Error(`JAR file not found: ${jarFile}`);
-            return this.buildJarCommand(config, jarFile);
-        }
-
-        if (mode === 'managed') {
-            const installed = this.releaseManager.getInstalled();
-            if (!installed) {
-                throw new Error("No managed jPipe compiler installed. Run 'jPipe: Install Compiler from GitHub Release'.");
-            }
-            if (!fs.existsSync(installed.jarPath)) {
-                throw new Error(`Managed JAR file not found: ${installed.jarPath}`);
-            }
-            return this.buildJarCommand(config, installed.jarPath);
-        }
-
-        // cli mode: a bare name is resolved via PATH by execFile; a path is used directly.
-        const cliPath = (config.get<string>('cliPath', 'jpipe') ?? 'jpipe').trim();
-        const file = (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) ? path.normalize(cliPath) : cliPath;
-        return { file, args: [] };
-    }
-
-    /** Build the `java [jvmArgs…] -jar <jar>` argv shared by the `jar` and `managed` modes. */
-    private buildJarCommand(config: vscode.WorkspaceConfiguration, jarFile: string): { file: string; args: string[] } {
-        const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
-        const jvmArgs = (config.get<string[]>('jvmArgs', []) ?? []).map(a => a.trim()).filter(Boolean);
-        return { file: javaExecutable, args: [...jvmArgs, '-jar', path.normalize(jarFile)] };
+        const settings: CompilerSettings = {
+            executionMode: config.get<string>('executionMode', 'cli'),
+            cliPath: config.get<string>('cliPath', 'jpipe') ?? 'jpipe',
+            jarFile: config.get<string>('jarFile', '') ?? '',
+            javaExecutable: config.get<string>('javaExecutable', 'java') ?? 'java',
+            jvmArgs: config.get<string[]>('jvmArgs', []) ?? []
+        };
+        return resolveExecCommandFrom(settings, {
+            fileExists: candidate => fs.existsSync(candidate),
+            installedJarPath: this.releaseManager.getInstalled()?.jarPath,
+            home: os.homedir()
+        });
     }
     
     /**
@@ -169,7 +160,7 @@ export class ImageGenerator {
         this.logger.info(`Executing: ${resolved.file} ${argv.join(' ')}`);
 
         try {
-            const { stdout } = await execFileAsync(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
+            const { stdout } = await runCompiler(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             this.logger.info(`Generated ${format} for '${diagramName}' (${path.basename(document.uri.fsPath)})`);
             return stdout;
         } catch (error: any) {
@@ -198,7 +189,7 @@ export class ImageGenerator {
         }
 
         try {
-            const { stdout, stderr } = await execFileAsync(resolved.file, [...resolved.args, '--headless', 'doctor'], { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
+            const { stdout, stderr } = await runCompiler(resolved.file, [...resolved.args, '--headless', 'doctor'], { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             const output = (stdout + stderr).trim();
             return { ok: true, message: output || 'jPipe is accessible.' };
         } catch (error: any) {
@@ -221,7 +212,7 @@ export class ImageGenerator {
         const argv = [...resolved.args, 'diagnostic', '-i', inputFile];
         this.logger.info(`Executing: ${resolved.file} ${argv.join(' ')}`);
         try {
-            const { stdout, stderr } = await execFileAsync(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
+            const { stdout, stderr } = await runCompiler(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             return [stdout, stderr].filter(Boolean).join('\n').trim() || '(no output)';
         } catch (e: any) {
             const out = (e.stdout ?? '').trim();
@@ -266,23 +257,7 @@ export class ImageGenerator {
     }
 
     findDiagramName(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): string {
-        const lines = document.getText().split('\n');
-        const cursorLine = editor?.selection.active.line ?? 0;
-        
-        let diagramName: string | undefined;
-        
-        for (let i = 0; i <= cursorLine && i < lines.length; i++) {
-            const match = /^\s*(justification|template)\s+(\w+)/i.exec(lines[i]);
-            if (match) {
-                diagramName = match[2];
-            }
-        }
-        
-        if (!diagramName) {
-            throw new Error('No diagram name found (justification or template declaration)');
-        }
-        
-        return diagramName;
+        return findDiagramNameIn(document.getText(), editor?.selection.active.line ?? 0);
     }
     
     /**

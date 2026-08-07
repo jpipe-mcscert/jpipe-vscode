@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { formatEntry, isSameOrInside, parseEntry, stripTrailingSlash } from './exclusion-paths.js';
 
 const SETTING = 'excludedPaths';
 /** Pre-1.4 name, still honoured so existing settings keep working. Never written to. */
@@ -71,7 +72,7 @@ export class ExclusionManager implements vscode.Disposable {
 
     /** True when `uri` is an excluded path itself, or lives inside an excluded directory. */
     isExcluded(uri: vscode.Uri): boolean {
-        return this.getResolvedPaths().some(excluded => isSameOrInside(excluded, uri));
+        return this.getResolvedPaths().some(excluded => isSameOrInside(excluded.toString(), uri.toString()));
     }
 
     /** True when `uri` is itself a declared entry (not merely inside an excluded directory). */
@@ -146,17 +147,15 @@ export class ExclusionManager implements vscode.Disposable {
 
     /** `rootName:relative/path` or `relative/path` → absolute URI. */
     private decode(entry: string): vscode.Uri | undefined {
-        if (!entry || entry.trim().length === 0) return undefined;
+        const parsed = parseEntry(entry);
+        if (!parsed) return undefined;
         const roots = vscode.workspace.workspaceFolders ?? [];
-        const colon = entry.indexOf(':');
-        if (colon > 0) {
-            const folder = roots.find(f => f.name === entry.slice(0, colon));
-            const rel = entry.slice(colon + 1);
-            if (!folder || !rel) return undefined;
-            return vscode.Uri.parse(stripTrailingSlash(vscode.Uri.joinPath(folder.uri, rel).toString()));
-        }
-        if (roots.length !== 1) return undefined;
-        return vscode.Uri.parse(stripTrailingSlash(vscode.Uri.joinPath(roots[0].uri, entry).toString()));
+        // A bare entry can only be resolved when there is exactly one root to resolve it against.
+        const folder = parsed.rootName !== undefined
+            ? roots.find(f => f.name === parsed.rootName)
+            : (roots.length === 1 ? roots[0] : undefined);
+        if (!folder) return undefined;
+        return vscode.Uri.parse(stripTrailingSlash(vscode.Uri.joinPath(folder.uri, parsed.relativePath).toString()));
     }
 
     /** Absolute URI → `rootName:relative/path` or `relative/path`; undefined outside the workspace. */
@@ -165,7 +164,7 @@ export class ExclusionManager implements vscode.Disposable {
         if (!workspaceFolder) return undefined;
         const roots = vscode.workspace.workspaceFolders ?? [];
         const rel = vscode.workspace.asRelativePath(target, false).replaceAll('\\', '/');
-        return roots.length > 1 ? `${workspaceFolder.name}:${rel}` : rel;
+        return formatEntry(roots.length > 1 ? workspaceFolder.name : undefined, rel);
     }
 }
 
@@ -239,15 +238,4 @@ export class ExclusionDecorationProvider implements vscode.FileDecorationProvide
         this.directoryCache.set(key, isDirectory);
         return isDirectory;
     }
-}
-
-function stripTrailingSlash(uri: string): string {
-    return uri.endsWith('/') ? uri.slice(0, -1) : uri;
-}
-
-/** Path containment on URI segment boundaries, so `foo-old` is not matched by `foo`. */
-function isSameOrInside(parent: vscode.Uri, child: vscode.Uri): boolean {
-    const parentPath = stripTrailingSlash(parent.toString());
-    const childPath = stripTrailingSlash(child.toString());
-    return childPath === parentPath || childPath.startsWith(`${parentPath}/`);
 }

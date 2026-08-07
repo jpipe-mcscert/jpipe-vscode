@@ -141,13 +141,32 @@ To reconstruct entries from history, mine `git log <last-tag>..HEAD` and group b
 
 ## Testing
 
-Tests live in `packages/language/test/`. They use Vitest with Langium's `parseHelper`.
+Both packages use Vitest. `npm test` at the root runs both, and CI runs it between build and
+packaging, so a red suite blocks the VSIX.
+
+### `packages/language/test/`
+
+Uses Langium's `parseHelper`.
 
 - `parsing.test.ts` — parse smoke tests (currently skipped/stub, needs real jPipe examples)
 - `linking.test.ts` — cross-reference resolution
 - `validating.test.ts` — validator rule checks
 
-The parsing test's `beforeAll` wires up services with `EmptyFileSystem` (no real disk). For import-heavy tests, prefer constructing multi-document scenarios manually via `JpipeImportService.parseDocumentFromPath`.
+The parsing test's `beforeAll` wires up services with `EmptyFileSystem` (no real disk). For import-heavy tests, prefer constructing multi-document scenarios manually via `JpipeImportService.parseDocumentFromPath`. Note that `JpipeImportService` reads through `node:fs` rather than Langium's `FileSystemProvider`, so `EmptyFileSystem` does *not* intercept it — `load`-related tests write real files to a temp dir (see `import.test.ts`, `glob-load.test.ts`).
+
+### `packages/extension/test/`
+
+**There is no VS Code host here**, so a module that imports `vscode` cannot be loaded. Testable
+logic therefore lives in vscode-free modules that the vscode-importing ones consume:
+
+- `process-launcher.ts` — Windows command resolution and `cmd.exe` escaping. Platform, env and
+  filesystem are injected, so the Windows rules are exercised on any runner.
+- `release-selection.ts` — semver precedence, release filtering, download host allowlist.
+
+When adding extension logic worth testing, put it in such a module rather than reaching for
+mocks of the VS Code API. Anything that genuinely needs the editor (decorations, menu
+`when`-clauses, commands) has **no** automated coverage today and must be checked by hand in the
+Extension Development Host; closing that gap would mean adopting `@vscode/test-cli`.
 
 ---
 
