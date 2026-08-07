@@ -11,6 +11,7 @@
   - Changed:
     - The "Excluded Directories" setting is now **"Excluded Paths"**, since it accepts individual files as well as folders. Your existing setting keeps working and needs no migration; it is simply shown as deprecated
   - Bug Fixes:
+    - **Windows: the compiler is found again.** Previewing or exporting a diagram failed with `spawn jpipe ENOENT`, even though `jpipe` ran fine in a terminal. Windows can only start `.exe` files directly, and jPipe installs as a `.cmd` shim (via Scoop), which was therefore invisible to the extension. It is now located the same way Windows locates it, and run without handing your file paths to a command interpreter
     - A blank entry in the exclusions setting no longer silences validation for the entire workspace
     - Exclusions are re-resolved when workspace folders are added or removed
 

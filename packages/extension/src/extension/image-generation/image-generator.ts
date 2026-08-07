@@ -1,13 +1,34 @@
 import * as vscode from 'vscode';
-import { execFile } from 'node:child_process';
+import { execFile, type ExecFileOptions } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { JpipeLogger } from '../logger.js';
 import { ReleaseManager } from './release-manager.js';
+import { planLaunchHere, readEnv } from '../process-launcher.js';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Runs the compiler, still without a shell.
+ *
+ * `planLaunchHere` only alters anything on Windows, where a command may be a batch shim that
+ * `CreateProcessW` cannot start (see `process-launcher.ts`).
+ */
+function runCompiler(
+    file: string,
+    args: string[],
+    options: { env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number }
+): Promise<{ stdout: string; stderr: string }> {
+    const plan = planLaunchHere(file, args, options.env);
+    // Annotated so the promisified overload resolving to string (not Buffer) is the one chosen.
+    const execOptions: ExecFileOptions = {
+        ...options,
+        windowsVerbatimArguments: plan.windowsVerbatimArguments
+    };
+    return execFileAsync(plan.file, plan.args, execOptions);
+}
 
 /** Generous stdout cap so large SVG renders are not truncated (default is only 1 MB). */
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
@@ -37,12 +58,24 @@ function expandTilde(filePath: string): string {
  */
 function envWithPath(): NodeJS.ProcessEnv {
     const extra = vscode.workspace.getConfiguration('jpipe').get<string[]>('extraPath', []) ?? [];
-    const defaults = ['/opt/homebrew/bin', '/usr/local/bin'];
-    const existing = process.env.PATH ?? '';
+    // The Homebrew defaults are POSIX-only; on Windows they would just be dead segments.
+    const defaults = process.platform === 'win32' ? [] : ['/opt/homebrew/bin', '/usr/local/bin'];
+    const existing = readEnv(process.env, 'PATH') ?? '';
     // Trim and drop empties so we never introduce an empty PATH segment (which POSIX
     // shells treat as the current directory — a security footgun) or a trailing delimiter.
     const segments = [...extra, ...defaults, existing].map(s => s.trim()).filter(Boolean);
-    return { ...process.env, PATH: segments.join(path.delimiter) };
+    const value = segments.join(path.delimiter);
+
+    // Windows names the variable `Path`, so spreading process.env and adding `PATH` would leave
+    // the child with two entries differing only in case — and no say in which one wins. Replace
+    // whichever casing is already there instead of adding a second.
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    for (const key of Object.keys(env)) {
+        if (key.toLowerCase() === 'path') delete env[key];
+    }
+    const existingKey = Object.keys(process.env).find(key => key.toLowerCase() === 'path');
+    env[existingKey ?? 'PATH'] = value;
+    return env;
 }
 
 export enum ImageFormat {
@@ -169,7 +202,7 @@ export class ImageGenerator {
         this.logger.info(`Executing: ${resolved.file} ${argv.join(' ')}`);
 
         try {
-            const { stdout } = await execFileAsync(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
+            const { stdout } = await runCompiler(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             this.logger.info(`Generated ${format} for '${diagramName}' (${path.basename(document.uri.fsPath)})`);
             return stdout;
         } catch (error: any) {
@@ -198,7 +231,7 @@ export class ImageGenerator {
         }
 
         try {
-            const { stdout, stderr } = await execFileAsync(resolved.file, [...resolved.args, '--headless', 'doctor'], { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
+            const { stdout, stderr } = await runCompiler(resolved.file, [...resolved.args, '--headless', 'doctor'], { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             const output = (stdout + stderr).trim();
             return { ok: true, message: output || 'jPipe is accessible.' };
         } catch (error: any) {
@@ -221,7 +254,7 @@ export class ImageGenerator {
         const argv = [...resolved.args, 'diagnostic', '-i', inputFile];
         this.logger.info(`Executing: ${resolved.file} ${argv.join(' ')}`);
         try {
-            const { stdout, stderr } = await execFileAsync(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
+            const { stdout, stderr } = await runCompiler(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             return [stdout, stderr].filter(Boolean).join('\n').trim() || '(no output)';
         } catch (e: any) {
             const out = (e.stdout ?? '').trim();

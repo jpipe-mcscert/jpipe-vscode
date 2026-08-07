@@ -461,7 +461,8 @@
         "build:prepare": "shx mkdir -p ./syntaxes/ && shx cp -f ../language/syntaxes/jpipe.tmLanguage.json ./syntaxes/jpipe.tmLanguage.json",
         "build": "npm run build:prepare && tsc -b tsconfig.json && node esbuild.mjs",
         "build:clean": "npm run clean && npm run build",
-        "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json --watch\" \"node esbuild.mjs --watch\""
+        "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json --watch\" \"node esbuild.mjs --watch\"",
+        "test": "vitest run"
     },
     "dependencies": {
         "jpipe-language": "1.3.0",
@@ -471,7 +472,8 @@
     "devDependencies": {
         "@types/vscode": "~1.85.0",
         "concurrently": "~8.2.1",
-        "esbuild": "~0.28.1"
+        "esbuild": "~0.28.1",
+        "vitest": "~3.2.7"
     },
     "vsce": {
         "dependencies": false
