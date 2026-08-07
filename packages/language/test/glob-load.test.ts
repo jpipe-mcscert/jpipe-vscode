@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { EmptyFileSystem, type LangiumDocument } from 'langium';
 import { clearDocuments, parseHelper } from 'langium/test';
-import type { Diagnostic } from 'vscode-languageserver-types';
+import { Diagnostic } from 'vscode-languageserver-types';
 import type { Unit } from 'jpipe-language';
 import { createJpipeServices } from 'jpipe-language';
 
@@ -57,7 +57,7 @@ async function parseRoot(dir: string, text: string): Promise<LangiumDocument<Uni
 }
 
 function messages(doc: LangiumDocument): string[] {
-    return (doc.diagnostics ?? []).map((d: Diagnostic) => d.message);
+    return (doc.diagnostics ?? []).map((d: Diagnostic) => Diagnostic.getMessageString(d));
 }
 
 /** Matched paths relative to the workspace root, `/`-separated, for readable assertions. */

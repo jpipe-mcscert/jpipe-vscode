@@ -1,7 +1,7 @@
-import type { LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node.js';
+import type { LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vscode-languageclient/node.js';
+import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { ImageGenerator, ImageFormat } from './image-generation/image-generator.js';
 import { PreviewProvider } from './image-generation/preview-provider.js';
 import { ReleaseManager, JpipeRelease } from './image-generation/release-manager.js';
@@ -272,8 +272,9 @@ function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogg
         debug: { module: serverModule, transport: TransportKind.ipc, options: { ...debugOptions, env: serverEnv } }
     };
 
-    const outputChannel = vscode.window.createOutputChannel('jPipe Language Server');
-    const traceOutputChannel = vscode.window.createOutputChannel('jPipe Language Server (Trace)');
+    // `{ log: true }` yields a LogOutputChannel, which is what the client requires as of v10.
+    const outputChannel = vscode.window.createOutputChannel('jPipe Language Server', { log: true });
+    const traceOutputChannel = vscode.window.createOutputChannel('jPipe Language Server (Trace)', { log: true });
     context.subscriptions.push(outputChannel, traceOutputChannel);
 
     const clientOptions: LanguageClientOptions = {

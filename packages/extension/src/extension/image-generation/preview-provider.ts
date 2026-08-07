@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { LanguageClient } from 'vscode-languageclient/node.js';
+import type { LanguageClient } from 'vscode-languageclient/node';
 import { ImageGenerator, ImageFormat } from './image-generator.js';
 import type { JpipeLogger } from '../logger.js';
 

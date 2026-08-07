@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { EmptyFileSystem } from 'langium';
 import { parseHelper } from 'langium/test';
-import { DiagnosticSeverity } from 'vscode-languageserver-types';
+import { Diagnostic, DiagnosticSeverity } from 'vscode-languageserver-types';
 import type { Unit } from 'jpipe-language';
 import { createJpipeServices } from 'jpipe-language';
 
@@ -74,7 +74,7 @@ describe('Excluded path validation', () => {
 
         const errors = (doc.diagnostics ?? []).filter(d => d.severity === DiagnosticSeverity.Error);
         expect(errors.length).toBeGreaterThan(0);
-        expect(errors.some(d => d.message.includes('strategy'))).toBe(true);
+        expect(errors.some(d => Diagnostic.getMessageString(d).includes('strategy'))).toBe(true);
     });
 
     test('exclusions can be changed at runtime without recreating the services', async () => {
