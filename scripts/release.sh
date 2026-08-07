@@ -19,6 +19,12 @@ DRY_RUN=0
 FAILURES=0
 SKIP_VERIFY=0
 
+# The remote a release is validated against. Deliberately *not* derived from
+# @{upstream}: "is this commit on main" and "does this tag already exist" are questions
+# about the canonical repository, and a local branch may track a fork. Overridable for a
+# fork or mirror, e.g. RELEASE_REMOTE=upstream scripts/release.sh preflight 1.4.0
+RELEASE_REMOTE=${RELEASE_REMOTE:-origin}
+
 # ----------------------------------------------------------------------------
 # output helpers
 # ----------------------------------------------------------------------------
@@ -54,6 +60,10 @@ Options:
   --skip-verify              Skip the build and test run.
   -h, --help                 This message.
 
+Environment:
+  RELEASE_REMOTE             Remote treated as canonical when checking that HEAD is
+                             on main and that the tag is free. Defaults to origin.
+
 Neither verb tags, pushes or publishes. Pushing the tag triggers release.yml,
 which packages the VSIX, creates the GitHub Release and publishes to the
 Marketplace.
@@ -88,6 +98,24 @@ unreleased_entries() {
     inside && /^### v/ { exit }
     inside && /^ {4}- / { print }
   ' CHANGELOG.md
+}
+
+# The remote a branch tracks, which is not necessarily RELEASE_REMOTE.
+tracking_remote() {
+  local remote
+  remote=$(git config "branch.$(current_branch).remote" 2>/dev/null || true)
+  printf '%s' "${remote:-$RELEASE_REMOTE}"
+}
+
+# A failed fetch must be reported, not swallowed: every check below compares against a
+# remote-tracking ref, and a stale one answers the wrong question.
+fetch_remote() {
+  local remote=$1; shift
+  if git fetch --quiet "$remote" "$@" 2>/dev/null; then
+    return 0
+  fi
+  fail "could not fetch from $remote — cannot verify against it"
+  return 1
 }
 
 run() {
@@ -128,7 +156,9 @@ check_in_sync() {
     warn "$branch has no upstream — cannot check whether it is current"
     return
   fi
-  git fetch --quiet origin
+  # Fetch the remote this branch actually tracks — comparing against $upstream after
+  # fetching some other remote would compare against a ref nothing just updated.
+  fetch_remote "$(tracking_remote)" || return 0
   if [ "$(git rev-parse HEAD)" = "$(git rev-parse "$upstream")" ]; then
     pass "$branch is in sync with $upstream"
   elif git merge-base --is-ancestor "$upstream" HEAD; then
@@ -141,11 +171,11 @@ check_in_sync() {
 # release.yml refuses a tag that is not an ancestor of main, so that a v*.*.* tag
 # pushed from a feature branch cannot reach the Marketplace.
 check_on_main() {
-  git fetch --quiet origin main
-  if git merge-base --is-ancestor HEAD origin/main; then
-    pass "HEAD is on main — release.yml's branch check will pass"
+  fetch_remote "$RELEASE_REMOTE" main || return 0
+  if git merge-base --is-ancestor HEAD "$RELEASE_REMOTE/main"; then
+    pass "HEAD is on $RELEASE_REMOTE/main — release.yml's branch check will pass"
   else
-    fail "HEAD is not on main — release.yml refuses a tag that is not an ancestor of main"
+    fail "HEAD is not on $RELEASE_REMOTE/main — release.yml refuses a tag that is not an ancestor of main"
   fi
 }
 
@@ -183,13 +213,19 @@ check_versions_match() {
 }
 
 check_tag_absent() {
-  local version=$1
+  local version=$1 remote_tag
   if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
     fail "tag v$version already exists locally"
-  elif [ -n "$(git ls-remote --tags origin "refs/tags/v$version" 2>/dev/null)" ]; then
-    fail "tag v$version already exists on origin"
+    return
+  fi
+  # An unreachable remote must not read as "the tag is free" — that is the one answer
+  # this check exists to rule out.
+  if ! remote_tag=$(git ls-remote --tags "$RELEASE_REMOTE" "refs/tags/v$version" 2>/dev/null); then
+    fail "could not reach $RELEASE_REMOTE — cannot tell whether tag v$version exists there"
+  elif [ -n "$remote_tag" ]; then
+    fail "tag v$version already exists on $RELEASE_REMOTE"
   else
-    pass "tag v$version does not exist yet"
+    pass "tag v$version does not exist locally or on $RELEASE_REMOTE"
   fi
 }
 
@@ -244,7 +280,7 @@ check_package() {
     warn "skipping vsce package (--skip-verify)"
     return
   fi
-  command -v vsce >/dev/null || return
+  command -v vsce >/dev/null || return 0
   out=$(mktemp -t jpipe-preflight-vsix).vsix
   if (cd packages/extension && vsce package -o "$out") >/dev/null 2>&1; then
     pass "vsce package succeeds ($(du -h "$out" | cut -f1) VSIX)"
