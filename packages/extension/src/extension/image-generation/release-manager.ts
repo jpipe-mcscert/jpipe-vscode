@@ -5,23 +5,15 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { JpipeLogger } from '../logger.js';
+import {
+    isAllowedHost,
+    isStrictlyNewer,
+    selectInstallableReleases,
+    type JpipeRelease
+} from './release-selection.js';
 
 /** Default GitHub repository that publishes the jPipe compiler releases. */
 const DEFAULT_RELEASE_REPO = 'jpipe-mcscert/jpipe-compiler';
-
-/** Only 2.x+ releases expose the `process` / `diagnostic` / `--headless doctor` subcommands
- *  the extension drives; older `jpipe.jar` releases predate them and are hidden. */
-const MIN_MAJOR = 2;
-
-/** Asset name of the CLI jar in a 2.x release, e.g. `jpipe-cli-2.1.0.jar`. */
-const CLI_JAR_RE = /^jpipe-cli-.*\.jar$/;
-
-/** Hosts we are willing to talk to. Any redirect outside this set is rejected. */
-const ALLOWED_HOSTS = new Set([
-    'api.github.com',
-    'github.com',
-    'objects.githubusercontent.com',
-]);
 
 /** globalState keys. */
 const KEY_INSTALLED = 'jpipe.managedCompiler';
@@ -33,81 +25,13 @@ const DEFAULT_UPDATE_INTERVAL_HOURS = 24;
 /** Follow at most this many HTTP redirects before giving up. */
 const MAX_REDIRECTS = 5;
 
-export interface JpipeRelease {
-    tag: string;
-    name: string;
-    publishedAt: string;
-    jarUrl: string;
-    jarName: string;
-    jarSize: number;
-}
-
 interface InstalledCompiler {
     tag: string;
     jarPath: string;
 }
 
-/** True for `objects.githubusercontent.com` and any `*.githubusercontent.com` subdomain. */
-function isAllowedHost(host: string): boolean {
-    return ALLOWED_HOSTS.has(host) || host.endsWith('.githubusercontent.com');
-}
-
-interface Version {
-    nums: [number, number, number];
-    /** Prerelease identifiers (e.g. `rc.1`), or undefined for a stable release. */
-    pre: string | undefined;
-}
-
-/** Parse a release tag like `v2.1.0` or `v2.0.0-rc1` into its core version + prerelease. */
-function parseSemver(tag: string): Version | undefined {
-    const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(tag.trim());
-    if (!m) return undefined;
-    return { nums: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] };
-}
-
-/** Compare two prerelease strings per semver identifier rules (numeric < alphanumeric). */
-function comparePreRelease(a: string, b: string): number {
-    const as = a.split('.');
-    const bs = b.split('.');
-    for (let i = 0; i < Math.max(as.length, bs.length); i++) {
-        const x = as[i];
-        const y = bs[i];
-        if (x === undefined) return -1; // fewer identifiers = lower precedence
-        if (y === undefined) return 1;
-        const xn = /^\d+$/.test(x);
-        const yn = /^\d+$/.test(y);
-        if (xn && yn) { const d = Number(x) - Number(y); if (d !== 0) return Math.sign(d); }
-        else if (xn) return -1;
-        else if (yn) return 1;
-        else if (x !== y) return x < y ? -1 : 1;
-    }
-    return 0;
-}
-
-/** Full semver precedence: >0 if `a` is newer than `b`, <0 if older, 0 if equal. */
-function comparePrecedence(a: string, b: string): number {
-    const va = parseSemver(a);
-    const vb = parseSemver(b);
-    if (!va || !vb) return 0;
-    for (let i = 0; i < 3; i++) {
-        if (va.nums[i] !== vb.nums[i]) return va.nums[i] - vb.nums[i];
-    }
-    // Same core version: a stable release outranks a prerelease of that version.
-    if (va.pre === undefined && vb.pre === undefined) return 0;
-    if (va.pre === undefined) return 1;
-    if (vb.pre === undefined) return -1;
-    return comparePreRelease(va.pre, vb.pre);
-}
-
-/** Sort comparator: newest version first (stable ahead of its own prereleases). */
-function compareSemverDesc(a: JpipeRelease, b: JpipeRelease): number {
-    return comparePrecedence(b.tag, a.tag);
-}
-
-/** True when `candidate` has strictly higher precedence than `baseline`. */
-function isStrictlyNewer(candidate: string, baseline: string): boolean {
-    return comparePrecedence(candidate, baseline) > 0;
-}
+// Re-exported so `import { JpipeRelease } from './release-manager.js'` keeps working.
+export type { JpipeRelease };
 
 /**
  * Downloads, stores, and tracks a jPipe compiler jar pulled from the GitHub releases page,
@@ -130,32 +54,7 @@ export class ReleaseManager {
         const includePrereleases = config.get<boolean>('managedIncludePrereleases', false);
         const url = `https://api.github.com/repos/${this.repo()}/releases?per_page=100`;
         const raw = await this.httpsGetJson(url);
-        if (!Array.isArray(raw)) {
-            throw new Error('Unexpected response from the GitHub releases API.');
-        }
-
-        const releases: JpipeRelease[] = [];
-        for (const rel of raw as any[]) {
-            if (rel?.draft) continue;
-            if (rel?.prerelease && !includePrereleases) continue;
-            const tag: string = rel?.tag_name ?? '';
-            const semver = parseSemver(tag);
-            if (!semver || semver.nums[0] < MIN_MAJOR) continue;
-
-            const assets: any[] = Array.isArray(rel?.assets) ? rel.assets : [];
-            const jar = assets.find(a => CLI_JAR_RE.test(a?.name ?? ''));
-            if (!jar?.browser_download_url) continue;
-
-            releases.push({
-                tag,
-                name: rel?.name || tag,
-                publishedAt: rel?.published_at ?? '',
-                jarUrl: jar.browser_download_url,
-                jarName: jar.name,
-                jarSize: typeof jar.size === 'number' ? jar.size : 0,
-            });
-        }
-        releases.sort(compareSemverDesc);
+        const releases = selectInstallableReleases(raw, includePrereleases);
         this.logger.debug(`Found ${releases.length} installable jPipe release(s)`);
         return releases;
     }

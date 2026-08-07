@@ -16,3 +16,10 @@ docs
 
 # Ignore build artifacts (if necessary)
 out/test/
+**/*.tsbuildinfo
+
+# Ignore test and build tooling. Only `out/` is executed at runtime — the bundle is
+# self-contained — so anything used to produce or verify it stays out of the VSIX.
+test/
+vitest.config.ts
+esbuild.mjs
