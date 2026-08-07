@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { globToRegExp, isGlobPattern, matchesGlob, GlobSyntaxError } from '../src/jpipe-glob.js';
+import { escapesBaseDirectory, globToRegExp, isGlobPattern, matchesGlob, GlobSyntaxError } from '../src/jpipe-glob.js';
 
 /**
  * These assertions mirror the jPipe compiler's `LoadResolverGlobTest` and Java NIO's
@@ -90,6 +90,24 @@ describe('Java NIO glob semantics', () => {
     test('backslash escapes a metacharacter', () => {
         expect(matchesGlob('a\\*b.jd', 'a*b.jd')).toBe(true);
         expect(matchesGlob('a\\*b.jd', 'axxb.jd')).toBe(false);
+    });
+});
+
+describe('escapesBaseDirectory', () => {
+    // Both the compiler and this port expand a pattern by walking *downwards* from the declaring
+    // file's directory, so anything pointing outside it can never match.
+    test.each([
+        ['../step_04/*.jd', true],
+        ['..', true],
+        ['../*.jd', true],
+        ['/abs/models/*.jd', true],
+        ['C:/models/*.jd', true],
+        ['globs/*.jd', false],
+        ['./globs/*.jd', false],
+        ['**.jd', false],
+        ['*.jd', false]
+    ])('%s → %s', (pattern, expected) => {
+        expect(escapesBaseDirectory(pattern)).toBe(expected);
     });
 });
 

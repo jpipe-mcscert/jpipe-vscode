@@ -10,7 +10,7 @@ import {
 } from './generated/ast.js';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeImportService } from './jpipe-import.js';
-import { GlobSyntaxError, isGlobPattern } from './jpipe-glob.js';
+import { escapesBaseDirectory, GlobSyntaxError, isGlobPattern } from './jpipe-glob.js';
 import { fsPathOf } from './jpipe-utils.js';
 
 /** Beyond this, a hover becomes a wall of text rather than an answer. */
@@ -103,7 +103,10 @@ export class JpipeHoverProvider extends AstNodeHoverProvider {
             return `Invalid glob pattern \`${load.path}\` — ${reason}`;
         }
         if (matches.length === 0) {
-            return `No file matches \`${load.path}\``;
+            const hint = escapesBaseDirectory(load.path)
+                ? `\n\nPatterns only match files at or below \`${path.basename(baseDir)}/\`, this file's own directory — a pattern starting with \`..\` or an absolute path never matches, even though the equivalent literal path would load.`
+                : '';
+            return `No file matches \`${load.path}\`${hint}`;
         }
 
         const shown = matches.slice(0, MAX_LISTED_MATCHES);

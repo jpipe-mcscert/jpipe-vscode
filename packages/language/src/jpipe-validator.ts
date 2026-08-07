@@ -1,5 +1,15 @@
 import { AstUtils, type ValidationAcceptor, type ValidationChecks } from 'langium';
-import { GlobSyntaxError, isGlobPattern } from './jpipe-glob.js';
+import { escapesBaseDirectory, GlobSyntaxError, isGlobPattern } from './jpipe-glob.js';
+
+/**
+ * Explains the one no-match case users cannot diagnose by looking: a pattern reaching outside the
+ * declaring file's directory. A literal `../sibling/model.jd` loads fine, so `../sibling/*.jd`
+ * failing looks like a bug rather than a rule.
+ */
+const OUTSIDE_BASE_HINT = (pattern: string): string =>
+    escapesBaseDirectory(pattern)
+        ? ". Patterns only match files at or below this file's own directory, so one starting with '..' or an absolute path never matches — the jPipe compiler expands them the same way."
+        : '';
 import type {
     JpipeAstType,
     Unit,
@@ -99,8 +109,10 @@ export class JpipeValidator {
             return;
         }
         if (matches.length === 0) {
+            // The bare compiler wording first, so the two tools stay searchable alike; the hint is
+            // added only where the reason is non-obvious.
             accept('error',
-                `No file matches load pattern '${load.path}'`,
+                `No file matches load pattern '${load.path}'${OUTSIDE_BASE_HINT(load.path)}`,
                 { node: load, property: 'path' });
         }
     }

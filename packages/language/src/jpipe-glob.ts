@@ -196,3 +196,19 @@ export function globToRegExp(pattern: string): RegExp {
 export function matchesGlob(pattern: string, relativePosixPath: string): boolean {
     return globToRegExp(pattern).test(relativePosixPath);
 }
+
+/**
+ * Whether a pattern points outside the directory it is resolved against, which means it can never
+ * match anything.
+ *
+ * The compiler expands a pattern with `Files.walk(base)` and matches `base.relativize(p)`, and
+ * both of those only ever go *downwards* — so `../sibling/*.jd` and absolute patterns match
+ * nothing, even though the equivalent literal paths resolve perfectly well. That asymmetry is
+ * surprising enough to be worth calling out in the diagnostic rather than leaving the user
+ * staring at "no file matches" for a directory they can see.
+ */
+export function escapesBaseDirectory(pattern: string): boolean {
+    const normalized = pattern.replaceAll('\\', '/');
+    if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) return true;
+    return normalized === '..' || normalized.startsWith('../');
+}

@@ -139,6 +139,32 @@ describe('Glob load diagnostics', () => {
         expect(messages(doc).some(m => m.startsWith("Invalid glob in load pattern 'globs/[.jd'"))).toBe(true);
     });
 
+    // Reproduces a real report: a sibling-directory pattern. `../step_04/model.jd` loads fine, so
+    // `../step_04/*.jd` matching nothing needs explaining. Verified against jpipe 2.2.0, which
+    // reports the identical "No file matches load pattern '../step_04/*.jd'".
+    test('a parent-relative pattern explains why it cannot match', async () => {
+        const dir = makeWorkspace();
+        fs.mkdirSync(path.join(dir, 'sibling'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'sibling', 'other.jd'), template('other'));
+        fs.mkdirSync(path.join(dir, 'here'), { recursive: true });
+        document = await parse('load "../sibling/*.jd"\n', {
+            documentUri: pathToFileURL(path.join(dir, 'here', 'root.jd')).toString(),
+            validation: true
+        });
+
+        const message = messages(document).find(m => m.startsWith('No file matches load pattern'));
+        expect(message).toBeDefined();
+        expect(message).toContain("No file matches load pattern '../sibling/*.jd'");
+        expect(message).toContain("at or below this file's own directory");
+    });
+
+    test('an ordinary no-match keeps the compiler wording verbatim, with no hint', async () => {
+        const dir = makeWorkspace();
+        const doc = await parseRoot(dir, 'load "globs/none_*.jd"\n');
+
+        expect(messages(doc)).toContainEqual("No file matches load pattern 'globs/none_*.jd'");
+    });
+
     test('a missing literal path keeps its original message', async () => {
         const dir = makeWorkspace();
         const doc = await parseRoot(dir, 'load "./does-not-exist.jd"\n');
