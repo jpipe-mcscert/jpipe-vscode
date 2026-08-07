@@ -1,4 +1,5 @@
 import { AstUtils, type ValidationAcceptor, type ValidationChecks } from 'langium';
+import { GlobSyntaxError, isGlobPattern } from './jpipe-glob.js';
 import type {
     JpipeAstType,
     Unit,
@@ -67,16 +68,39 @@ export class JpipeValidator {
     }
 
     /**
-     * Flags a `load` statement whose target file cannot be found. Without this the
-     * failure is silent (only a server-log warning), so a typo'd or broken path —
-     * or a path that resolves incorrectly on Windows — looks like it did nothing.
+     * Flags a `load` statement that resolves to nothing. Without this the failure is silent
+     * (only a server-log warning), so a typo'd or broken path — or a path that resolves
+     * incorrectly on Windows — looks like it did nothing.
+     *
+     * Messages deliberately mirror the compiler's own wording (`LoadResolver.expand`), so the
+     * same text turns up whether the user hits the problem in the editor or in a build.
      */
     checkLoadResolves(load: Load, accept: ValidationAcceptor): void {
         const document = AstUtils.getDocument(load);
-        const resolved = this.importService.resolveExistingImportPath(load.path, document);
-        if (!resolved) {
+
+        if (!isGlobPattern(load.path)) {
+            const resolved = this.importService.resolveExistingImportPath(load.path, document);
+            if (!resolved) {
+                accept('error',
+                    `Cannot resolve load path '${load.path}': no such file.`,
+                    { node: load, property: 'path' });
+            }
+            return;
+        }
+
+        let matches: string[];
+        try {
+            matches = this.importService.expandLoadPath(load.path, document);
+        } catch (error) {
+            const reason = error instanceof GlobSyntaxError ? error.description : String(error);
             accept('error',
-                `Cannot resolve load path '${load.path}': no such file.`,
+                `Invalid glob in load pattern '${load.path}': ${reason}`,
+                { node: load, property: 'path' });
+            return;
+        }
+        if (matches.length === 0) {
+            accept('error',
+                `No file matches load pattern '${load.path}'`,
                 { node: load, property: 'path' });
         }
     }

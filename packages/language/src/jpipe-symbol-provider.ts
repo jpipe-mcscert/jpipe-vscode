@@ -63,9 +63,8 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         }
 
         for (const load of unnamedLoads) {
-            const importedUnit = this.resolveImportedUnit(load, document);
-            if (importedUnit) {
-                const loadRange = load.$cstNode?.range ?? ZERO_RANGE;
+            const loadRange = load.$cstNode?.range ?? ZERO_RANGE;
+            for (const importedUnit of this.resolveImportedUnits(load, document)) {
                 defaultChildren.push(...this.buildImportedModelSymbols(importedUnit, loadRange));
             }
         }
@@ -88,9 +87,11 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         return symbols;
     }
 
-    private resolveImportedUnit(load: Load, document: LangiumDocument): Unit | undefined {
-        const importedDoc = this.importService.parseDocumentFromPath(load.path, document);
-        return importedDoc?.parseResult?.value as Unit | undefined;
+    /** The units a `load` brings in — several when its path is a glob. */
+    private resolveImportedUnits(load: Load, document: LangiumDocument): Unit[] {
+        return this.importService.resolveImportedDocuments(load, document)
+            .map(doc => doc.parseResult?.value as Unit | undefined)
+            .filter((unit): unit is Unit => unit !== undefined);
     }
 
     private buildImportedModelSymbols(importedUnit: Unit, loadRange: Range): DocumentSymbol[] {
@@ -115,10 +116,9 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         loadRange: Range,
         document: LangiumDocument
     ): DocumentSymbol {
-        const importedUnit = this.resolveImportedUnit(load, document);
-        const children = importedUnit
-            ? this.buildImportedModelSymbols(importedUnit, loadRange)
-            : [];
+        // A globbed load with an alias puts every matched file under the one namespace.
+        const children = this.resolveImportedUnits(load, document)
+            .flatMap(importedUnit => this.buildImportedModelSymbols(importedUnit, loadRange));
 
         return {
             ...syntheticSymbol(ns, SymbolKind.Module, loadRange),

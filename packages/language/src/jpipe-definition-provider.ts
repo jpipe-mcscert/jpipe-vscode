@@ -21,6 +21,7 @@ import {
     type Unit,
 } from './generated/ast.js';
 import { getAllElements, localName } from './jpipe-utils.js';
+import { isGlobPattern } from './jpipe-glob.js';
 
 function asJustificationElement(node: AstNode): JustificationElement | undefined {
     if (isEvidence(node) || isStrategy(node) || isConclusion(node) ||
@@ -66,6 +67,12 @@ export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
         while (node && !isLoad(node)) node = node.$container;
         if (!node || !isLoad(node)) return undefined;
         const load = node as Load;
+
+        // Deliberately no go-to-definition for a glob. "Go to definition" answers *which file is
+        // this*, and a pattern does not name one file; returning every match would open a picker
+        // of undifferentiated files, or a Peek with N stacked previews. The matched set is a
+        // property of the pattern, so the hover reports it — and links to each file from there.
+        if (isGlobPattern(load.path)) return undefined;
 
         const document = this.getDocument(load);
         if (!document) return undefined;
@@ -132,11 +139,12 @@ export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
             // Try unnameSpaced imports.
             for (const load of unit.imports) {
                 if (load.namespace) continue;
-                const doc = this.importService.parseDocumentFromPath(load.path, document);
-                const importedUnit = doc?.parseResult?.value as Unit | undefined;
-                if (!importedUnit) continue;
-                const found = importedUnit.body.find((b): b is Template => isTemplate(b) && b.id === templateId);
-                if (found) return found;
+                for (const doc of this.importService.resolveImportedDocuments(load, document)) {
+                    const importedUnit = doc.parseResult?.value as Unit | undefined;
+                    if (!importedUnit) continue;
+                    const found = importedUnit.body.find((b): b is Template => isTemplate(b) && b.id === templateId);
+                    if (found) return found;
+                }
             }
             return undefined;
         }
@@ -146,11 +154,12 @@ export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
         const templateId = path.slice(1).join(':');
         for (const load of unit.imports) {
             if (load.namespace !== namespace) continue;
-            const doc = this.importService.parseDocumentFromPath(load.path, document);
-            const importedUnit = doc?.parseResult?.value as Unit | undefined;
-            if (!importedUnit) continue;
-            const found = importedUnit.body.find((b): b is Template => isTemplate(b) && b.id === templateId);
-            if (found) return found;
+            for (const doc of this.importService.resolveImportedDocuments(load, document)) {
+                const importedUnit = doc.parseResult?.value as Unit | undefined;
+                if (!importedUnit) continue;
+                const found = importedUnit.body.find((b): b is Template => isTemplate(b) && b.id === templateId);
+                if (found) return found;
+            }
         }
         return undefined;
     }
