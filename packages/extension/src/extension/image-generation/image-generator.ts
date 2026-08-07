@@ -6,7 +6,13 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { JpipeLogger } from '../logger.js';
 import { ReleaseManager } from './release-manager.js';
-import { planLaunchHere, readEnv } from '../process-launcher.js';
+import { planLaunchHere } from '../process-launcher.js';
+import {
+    buildPathEnv,
+    findDiagramName as findDiagramNameIn,
+    resolveExecCommand as resolveExecCommandFrom,
+    type CompilerSettings
+} from './compiler-invocation.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -43,39 +49,10 @@ function timeoutMs(config: vscode.WorkspaceConfiguration): number {
     return (typeof seconds === 'number' && seconds > 0 ? seconds : DEFAULT_TIMEOUT_SECONDS) * 1000;
 }
 
-/** Expand leading ~ to the user's home directory (Node does not do this by default). */
-function expandTilde(filePath: string): string {
-    const home = os.homedir();
-    if (filePath === '~') return home;
-    if (filePath.startsWith('~/') || filePath.startsWith('~\\')) return path.join(home, filePath.slice(2));
-    return filePath;
-}
-
-/**
- * PATH augmented so the compiler can find external interpreters (e.g. `python3`, `dot`):
- * user-configured `jpipe.extraPath` entries first, then the built-in Homebrew defaults,
- * then the inherited PATH.
- */
+/** PATH augmented so the compiler can find external interpreters (e.g. `python3`, `dot`). */
 function envWithPath(): NodeJS.ProcessEnv {
     const extra = vscode.workspace.getConfiguration('jpipe').get<string[]>('extraPath', []) ?? [];
-    // The Homebrew defaults are POSIX-only; on Windows they would just be dead segments.
-    const defaults = process.platform === 'win32' ? [] : ['/opt/homebrew/bin', '/usr/local/bin'];
-    const existing = readEnv(process.env, 'PATH') ?? '';
-    // Trim and drop empties so we never introduce an empty PATH segment (which POSIX
-    // shells treat as the current directory — a security footgun) or a trailing delimiter.
-    const segments = [...extra, ...defaults, existing].map(s => s.trim()).filter(Boolean);
-    const value = segments.join(path.delimiter);
-
-    // Windows names the variable `Path`, so spreading process.env and adding `PATH` would leave
-    // the child with two entries differing only in case — and no say in which one wins. Replace
-    // whichever casing is already there instead of adding a second.
-    const env: NodeJS.ProcessEnv = { ...process.env };
-    for (const key of Object.keys(env)) {
-        if (key.toLowerCase() === 'path') delete env[key];
-    }
-    const existingKey = Object.keys(process.env).find(key => key.toLowerCase() === 'path');
-    env[existingKey ?? 'PATH'] = value;
-    return env;
+    return buildPathEnv(process.env, extra, process.platform);
 }
 
 export enum ImageFormat {
@@ -105,37 +82,18 @@ export class ImageGenerator {
      * settings are never interpreted by a shell. Throws a user-facing message when misconfigured.
      */
     private resolveExecCommand(config: vscode.WorkspaceConfiguration): { file: string; args: string[] } {
-        const mode = config.get<string>('executionMode', 'cli');
-
-        if (mode === 'jar') {
-            const jarFile = expandTilde((config.get<string>('jarFile', '') ?? '').trim());
-            if (!jarFile) throw new Error('jpipe.jarFile is not configured.');
-            if (!fs.existsSync(jarFile)) throw new Error(`JAR file not found: ${jarFile}`);
-            return this.buildJarCommand(config, jarFile);
-        }
-
-        if (mode === 'managed') {
-            const installed = this.releaseManager.getInstalled();
-            if (!installed) {
-                throw new Error("No managed jPipe compiler installed. Run 'jPipe: Install Compiler from GitHub Release'.");
-            }
-            if (!fs.existsSync(installed.jarPath)) {
-                throw new Error(`Managed JAR file not found: ${installed.jarPath}`);
-            }
-            return this.buildJarCommand(config, installed.jarPath);
-        }
-
-        // cli mode: a bare name is resolved via PATH by execFile; a path is used directly.
-        const cliPath = (config.get<string>('cliPath', 'jpipe') ?? 'jpipe').trim();
-        const file = (path.isAbsolute(cliPath) || cliPath.includes(path.sep)) ? path.normalize(cliPath) : cliPath;
-        return { file, args: [] };
-    }
-
-    /** Build the `java [jvmArgs…] -jar <jar>` argv shared by the `jar` and `managed` modes. */
-    private buildJarCommand(config: vscode.WorkspaceConfiguration, jarFile: string): { file: string; args: string[] } {
-        const javaExecutable = (config.get<string>('javaExecutable', 'java') ?? 'java').trim();
-        const jvmArgs = (config.get<string[]>('jvmArgs', []) ?? []).map(a => a.trim()).filter(Boolean);
-        return { file: javaExecutable, args: [...jvmArgs, '-jar', path.normalize(jarFile)] };
+        const settings: CompilerSettings = {
+            executionMode: config.get<string>('executionMode', 'cli'),
+            cliPath: config.get<string>('cliPath', 'jpipe') ?? 'jpipe',
+            jarFile: config.get<string>('jarFile', '') ?? '',
+            javaExecutable: config.get<string>('javaExecutable', 'java') ?? 'java',
+            jvmArgs: config.get<string[]>('jvmArgs', []) ?? []
+        };
+        return resolveExecCommandFrom(settings, {
+            fileExists: candidate => fs.existsSync(candidate),
+            installedJarPath: this.releaseManager.getInstalled()?.jarPath,
+            home: os.homedir()
+        });
     }
     
     /**
@@ -299,23 +257,7 @@ export class ImageGenerator {
     }
 
     findDiagramName(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): string {
-        const lines = document.getText().split('\n');
-        const cursorLine = editor?.selection.active.line ?? 0;
-        
-        let diagramName: string | undefined;
-        
-        for (let i = 0; i <= cursorLine && i < lines.length; i++) {
-            const match = /^\s*(justification|template)\s+(\w+)/i.exec(lines[i]);
-            if (match) {
-                diagramName = match[2];
-            }
-        }
-        
-        if (!diagramName) {
-            throw new Error('No diagram name found (justification or template declaration)');
-        }
-        
-        return diagramName;
+        return findDiagramNameIn(document.getText(), editor?.selection.active.line ?? 0);
     }
     
     /**
