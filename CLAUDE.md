@@ -134,9 +134,9 @@ vsce publish
 `CHANGELOG.md` is the source of truth for what shipped in each version. **Keep it current whenever a feature or fix is merged to `main`.**
 
 - Every user-facing change (feature, bug fix, or documentation) merged to `main` must have a corresponding entry.
-- Accumulate changes under a top `### vX.Y.Z (Unreleased)` heading while work is in flight; flip `(Unreleased)` to the release date when the version is tagged.
+- Accumulate changes under a top `### vX.Y.Z (Unreleased)` heading while work is in flight. Closing the section out is `scripts/release.sh prepare X.Y.Z`'s job — don't date the heading by hand.
 - Follow the existing structure: `Leader:` line, then `Features:` / `Bug Fixes:` / `Documentation:` sub-lists. Prefix each item with the affected area in bold (e.g. **Language Server:**, **Extension:**, **Grammar:**, **CI/CD:**). Reference the closed issue/PR where relevant.
-- Bump the version in all three `package.json` files (root, `packages/extension`, `packages/language`) in the same change that finalizes the release entry — they must stay in sync.
+- The version lives in **four** places that must agree — the three `package.json` files (root, `packages/extension`, `packages/language`) *and* the `jpipe-language` dependency inside `packages/extension/package.json`. `scripts/release.sh prepare` sets all four and reconciles the lockfile; see "How to cut a release?" in the README for why doing it by hand is fiddly.
 - SemVer: new capability → minor bump; fixes/docs only → patch bump.
 
 **Editorial style — write for users, not developers.** The changelog is read by people using the extension, not by contributors. Each entry should describe *what changed for the user* and *why it helps*, in plain language:

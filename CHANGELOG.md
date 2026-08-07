@@ -17,6 +17,10 @@
     - **Windows: the compiler is found again.** Previewing or exporting a diagram failed with `spawn jpipe ENOENT`, even though `jpipe` ran fine in a terminal. Windows can only start `.exe` files directly, and jPipe installs as a `.cmd` shim (via Scoop), which was therefore invisible to the extension. It is now located the same way Windows locates it, and run without handing your file paths to a command interpreter
     - A blank entry in the exclusions setting no longer silences validation for the entire workspace
     - Exclusions are re-resolved when workspace folders are added or removed
+  - Maintenance:
+    - **Only reviewed code can be published:** A release can now only be built from the project's main line of development. Previously nothing stopped a release built from an unreviewed branch from reaching the Marketplace, so this tightens what can end up in the extension you install
+    - **Releases are cut by script:** Preparing a release — keeping the version numbers, the changelog and the dependency lockfile in step, then re-running the publication checks before anything is tagged — is now one command instead of a hand-followed checklist. A release can no longer go out half-versioned (development-only; nothing that ships to users changes)
+    - The toolchain used to build the extension is now pinned and enforced, so what a contributor builds matches what CI publishes. Both test suites also run in CI ahead of packaging, so a failing test blocks the release rather than shipping alongside it
 
 ### v1.3.0 (2026-07-16)
 - Leader: Sébastien Mosser
