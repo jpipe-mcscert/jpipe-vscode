@@ -21,6 +21,21 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          # Full history: the branch check below needs a merge base, which a shallow
+          # clone cannot provide.
+          fetch-depth: 0
+
+      # Everything below publishes: a GitHub Release and a Marketplace push. Without
+      # this, a v*.*.* tag pushed from any branch would ship straight to users.
+      - name: Check the tag is on main
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Tag ${{ github.ref_name }} does not point at a commit on main"
+            exit 1
+          fi
+          echo "Tag ${{ github.ref_name }} is on main"
 
       - name: Set up node.js
         uses: actions/setup-node@v6
