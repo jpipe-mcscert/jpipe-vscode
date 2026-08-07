@@ -9,6 +9,9 @@ const EXCLUDED_DIR = 'file:///workspace/excluded';
 const EXCLUDED_FILE = `${EXCLUDED_DIR}/test.jd`;
 const NESTED_EXCLUDED_FILE = `${EXCLUDED_DIR}/deep/nested/test.jd`;
 const NORMAL_FILE = 'file:///workspace/normal/test.jd';
+// Excluded on its own, with a sibling that must keep being validated.
+const SINGLE_FILE = 'file:///workspace/src/broken.jd';
+const SIBLING_FILE = 'file:///workspace/src/model.jd';
 
 const VALID_JUSTIFICATION = `
     justification J {
@@ -28,16 +31,16 @@ const INVALID_JUSTIFICATION = `
     }
 `;
 
-describe('Excluded directory validation', () => {
-    const savedEnv = process.env.JPIPE_EXCLUDED_DIRS;
+describe('Excluded path validation', () => {
+    const savedEnv = process.env.JPIPE_EXCLUDED_PATHS;
 
     beforeEach(() => {
-        process.env.JPIPE_EXCLUDED_DIRS = JSON.stringify([EXCLUDED_DIR]);
+        process.env.JPIPE_EXCLUDED_PATHS = JSON.stringify([EXCLUDED_DIR]);
     });
 
     afterEach(() => {
-        if (savedEnv === undefined) delete process.env.JPIPE_EXCLUDED_DIRS;
-        else process.env.JPIPE_EXCLUDED_DIRS = savedEnv;
+        if (savedEnv === undefined) delete process.env.JPIPE_EXCLUDED_PATHS;
+        else process.env.JPIPE_EXCLUDED_PATHS = savedEnv;
     });
 
     test('invalid file in excluded directory reports no diagnostics at all', async () => {
@@ -75,7 +78,7 @@ describe('Excluded directory validation', () => {
     });
 
     test('exclusions can be changed at runtime without recreating the services', async () => {
-        delete process.env.JPIPE_EXCLUDED_DIRS;
+        delete process.env.JPIPE_EXCLUDED_PATHS;
         const services = createJpipeServices(EmptyFileSystem);
         const parse = parseHelper<Unit>(services.Jpipe);
 
@@ -83,18 +86,43 @@ describe('Excluded directory validation', () => {
         const before = await parse(INVALID_JUSTIFICATION, { documentUri: `${EXCLUDED_DIR}/a.jd`, validation: true });
         expect((before.diagnostics ?? []).length).toBeGreaterThan(0);
 
-        services.Jpipe.exclusions.setExcludedDirectories([EXCLUDED_DIR]);
+        services.Jpipe.exclusions.setExcludedPaths([EXCLUDED_DIR]);
         const excluded = await parse(INVALID_JUSTIFICATION, { documentUri: `${EXCLUDED_DIR}/b.jd`, validation: true });
         expect(excluded.diagnostics).toHaveLength(0);
 
-        services.Jpipe.exclusions.setExcludedDirectories([]);
+        services.Jpipe.exclusions.setExcludedPaths([]);
         const included = await parse(INVALID_JUSTIFICATION, { documentUri: `${EXCLUDED_DIR}/c.jd`, validation: true });
         expect((included.diagnostics ?? []).length).toBeGreaterThan(0);
     });
 
+    test('an entry naming a single file excludes exactly that file', async () => {
+        const services = createJpipeServices(EmptyFileSystem);
+        services.Jpipe.exclusions.setExcludedPaths([SINGLE_FILE]);
+        const parse = parseHelper<Unit>(services.Jpipe);
+
+        const excluded = await parse(INVALID_JUSTIFICATION, { documentUri: SINGLE_FILE, validation: true });
+        expect(excluded.diagnostics).toHaveLength(0);
+
+        // A sibling in the same directory must be untouched.
+        const sibling = await parse(INVALID_JUSTIFICATION, { documentUri: SIBLING_FILE, validation: true });
+        expect((sibling.diagnostics ?? []).length).toBeGreaterThan(0);
+    });
+
+    test('an entry does not exclude a sibling whose name merely shares its prefix', async () => {
+        const services = createJpipeServices(EmptyFileSystem);
+        services.Jpipe.exclusions.setExcludedPaths(['file:///workspace/counter']);
+        const parse = parseHelper<Unit>(services.Jpipe);
+
+        const inside = await parse(INVALID_JUSTIFICATION, { documentUri: 'file:///workspace/counter/a.jd', validation: true });
+        expect(inside.diagnostics).toHaveLength(0);
+
+        const lookalike = await parse(INVALID_JUSTIFICATION, { documentUri: 'file:///workspace/counter-old/a.jd', validation: true });
+        expect((lookalike.diagnostics ?? []).length).toBeGreaterThan(0);
+    });
+
     test('invalid excluded-directory entries are skipped without disabling the others', async () => {
         const services = createJpipeServices(EmptyFileSystem);
-        services.Jpipe.exclusions.setExcludedDirectories(['', EXCLUDED_DIR]);
+        services.Jpipe.exclusions.setExcludedPaths(['', EXCLUDED_DIR]);
         const parse = parseHelper<Unit>(services.Jpipe);
 
         const excluded = await parse(INVALID_JUSTIFICATION, { documentUri: EXCLUDED_FILE, validation: true });
@@ -104,8 +132,8 @@ describe('Excluded directory validation', () => {
         expect((normal.diagnostics ?? []).length).toBeGreaterThan(0);
     });
 
-    test('malformed JPIPE_EXCLUDED_DIRS falls back to no exclusions', async () => {
-        process.env.JPIPE_EXCLUDED_DIRS = 'not-valid-json';
+    test('malformed JPIPE_EXCLUDED_PATHS falls back to no exclusions', async () => {
+        process.env.JPIPE_EXCLUDED_PATHS = 'not-valid-json';
         const services = createJpipeServices(EmptyFileSystem);
         const parse = parseHelper<Unit>(services.Jpipe);
         const doc = await parse(INVALID_JUSTIFICATION, { documentUri: EXCLUDED_FILE, validation: true });
@@ -113,8 +141,8 @@ describe('Excluded directory validation', () => {
         expect((doc.diagnostics ?? []).length).toBeGreaterThan(0);
     });
 
-    test('non-array JPIPE_EXCLUDED_DIRS falls back to no exclusions', async () => {
-        process.env.JPIPE_EXCLUDED_DIRS = '"just-a-string"';
+    test('non-array JPIPE_EXCLUDED_PATHS falls back to no exclusions', async () => {
+        process.env.JPIPE_EXCLUDED_PATHS = '"just-a-string"';
         const services = createJpipeServices(EmptyFileSystem);
         const parse = parseHelper<Unit>(services.Jpipe);
         const doc = await parse(INVALID_JUSTIFICATION, { documentUri: EXCLUDED_FILE, validation: true });

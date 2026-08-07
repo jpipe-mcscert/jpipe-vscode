@@ -171,18 +171,18 @@
                 "icon": "$(folder-opened)"
             },
             {
-                "command": "jpipe.removeExcludedDirectory",
-                "title": "Remove Excluded Directory",
+                "command": "jpipe.removeExcludedPath",
+                "title": "Remove Excluded Path",
                 "category": "jPipe",
                 "icon": "$(folder)"
             },
             {
-                "command": "jpipe.excludeFolder",
+                "command": "jpipe.excludeResource",
                 "title": "Exclude from jPipe Validation",
                 "category": "jPipe"
             },
             {
-                "command": "jpipe.includeFolder",
+                "command": "jpipe.includeResource",
                 "title": "Include in jPipe Validation",
                 "category": "jPipe"
             }
@@ -196,23 +196,23 @@
         "menus": {
             "explorer/context": [
                 {
-                    "command": "jpipe.excludeFolder",
-                    "when": "explorerResourceIsFolder && resourcePath not in jpipe.excludedPaths",
+                    "command": "jpipe.excludeResource",
+                    "when": "(explorerResourceIsFolder || resourceExtname == .jd) && resourcePath not in jpipe.excludedResourcePaths",
                     "group": "jpipe@1"
                 },
                 {
-                    "command": "jpipe.includeFolder",
-                    "when": "explorerResourceIsFolder && resourcePath in jpipe.excludedPaths",
+                    "command": "jpipe.includeResource",
+                    "when": "(explorerResourceIsFolder || resourceExtname == .jd) && resourcePath in jpipe.excludedResourcePaths",
                     "group": "jpipe@1"
                 }
             ],
             "commandPalette": [
                 {
-                    "command": "jpipe.excludeFolder",
+                    "command": "jpipe.excludeResource",
                     "when": "false"
                 },
                 {
-                    "command": "jpipe.includeFolder",
+                    "command": "jpipe.includeResource",
                     "when": "false"
                 }
             ],
@@ -262,6 +262,16 @@
                 {
                     "command": "jpipe.downloadJPIPE",
                     "group": "2_download@7"
+                },
+                {
+                    "command": "jpipe.excludeResource",
+                    "when": "resourcePath not in jpipe.excludedResourcePaths",
+                    "group": "3_validation@1"
+                },
+                {
+                    "command": "jpipe.includeResource",
+                    "when": "resourcePath in jpipe.excludedResourcePaths",
+                    "group": "3_validation@1"
                 }
             ]
         },
@@ -393,14 +403,24 @@
                 "title": "jPipe: Validation",
                 "order": 4,
                 "properties": {
-                    "jpipe.excludedDirectories": {
+                    "jpipe.excludedPaths": {
                         "order": 1,
                         "type": "array",
                         "items": {
                             "type": "string"
                         },
                         "default": [],
-                        "markdownDescription": "Directories (relative to workspace root) whose `.jd` files are excluded from validation. Nothing in these directories is checked — no errors and no warnings — which is what you want for folders of deliberate counter-examples. They are dimmed and marked `⊘` in the Explorer, and changes take effect immediately.\n\nYou can also right-click any folder in the Explorer to exclude or re-include it.\n\n[Browse for directory…](command:jpipe.addExcludedDirectory)"
+                        "markdownDescription": "Folders and individual `.jd` files (relative to workspace root) that are excluded from validation. Nothing excluded is checked — no errors and no warnings — which is what you want for deliberate counter-examples. Excluded items are dimmed and marked `⊘` in the Explorer, and changes take effect immediately.\n\nYou can also right-click a folder or a `.jd` file in the Explorer to exclude or re-include it.\n\n[Browse for directory…](command:jpipe.addExcludedDirectory)"
+                    },
+                    "jpipe.excludedDirectories": {
+                        "order": 2,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "markdownDescription": "Directories (relative to workspace root) whose `.jd` files are excluded from validation.",
+                        "markdownDeprecationMessage": "Renamed to `#jpipe.excludedPaths#`, which also accepts individual files. Existing entries here are still honoured."
                     }
                 }
             },

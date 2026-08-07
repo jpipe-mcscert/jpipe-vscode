@@ -4,8 +4,8 @@ import { createConnection, ProposedFeatures } from 'vscode-languageserver/node.j
 import { createJpipeServices } from 'jpipe-language';
 import type { LogLevel } from 'jpipe-language';
 
-/** Notification sent by the extension when `jpipe.excludedDirectories` changes. */
-const SET_EXCLUDED_DIRECTORIES = 'jpipe/setExcludedDirectories';
+/** Notification sent by the extension when `jpipe.excludedPaths` changes. */
+const SET_EXCLUDED_PATHS = 'jpipe/setExcludedPaths';
 
 // Create a connection to the client
 const connection = createConnection(ProposedFeatures.all);
@@ -23,17 +23,17 @@ function toStringArray(value: unknown): string[] | undefined {
 // Apply the initial exclusions during `initialize`, i.e. before the workspace is built in
 // `initialized` — otherwise excluded files would briefly light up with errors.
 shared.lsp.LanguageServer.onInitialize(params => {
-    const options = params.initializationOptions as { excludedDirectories?: unknown } | undefined;
-    const dirs = toStringArray(options?.excludedDirectories);
-    if (dirs) {
-        Jpipe.exclusions.setExcludedDirectories(dirs);
+    const options = params.initializationOptions as { excludedPaths?: unknown } | undefined;
+    const paths = toStringArray(options?.excludedPaths);
+    if (paths) {
+        Jpipe.exclusions.setExcludedPaths(paths);
     }
 });
 
 // Apply later changes without a restart, and re-validate everything so diagnostics are
 // cleared for newly excluded files and restored for newly included ones.
-connection.onNotification(SET_EXCLUDED_DIRECTORIES, async (dirs: unknown) => {
-    Jpipe.exclusions.setExcludedDirectories(toStringArray(dirs) ?? []);
+connection.onNotification(SET_EXCLUDED_PATHS, async (paths: unknown) => {
+    Jpipe.exclusions.setExcludedPaths(toStringArray(paths) ?? []);
     const documents = shared.workspace.LangiumDocuments.all.toArray();
     await shared.workspace.DocumentBuilder.build(documents, { validation: true });
 });
