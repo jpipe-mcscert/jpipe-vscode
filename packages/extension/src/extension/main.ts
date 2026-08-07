@@ -1,7 +1,7 @@
 import type { LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node.js';
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn, State } from 'vscode-languageclient/node.js';
+import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vscode-languageclient/node.js';
 import { ImageGenerator, ImageFormat } from './image-generation/image-generator.js';
 import { PreviewProvider } from './image-generation/preview-provider.js';
 import { ReleaseManager, JpipeRelease } from './image-generation/release-manager.js';
@@ -34,15 +34,31 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     publishExcludedPaths();
 
+    /**
+     * Send the current exclusions to the server, which re-validates and clears/restores
+     * diagnostics without a restart.
+     *
+     * `start()` resolves immediately once the client is running and otherwise returns the
+     * in-flight start promise, so a change made while the server is still coming up is applied
+     * rather than dropped. The list is read *after* awaiting, so a burst of changes collapses
+     * to the latest value instead of replaying stale ones.
+     */
+    async function pushExclusionsToServer(): Promise<void> {
+        try {
+            await client.start();
+            const paths = exclusions.getResolvedUris();
+            logger.debug(`Excluded paths: ${paths.length === 0 ? '(none)' : paths.join(', ')}`);
+            await client.sendNotification(SET_EXCLUDED_PATHS, paths);
+        } catch (err: unknown) {
+            // A failed start is already surfaced by startLanguageClient; don't double-report.
+            logger.error(`Could not send excluded paths to the language server: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+
     context.subscriptions.push(
         exclusions.onDidChange(() => {
             publishExcludedPaths();
-            const paths = exclusions.getResolvedUris();
-            logger.debug(`Excluded paths: ${paths.length === 0 ? '(none)' : paths.join(', ')}`);
-            if (client.state === State.Running) {
-                // Applied without a restart: the server re-validates and clears/restores diagnostics.
-                void client.sendNotification(SET_EXCLUDED_PATHS, paths);
-            }
+            void pushExclusionsToServer();
         })
     );
 
@@ -266,7 +282,9 @@ function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogg
         traceOutputChannel,
         revealOutputChannelOn: RevealOutputChannelOn.Info,
         // Sent with `initialize` so excluded files are never validated, not even once at startup.
-        initializationOptions: { excludedPaths: exclusions.getResolvedUris() }
+        // A function, not a literal: it is re-evaluated on every initialize, so a server restart
+        // picks up the current exclusions instead of replaying the ones from activation time.
+        initializationOptions: () => ({ excludedPaths: exclusions.getResolvedUris() })
     };
 
     const client = new LanguageClient(

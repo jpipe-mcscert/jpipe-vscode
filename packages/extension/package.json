@@ -197,12 +197,12 @@
             "explorer/context": [
                 {
                     "command": "jpipe.excludeResource",
-                    "when": "(explorerResourceIsFolder || resourceExtname == .jd) && resourcePath not in jpipe.excludedResourcePaths",
+                    "when": "(explorerResourceIsFolder || resourceExtname == '.jd') && resourcePath not in jpipe.excludedResourcePaths",
                     "group": "jpipe@1"
                 },
                 {
                     "command": "jpipe.includeResource",
-                    "when": "(explorerResourceIsFolder || resourceExtname == .jd) && resourcePath in jpipe.excludedResourcePaths",
+                    "when": "(explorerResourceIsFolder || resourceExtname == '.jd') && resourcePath in jpipe.excludedResourcePaths",
                     "group": "jpipe@1"
                 }
             ],
