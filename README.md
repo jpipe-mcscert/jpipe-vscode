@@ -92,38 +92,54 @@ mosser@azrael extension % code --install-extension jpipe-vscode.vsix
 mosser@azrael extension % vsce publish
 ```
 
-### How to bump the version?
+### How to cut a release?
 
-The version must be updated in sync across four locations:
+Releases are driven by `scripts/release.sh`, which mirrors the script of the same name in
+[jpipe-compiler](https://github.com/jpipe-mcscert/jpipe-compiler). It has two verbs, and
+**neither one tags, pushes or publishes** — those stay deliberate, human steps.
 
-- `package.json` (monorepo root)
-- `packages/extension/package.json`
-- `packages/language/package.json`
-- The `jpipe-language` dependency inside `packages/extension/package.json` `dependencies` block
+#### 1. Prepare, on `main`
 
-The first three are handled by a single command. Pass `--no-workspaces-update` so
-npm does **not** try to reinstall right away — without it, npm attempts to resolve
-the (still-old) `jpipe-language` dependency against the registry and fails with a
-`404 jpipe-language@<old-version>` error, because that package is workspace-local
-and never published:
 ```
-mosser@azrael jpipe-vscode % npm version <new-version> --no-git-tag-version --workspaces --include-workspace-root --no-workspaces-update
+mosser@azrael jpipe-vscode % ./scripts/release.sh prepare 1.4.0
 ```
 
-Then manually update the `jpipe-language` dependency version in `packages/extension/package.json` to match:
-```json
-"dependencies": {
-    "jpipe-language": "<new-version>",
-    ...
-}
+This sets the version in all four places it has to agree — the three `package.json` files
+plus the `jpipe-language` dependency inside `packages/extension/package.json` — reconciles
+`package-lock.json`, flips the changelog's `### v1.4.0 (Unreleased)` heading to today's
+date, runs the build and both test suites, and commits the result as
+`chore(release): 1.4.0`. It refuses to start if the tree is dirty, you are not on an
+up-to-date `main`, the tag already exists, or the changelog has no entries under the
+version you named.
+
+Add `--dry-run` to see the changes without writing anything.
+
+The four-location dance is the reason this is a script rather than a command: `npm version`
+handles three of them, but only with `--no-workspaces-update`, because otherwise npm tries
+to resolve the still-old `jpipe-language` dependency against the registry and fails with a
+`404` — that package is workspace-local and never published. The dependency and the
+lockfile then have to be brought into line separately, in that order.
+
+#### 2. Preflight, before tagging
+
+```
+mosser@azrael jpipe-vscode % git push
+mosser@azrael jpipe-vscode % ./scripts/release.sh preflight 1.4.0
 ```
 
-Finally, reconcile the lockfile now that every version agrees:
+`preflight` is read-only. It re-runs everything `.github/workflows/release.yml` validates —
+the four-way version comparison, the tag being on `main` — plus a full clean build, both
+test suites and a real `vsce package`. The point is that the workflow's checks otherwise
+only fail *after* the tag is public, which is the awkward thing to undo.
+
+#### 3. Tag
+
 ```
-mosser@azrael jpipe-vscode % npm install
+mosser@azrael jpipe-vscode % git tag v1.4.0 && git push origin v1.4.0
 ```
 
-Replace `<new-version>` with the desired version (e.g. `1.1.0`) or a semver increment keyword (`patch`, `minor`, `major`) for the npm command.
+Pushing the tag is what triggers the release: the workflow packages the VSIX, creates the
+GitHub Release and publishes to the Marketplace.
 
 ### AI assistance policy
 
