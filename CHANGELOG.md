@@ -1,5 +1,19 @@
 ## Changelog
 
+### v1.4.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Features:
+    - **Truly silent exclusions:** What you exclude from validation now produces no errors *and* no warnings — previously every file in an excluded folder still reported "this file is in an excluded directory". A folder of deliberately-broken counter-examples no longer fills the Problems panel, which is what compiler developers need
+    - **Exclude a single file, not just a folder:** A lone counter-example living among good models can be silenced on its own, without excluding everything around it
+    - **You can see what is excluded:** Excluded items are dimmed and marked with a `⊘` badge in the Explorer, on editor tabs and in Open Editors — so a file that isn't being checked always says so, without costing you a diagnostic. Only `.jd` files and the folders holding them are marked; a README sitting next to your counter-examples is left alone
+    - **Right-click to exclude:** Exclude a folder or a `.jd` file straight from the Explorer, or from the editor's jPipe menu, and put it back the same way. A new "Remove Excluded Path" command drops an entry without hand-editing your settings
+    - **Changes apply immediately:** Excluding or re-including something now takes effect at once — the "reload the window to apply" step is gone
+  - Changed:
+    - The "Excluded Directories" setting is now **"Excluded Paths"**, since it accepts individual files as well as folders. Your existing setting keeps working and needs no migration; it is simply shown as deprecated
+  - Bug Fixes:
+    - A blank entry in the exclusions setting no longer silences validation for the entire workspace
+    - Exclusions are re-resolved when workspace folders are added or removed
+
 ### v1.3.0 (2026-07-16)
 - Leader: Sébastien Mosser
   - Features:
