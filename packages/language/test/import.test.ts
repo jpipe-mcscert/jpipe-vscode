@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { EmptyFileSystem, URI, type LangiumDocument } from 'langium';
 import { clearDocuments, parseHelper } from 'langium/test';
-import type { Diagnostic, LocationLink } from 'vscode-languageserver-types';
+import { Diagnostic, type LocationLink } from 'vscode-languageserver-types';
 import type { Unit } from 'jpipe-language';
 import { createJpipeServices, isUnit, isJustification, isTemplate } from 'jpipe-language';
 import { fsPathOf } from '../src/jpipe-utils.js';
@@ -20,7 +20,7 @@ beforeAll(async () => {
 });
 
 function diagnosticMessages(doc: LangiumDocument): string[] {
-    return (doc.diagnostics ?? []).map((d: Diagnostic) => d.message);
+    return (doc.diagnostics ?? []).map((d: Diagnostic) => Diagnostic.getMessageString(d));
 }
 
 afterEach(async () => {

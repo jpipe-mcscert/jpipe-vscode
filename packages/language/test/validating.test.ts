@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { EmptyFileSystem, type LangiumDocument } from "langium";
 import { parseHelper } from "langium/test";
-import type { Diagnostic } from "vscode-languageserver-types";
+import { Diagnostic } from "vscode-languageserver-types";
 import type { Unit } from "jpipe-language";
 import { createJpipeServices, isUnit } from "jpipe-language";
 
@@ -20,7 +20,7 @@ function assertNoParseErrors(document: LangiumDocument<Unit>): void {
 }
 
 function diagnosticMessages(document: LangiumDocument<Unit>): string[] {
-    return (document.diagnostics ?? []).map((d: Diagnostic) => d.message);
+    return (document.diagnostics ?? []).map((d: Diagnostic) => Diagnostic.getMessageString(d));
 }
 
 describe('Validation tests', () => {
