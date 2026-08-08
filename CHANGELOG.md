@@ -1,6 +1,6 @@
 ## Changelog
 
-### v1.4.0 (Unreleased)
+### v1.4.0 (2026-08-07)
 - Leader: Sébastien Mosser
   - Features:
     - **Glob patterns in `load`:** The compiler accepts patterns such as `load "models/*.jd"`, and so does the editor — no more spurious "cannot resolve load path" on a line that builds cleanly. Templates pulled in by a pattern resolve for completion and `implements` just like a single file, and `as` puts every matched file under the one namespace. A pattern may also reach a sibling directory (`load "../library/*.jd"`) or an absolute location, exactly as a single-file path can. Note that `**` follows Java's rules, as the compiler does: `models/**.jd` matches every depth *including* the top level, while `models/**/*.jd` matches nested files only
