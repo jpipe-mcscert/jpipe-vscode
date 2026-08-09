@@ -10,6 +10,8 @@
         }
     ],
     "include": [
-        "src/**/*.ts"
+        "src/extension/**/*.ts",
+        "src/language/**/*.ts",
+        "src/shared/**/*.ts"
     ]
 }
