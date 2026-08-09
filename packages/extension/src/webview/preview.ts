@@ -1,11 +1,523 @@
-import type { HostToWebview, WebviewToHost } from '../shared/preview-protocol.js';
+import type { HostToWebview, RenderMessage, ViewMode, WebviewToHost } from '../shared/preview-protocol.js';
+import { applyDimming, findElement, stripCaptions } from './highlight.js';
+import { Minimap } from './minimap.js';
+import {
+    type Box,
+    type Size,
+    centerOn,
+    clamp,
+    clampTranslation,
+    clientToUser,
+    fitBox,
+    formatViewBox,
+    isPannable,
+    needsPan,
+    normalizeAspect,
+    panBy,
+    parseViewBox,
+    stepZoom,
+    zoomAt,
+    zoomPercent
+} from './viewbox.js';
 
-declare function acquireVsCodeApi(): { postMessage(msg: WebviewToHost): void };
+/**
+ * The preview canvas.
+ *
+ * Navigation rewrites the root `<svg>`'s `viewBox` rather than scaling a wrapper element.
+ * A CSS `transform: scale()` grows a box visually without creating any scroll extent, which is
+ * why magnified diagrams used to be clipped at the panel edge with no way to reach the rest.
+ *
+ * This module is a thin adapter by design: it reads geometry out of the page, hands it to the
+ * pure functions in `viewbox.ts`, and writes the result back. There is no browser in the test
+ * environment, so the less arithmetic that lives here the better.
+ */
+
+/**
+ * What survives a webview content reload (`Developer: Reload Webviews`, an extension-host
+ * restart). The diagram itself comes back via the `ready` replay; this is what makes it come
+ * back framed the way the user left it, which is the whole point of the exercise.
+ */
+interface PersistedState {
+    vb?: Box;
+    documentUri?: string | null;
+    diagramName?: string | null;
+    highlightEnabled?: boolean;
+}
+
+declare function acquireVsCodeApi(): {
+    postMessage(msg: WebviewToHost): void;
+    getState(): PersistedState | undefined;
+    setState(state: PersistedState): void;
+};
 
 const vscode = acquireVsCodeApi();
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
-    void event;
+const container = document.getElementById('container') as HTMLElement;
+const wrapper = document.getElementById('svg-wrapper') as HTMLElement;
+const banner = document.getElementById('unsaved-banner') as HTMLElement;
+const diagOutput = document.getElementById('diag-output') as HTMLElement;
+const zoomValue = document.getElementById('zoom-value') as HTMLElement;
+const highlightToggle = document.getElementById('highlight-toggle') as HTMLElement;
+const modeToggle = document.getElementById('mode-toggle') as HTMLElement;
+const drawer = document.getElementById('download-drawer') as HTMLElement;
+
+/* --------------------------------------------------------------- page state */
+
+/** The current SVG, or null while nothing has rendered. */
+let svgEl: SVGSVGElement | null = null;
+/** The diagram's full extent in user space, i.e. the viewBox the compiler produced. */
+let content: Box | null = null;
+/** What is on screen. Always the same aspect ratio as the panel. */
+let vb: Box | null = null;
+/** Set when the SVG carries no usable geometry: navigation is disabled rather than guessed at. */
+let navigable = false;
+
+let lastRevision = -1;
+let lastDocumentUri: string | null = null;
+let lastDiagramName: string | null = null;
+let diagramName: string | null = null;
+
+let unsaved = false;
+let highlightEnabled = false;
+let highlightName: string | null = null;
+let lastMatched: SVGGraphicsElement | null = null;
+
+let animation = 0;
+let drag: { pointerId: number; x: number; y: number } | null = null;
+
+const minimap = new Minimap(document.getElementById('minimap') as HTMLElement, onMinimapNavigate);
+
+/* ------------------------------------------------------------------ helpers */
+
+function panelSize(): Size {
+    const rect = container.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+}
+
+function svgRect(): DOMRect {
+    return (svgEl ?? container).getBoundingClientRect();
+}
+
+function setViewBox(next: Box): void {
+    if (!svgEl || !content) return;
+    vb = next;
+    svgEl.setAttribute('viewBox', formatViewBox(next));
+    const size = panelSize();
+    zoomValue.textContent = `${zoomPercent(next, size, content)}%`;
+    container.classList.toggle('pannable', isPannable(next, content));
+    minimap.update(next, content, size);
+    persist();
+}
+
+function fit(): void {
+    if (!content) return;
+    setViewBox(fitBox(content, panelSize()));
+}
+
+function persist(): void {
+    vscode.setState({
+        vb: vb ?? undefined,
+        documentUri: lastDocumentUri,
+        diagramName: lastDiagramName,
+        highlightEnabled
+    });
+}
+
+function cancelAnimation(): void {
+    if (animation) {
+        cancelAnimationFrame(animation);
+        animation = 0;
+    }
+}
+
+/** Ease the view to `target`. CSS transitions do not apply to the viewBox attribute. */
+function animateTo(target: Box, ms = 220): void {
+    cancelAnimation();
+    if (reduceMotion.matches || !vb) {
+        setViewBox(target);
+        return;
+    }
+    const from = vb;
+    const start = performance.now();
+    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+    const step = (now: number) => {
+        const u = Math.min(1, (now - start) / ms);
+        const e = 1 - Math.pow(1 - u, 3);
+        setViewBox({
+            x: lerp(from.x, target.x, e),
+            y: lerp(from.y, target.y, e),
+            w: lerp(from.w, target.w, e),
+            h: lerp(from.h, target.h, e)
+        });
+        animation = u < 1 ? requestAnimationFrame(step) : 0;
+    };
+    animation = requestAnimationFrame(step);
+}
+
+/** True for events the canvas must not swallow — the toolbar and the scrollable diagnostic text. */
+function isChrome(target: EventTarget | null): boolean {
+    return target instanceof Element && target.closest('#toolbar, #diagnostic-overlay, #minimap') !== null;
+}
+
+/* -------------------------------------------------------------- the diagram */
+
+/**
+ * Establish the diagram's extent.
+ *
+ * Graphviz always emits a viewBox, but the other routes cost nothing and mean an unexpected
+ * compiler build degrades to a static picture rather than a broken panel. Whatever is resolved
+ * is written back, so nothing downstream has to repeat the fallback.
+ */
+function resolveContent(svg: SVGSVGElement): Box | null {
+    const fromAttr = parseViewBox(svg.getAttribute('viewBox'));
+    if (fromAttr) return fromAttr;
+
+    const w = parseFloat(svg.getAttribute('width') ?? '');
+    const h = parseFloat(svg.getAttribute('height') ?? '');
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+        const box = { x: 0, y: 0, w, h };
+        svg.setAttribute('viewBox', formatViewBox(box));
+        return box;
+    }
+
+    try {
+        const bbox = svg.getBBox();
+        if (bbox.width > 0 && bbox.height > 0) {
+            const box = { x: bbox.x, y: bbox.y, w: bbox.width, h: bbox.height };
+            svg.setAttribute('viewBox', formatViewBox(box));
+            return box;
+        }
+    } catch { /* getBBox throws on an unrendered tree; fall through */ }
+
+    return null;
+}
+
+/**
+ * Put a freshly compiled SVG into the page.
+ *
+ * Parsed as XML rather than assigned through innerHTML: the HTML parser reaches SVG attribute
+ * casing (`viewBox`, `preserveAspectRatio`) through a fix-up table, and a malformed document
+ * surfaces as a detectable `<parsererror>` instead of silently mangled markup.
+ */
+function installSvg(svgText: string): SVGSVGElement | null {
+    try {
+        const parsed = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+        const root = parsed.documentElement;
+        if (root.nodeName !== 'parsererror' && root instanceof SVGSVGElement) {
+            wrapper.replaceChildren(document.adoptNode(root));
+            return root;
+        }
+    } catch { /* fall through to the forgiving path */ }
+
+    wrapper.innerHTML = svgText;
+    return wrapper.querySelector('svg');
+}
+
+/* ------------------------------------------------------------------ modes */
+
+function setMode(mode: ViewMode): void {
+    document.body.dataset.mode = mode;
+    modeToggle.classList.toggle('active', mode === 'diagnostic');
+    modeToggle.dataset.tooltip = mode === 'diagnostic' ? 'Back to diagram view' : 'Diagnostic view';
+    if (mode !== 'diagram') minimap.hide();
+    else if (vb && content) minimap.update(vb, content, panelSize());
+    // The banner says what is stale, which depends on what is being shown.
+    banner.textContent = mode === 'diagnostic'
+        ? '⚠ Unsaved changes — diagnostic reflects last saved version'
+        : '⚠ Unsaved changes — showing last saved version';
+}
+
+function setUnsaved(value: boolean): void {
+    unsaved = value;
+    banner.classList.toggle('visible', value);
+    document.body.classList.toggle('has-unsaved-banner', value);
+}
+
+function setBusy(busy: boolean): void {
+    document.body.classList.toggle('busy', busy);
+}
+
+/* ----------------------------------------------------------------- render */
+
+/**
+ * Apply a render.
+ *
+ * Sets every piece of view state from the message, always by toggling rather than adding.
+ * When the document was rebuilt for each render, stale state was cleared implicitly; now that
+ * the page persists, anything left half-set stays set — a failed compile would tint the panel
+ * permanently, for instance.
+ */
+function applyRender(msg: RenderMessage): void {
+    if (msg.revision < lastRevision) return;
+    lastRevision = msg.revision;
+
+    const sameDiagram = msg.documentUri === lastDocumentUri && msg.diagramName === lastDiagramName;
+    const previous = vb;
+
+    svgEl = installSvg(msg.svg);
+    diagramName = msg.diagramName;
+    lastMatched = null;
+
+    if (svgEl) {
+        stripCaptions(svgEl, msg.documentPath, msg.diagramName);
+        content = resolveContent(svgEl);
+        navigable = content !== null;
+    } else {
+        content = null;
+        navigable = false;
+    }
+
+    setMode('diagram');
+    document.body.classList.toggle('jpipe-render-error', msg.error !== null);
+    setUnsaved(msg.unsaved);
+    setBusy(false);
+
+    if (svgEl && content) {
+        // The panel may have been resized while the compiler ran, so a preserved view still
+        // has to be re-fitted to the current aspect ratio.
+        const size = panelSize();
+        setViewBox(sameDiagram && previous
+            ? clampTranslation(normalizeAspect(previous, size), content)
+            : fitBox(content, size));
+        minimap.setSource(msg.svg);
+    } else {
+        minimap.release();
+        minimap.hide();
+    }
+
+    lastDocumentUri = msg.documentUri;
+    lastDiagramName = msg.diagramName;
+    applyHighlight(msg.highlight);
+}
+
+/* -------------------------------------------------------------- highlight */
+
+function applyHighlight(name: string | null): void {
+    highlightName = name;
+    if (!svgEl) return;
+
+    if (!highlightEnabled || !name) {
+        applyDimming(svgEl, null);
+        lastMatched = null;
+        return;
+    }
+
+    const matched = findElement(svgEl, diagramName, name);
+    applyDimming(svgEl, matched);
+
+    // Only reveal when the element itself changes: the cursor moves on every keystroke, and
+    // re-centring on each one would make the panel impossible to read.
+    if (matched && matched !== lastMatched) {
+        lastMatched = matched;
+        revealElement(matched);
+    } else if (!matched) {
+        lastMatched = null;
+    }
+}
+
+/**
+ * Bring `el` into view if it has drifted off screen.
+ *
+ * The target box comes from `getBoundingClientRect` mapped back through the client-to-user
+ * transform, not from `getBBox`. `getBBox` reports coordinates in the element's own user
+ * space, which for a Graphviz node sits under the translate on `g#graph0` — converting would
+ * mean composing matrices through `getCTM`, whose exact meaning browsers have disagreed about.
+ * The client rect already accounts for every transform including the viewBox mapping, and
+ * since `dot` emits `rotate(0)` the axis-aligned result is exact rather than an approximation.
+ */
+function revealElement(el: SVGGraphicsElement): void {
+    if (!vb || !content || !navigable) return;
+    const rect = svgRect();
+    const box = el.getBoundingClientRect();
+    if (box.width === 0 && box.height === 0) return;
+
+    const topLeft = clientToUser(box.left, box.top, rect, vb);
+    const bottomRight = clientToUser(box.right, box.bottom, rect, vb);
+    const target: Box = {
+        x: topLeft.x,
+        y: topLeft.y,
+        w: bottomRight.x - topLeft.x,
+        h: bottomRight.y - topLeft.y
+    };
+
+    if (needsPan(target, vb)) animateTo(centerOn(vb, target, content));
+}
+
+/* ------------------------------------------------------------------ input */
+
+const PX_PER_LINE = 16;
+
+container.addEventListener('wheel', event => {
+    if (!navigable || !vb || !content || isChrome(event.target)) return;
+    // Must be non-passive, or preventDefault is ignored and Electron zooms the whole page,
+    // toolbar included.
+    event.preventDefault();
+    cancelAnimation();
+
+    const unit = event.deltaMode === 1 ? PX_PER_LINE : event.deltaMode === 2 ? container.clientHeight : 1;
+    const dx = event.deltaX * unit;
+    const dy = event.deltaY * unit;
+
+    if (event.ctrlKey || event.metaKey) {
+        // A trackpad pinch arrives as ctrl+wheel, so this covers it for free. The exponential
+        // mapping is symmetric, so equal and opposite gestures cancel exactly.
+        const factor = clamp(Math.exp(dy * 0.0015), 1 / 1.5, 1.5);
+        const anchor = clientToUser(event.clientX, event.clientY, svgRect(), vb);
+        setViewBox(zoomAt(vb, anchor, factor, panelSize(), content));
+    } else {
+        const [px, py] = event.shiftKey ? [dy, 0] : [dx, dy];
+        setViewBox(panBy(vb, -px, -py, svgRect(), content));
+    }
+}, { passive: false });
+
+container.addEventListener('pointerdown', event => {
+    if (event.button !== 0 && event.button !== 1) return;
+    if (isChrome(event.target)) return;
+    // The drawer closes on a document click, which preventDefault below would suppress.
+    drawer.classList.remove('open');
+    if (!navigable) return;
+    cancelAnimation();
+    drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    container.setPointerCapture(event.pointerId);
+    container.classList.add('dragging');
+    event.preventDefault();
 });
 
+container.addEventListener('pointermove', event => {
+    if (!drag || drag.pointerId !== event.pointerId || !vb || !content) return;
+    setViewBox(panBy(vb, event.clientX - drag.x, event.clientY - drag.y, svgRect(), content));
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+});
+
+for (const type of ['pointerup', 'pointercancel'] as const) {
+    container.addEventListener(type, event => {
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        container.releasePointerCapture(event.pointerId);
+        container.classList.remove('dragging');
+        drag = null;
+    });
+}
+
+document.addEventListener('keydown', event => {
+    // Leave the editor's own Ctrl/Cmd+= and Ctrl/Cmd+0 alone.
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (document.body.dataset.mode !== 'diagram' || !navigable) return;
+    if (event.key === '=' || event.key === '+') {
+        event.preventDefault();
+        zoomStep('in');
+    } else if (event.key === '-') {
+        event.preventDefault();
+        zoomStep('out');
+    } else if (event.key === '0') {
+        event.preventDefault();
+        cancelAnimation();
+        fit();
+    }
+});
+
+function zoomStep(direction: 'in' | 'out'): void {
+    if (!vb || !content) return;
+    cancelAnimation();
+    setViewBox(stepZoom(vb, direction, panelSize(), content));
+}
+
+document.getElementById('zoom-in')?.addEventListener('click', () => zoomStep('in'));
+document.getElementById('zoom-out')?.addEventListener('click', () => zoomStep('out'));
+document.getElementById('zoom-fit')?.addEventListener('click', () => { cancelAnimation(); fit(); });
+zoomValue.addEventListener('click', () => { cancelAnimation(); fit(); });
+
+highlightToggle.addEventListener('click', () => {
+    highlightEnabled = !highlightEnabled;
+    highlightToggle.classList.toggle('active', highlightEnabled);
+    lastMatched = null;
+    applyHighlight(highlightName);
+    persist();
+});
+
+modeToggle.addEventListener('click', () => vscode.postMessage({ type: 'toggleMode' }));
+
+document.getElementById('jpipe-link')?.addEventListener('click', event => {
+    event.preventDefault();
+    vscode.postMessage({ type: 'openLink', url: 'https://jpipe.org' });
+});
+
+document.getElementById('download-toggle')?.addEventListener('click', event => {
+    event.stopPropagation();
+    drawer.classList.toggle('open');
+});
+drawer.addEventListener('click', event => event.stopPropagation());
+drawer.querySelectorAll('button[data-format]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const format = btn.getAttribute('data-format');
+        if (format) {
+            vscode.postMessage({ type: 'download', format });
+            drawer.classList.remove('open');
+        }
+    });
+});
+document.addEventListener('click', () => drawer.classList.remove('open'));
+
+function onMinimapNavigate(left: number, top: number, mm: Size): void {
+    if (!vb || !content) return;
+    cancelAnimation();
+    setViewBox(minimap.toViewBox(vb, left, top, content, mm));
+}
+
+/**
+ * A resize changes the panel's aspect ratio, which the viewBox has to match or the diagram
+ * letterboxes. This also covers the unsaved banner appearing, which shifts the layers down.
+ */
+new ResizeObserver(() => {
+    if (!vb || !content || !navigable) return;
+    setViewBox(clampTranslation(normalizeAspect(vb, panelSize()), content));
+}).observe(container);
+
+/* --------------------------------------------------------------- messages */
+
+window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
+    const msg = event.data;
+    switch (msg.type) {
+        case 'render':
+            applyRender(msg);
+            break;
+        case 'highlight':
+            applyHighlight(msg.name);
+            break;
+        case 'setUnsaved':
+            setUnsaved(msg.unsaved);
+            break;
+        case 'view':
+            setMode(msg.mode);
+            setBusy(false);
+            break;
+        case 'diagnostic':
+            // textContent, so compiler output can never be interpreted as markup.
+            diagOutput.textContent = msg.output;
+            setMode('diagnostic');
+            setUnsaved(unsaved);
+            setBusy(false);
+            break;
+        case 'busy':
+            setBusy(msg.busy);
+            break;
+    }
+});
+
+const restored = vscode.getState();
+if (restored) {
+    if (restored.highlightEnabled) {
+        highlightEnabled = true;
+        highlightToggle.classList.add('active');
+    }
+    // Seed the view so the replayed render counts as "the same diagram" and keeps this frame
+    // rather than re-fitting.
+    vb = restored.vb ?? null;
+    lastDocumentUri = restored.documentUri ?? null;
+    lastDiagramName = restored.diagramName ?? null;
+}
+
+// The extension replays its last render in response, so a reloaded webview comes back with the
+// diagram it had rather than a blank panel.
 vscode.postMessage({ type: 'ready' });

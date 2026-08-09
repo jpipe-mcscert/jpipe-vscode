@@ -1,5 +1,19 @@
 ## Changelog
 
+### v1.5.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Features:
+    - **Pan and zoom that actually work:** Drag the diagram to move around it, and zoom with the scroll wheel while holding Ctrl or ⌘ — or just pinch on a trackpad. Zooming now homes in on wherever your pointer is, and goes as deep as the model needs. Previously it stopped at three times the fitted size, which left a large justification unreadable, and whatever you did manage to magnify was clipped off the edge of the panel with no way to reach it. Plain scrolling moves you up, down and across
+    - **Fit to window:** A new button — or the `0` key, or clicking the zoom percentage — snaps the whole diagram back into view. The `+` and `−` buttons and their keyboard shortcuts are still there, a step at a time
+    - **Your view survives a save:** Zoom in on one corner of a large model, save the file, and the preview stays where you were looking instead of jumping back to the whole picture. It re-fits only when you move to a different diagram, and it holds its place across a trip to the diagnostic view and back
+    - **An overview map for large models:** Once you are zoomed in, a small map of the whole diagram appears in the corner showing which part you are looking at; drag the box on it to jump somewhere else. It stays out of the way whenever the whole diagram already fits on screen
+    - **The preview follows your cursor:** With highlighting turned on, putting the cursor on an element that has scrolled out of sight now brings it into view, instead of dimming everything around something you cannot see
+    - **No more flicker:** Re-rendering no longer blanks the panel — the diagram stays on screen while the compiler runs, and a model that fails to compile leaves the last good picture up rather than replacing it
+  - Bug Fixes:
+    - Moving the cursor outside a diagram block no longer raises a background error on every keystroke
+  - Maintenance:
+    - The preview's interactive code moved into its own type-checked bundle, with the view geometry covered by unit tests, and the panel now runs under a content security policy (development-only; nothing you do in the editor should behave differently)
+
 ### v1.4.0 (2026-08-07)
 - Leader: Sébastien Mosser
   - Features:
