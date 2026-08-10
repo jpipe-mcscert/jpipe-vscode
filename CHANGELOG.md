@@ -1,5 +1,10 @@
 ## Changelog
 
+### v1.7.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Bug Fixes:
+    - **Excluded paths are dimmed as soon as you open the window.** The `⊘` badge and the greying only appeared once you opened a `.jd` file, so a fresh window showed an Explorer where nothing looked excluded — the extension had not started yet, because it only ever woke on a jPipe file being opened. It now wakes when the workspace contains one. The right-click Exclude/Include entries and the Problems panel were held back by the same thing
+
 ### v1.6.0 (2026-08-10)
 - Leader: Sébastien Mosser
   - Features:

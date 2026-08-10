@@ -25,6 +25,9 @@ export function activate(context: vscode.ExtensionContext): void {
         decorations,
         vscode.window.registerFileDecorationProvider(decorations)
     );
+    // The Explorer has usually painted by the time this extension is activated, so the tree it is
+    // showing was built without asking this provider anything. Nudge it to ask now.
+    decorations.refresh();
 
     client = startLanguageClient(context, logger, exclusions);
 

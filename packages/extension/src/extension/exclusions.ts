@@ -208,6 +208,17 @@ export class ExclusionDecorationProvider implements vscode.FileDecorationProvide
         });
     }
 
+    /**
+     * Asks the editor to re-query every decoration.
+     *
+     * Called once after registration. A provider registered while the Explorer is already on
+     * screen — which is the normal case, since the extension activates part-way through startup —
+     * only shows up in the tree if something asks the editor to look again.
+     */
+    refresh(): void {
+        this.decorationEmitter.fire(undefined);
+    }
+
     dispose(): void {
         this.subscription.dispose();
         this.decorationEmitter.dispose();
