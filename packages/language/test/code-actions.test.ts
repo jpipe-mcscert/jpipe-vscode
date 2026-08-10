@@ -8,8 +8,8 @@
  */
 import { describe, expect, test } from 'vitest';
 import { CodeActionKind } from 'vscode-languageserver';
-import { JpipeIssue } from 'jpipe-language';
-import { actionTitles, applyCodeAction, expectFixResolves, listCodeActions, listWithRegistry } from './code-action-helper.js';
+import { JpipeIssue, issueCodeOf } from 'jpipe-language';
+import { CURSOR, actionTitles, applyCodeAction, expectFixResolves, listCodeActions, listWithRegistry, parseValidated } from './code-action-helper.js';
 
 /**
  * The titles offered by one action, in order.
@@ -447,5 +447,67 @@ describe('remove-load on a broken pattern', () => {
             { title: "Remove load 'models/[.jd'" }
         );
         expect(after).toBe('justification J {\n    conclusion c is "C"\n}');
+    });
+});
+
+describe('reaching a fix from the line it belongs to', () => {
+
+    // Diagnostics in this language are anchored on an identifier, so the squiggle under
+    // `Justification 'j' must override …` is the single character `j`. A client sends only the
+    // diagnostics overlapping the caret, so relying on its set alone put the lightbulb on one
+    // character of one line and nowhere else — not how quick fixes behave anywhere else.
+    const MISSING_OVERRIDE = `${TEMPLATE}
+justification J implements T {
+    conclusion own is "Own claim"
+    strategy st is "Own strategy"
+    evidence ev is "Own evidence"
+    ev supports st
+    st supports own
+}`;
+
+    test('the diagnostic itself stays narrow', async () => {
+        const document = await parseValidated(MISSING_OVERRIDE);
+        const anchored = (document.diagnostics ?? [])
+            .filter(d => issueCodeOf(d) === JpipeIssue.MissingSupportOverride);
+        expect(anchored.length).toBeGreaterThan(0);
+        // One identifier wide — precise, which is what a squiggle should be.
+        const [first] = anchored;
+        expect(first.range.end.character - first.range.start.character).toBeLessThanOrEqual(2);
+    });
+
+    test.each([
+        ['at the start of the line', 0],
+        ['in the middle of the keyword', 6],
+        ['at the end of the line', 28]
+    ])('the fix is offered %s', async (_label, column) => {
+        // Place the cursor on the header line, away from the identifier itself.
+        const lines = MISSING_OVERRIDE.split('\n');
+        const headerLine = lines.findIndex(l => l.startsWith('justification J'));
+        const before = lines.slice(0, headerLine).join('\n');
+        const header = lines[headerLine];
+        const at = Math.min(column, header.length);
+        const marked = [
+            before,
+            header.slice(0, at) + CURSOR + header.slice(at),
+            ...lines.slice(headerLine + 1)
+        ].join('\n');
+
+        const titles = await actionTitles(marked, CodeActionKind.QuickFix);
+        expect(titles.some(t => t.startsWith("Override '@support"))).toBe(true);
+    });
+
+    // Widening stops at the line: a model-level repair offered from anywhere inside a long
+    // justification would put it in front of people who are not looking at it.
+    test('the fix is not offered from an unrelated line', async () => {
+        const lines = MISSING_OVERRIDE.split('\n');
+        const bodyLine = lines.findIndex(l => l.includes('ev supports st'));
+        const marked = [
+            ...lines.slice(0, bodyLine),
+            CURSOR + lines[bodyLine],
+            ...lines.slice(bodyLine + 1)
+        ].join('\n');
+
+        const titles = await actionTitles(marked, CodeActionKind.QuickFix);
+        expect(titles.some(t => t.startsWith("Override '@support"))).toBe(false);
     });
 });

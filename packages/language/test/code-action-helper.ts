@@ -57,6 +57,16 @@ async function prepare(input: string, only?: string): Promise<Prepared> {
             end: document.textDocument.positionAt(text.length)
         };
 
+    // What the client would send: only the diagnostics overlapping the requested range. With a
+    // cursor marker that is a single position, which is exactly the case that used to leave the
+    // lightbulb unreachable, so the harness has to model it rather than hand over everything.
+    const all = document.diagnostics ?? [];
+    const overlapping = all.filter(d =>
+        (d.range.start.line < range.end.line
+            || (d.range.start.line === range.end.line && d.range.start.character <= range.end.character))
+        && (range.start.line < d.range.end.line
+            || (range.start.line === d.range.end.line && range.start.character <= d.range.end.character)));
+
     return {
         document,
         text,
@@ -64,7 +74,7 @@ async function prepare(input: string, only?: string): Promise<Prepared> {
             textDocument: { uri: document.uri.toString() },
             range,
             context: {
-                diagnostics: document.diagnostics ?? [],
+                diagnostics: cursor >= 0 ? overlapping : all,
                 ...(only ? { only: [only] } : {})
             }
         }
