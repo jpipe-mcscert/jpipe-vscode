@@ -27,6 +27,18 @@ export interface Size { width: number; height: number }
 /** The subset of `DOMRect` this module needs, so tests need no DOM. */
 export interface Rect { left: number; top: number; width: number; height: number }
 
+/**
+ * Everything the zoom functions need about the diagram currently on screen.
+ *
+ * `baseScale` is the CSS pixels per user unit at which the diagram is drawn at its intrinsic
+ * size — the size the compiler laid it out for. That is what 100% means here.
+ */
+export interface Frame {
+    content: Box;
+    viewport: Size;
+    baseScale: number;
+}
+
 export function clamp(v: number, lo: number, hi: number): number {
     return v < lo ? lo : v > hi ? hi : v;
 }
@@ -56,6 +68,42 @@ export function formatViewBox(b: Box): string {
     return `${b.x} ${b.y} ${b.w} ${b.h}`;
 }
 
+/** CSS pixels per unit, for the absolute units SVG allows on `width`/`height`. */
+const UNIT_PX: Record<string, number> = {
+    '': 1, px: 1, pt: 4 / 3, pc: 16, in: 96, cm: 96 / 2.54, mm: 96 / 25.4
+};
+
+/**
+ * Parse an SVG length into CSS pixels.
+ *
+ * Graphviz emits points (`width="274pt"`), which is not the same as user units — a diagram at
+ * its intrinsic size is drawn a third larger than its viewBox numbers suggest. Getting this
+ * wrong would make the 100% zoom level quietly wrong by that factor.
+ *
+ * Relative units (`%`, `em`, …) have no meaning without a containing block, so they are
+ * rejected rather than guessed at.
+ */
+export function parseLength(attr: string | null | undefined): number | null {
+    if (!attr) return null;
+    const match = /^\s*([+-]?[\d.]+(?:e[+-]?\d+)?)\s*([a-z]*)\s*$/i.exec(attr);
+    if (!match) return null;
+    const value = Number(match[1]);
+    const factor = UNIT_PX[match[2].toLowerCase()];
+    if (!Number.isFinite(value) || value <= 0 || factor === undefined) return null;
+    return value * factor;
+}
+
+/** The scale at which the diagram is drawn at the size the compiler laid it out for. */
+export function naturalScale(content: Box, intrinsicWidthPx: number | null): number {
+    if (intrinsicWidthPx === null || content.w <= 0) return 1;
+    return intrinsicWidthPx / content.w;
+}
+
+/** CSS pixels per SVG user unit — the scale the user perceives as "zoom". */
+export function scaleOf(vb: Box, viewport: Size): number {
+    return viewport.width / vb.w;
+}
+
 /**
  * The viewBox that frames the whole diagram with a little padding.
  *
@@ -72,6 +120,92 @@ export function fitBox(content: Box, viewport: Size, padding: number = FIT_PADDI
     return centerOnPoint({ x: 0, y: 0, w, h }, boxCenter(content));
 }
 
+/** The viewBox showing the diagram at its intrinsic size, centred. */
+export function naturalBox(frame: Frame): Box {
+    const { content, viewport, baseScale } = frame;
+    return centerOnPoint(
+        { x: 0, y: 0, w: viewport.width / baseScale, h: viewport.height / baseScale },
+        boxCenter(content)
+    );
+}
+
+/**
+ * The view a diagram opens at, and the one the fit control returns to.
+ *
+ * Intrinsic size when the panel can afford it, shrunk to fit when it cannot. Scaling *up* to
+ * fill the panel is deliberately not done: it made a four-node justification fill a wide panel
+ * at cartoon size, which is neither useful nor what the compiler laid the diagram out for.
+ */
+export function initialBox(frame: Frame): Box {
+    const fitted = fitBox(frame.content, frame.viewport);
+    return scaleOf(fitted, frame.viewport) < frame.baseScale ? fitted : naturalBox(frame);
+}
+
+/**
+ * The zoom range.
+ *
+ * Anchored on the intrinsic scale rather than on the fit, so "400%" means the same thing to a
+ * four-node model and a four-hundred-node one. The floor also admits the fit scale, since a
+ * diagram far too big for the panel must still be viewable in full.
+ */
+export function kMin(frame: Frame): number {
+    return Math.min(scaleOf(fitBox(frame.content, frame.viewport), frame.viewport), frame.baseScale) / 4;
+}
+
+export function kMax(frame: Frame): number {
+    return frame.baseScale * 4;
+}
+
+/**
+ * Zoom by `factor` (of the viewBox, so factor < 1 zooms *in*) about a fixed point in user
+ * space — the point under the pointer stays under the pointer.
+ *
+ * The clamp is applied to the resulting *scale*, then the effective factor is re-derived from
+ * it. Clamping the factor directly would let the anchor drift out from under the cursor
+ * whenever the clamp binds.
+ */
+export function zoomAt(vb: Box, anchor: Pt, factor: number, frame: Frame): Box {
+    const current = scaleOf(vb, frame.viewport);
+    const target = clamp(current / factor, kMin(frame), kMax(frame));
+    const f = current / target;
+    return clampTranslation({
+        x: anchor.x - (anchor.x - vb.x) * f,
+        y: anchor.y - (anchor.y - vb.y) * f,
+        w: vb.w * f,
+        h: vb.h * f
+    }, frame.content);
+}
+
+/** One toolbar/keyboard zoom step, about the centre of the current view. */
+export const ZOOM_STEP = 1.25;
+
+export function stepZoom(vb: Box, direction: 'in' | 'out', frame: Frame): Box {
+    return zoomAt(vb, boxCenter(vb), direction === 'in' ? 1 / ZOOM_STEP : ZOOM_STEP, frame);
+}
+
+/** The zoom readout, where 100% is the diagram at its intrinsic size. */
+export function zoomPercent(vb: Box, frame: Frame): number {
+    return Math.round(scaleOf(vb, frame.viewport) / frame.baseScale * 100);
+}
+
+/** Pan by a drag delta in client pixels. Dragging right moves the content right, so the viewBox moves left. */
+export function panBy(vb: Box, dxClient: number, dyClient: number, rect: Rect, content: Box): Box {
+    return clampTranslation({
+        x: vb.x - dxClient * vb.w / rect.width,
+        y: vb.y - dyClient * vb.h / rect.height,
+        w: vb.w,
+        h: vb.h
+    }, content);
+}
+
+/** Map a client (CSS pixel) coordinate to SVG user space. */
+export function clientToUser(cx: number, cy: number, rect: Rect, vb: Box): Pt {
+    return {
+        x: vb.x + (cx - rect.left) * vb.w / rect.width,
+        y: vb.y + (cy - rect.top) * vb.h / rect.height
+    };
+}
+
 /**
  * Restore the aspect invariant after the panel is resized, preserving both the centre of the
  * view and how much of the diagram is on screen.
@@ -83,84 +217,6 @@ export function normalizeAspect(vb: Box, viewport: Size): Box {
     if (viewport.width <= 0 || viewport.height <= 0) return vb;
     const k = Math.sqrt((viewport.width * viewport.height) / (vb.w * vb.h));
     return centerOnPoint({ x: 0, y: 0, w: viewport.width / k, h: viewport.height / k }, boxCenter(vb));
-}
-
-/** Map a client (CSS pixel) coordinate to SVG user space. */
-export function clientToUser(cx: number, cy: number, rect: Rect, vb: Box): Pt {
-    return {
-        x: vb.x + (cx - rect.left) * vb.w / rect.width,
-        y: vb.y + (cy - rect.top) * vb.h / rect.height
-    };
-}
-
-/** CSS pixels per SVG user unit — the scale the user perceives as "zoom". */
-export function scaleOf(vb: Box, viewport: Size): number {
-    return viewport.width / vb.w;
-}
-
-/**
- * The zoom range, derived from the fit scale rather than fixed.
- *
- * A fixed ceiling is what made large models unusable: 3x a diagram that had to shrink 20x to
- * fit is still illegible. `kMax` is the larger of "4x whatever fitting required" and an
- * absolute floor of 8 pixels per user unit — on a big model the absolute term dominates and
- * you can magnify far enough to read a label; on a small one the relative term dominates and
- * you still get a meaningful 400%.
- */
-export function kMin(content: Box, viewport: Size): number {
-    return scaleOf(fitBox(content, viewport), viewport) / 4;
-}
-
-export function kMax(content: Box, viewport: Size): number {
-    return Math.max(8, scaleOf(fitBox(content, viewport), viewport) * 4);
-}
-
-/**
- * Zoom by `factor` (of the viewBox, so factor < 1 zooms *in*) about a fixed point in user
- * space — the point under the pointer stays under the pointer.
- *
- * The clamp is applied to the resulting *scale*, then the effective factor is re-derived from
- * it. Clamping the factor directly would let the anchor drift out from under the cursor
- * whenever the clamp binds.
- */
-export function zoomAt(vb: Box, anchor: Pt, factor: number, viewport: Size, content: Box): Box {
-    const current = scaleOf(vb, viewport);
-    const target = clamp(current / factor, kMin(content, viewport), kMax(content, viewport));
-    const f = current / target;
-    return clampTranslation({
-        x: anchor.x - (anchor.x - vb.x) * f,
-        y: anchor.y - (anchor.y - vb.y) * f,
-        w: vb.w * f,
-        h: vb.h * f
-    }, content);
-}
-
-/** One toolbar/keyboard zoom step, about the centre of the current view. */
-export const ZOOM_STEP = 1.25;
-
-export function stepZoom(vb: Box, direction: 'in' | 'out', viewport: Size, content: Box): Box {
-    return zoomAt(vb, boxCenter(vb), direction === 'in' ? 1 / ZOOM_STEP : ZOOM_STEP, viewport, content);
-}
-
-/**
- * The zoom readout, where 100% means fit-to-window.
- *
- * This is what the panel already showed: the old `scale = 1` displayed a fitted diagram and
- * read 100%. Defining the percentage relative to 1:1 instead would open the panel at some
- * arbitrary number like 38%.
- */
-export function zoomPercent(vb: Box, viewport: Size, content: Box): number {
-    return Math.round(scaleOf(vb, viewport) / scaleOf(fitBox(content, viewport), viewport) * 100);
-}
-
-/** Pan by a drag delta in client pixels. Dragging right moves the content right, so the viewBox moves left. */
-export function panBy(vb: Box, dxClient: number, dyClient: number, rect: Rect, content: Box): Box {
-    return clampTranslation({
-        x: vb.x - dxClient * vb.w / rect.width,
-        y: vb.y - dyClient * vb.h / rect.height,
-        w: vb.w,
-        h: vb.h
-    }, content);
 }
 
 /** Fraction of the smaller of view/content that must stay overlapping on each axis. */
@@ -206,7 +262,7 @@ export function needsPan(target: Box, vb: Box, margin: number = REVEAL_MARGIN): 
  * Centre the view on `target` without changing the zoom.
  *
  * Zoom is left alone on purpose: adjusting it in response to cursor movement is disorienting
- * and overrides a choice the user made deliberately. The fit button and the minimap cover
+ * and overrides a choice the user made deliberately. The fit control and the minimap cover
  * "show me more" explicitly.
  */
 export function centerOn(vb: Box, target: Box, content: Box): Box {

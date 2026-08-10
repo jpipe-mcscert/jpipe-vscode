@@ -44,7 +44,7 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
             <a href="#" id="jpipe-link" title="Open jpipe.org">JPIPE</a>
         </div>
         <div id="toolbar-right">
-            <div class="toolbar-group download-wrap">
+            <div class="toolbar-group download-wrap diagram-only">
                 <button class="toolbar-btn" id="download-toggle" data-tooltip="Download"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5l3-3H9V2H7v5.5H5l3 3zM2 12v2h12v-2H2z"/></svg></button>
                 <div id="download-drawer">
                     <button data-format="SVG">SVG</button>

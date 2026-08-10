@@ -1,19 +1,22 @@
 import type { HostToWebview, RenderMessage, ViewMode, WebviewToHost } from '../shared/preview-protocol.js';
-import { applyDimming, findElement, stripCaptions } from './highlight.js';
+import { adaptToDarkTheme, applyDimming, findElement, stripCaptions } from './highlight.js';
 import { Minimap } from './minimap.js';
 import {
     type Box,
+    type Frame,
     type Size,
     centerOn,
     clamp,
     clampTranslation,
     clientToUser,
-    fitBox,
     formatViewBox,
+    initialBox,
     isPannable,
+    naturalScale,
     needsPan,
     normalizeAspect,
     panBy,
+    parseLength,
     parseViewBox,
     stepZoom,
     zoomAt,
@@ -68,6 +71,13 @@ const drawer = document.getElementById('download-drawer') as HTMLElement;
 let svgEl: SVGSVGElement | null = null;
 /** The diagram's full extent in user space, i.e. the viewBox the compiler produced. */
 let content: Box | null = null;
+/**
+ * CSS pixels per user unit at the diagram's intrinsic size — the 100% mark.
+ *
+ * Graphviz lays out in points, so this is 4/3 rather than 1, and taking it for 1 would put the
+ * zoom readout out by a third.
+ */
+let baseScale = 1;
 /** What is on screen. Always the same aspect ratio as the panel. */
 let vb: Box | null = null;
 /** Set when the SVG carries no usable geometry: navigation is disabled rather than guessed at. */
@@ -78,6 +88,15 @@ let lastDocumentUri: string | null = null;
 let lastDiagramName: string | null = null;
 let diagramName: string | null = null;
 
+/**
+ * True while the view is still exactly what the diagram opened at.
+ *
+ * It decides what a panel resize does. Preserving how much of the diagram is on screen is the
+ * right answer once someone has chosen a zoom, but applying it to an untouched view drifts off
+ * the default: the panel settling to its final size just after the first render was enough to
+ * turn a clean 100% into 109%.
+ */
+let pristine = true;
 let unsaved = false;
 let highlightEnabled = false;
 let highlightName: string | null = null;
@@ -99,20 +118,34 @@ function svgRect(): DOMRect {
     return (svgEl ?? container).getBoundingClientRect();
 }
 
+/** The geometry the zoom functions need, sampled from the page as it is now. */
+function frame(): Frame | null {
+    return content ? { content, viewport: panelSize(), baseScale } : null;
+}
+
 function setViewBox(next: Box): void {
-    if (!svgEl || !content) return;
+    const f = frame();
+    if (!svgEl || !f) return;
     vb = next;
     svgEl.setAttribute('viewBox', formatViewBox(next));
-    const size = panelSize();
-    zoomValue.textContent = `${zoomPercent(next, size, content)}%`;
-    container.classList.toggle('pannable', isPannable(next, content));
-    minimap.update(next, content, size);
+    zoomValue.textContent = `${zoomPercent(next, f)}%`;
+    container.classList.toggle('pannable', isPannable(next, f.content));
+    minimap.update(next, f.content, f.viewport);
     persist();
 }
 
+/** Back to the view the diagram opened at: intrinsic size, or shrunk if it does not fit. */
 function fit(): void {
-    if (!content) return;
-    setViewBox(fitBox(content, panelSize()));
+    const f = frame();
+    if (!f) return;
+    setViewBox(initialBox(f));
+    pristine = true;
+}
+
+/** Record that the view is now the user's rather than the default. */
+function adjusted(): void {
+    pristine = false;
+    cancelAnimation();
 }
 
 function persist(): void {
@@ -155,6 +188,12 @@ function animateTo(target: Box, ms = 220): void {
     animation = requestAnimationFrame(step);
 }
 
+/** VS Code stamps the theme kind onto the webview's body element. */
+function isDarkTheme(): boolean {
+    return document.body.classList.contains('vscode-dark')
+        || document.body.classList.contains('vscode-high-contrast');
+}
+
 /** True for events the canvas must not swallow — the toolbar and the scrollable diagnostic text. */
 function isChrome(target: EventTarget | null): boolean {
     return target instanceof Element && target.closest('#toolbar, #diagnostic-overlay, #minimap') !== null;
@@ -173,9 +212,9 @@ function resolveContent(svg: SVGSVGElement): Box | null {
     const fromAttr = parseViewBox(svg.getAttribute('viewBox'));
     if (fromAttr) return fromAttr;
 
-    const w = parseFloat(svg.getAttribute('width') ?? '');
-    const h = parseFloat(svg.getAttribute('height') ?? '');
-    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+    const w = parseLength(svg.getAttribute('width'));
+    const h = parseLength(svg.getAttribute('height'));
+    if (w !== null && h !== null) {
         const box = { x: 0, y: 0, w, h };
         svg.setAttribute('viewBox', formatViewBox(box));
         return box;
@@ -261,7 +300,9 @@ function applyRender(msg: RenderMessage): void {
 
     if (svgEl) {
         stripCaptions(svgEl, msg.documentPath, msg.diagramName);
+        if (isDarkTheme()) adaptToDarkTheme(svgEl);
         content = resolveContent(svgEl);
+        baseScale = naturalScale(content ?? { x: 0, y: 0, w: 1, h: 1 }, parseLength(svgEl.getAttribute('width')));
         navigable = content !== null;
     } else {
         content = null;
@@ -274,13 +315,17 @@ function applyRender(msg: RenderMessage): void {
     setBusy(false);
 
     if (svgEl && content) {
+        // Serialised now, while the viewBox still spans the whole diagram: panning rewrites it,
+        // so a copy taken later would show the current view as though it were the whole thing.
+        // Taken from the live element rather than the message so the overview matches what the
+        // canvas shows, dark-theme adaptation included.
+        minimap.setSource(new XMLSerializer().serializeToString(svgEl));
         // The panel may have been resized while the compiler ran, so a preserved view still
         // has to be re-fitted to the current aspect ratio.
-        const size = panelSize();
-        setViewBox(sameDiagram && previous
-            ? clampTranslation(normalizeAspect(previous, size), content)
-            : fitBox(content, size));
-        minimap.setSource(msg.svg);
+        const f = { content, viewport: panelSize(), baseScale };
+        const keep = sameDiagram && previous !== null;
+        setViewBox(keep ? clampTranslation(normalizeAspect(previous, f.viewport), content) : initialBox(f));
+        if (!keep) pristine = true;
     } else {
         minimap.release();
         minimap.hide();
@@ -341,7 +386,11 @@ function revealElement(el: SVGGraphicsElement): void {
         h: bottomRight.y - topLeft.y
     };
 
-    if (needsPan(target, vb)) animateTo(centerOn(vb, target, content));
+    if (!needsPan(target, vb)) return;
+    // The view is no longer the default framing, so a later resize must preserve it rather
+    // than snap back and undo the reveal.
+    pristine = false;
+    animateTo(centerOn(vb, target, content));
 }
 
 /* ------------------------------------------------------------------ input */
@@ -349,26 +398,28 @@ function revealElement(el: SVGGraphicsElement): void {
 const PX_PER_LINE = 16;
 
 container.addEventListener('wheel', event => {
-    if (!navigable || !vb || !content || isChrome(event.target)) return;
+    const f = frame();
+    if (!navigable || !vb || !f || isChrome(event.target)) return;
     // Must be non-passive, or preventDefault is ignored and Electron zooms the whole page,
     // toolbar included.
     event.preventDefault();
-    cancelAnimation();
+    adjusted();
 
     const unit = event.deltaMode === 1 ? PX_PER_LINE : event.deltaMode === 2 ? container.clientHeight : 1;
     const dx = event.deltaX * unit;
     const dy = event.deltaY * unit;
 
-    if (event.ctrlKey || event.metaKey) {
-        // A trackpad pinch arrives as ctrl+wheel, so this covers it for free. The exponential
-        // mapping is symmetric, so equal and opposite gestures cancel exactly.
-        const factor = clamp(Math.exp(dy * 0.0015), 1 / 1.5, 1.5);
-        const anchor = clientToUser(event.clientX, event.clientY, svgRect(), vb);
-        setViewBox(zoomAt(vb, anchor, factor, panelSize(), content));
-    } else {
-        const [px, py] = event.shiftKey ? [dy, 0] : [dx, dy];
-        setViewBox(panBy(vb, -px, -py, svgRect(), content));
+    // Shift is the escape hatch for panning by wheel; everything else zooms, including the
+    // ctrl+wheel a trackpad pinch arrives as.
+    if (event.shiftKey) {
+        setViewBox(panBy(vb, -dx, -dy, svgRect(), f.content));
+        return;
     }
+    // Exponential, so equal and opposite gestures cancel exactly and the step feels the same
+    // at every zoom level. Clamped per event so one flick of a trackpad cannot bottom out.
+    const factor = clamp(Math.exp(dy * 0.0015), 1 / 1.5, 1.5);
+    const anchor = clientToUser(event.clientX, event.clientY, svgRect(), vb);
+    setViewBox(zoomAt(vb, anchor, factor, f));
 }, { passive: false });
 
 container.addEventListener('pointerdown', event => {
@@ -377,7 +428,7 @@ container.addEventListener('pointerdown', event => {
     // The drawer closes on a document click, which preventDefault below would suppress.
     drawer.classList.remove('open');
     if (!navigable) return;
-    cancelAnimation();
+    adjusted();
     drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     container.setPointerCapture(event.pointerId);
     container.classList.add('dragging');
@@ -412,21 +463,21 @@ document.addEventListener('keydown', event => {
         zoomStep('out');
     } else if (event.key === '0') {
         event.preventDefault();
-        cancelAnimation();
         fit();
     }
 });
 
 function zoomStep(direction: 'in' | 'out'): void {
-    if (!vb || !content) return;
-    cancelAnimation();
-    setViewBox(stepZoom(vb, direction, panelSize(), content));
+    const f = frame();
+    if (!vb || !f) return;
+    adjusted();
+    setViewBox(stepZoom(vb, direction, f));
 }
 
 document.getElementById('zoom-in')?.addEventListener('click', () => zoomStep('in'));
 document.getElementById('zoom-out')?.addEventListener('click', () => zoomStep('out'));
-document.getElementById('zoom-fit')?.addEventListener('click', () => { cancelAnimation(); fit(); });
-zoomValue.addEventListener('click', () => { cancelAnimation(); fit(); });
+document.getElementById('zoom-fit')?.addEventListener('click', fit);
+zoomValue.addEventListener('click', fit);
 
 highlightToggle.addEventListener('click', () => {
     highlightEnabled = !highlightEnabled;
@@ -461,7 +512,7 @@ document.addEventListener('click', () => drawer.classList.remove('open'));
 
 function onMinimapNavigate(left: number, top: number, mm: Size): void {
     if (!vb || !content) return;
-    cancelAnimation();
+    adjusted();
     setViewBox(minimap.toViewBox(vb, left, top, content, mm));
 }
 
@@ -470,8 +521,9 @@ function onMinimapNavigate(left: number, top: number, mm: Size): void {
  * letterboxes. This also covers the unsaved banner appearing, which shifts the layers down.
  */
 new ResizeObserver(() => {
-    if (!vb || !content || !navigable) return;
-    setViewBox(clampTranslation(normalizeAspect(vb, panelSize()), content));
+    const f = frame();
+    if (!vb || !f || !navigable) return;
+    setViewBox(pristine ? initialBox(f) : clampTranslation(normalizeAspect(vb, f.viewport), f.content));
 }).observe(container);
 
 /* --------------------------------------------------------------- messages */

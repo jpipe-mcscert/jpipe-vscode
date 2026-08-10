@@ -217,7 +217,15 @@ body.jpipe-render-error #container {
 #container.pannable { cursor: grab; }
 #container.dragging { cursor: grabbing; }
 
-#svg-wrapper { position: absolute; inset: 0; }
+/*
+ * `color` is what the dark-theme adaptation re-points the diagram's edges and arrowheads at,
+ * after the compiler's opaque white canvas is removed.
+ */
+#svg-wrapper {
+    position: absolute;
+    inset: 0;
+    color: var(--vscode-editor-foreground);
+}
 
 #svg-wrapper > svg {
     width: 100%;

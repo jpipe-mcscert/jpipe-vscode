@@ -31,6 +31,38 @@ export function stripCaptions(svg: SVGSVGElement, documentPath: string | null, d
 }
 
 /**
+ * Make the diagram sit on the editor's background instead of on a white sheet.
+ *
+ * `dot` paints an opaque white rectangle across the whole canvas. Against a dark theme that
+ * reads as a page being shoved around rather than a canvas being panned, because the thing
+ * moving under the pointer has a visible edge.
+ *
+ * Dropping it is not enough on its own: edges and arrowheads are drawn in literal black, which
+ * on a dark background is very nearly invisible. So they are re-pointed at `currentColor`,
+ * which the stylesheet ties to the editor foreground. Node fills are left exactly as the
+ * compiler chose them — they carry meaning (evidence, strategy, conclusion), they are light
+ * enough to read black labels against, and repainting them would be inventing a colour scheme
+ * the model did not ask for.
+ *
+ * Only called for dark themes; in a light one the compiler's own output is already right.
+ */
+export function adaptToDarkTheme(svg: SVGSVGElement): void {
+    const graph = svg.querySelector('g.graph') ?? svg;
+    for (const el of Array.from(graph.children)) {
+        // The canvas is the first painted shape and the only one with no stroke.
+        if (el.tagName === 'polygon' && el.getAttribute('stroke') === 'none') {
+            el.remove();
+            break;
+        }
+    }
+
+    svg.querySelectorAll('g.edge [stroke="black"], g.edge [fill="black"]').forEach(el => {
+        if (el.getAttribute('stroke') === 'black') el.setAttribute('stroke', 'currentColor');
+        if (el.getAttribute('fill') === 'black') el.setAttribute('fill', 'currentColor');
+    });
+}
+
+/**
  * Find the `<g>` that draws `name`.
  *
  * Three tiers, because the compiler's own element ids are the reliable route but not one we

@@ -1,20 +1,25 @@
 import { describe, expect, test } from 'vitest';
 import {
     type Box,
+    type Frame,
     type Rect,
     type Size,
     centerOn,
     clampTranslation,
     clientToUser,
     fitBox,
+    initialBox,
     isPannable,
     kMax,
     kMin,
+    naturalBox,
+    naturalScale,
     minimapRect,
     minimapToViewBox,
     needsPan,
     normalizeAspect,
     panBy,
+    parseLength,
     parseViewBox,
     scaleOf,
     shouldShowMinimap,
@@ -33,6 +38,13 @@ import {
 /** A landscape panel, and the Graphviz output of a typical model. */
 const VIEWPORT: Size = { width: 800, height: 600 };
 const CONTENT: Box = { x: 0, y: 0, w: 428, h: 376 };
+
+/** Graphviz lays out in points, so a diagram at intrinsic size is 4/3 px per user unit. */
+const BASE = 4 / 3;
+
+function frameOf(content: Box = CONTENT, viewport: Size = VIEWPORT, baseScale = BASE): Frame {
+    return { content, viewport, baseScale };
+}
 
 /** The client rect of an <svg> that fills the panel below the 44px toolbar. */
 function rectOf(viewport: Size, left = 0, top = 44): Rect {
@@ -186,7 +198,7 @@ describe('zoomAt', () => {
         let vb = fitBox(CONTENT, VIEWPORT);
         for (const factor of [1 / 1.25, 1 / 1.25, 1.4, 1 / 3, 2]) {
             const anchor = clientToUser(client.x, client.y, rect, vb);
-            vb = zoomAt(vb, anchor, factor, VIEWPORT, CONTENT);
+            vb = zoomAt(vb, anchor, factor, frameOf());
             const after = clientToUser(client.x, client.y, rect, vb);
             expect(after.x).toBeCloseTo(anchor.x, 6);
             expect(after.y).toBeCloseTo(anchor.y, 6);
@@ -195,82 +207,171 @@ describe('zoomAt', () => {
 
     test('a factor of 1 is the identity', () => {
         const vb = fitBox(CONTENT, VIEWPORT);
-        const out = zoomAt(vb, { x: 100, y: 100 }, 1, VIEWPORT, CONTENT);
+        const out = zoomAt(vb, { x: 100, y: 100 }, 1, frameOf());
         expect(out.w).toBeCloseTo(vb.w, 9);
         expect(out.h).toBeCloseTo(vb.h, 9);
     });
 
     test('scales the viewBox by exactly the factor when the clamp does not bind', () => {
         const vb = fitBox(CONTENT, VIEWPORT);
-        const out = zoomAt(vb, boxCenterOf(vb), 1 / 1.25, VIEWPORT, CONTENT);
+        const out = zoomAt(vb, boxCenterOf(vb), 1 / 1.25, frameOf());
         expect(out.w).toBeCloseTo(vb.w / 1.25, 9);
         expect(out.h).toBeCloseTo(vb.h / 1.25, 9);
     });
 
     test('preserves the aspect invariant', () => {
-        const vb = zoomAt(fitBox(CONTENT, VIEWPORT), { x: 100, y: 100 }, 1 / 2.5, VIEWPORT, CONTENT);
+        const vb = zoomAt(fitBox(CONTENT, VIEWPORT), { x: 100, y: 100 }, 1 / 2.5, frameOf());
         expect(aspect(vb)).toBeCloseTo(aspect(VIEWPORT), 9);
     });
 
     test('zooming in past the ceiling lands exactly on it, never past', () => {
         let vb = fitBox(CONTENT, VIEWPORT);
-        for (let i = 0; i < 60; i++) vb = zoomAt(vb, boxCenterOf(vb), 1 / 1.25, VIEWPORT, CONTENT);
-        expect(scaleOf(vb, VIEWPORT)).toBeCloseTo(kMax(CONTENT, VIEWPORT), 6);
+        for (let i = 0; i < 60; i++) vb = zoomAt(vb, boxCenterOf(vb), 1 / 1.25, frameOf());
+        expect(scaleOf(vb, VIEWPORT)).toBeCloseTo(kMax(frameOf()), 6);
     });
 
     test('zooming out past the floor lands exactly on it, never past', () => {
         let vb = fitBox(CONTENT, VIEWPORT);
-        for (let i = 0; i < 60; i++) vb = zoomAt(vb, boxCenterOf(vb), 1.25, VIEWPORT, CONTENT);
-        expect(scaleOf(vb, VIEWPORT)).toBeCloseTo(kMin(CONTENT, VIEWPORT), 6);
+        for (let i = 0; i < 60; i++) vb = zoomAt(vb, boxCenterOf(vb), 1.25, frameOf());
+        expect(scaleOf(vb, VIEWPORT)).toBeCloseTo(kMin(frameOf()), 6);
     });
 
     test('the anchor still holds when the clamp binds', () => {
         const client = { x: 700, y: 500 };
         let vb = fitBox(CONTENT, VIEWPORT);
-        for (let i = 0; i < 40; i++) vb = zoomAt(vb, clientToUser(client.x, client.y, rect, vb), 1 / 1.25, VIEWPORT, CONTENT);
+        for (let i = 0; i < 40; i++) vb = zoomAt(vb, clientToUser(client.x, client.y, rect, vb), 1 / 1.25, frameOf());
         // At the ceiling a further zoom must be a complete no-op, not a drift.
         const anchor = clientToUser(client.x, client.y, rect, vb);
-        const after = zoomAt(vb, anchor, 1 / 1.25, VIEWPORT, CONTENT);
+        const after = zoomAt(vb, anchor, 1 / 1.25, frameOf());
         expect(clientToUser(client.x, client.y, rect, after).x).toBeCloseTo(anchor.x, 6);
     });
 
-    test('a large model can be magnified far enough to read, unlike the old fixed 3x ceiling', () => {
-        const huge: Box = { x: 0, y: 0, w: 40000, h: 30000 };
-        const fitScale = scaleOf(fitBox(huge, VIEWPORT), VIEWPORT);
-        expect(kMax(huge, VIEWPORT) / fitScale).toBeGreaterThan(100);
+    test('the ceiling is 400% of intrinsic size, whatever the model is worth', () => {
+        const huge = frameOf({ x: 0, y: 0, w: 40000, h: 30000 });
+        const small = frameOf({ x: 0, y: 0, w: 40, h: 30 });
+        expect(kMax(huge) / huge.baseScale).toBeCloseTo(4, 9);
+        expect(kMax(small) / small.baseScale).toBeCloseTo(4, 9);
     });
 
-    test('a small model still gets a meaningful 400% ceiling', () => {
-        const small: Box = { x: 0, y: 0, w: 40, h: 30 };
-        const fitScale = scaleOf(fitBox(small, VIEWPORT), VIEWPORT);
-        expect(kMax(small, VIEWPORT) / fitScale).toBeCloseTo(4, 6);
+    test('a model far too big for the panel can still be zoomed out to see whole', () => {
+        const huge = frameOf({ x: 0, y: 0, w: 40000, h: 30000 });
+        expect(kMin(huge)).toBeLessThan(scaleOf(fitBox(huge.content, VIEWPORT), VIEWPORT));
+    });
+});
+
+describe('parseLength', () => {
+    test.each([
+        ['the Graphviz form', '274pt', 274 * 4 / 3],
+        ['pixels', '274px', 274],
+        ['a bare number', '274', 274],
+        ['inches', '2in', 192],
+        ['picas', '3pc', 48],
+        ['centimetres', '2.54cm', 96],
+        ['millimetres', '25.4mm', 96],
+        ['surrounding whitespace', ' 274pt ', 274 * 4 / 3],
+        ['an uppercase unit', '274PT', 274 * 4 / 3]
+    ])('parses %s', (_label, attr, expected) => {
+        expect(parseLength(attr)).toBeCloseTo(expected as number, 9);
+    });
+
+    test.each([
+        ['null', null],
+        ['undefined', undefined],
+        ['an empty string', ''],
+        ['garbage', 'wide'],
+        ['a percentage, which needs a containing block', '100%'],
+        ['a font-relative unit', '20em'],
+        ['zero', '0pt'],
+        ['a negative length', '-10pt']
+    ])('rejects %s', (_label, attr) => {
+        expect(parseLength(attr)).toBeNull();
+    });
+});
+
+describe('naturalScale', () => {
+    test('turns the Graphviz point size into pixels per user unit', () => {
+        expect(naturalScale({ x: 0, y: 0, w: 274, h: 213 }, 274 * 4 / 3)).toBeCloseTo(4 / 3, 9);
+    });
+
+    test('falls back to 1:1 when the intrinsic size is unusable', () => {
+        expect(naturalScale(CONTENT, null)).toBe(1);
+    });
+});
+
+describe('initialBox', () => {
+    /**
+     * The rule the panel opens on: intrinsic size when it fits, shrunk when it does not, and
+     * never blown up. A four-node justification filling a wide panel was the complaint that
+     * put this here.
+     */
+    test('a small diagram opens at intrinsic size, not stretched to fill the panel', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 100, h: 80 });
+        expect(zoomPercent(initialBox(frame), frame)).toBe(100);
+    });
+
+    test('and is centred, with the slack around it', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 100, h: 80 });
+        const box = initialBox(frame);
+        expect(box.x + box.w / 2).toBeCloseTo(50, 9);
+        expect(box.y + box.h / 2).toBeCloseTo(40, 9);
+        expect(box.w).toBeGreaterThan(100);
+    });
+
+    test('a diagram too big for the panel is shrunk to fit', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 4000, h: 3000 });
+        expect(initialBox(frame)).toEqual(fitBox(frame.content, VIEWPORT));
+        expect(zoomPercent(initialBox(frame), frame)).toBeLessThan(100);
+    });
+
+    test('the whole of an oversized diagram is visible', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 4000, h: 3000 });
+        const box = initialBox(frame);
+        expect(box.x).toBeLessThanOrEqual(0);
+        expect(box.x + box.w).toBeGreaterThanOrEqual(4000);
+    });
+
+    test('matches the panel aspect either way', () => {
+        for (const content of [{ x: 0, y: 0, w: 100, h: 80 }, { x: 0, y: 0, w: 4000, h: 3000 }]) {
+            expect(aspect(initialBox(frameOf(content)))).toBeCloseTo(aspect(VIEWPORT), 9);
+        }
+    });
+
+    test('naturalBox reads exactly 100% by construction', () => {
+        expect(zoomPercent(naturalBox(frameOf()), frameOf())).toBe(100);
     });
 });
 
 describe('stepZoom and zoomPercent', () => {
-    test('reads 100% at fit', () => {
-        expect(zoomPercent(fitBox(CONTENT, VIEWPORT), VIEWPORT, CONTENT)).toBe(100);
+    test('reads 100% at intrinsic size', () => {
+        expect(zoomPercent(naturalBox(frameOf()), frameOf())).toBe(100);
     });
 
-    test('one step in reads exactly 125%, preserving the old first step', () => {
-        const vb = stepZoom(fitBox(CONTENT, VIEWPORT), 'in', VIEWPORT, CONTENT);
-        expect(zoomPercent(vb, VIEWPORT, CONTENT)).toBe(125);
+    test('reads below 100% when the diagram had to shrink to fit', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 4000, h: 3000 });
+        expect(zoomPercent(fitBox(frame.content, VIEWPORT), frame)).toBeLessThan(100);
     });
 
-    test('steps round-trip exactly', () => {
-        const start = fitBox(CONTENT, VIEWPORT);
+    test('one step in from intrinsic size reads exactly 125%', () => {
+        const frame = frameOf();
+        expect(zoomPercent(stepZoom(naturalBox(frame), 'in', frame), frame)).toBe(125);
+    });
+
+    test('steps round-trip exactly while they stay inside the range', () => {
+        // Four steps is 244% — comfortably under the 400% ceiling, which a round trip could
+        // not survive: clamping is deliberately lossy.
+        const start = naturalBox(frameOf());
         let vb = start;
-        for (let i = 0; i < 6; i++) vb = stepZoom(vb, 'in', VIEWPORT, CONTENT);
-        for (let i = 0; i < 6; i++) vb = stepZoom(vb, 'out', VIEWPORT, CONTENT);
+        for (let i = 0; i < 4; i++) vb = stepZoom(vb, 'in', frameOf());
+        for (let i = 0; i < 4; i++) vb = stepZoom(vb, 'out', frameOf());
         expect(vb.w).toBeCloseTo(start.w, 6);
         expect(vb.h).toBeCloseTo(start.h, 6);
     });
 
     test('is monotone in scale', () => {
         const fit = fitBox(CONTENT, VIEWPORT);
-        const inOne = stepZoom(fit, 'in', VIEWPORT, CONTENT);
-        const inTwo = stepZoom(inOne, 'in', VIEWPORT, CONTENT);
-        const percents = [fit, inOne, inTwo].map(v => zoomPercent(v, VIEWPORT, CONTENT));
+        const inOne = stepZoom(fit, 'in', frameOf());
+        const inTwo = stepZoom(inOne, 'in', frameOf());
+        const percents = [fit, inOne, inTwo].map(v => zoomPercent(v, frameOf()));
         expect(percents).toEqual([...percents].sort((a, b) => a - b));
     });
 });
@@ -333,7 +434,7 @@ describe('isPannable', () => {
     test('is false at fit and true once zoomed in', () => {
         const fit = fitBox(CONTENT, VIEWPORT);
         expect(isPannable(fit, CONTENT)).toBe(false);
-        expect(isPannable(stepZoom(fit, 'in', VIEWPORT, CONTENT), CONTENT)).toBe(true);
+        expect(isPannable(stepZoom(fit, 'in', frameOf()), CONTENT)).toBe(true);
     });
 });
 
