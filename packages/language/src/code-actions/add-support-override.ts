@@ -39,25 +39,19 @@ export const addSupportOverride = quickFix<typeof JpipeIssue.MissingSupportOverr
         if (!missing.some(entry => entry.expectedKey === data.expectedKey)) return [];
 
         const uri = context.document.uri.toString();
-        const actions: CodeAction[] = OVERRIDE_KEYWORDS.map((keyword, index) => ({
-            title: `Override '@support ${data.supportId}' with ${keyword}`,
-            kind: CodeActionKind.QuickFix,
-            isPreferred: index === 0,
-            edit: {
-                changes: {
-                    [uri]: [insertLinesEdit(
-                        insertion.line,
-                        [renderElement(keyword, data.expectedKey, data.supportLabel)],
-                        insertion.indent
-                    )]
-                }
-            }
-        }));
+        const several = missing.length > 1;
+        const actions: CodeAction[] = [];
 
-        if (missing.length > 1) {
+        // First, and preferred, when there is more than one gap: a justification that has just
+        // been pointed at a template is missing all of them, and closing them one at a time is
+        // not what anybody came here to do. Emitted ahead of the individual fixes so it leads the
+        // menu rather than turning up between one override's options and the next's — the
+        // provider drops the copies this produces for each of the other missing overrides.
+        if (several) {
             actions.push({
                 title: `Override all ${missing.length} missing @support elements`,
                 kind: CodeActionKind.QuickFix,
+                isPreferred: true,
                 edit: {
                     changes: {
                         [uri]: [insertLinesEdit(
@@ -69,6 +63,22 @@ export const addSupportOverride = quickFix<typeof JpipeIssue.MissingSupportOverr
                 }
             });
         }
+
+        actions.push(...OVERRIDE_KEYWORDS.map((keyword, index) => ({
+            title: `Override '@support ${data.supportId}' with ${keyword}`,
+            kind: CodeActionKind.QuickFix,
+            // Only one action may lead; with several gaps that is the fix-all.
+            isPreferred: !several && index === 0,
+            edit: {
+                changes: {
+                    [uri]: [insertLinesEdit(
+                        insertion.line,
+                        [renderElement(keyword, data.expectedKey, data.supportLabel)],
+                        insertion.indent
+                    )]
+                }
+            }
+        })));
 
         return actions;
     }

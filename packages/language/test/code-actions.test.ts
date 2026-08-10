@@ -164,11 +164,64 @@ describe('add-support-override', () => {
     const missing = (body: string) => `${TEMPLATE}\njustification J implements T {\n${body}\n}`;
     const SKELETON = '    conclusion own is "Own claim"\n    strategy st is "Own strategy"\n    st supports own';
 
+    /** A template with `n` abstract supports, none of them overridden. */
+    const withGaps = (n: number) => `template t {
+    conclusion c is "C"
+    strategy s is "S"
+${Array.from({ length: n }, (_, i) => `    @support abs${i + 1} is "Abstract #${i + 1}"`).join('\n')}
+    s supports c
+${Array.from({ length: n }, (_, i) => `    abs${i + 1} supports s`).join('\n')}
+}
+justification ${CURSOR}j implements t {
+    conclusion own is "Own"
+    strategy st is "St"
+    evidence ev is "Ev"
+    ev supports st
+    st supports own
+}`;
+
+    // It was offered, but between the first override's options and the second's, where it reads
+    // as absent to anyone scanning the top of the menu. A justification just pointed at a
+    // template is missing all of them, and closing them one at a time is not the intent.
+    test('the fix-all leads the menu when several are missing', async () => {
+        const titles = await actionTitles(withGaps(3), CodeActionKind.QuickFix);
+        expect(titles[0]).toBe('Override all 3 missing @support elements');
+    });
+
+    test('there is no fix-all when only one is missing', async () => {
+        const titles = await actionTitles(withGaps(1), CodeActionKind.QuickFix);
+        expect(titles.some(t => t.startsWith('Override all'))).toBe(false);
+    });
+
+    // At most one action may lead, and with several gaps it should not be a single override.
+    test('exactly one action is preferred, and it is the fix-all', async () => {
+        const actions = await listCodeActions(withGaps(3), CodeActionKind.QuickFix);
+        const preferred = actions.filter(a => a.isPreferred);
+        expect(preferred.map(a => a.title)).toEqual(['Override all 3 missing @support elements']);
+    });
+
+    test('with one gap the evidence variant leads instead', async () => {
+        const actions = await listCodeActions(withGaps(1), CodeActionKind.QuickFix);
+        const preferred = actions.filter(a => a.isPreferred);
+        expect(preferred.map(a => a.title)).toEqual(["Override '@support abs1' with evidence"]);
+    });
+
+    test('the fix-all closes every gap in one edit', async () => {
+        const after = await expectFixResolves(
+            withGaps(3),
+            { title: 'Override all 3 missing @support elements' },
+            JpipeIssue.MissingSupportOverride
+        );
+        for (const id of ['t:abs1', 't:abs2', 't:abs3']) {
+            expect(after).toContain(`evidence ${id} is `);
+        }
+    });
+
     test('offers both keywords that may refine an @support, plus a fix-all', async () => {
         expect(await titlesMatching(missing(SKELETON), /^Override /)).toEqual([
+            'Override all 2 missing @support elements',
             "Override '@support a' with evidence",
             "Override '@support a' with sub-conclusion",
-            'Override all 2 missing @support elements',
             "Override '@support b' with evidence",
             "Override '@support b' with sub-conclusion"
         ]);

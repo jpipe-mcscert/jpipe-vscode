@@ -2,33 +2,20 @@ import { describe, expect, test } from 'vitest';
 import { CodeActionKind } from 'vscode-languageserver';
 import { actionTitles, CURSOR } from './code-action-helper.js';
 
-const T = `template t {
+const t = (n: number) => `template t {
     conclusion c is "C"
     strategy s is "S"
-    @support abs is "Abstract"
+${Array.from({length: n}, (_, i) => `    @support abs${i+1} is "Abstract #${i+1}"`).join('\n')}
     s supports c
-    abs supports s
+${Array.from({length: n}, (_, i) => `    abs${i+1} supports s`).join('\n')}
 }`;
 
-const LINES = [
-    `justification j implements t {`,
-    `    strategy t:abs is "Wrong keyword"`,
-    `    conclusion own is "Own"`,
-    `    strategy st is "St"`,
-    `    evidence ev is "Ev"`,
-    `    ev supports st`,
-    `    st supports own`,
-    `}`
-];
-
 describe('probe', () => {
-    test('element-anchored fix should stay on its declaration', async () => {
-        for (let i = 0; i < LINES.length; i++) {
-            const marked = [T, ...LINES.slice(0, i), CURSOR + LINES[i], ...LINES.slice(i + 1)].join('\n');
-            const qf = await actionTitles(marked, CodeActionKind.QuickFix);
-            const kw = qf.filter(t => t.startsWith("Change '"));
-            console.log(`L${i} "${LINES[i].trim().slice(0,30)}"  keyword-fix: ${kw.length ? kw.join(' | ') : '(none)'}`);
-        }
+    test.each([1, 2, 3])('%i missing override(s)', async (n) => {
+        const src = `${t(n)}\njustification ${CURSOR}j implements t {\n    conclusion own is "Own"\n    strategy st is "St"\n    evidence ev is "Ev"\n    ev supports st\n    st supports own\n}`;
+        const titles = await actionTitles(src, CodeActionKind.QuickFix);
+        console.log(`\n--- ${n} missing ---`);
+        titles.forEach((t, i) => console.log(`  ${i}. ${t}`));
         expect(true).toBe(true);
     });
 });
