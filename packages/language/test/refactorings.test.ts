@@ -207,6 +207,53 @@ describe('sort-elements', () => {
         expect(declared).toEqual(['c', 's2', 'e2', 'mid', 's1', 'e1']);
     });
 
+    // A sub-conclusion is where one sub-argument ends and the next begins — the only point in the
+    // list where the reader moves between branches rather than down one.
+    test('opens each sub-argument with a blank line', async () => {
+        const after = await applyCodeAction(
+            `justification ${CURSOR}J {
+    evidence e2 is "Second ground"
+    strategy s1 is "First strategy"
+    conclusion c is "The claim"
+    evidence e1 is "First ground"
+    strategy s2 is "Second strategy"
+    sub-conclusion mid is "An intermediate claim"
+    e1 supports s1
+    s1 supports mid
+    mid supports s2
+    e2 supports s2
+    s2 supports c
+}`,
+            { title: 'Sort elements' }
+        );
+        expect(after).toContain('    evidence e2 is "Second ground"\n\n    sub-conclusion mid is');
+    });
+
+    test('the blank line carries no trailing whitespace', async () => {
+        const after = await applyCodeAction(
+            `justification ${CURSOR}J {\n    evidence e is "E"\n    strategy s is "S"\n    sub-conclusion mid is "M"\n    conclusion c is "C"\n    e supports s\n    s supports mid\n    mid supports c\n}`,
+            { title: 'Sort elements' }
+        );
+        expect(after.split('\n').filter(line => line.trim() === '')).toEqual(['']);
+    });
+
+    // Laying the block out is part of the same job as ordering it.
+    test('is offered when the order is right but the branches are not spaced', async () => {
+        const titles = await actionTitles(
+            `justification ${CURSOR}J {\n    conclusion c is "C"\n    sub-conclusion mid is "M"\n    strategy s is "S"\n    evidence e is "E"\n    e supports s\n    s supports mid\n    mid supports c\n}`,
+            CodeActionKind.Refactor
+        );
+        expect(titles).toContain('Sort elements');
+    });
+
+    test('is not offered once the block is both ordered and spaced', async () => {
+        const titles = await actionTitles(
+            `justification ${CURSOR}J {\n    conclusion c is "C"\n\n    sub-conclusion mid is "M"\n    strategy s is "S"\n    evidence e is "E"\n    e supports s\n    s supports mid\n    mid supports c\n}`,
+            CodeActionKind.Refactor
+        );
+        expect(titles).not.toContain('Sort elements');
+    });
+
     test('leaves the relations where they are', async () => {
         const after = await applyCodeAction(
             `justification ${CURSOR}J {\n    evidence e is "E"\n    strategy s is "S"\n    conclusion c is "C"\n    e supports s\n    s supports c\n}`,

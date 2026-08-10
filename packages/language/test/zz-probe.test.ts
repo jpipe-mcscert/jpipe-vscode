@@ -1,7 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import { applyCodeAction, CURSOR } from './code-action-helper.js';
-
-// Two branches under one conclusion, declared in a jumbled order.
 const JUMBLED = `justification ${CURSOR}J {
     evidence e2 is "Second ground"
     strategy s1 is "First strategy"
@@ -15,11 +13,9 @@ const JUMBLED = `justification ${CURSOR}J {
     e2 supports s2
     s2 supports c
 }`;
-
 describe('probe', () => {
-    test('argument order', async () => {
-        const after = await applyCodeAction(JUMBLED, { title: 'Sort elements' });
-        console.log('\n' + after);
-        expect(true).toBe(true);
+    test('layout', async () => {
+        console.log('\n' + await applyCodeAction(JUMBLED, { title: 'Sort elements' }));
+    expect(true).toBe(true);
     });
 });

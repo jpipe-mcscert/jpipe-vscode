@@ -9,13 +9,18 @@
  * Grouping by kind instead — every evidence, then every strategy — puts each element next to
  * others it has nothing to do with, and scatters a single line of reasoning across the model.
  *
+ * A blank line goes before each sub-conclusion, because that is where one sub-argument ends and
+ * the next begins — the only points in the list where the reader is moving between branches
+ * rather than down one. Laying the block out is part of the same job as ordering it, so the
+ * action is offered when only the spacing is missing.
+ *
  * Anything the walk cannot reach keeps its relative order at the end: an element supporting
  * nothing is usually one being written, and moving it while it is half-typed would be unhelpful.
  *
  * Relations are untouched. They name their endpoints, so their position carries no meaning.
  */
 import { CodeActionKind, type CodeAction } from 'vscode-languageserver';
-import { isConclusion, type Justification, type JustificationElement, type Relation, type Template } from '../generated/ast.js';
+import { isConclusion, isSubConclusion, type Justification, type JustificationElement, type Relation, type Template } from '../generated/ast.js';
 import { indentationOf } from '../jpipe-edits.js';
 import { getLocalElements } from '../jpipe-utils.js';
 import { refactoring, type JpipeActionContext } from './types.js';
@@ -40,14 +45,15 @@ export const sortElements = refactoring({
         if (!isContiguous(context, elements)) return [];
 
         const sorted = argumentOrder(elements, model.contents?.rels ?? []);
-        if (sorted.every((element, index) => element === elements[index])) return [];
 
         const start = elements[0].$cstNode!.range.start;
         const end = elements.at(-1)!.$cstNode!.range.end;
         const indent = indentationOf(context.document, start.line);
-        const rendered = sorted
-            .map(element => context.document.textDocument.getText(element.$cstNode!.range))
-            .join(`\n${indent}`);
+        const rendered = render(context, sorted, indent);
+
+        // Compared as text rather than as an order, so the action is also offered when the
+        // declarations are already in sequence but the branches are not spaced apart.
+        if (rendered === context.document.textDocument.getText({ start, end })) return [];
 
         return [{
             title: 'Sort elements',
@@ -61,6 +67,27 @@ export const sortElements = refactoring({
     }
 });
 
+
+/**
+ * The declarations as one block: one per line, with a blank line opening each sub-argument.
+ *
+ * The first element carries the indentation already present in the document, since the range
+ * being replaced starts at it.
+ */
+function render(
+    context: JpipeActionContext,
+    elements: readonly JustificationElement[],
+    indent: string
+): string {
+    return elements
+        .map((element, index) => {
+            const text = context.document.textDocument.getText(element.$cstNode!.range);
+            if (index === 0) return text;
+            // The blank line goes before the indent, so it holds no trailing whitespace.
+            return `${isSubConclusion(element) ? '\n' : ''}${indent}${text}`;
+        })
+        .join('\n');
+}
 
 /**
  * The elements in argument order: each conclusion, then everything that supports it, depth first.
