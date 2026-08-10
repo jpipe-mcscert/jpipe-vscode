@@ -229,17 +229,57 @@ export function isWheelNotch(e: WheelSample): boolean {
 const WHEEL_NOTCH_MIN = 40;
 
 /**
- * What a wheel gesture should do.
+ * What a wheel gesture should do, classifying this event alone.
  *
  * Zoom on a mouse wheel, because that is what was asked for and what the hardware suits; pan on
  * a trackpad's two-finger scroll, because that is what every other application does with it.
  * Ctrl/Cmd always zooms — that is how a pinch arrives — and Shift always pans, so either
  * mapping can be overridden from the keyboard.
+ *
+ * Prefer `gestureIntent`: a single swipe is a stream of events whose shape drifts as it
+ * accelerates, and deciding afresh each time lets one gesture change its mind halfway through.
  */
 export function wheelIntent(e: WheelSample): WheelIntent {
     if (e.ctrlKey || e.metaKey) return 'zoom';
     if (e.shiftKey) return 'pan';
     return isWheelNotch(e) ? 'zoom' : 'pan';
+}
+
+/** What `gestureIntent` remembers between events. */
+export interface WheelGesture {
+    intent: WheelIntent | null;
+    lastEventTime: number;
+}
+
+export const NO_WHEEL_GESTURE: WheelGesture = { intent: null, lastEventTime: -Infinity };
+
+/** Silence long enough to count as the end of one gesture and the start of the next. */
+export const WHEEL_GESTURE_GAP_MS = 180;
+
+/**
+ * What a wheel gesture should do, holding to the decision for the length of the gesture.
+ *
+ * A trackpad swipe is not one event but a stream, and its shape changes as it accelerates: the
+ * early samples are small and fractional, the accelerated ones can be large, whole and purely
+ * vertical — indistinguishable from a wheel notch. Classifying every sample independently
+ * therefore lets a single swipe pan for a moment and then abruptly start zooming.
+ *
+ * So the device inference is made once, when a gesture begins, and held until the stream goes
+ * quiet. Modifiers are exempt and take effect immediately: they are an explicit instruction
+ * rather than a guess, and they re-latch, so a pinch keeps zooming through the momentum tail
+ * after Ctrl is released.
+ */
+export function gestureIntent(e: WheelSample, now: number, state: WheelGesture): { intent: WheelIntent; state: WheelGesture } {
+    const continuing = state.intent !== null && (now - state.lastEventTime) <= WHEEL_GESTURE_GAP_MS;
+    let intent: WheelIntent;
+    if (e.ctrlKey || e.metaKey) {
+        intent = 'zoom';
+    } else if (e.shiftKey) {
+        intent = 'pan';
+    } else {
+        intent = continuing ? state.intent as WheelIntent : wheelIntent(e);
+    }
+    return { intent, state: { intent, lastEventTime: now } };
 }
 
 /** Per-event zoom clamp, so one violent flick cannot cross the whole range at once. */
@@ -257,9 +297,14 @@ export function wheelZoomFactor(deltaY: number, sensitivity = 1): number {
     return clamp(Math.exp(deltaY * WHEEL_ZOOM_RATE * sensitivity), 1 / MAX_WHEEL_STEP, MAX_WHEEL_STEP);
 }
 
-/** Pixels per unit for the delta modes: 0 is already pixels, 1 is lines, 2 is pages. */
-export function wheelPixels(deltaMode: number, viewportHeight: number): number {
-    return deltaMode === 1 ? 16 : deltaMode === 2 ? viewportHeight : 1;
+/**
+ * Pixels per unit for the delta modes: 0 is already pixels, 1 is lines, 2 is pages.
+ *
+ * `viewportSize` must be the viewport's extent along the axis being converted — a page of
+ * horizontal scrolling is a viewport width, not a height.
+ */
+export function wheelPixels(deltaMode: number, viewportSize: number): number {
+    return deltaMode === 1 ? 16 : deltaMode === 2 ? viewportSize : 1;
 }
 
 /** Pan by a drag delta in client pixels. Dragging right moves the content right, so the viewBox moves left. */

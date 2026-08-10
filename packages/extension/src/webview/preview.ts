@@ -5,6 +5,7 @@ import {
     type Box,
     type Frame,
     type Size,
+    type WheelGesture,
     centerOn,
     clampTranslation,
     clientToUser,
@@ -19,7 +20,8 @@ import {
     parseViewBox,
     naturalBox,
     stepZoom,
-    wheelIntent,
+    gestureIntent,
+    NO_WHEEL_GESTURE,
     wheelPixels,
     wheelZoomFactor,
     zoomAt,
@@ -116,6 +118,8 @@ let lastMatched: SVGGraphicsElement | null = null;
 
 let animation = 0;
 let drag: { pointerId: number; x: number; y: number } | null = null;
+/** Which way the in-flight wheel gesture was going, so it cannot change its mind halfway. */
+let wheelGesture: WheelGesture = NO_WHEEL_GESTURE;
 
 const minimap = new Minimap(document.getElementById('minimap') as HTMLElement, onMinimapNavigate);
 
@@ -440,13 +444,17 @@ container.addEventListener('wheel', event => {
     event.preventDefault();
     adjusted();
 
-    const unit = wheelPixels(event.deltaMode, container.clientHeight);
-    const dx = event.deltaX * unit;
-    const dy = event.deltaY * unit;
+    // Each axis converts against its own viewport extent: a page of horizontal scrolling is a
+    // viewport width, not a height.
+    const dx = event.deltaX * wheelPixels(event.deltaMode, container.clientWidth);
+    const dy = event.deltaY * wheelPixels(event.deltaMode, container.clientHeight);
 
     // A mouse wheel zooms and a trackpad's two-finger scroll pans, each keeping the gesture the
-    // hardware is used for elsewhere. A pinch arrives as ctrl+wheel and always zooms.
-    if (wheelIntent(event) === 'pan') {
+    // hardware is used for elsewhere. A pinch arrives as ctrl+wheel and always zooms. Decided
+    // once per gesture rather than per event, so an accelerating swipe cannot switch mid-flight.
+    const decision = gestureIntent(event, performance.now(), wheelGesture);
+    wheelGesture = decision.state;
+    if (decision.intent === 'pan') {
         setViewBox(panBy(vb, -dx, -dy, svgRect(), f.content));
         return;
     }

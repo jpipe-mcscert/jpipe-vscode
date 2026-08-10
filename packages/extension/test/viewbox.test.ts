@@ -4,6 +4,7 @@ import {
     type Frame,
     type Rect,
     type Size,
+    type WheelIntent,
     centerOn,
     clampTranslation,
     clientToUser,
@@ -24,6 +25,9 @@ import {
     scaleOf,
     shouldShowMinimap,
     stepZoom,
+    gestureIntent,
+    NO_WHEEL_GESTURE,
+    WHEEL_GESTURE_GAP_MS,
     wheelIntent,
     wheelPixels,
     wheelZoomFactor,
@@ -425,6 +429,93 @@ describe('wheelIntent', () => {
     });
 });
 
+describe('gestureIntent', () => {
+    /**
+     * A swipe is a stream whose shape drifts as it accelerates: early samples are small and
+     * fractional, later ones can be large, whole and purely vertical — the exact shape of a
+     * wheel notch. Classifying each sample on its own therefore lets one gesture pan briefly
+     * and then start zooming, which these cases exist to prevent.
+     */
+    const sample = (over: Partial<import('../src/webview/viewbox.js').WheelSample> = {}) => ({
+        deltaMode: 0, deltaX: 0, deltaY: 0, ctrlKey: false, metaKey: false, shiftKey: false, ...over
+    });
+
+    /** Feed a stream of (event, time) pairs and collect what each one decided. */
+    function run(stream: Array<[ReturnType<typeof sample>, number]>): WheelIntent[] {
+        let state = NO_WHEEL_GESTURE;
+        return stream.map(([event, now]) => {
+            const result = gestureIntent(event, now, state);
+            state = result.state;
+            return result.intent;
+        });
+    }
+
+    test('an accelerating trackpad swipe keeps panning once it starts', () => {
+        const intents = run([
+            [sample({ deltaY: 3.5, deltaX: 0.5 }), 0],
+            [sample({ deltaY: 18 }), 16],
+            [sample({ deltaY: 64 }), 32],      // now indistinguishable from a wheel notch
+            [sample({ deltaY: 120 }), 48],
+            [sample({ deltaY: 90 }), 64]
+        ]);
+        expect(intents).toEqual(['pan', 'pan', 'pan', 'pan', 'pan']);
+    });
+
+    test('a decelerating wheel stream keeps zooming as its deltas shrink', () => {
+        const intents = run([
+            [sample({ deltaY: 120 }), 0],
+            [sample({ deltaY: 120 }), 40],
+            [sample({ deltaY: 12 }), 80]
+        ]);
+        expect(intents).toEqual(['zoom', 'zoom', 'zoom']);
+    });
+
+    test('a new gesture after a pause is classified afresh', () => {
+        const intents = run([
+            [sample({ deltaY: 4, deltaX: 1 }), 0],
+            [sample({ deltaY: 120 }), WHEEL_GESTURE_GAP_MS + 1]
+        ]);
+        expect(intents).toEqual(['pan', 'zoom']);
+    });
+
+    test('a gap exactly at the threshold still counts as the same gesture', () => {
+        const intents = run([
+            [sample({ deltaY: 4, deltaX: 1 }), 0],
+            [sample({ deltaY: 120 }), WHEEL_GESTURE_GAP_MS]
+        ]);
+        expect(intents).toEqual(['pan', 'pan']);
+    });
+
+    test('the very first event is classified on its own merits', () => {
+        expect(run([[sample({ deltaY: 120 }), 0]])).toEqual(['zoom']);
+        expect(run([[sample({ deltaY: 4 }), 0]])).toEqual(['pan']);
+    });
+
+    test('a modifier takes effect immediately, mid-gesture', () => {
+        const intents = run([
+            [sample({ deltaY: 4 }), 0],
+            [sample({ deltaY: 4, ctrlKey: true }), 16],
+            [sample({ deltaY: 120, shiftKey: true }), 32]
+        ]);
+        expect(intents).toEqual(['pan', 'zoom', 'pan']);
+    });
+
+    test('a pinch keeps zooming through the momentum after ctrl is released', () => {
+        const intents = run([
+            [sample({ deltaY: -3, ctrlKey: true }), 0],
+            [sample({ deltaY: -2 }), 16],
+            [sample({ deltaY: -1 }), 32]
+        ]);
+        expect(intents).toEqual(['zoom', 'zoom', 'zoom']);
+    });
+
+    test('does not mutate the state handed to it', () => {
+        const before = { ...NO_WHEEL_GESTURE };
+        gestureIntent(sample({ deltaY: 120 }), 5, NO_WHEEL_GESTURE);
+        expect(NO_WHEEL_GESTURE).toEqual(before);
+    });
+});
+
 describe('wheelZoomFactor', () => {
     test('a notch is a modest step, not a leap', () => {
         const factor = wheelZoomFactor(-120);
@@ -459,6 +550,18 @@ describe('wheelPixels', () => {
         ['page mode is a viewport', 2, 800]
     ])('%s', (_label, mode, expected) => {
         expect(wheelPixels(mode as number, 800)).toBe(expected);
+    });
+
+    test('page mode converts against the axis it is given, not always the height', () => {
+        // A page of horizontal scrolling is a viewport width; using the height would mis-scale
+        // horizontal panning on any panel that is not square.
+        expect(wheelPixels(2, 1200)).toBe(1200);
+        expect(wheelPixels(2, 600)).toBe(600);
+    });
+
+    test('the other modes ignore the viewport entirely', () => {
+        expect(wheelPixels(0, 1200)).toBe(wheelPixels(0, 600));
+        expect(wheelPixels(1, 1200)).toBe(wheelPixels(1, 600));
     });
 });
 
