@@ -7,6 +7,9 @@ import type { LogLevel } from 'jpipe-language';
 /** Notification sent by the extension when `jpipe.excludedPaths` changes. */
 const SET_EXCLUDED_PATHS = 'jpipe/setExcludedPaths';
 
+/** Notification sent when `jpipe.additionalUnificationMethods` changes. */
+const SET_UNIFICATION_METHODS = 'jpipe/setUnificationMethods';
+
 // Create a connection to the client
 const connection = createConnection(ProposedFeatures.all);
 
@@ -23,10 +26,17 @@ function toStringArray(value: unknown): string[] | undefined {
 // Apply the initial exclusions during `initialize`, i.e. before the workspace is built in
 // `initialized` — otherwise excluded files would briefly light up with errors.
 shared.lsp.LanguageServer.onInitialize(params => {
-    const options = params.initializationOptions as { excludedPaths?: unknown } | undefined;
+    const options = params.initializationOptions as {
+        excludedPaths?: unknown;
+        additionalUnificationMethods?: unknown;
+    } | undefined;
     const paths = toStringArray(options?.excludedPaths);
     if (paths) {
         Jpipe.exclusions.setExcludedPaths(paths);
+    }
+    const methods = toStringArray(options?.additionalUnificationMethods);
+    if (methods) {
+        Jpipe.unification.setAdditionalMethods(methods);
     }
 });
 
@@ -34,6 +44,13 @@ shared.lsp.LanguageServer.onInitialize(params => {
 // cleared for newly excluded files and restored for newly included ones.
 connection.onNotification(SET_EXCLUDED_PATHS, async (paths: unknown) => {
     Jpipe.exclusions.setExcludedPaths(toStringArray(paths) ?? []);
+    const documents = shared.workspace.LangiumDocuments.all.toArray();
+    await shared.workspace.DocumentBuilder.build(documents, { validation: true });
+});
+
+// Declaring a relation the build registers should take effect at once, like exclusions do.
+connection.onNotification(SET_UNIFICATION_METHODS, async (methods: unknown) => {
+    Jpipe.unification.setAdditionalMethods(toStringArray(methods) ?? []);
     const documents = shared.workspace.LangiumDocuments.all.toArray();
     await shared.workspace.DocumentBuilder.build(documents, { validation: true });
 });

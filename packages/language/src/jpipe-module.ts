@@ -16,6 +16,7 @@ import { JpipeLanguageServer } from './jpipe-language-server.js';
 import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 import { JpipeDocumentValidator } from './jpipe-document-validator.js';
 import { JpipeExclusionService } from './jpipe-exclusions.js';
+import { JpipeUnificationService } from './jpipe-unification.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -28,7 +29,8 @@ export type JpipeAddedServices = {
         JpipeImportService: JpipeImportService
     },
     logger: JpipeServerLogger,
-    exclusions: JpipeExclusionService
+    exclusions: JpipeExclusionService,
+    unification: JpipeUnificationService
 }
 
 /**
@@ -49,7 +51,11 @@ const JpipeSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServi
     }
 };
 
-function buildJpipeModule(logger: JpipeServerLogger, exclusions: JpipeExclusionService): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
+function buildJpipeModule(
+    logger: JpipeServerLogger,
+    exclusions: JpipeExclusionService,
+    unification: JpipeUnificationService
+): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
     return {
         validation: {
             JpipeValidator: (services) => new JpipeValidator(services),
@@ -72,7 +78,8 @@ function buildJpipeModule(logger: JpipeServerLogger, exclusions: JpipeExclusionS
             CodeActionProvider:     (services) => new JpipeCodeActionProvider(services)
         },
         logger: () => logger,
-        exclusions: () => exclusions
+        exclusions: () => exclusions,
+        unification: () => unification
     };
 }
 
@@ -98,6 +105,7 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
 } {
     const logger = new JpipeServerLogger(logLevel);
     const exclusions = new JpipeExclusionService(logger);
+    const unification = new JpipeUnificationService();
     const shared = inject(
         createDefaultSharedModule(context),
         JpipeGeneratedSharedModule,
@@ -106,7 +114,7 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
     const Jpipe = inject(
         createDefaultModule({ shared }),
         JpipeGeneratedModule,
-        buildJpipeModule(logger, exclusions)
+        buildJpipeModule(logger, exclusions, unification)
     );
     shared.ServiceRegistry.register(Jpipe);
     registerValidationChecks(Jpipe);

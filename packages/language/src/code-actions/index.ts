@@ -14,6 +14,7 @@ import { extractTemplate } from './extract-template.js';
 import { fixConfigKey } from './fix-config-key.js';
 import { fixLoadPath } from './fix-load-path.js';
 import { fixOperatorName } from './fix-operator-name.js';
+import { fixUnificationMethod } from './fix-unification-method.js';
 import { fixOverrideType } from './fix-override-type.js';
 import { convertModelKind } from './convert-model-kind.js';
 import { organizeLoads } from './organize-loads.js';
@@ -27,6 +28,7 @@ export const JPIPE_QUICK_FIXES: readonly RegisteredQuickFix[] = [
     fixOperatorName,
     addRequiredConfigKeys,
     fixConfigKey,
+    fixUnificationMethod,
     addSupporter,
     fixLoadPath,
     removeLoad

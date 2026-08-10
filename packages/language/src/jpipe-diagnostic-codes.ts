@@ -18,6 +18,7 @@ export const JpipeIssue = {
     UnknownOperator:        'jpipe.unknown-operator',
     OperatorArity:          'jpipe.operator-arity',
     UnknownConfigKey:       'jpipe.unknown-config-key',
+    UnknownUnificationMethod: 'jpipe.unknown-unification-method',
     MissingConfigKey:       'jpipe.missing-config-key',
     MissingSupportOverride: 'jpipe.missing-support-override',
     BadSupportOverrideType: 'jpipe.bad-support-override-type',
@@ -83,6 +84,11 @@ export interface JpipeIssuePayloads {
         actual: string;
         operator: string;
         allowed: readonly string[];
+    };
+    [JpipeIssue.UnknownUnificationMethod]: {
+        actual: string;
+        /** Every name this workspace recognises: the built-ins plus any declared in settings. */
+        known: readonly string[];
     };
     [JpipeIssue.MissingConfigKey]: {
         missingKey: string;

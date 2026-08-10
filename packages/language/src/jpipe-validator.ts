@@ -24,6 +24,8 @@ import {
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import type { JpipeImportService } from './jpipe-import.js';
+import type { JpipeUnificationService } from './jpipe-unification.js';
+import { UNIFY_BY_KEY } from './jpipe-operators.js';
 import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
 import { allowedConfigKeys, isKnownOperator, knownOperatorNames, operatorSpec, requiredConfigKeys } from './jpipe-operators.js';
 import { JpipeIssue, issue } from './jpipe-diagnostic-codes.js';
@@ -35,7 +37,7 @@ export function registerValidationChecks(services: JpipeServices) {
     const checks: ValidationChecks<JpipeAstType> = {
         Unit:           validator.checkUnitNotEmpty,
         Load:           validator.checkLoadResolves,
-        Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys],
+        Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys, validator.checkUnificationMethod],
         Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds],
         Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds],
         Evidence:       validator.checkLabelNotEmpty,
@@ -50,10 +52,12 @@ export function registerValidationChecks(services: JpipeServices) {
 export class JpipeValidator {
     private readonly logger: JpipeServerLogger;
     private readonly importService: JpipeImportService;
+    private readonly unification: JpipeUnificationService;
 
     constructor(services: JpipeServices) {
         this.logger = services.logger;
         this.importService = services.references.JpipeImportService;
+        this.unification = services.unification;
     }
 
     /**
@@ -194,6 +198,30 @@ export class JpipeValidator {
                       allMissing,
                       hasConfigBlock: composition.config !== undefined
                   }) });
+        }
+    }
+
+    /**
+     * Flags a `unifyBy` naming a relation this workspace does not recognise.
+     *
+     * A warning, not an error. The compiler's registry is populated at startup, so a build may
+     * carry relations shipped with neither jPipe core nor this extension — a project with its own
+     * is not doing anything wrong, and calling its models broken would be simply wrong. What is
+     * reported is the limit of what the editor knows, which the settings can widen.
+     *
+     * Staying silent is not the alternative: a typo'd relation name fails the build with nothing
+     * having warned, and the value is a plain string that nothing else checks.
+     */
+    checkUnificationMethod(composition: Composition, accept: ValidationAcceptor): void {
+        for (const entry of composition.config?.entries ?? []) {
+            if (entry.key !== UNIFY_BY_KEY) continue;
+            const actual = entry.value;
+            if (!actual || this.unification.isKnown(actual)) continue;
+            const known = this.unification.known();
+            accept('warning',
+                `Unknown unification method '${actual}'; registered: ${known.join(', ')}.`,
+                { node: entry, property: 'value',
+                  ...issue(JpipeIssue.UnknownUnificationMethod, { actual, known }) });
         }
     }
 

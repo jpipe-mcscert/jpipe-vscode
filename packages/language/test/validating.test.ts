@@ -464,3 +464,70 @@ describe('Duplicate element ids', () => {
         expect(diagnosticMessages(doc).some(m => m.includes('Duplicate element id'))).toBe(false);
     });
 });
+
+describe('Unification method', () => {
+
+    const composed = (unifyBy: string) => `
+        justification A { conclusion c is "C" }
+        justification B { conclusion c is "C" }
+        justification Composed is refine(A, B) { hook: "c" unifyBy: "${unifyBy}" }
+    `;
+
+    test('the one jPipe ships is accepted', async () => {
+        const doc = await parse(composed('sameLabel'));
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).some(m => m.includes('unification method'))).toBe(false);
+    });
+
+    // A build may register relations shipped with neither jPipe core nor this extension, so an
+    // unrecognised name is the limit of what the editor knows — not a defect in the model.
+    test('an unknown one is a warning, not an error', async () => {
+        const doc = await parse(composed('nonexistent'));
+        assertNoParseErrors(doc);
+        const found = (doc.diagnostics ?? []).filter(
+            (d: Diagnostic) => Diagnostic.getMessageString(d).includes("Unknown unification method 'nonexistent'")
+        );
+        expect(found).toHaveLength(1);
+        expect(found[0].severity).toBe(DiagnosticSeverity.Warning);
+    });
+
+    test('the warning lists what is registered', async () => {
+        const doc = await parse(composed('nonexistent'));
+        expect(diagnosticMessages(doc).some(m => m.includes('registered: sameLabel'))).toBe(true);
+    });
+
+    // Silence is not the alternative: a typo'd relation fails the build with nothing having said so.
+    test('a near miss is still reported', async () => {
+        const doc = await parse(composed('samelabel'));
+        expect(diagnosticMessages(doc).some(m => m.includes('Unknown unification method'))).toBe(true);
+    });
+
+    test('a name declared in settings is accepted', async () => {
+        services.Jpipe.unification.setAdditionalMethods(['similarLabel']);
+        try {
+            const doc = await parse(composed('similarLabel'));
+            expect(diagnosticMessages(doc).some(m => m.includes('unification method'))).toBe(false);
+        } finally {
+            services.Jpipe.unification.setAdditionalMethods([]);
+        }
+    });
+
+    test('a declared name joins the list the warning offers', async () => {
+        services.Jpipe.unification.setAdditionalMethods(['similarLabel']);
+        try {
+            const doc = await parse(composed('nonexistent'));
+            expect(diagnosticMessages(doc).some(m => m.includes('registered: sameLabel, similarLabel'))).toBe(true);
+        } finally {
+            services.Jpipe.unification.setAdditionalMethods([]);
+        }
+    });
+
+    test('a composition that sets no unifyBy is not asked about one', async () => {
+        const doc = await parse(`
+            justification A { conclusion c is "C" }
+            justification B { conclusion c is "C" }
+            justification Composed is refine(A, B) { hook: "c" }
+        `);
+        expect(diagnosticMessages(doc).some(m => m.includes('unification method'))).toBe(false);
+    });
+});

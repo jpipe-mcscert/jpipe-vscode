@@ -19,6 +19,15 @@ let client: LanguageClient;
 /** Notification understood by the language server (see packages/extension/src/language/main.ts). */
 const SET_EXCLUDED_PATHS = 'jpipe/setExcludedPaths';
 
+/** Notification understood by the language server: extra `unifyBy` relations this build knows. */
+const SET_UNIFICATION_METHODS = 'jpipe/setUnificationMethods';
+
+/** The relation names the user has declared beyond the one jPipe ships. */
+function additionalUnificationMethods(): string[] {
+    return vscode.workspace.getConfiguration('jpipe')
+        .get<string[]>('additionalUnificationMethods', []);
+}
+
 // This function is called when the extension is activated.
 export function activate(context: vscode.ExtensionContext): void {
     const logger = new JpipeLogger(context);
@@ -71,6 +80,17 @@ export function activate(context: vscode.ExtensionContext): void {
         exclusions.onDidChange(() => {
             publishExcludedPaths();
             void pushExclusionsToServer();
+        }),
+        // Declaring a relation your build registers should silence the warning at once, without
+        // a reload — the same contract the exclusion setting has.
+        vscode.workspace.onDidChangeConfiguration(async event => {
+            if (!event.affectsConfiguration('jpipe.additionalUnificationMethods')) return;
+            try {
+                await client.start();
+                await client.sendNotification(SET_UNIFICATION_METHODS, additionalUnificationMethods());
+            } catch (err: unknown) {
+                logger.error(`Could not send unification methods to the language server: ${err instanceof Error ? err.message : String(err)}`);
+            }
         })
     );
 
@@ -316,7 +336,10 @@ function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogg
         // Sent with `initialize` so excluded files are never validated, not even once at startup.
         // A function, not a literal: it is re-evaluated on every initialize, so a server restart
         // picks up the current exclusions instead of replaying the ones from activation time.
-        initializationOptions: () => ({ excludedPaths: exclusions.getResolvedUris() })
+        initializationOptions: () => ({
+            excludedPaths: exclusions.getResolvedUris(),
+            additionalUnificationMethods: additionalUnificationMethods()
+        })
     };
 
     const client = new LanguageClient(

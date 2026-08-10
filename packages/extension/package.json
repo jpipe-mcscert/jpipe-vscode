@@ -441,6 +441,13 @@
                 "title": "jPipe: Validation",
                 "order": 5,
                 "properties": {
+                    "jpipe.additionalUnificationMethods": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "default": [],
+                        "order": 8,
+                        "markdownDescription": "Extra equivalence relations that `unifyBy` may name, beyond the `sameLabel` that ships with jPipe. Add the names your build registers, and the editor will stop warning about them."
+                    },
                     "jpipe.excludedPaths": {
                         "order": 1,
                         "type": "array",

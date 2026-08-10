@@ -63,6 +63,13 @@ organize-on-save setting kept for another language will not reach your `.jd` fil
 When you do run it, it never removes a `load` whose path does not resolve — a half-typed path is
 exactly the state a file is in while you are writing one.
 
+#### Your own unification relations
+
+jPipe ships one equivalence relation for `unifyBy`: `sameLabel`. If your build registers others,
+list their names under **jPipe: Compiler → Additional Unification Methods** and the editor will
+accept them. Until you do, an unfamiliar name is flagged as a *warning* — never an error, since
+the editor cannot know what your compiler has registered, only what it has been told.
+
 #### Tutorials
 
 Please visit [https://www.jpipe.org/tutorials/](https://www.jpipe.org/tutorials/) for examples and guidance o how to develop justificiation models using jPipe.

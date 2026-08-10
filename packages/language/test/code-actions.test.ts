@@ -653,3 +653,30 @@ justification J implements T {
         }
     });
 });
+
+describe('fix-unification-method', () => {
+
+    const composed = (unifyBy: string) =>
+        `justification A { conclusion c is "C" }\njustification B { conclusion c is "C" }\njustification ${CURSOR}Composed is refine(A, B) { hook: "c" unifyBy: "${unifyBy}" }`;
+
+    test('offers the names this workspace knows', async () => {
+        expect(await actionTitles(composed('samelabel'), CodeActionKind.QuickFix))
+            .toContain("Change to 'sameLabel'");
+    });
+
+    test('replaces the value inside its quotes', async () => {
+        const after = await expectFixResolves(
+            composed('samelabel'),
+            { title: "Change to 'sameLabel'" },
+            JpipeIssue.UnknownUnificationMethod
+        );
+        expect(after).toContain('unifyBy: "sameLabel"');
+    });
+
+    // Dropping the key silently changes which elements get unified, which is a decision the
+    // author makes rather than a repair the editor offers.
+    test('does not offer to remove the key', async () => {
+        const titles = await actionTitles(composed('nonexistent'), CodeActionKind.QuickFix);
+        expect(titles.some(t => t.toLowerCase().includes('remove'))).toBe(false);
+    });
+});
