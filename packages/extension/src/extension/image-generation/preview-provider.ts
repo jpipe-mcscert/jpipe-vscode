@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node';
 import { ImageGenerator, ImageFormat, type DiagnosticRun } from './image-generator.js';
 import { getShellHtml } from './preview-shell.js';
+import { responseToCursorMove } from './preview-refresh.js';
 import type {
     DiagnosticMessage,
     HostToWebview,
@@ -150,25 +151,24 @@ export class PreviewProvider {
             if (e.textEditor.document.languageId !== 'jpipe' || !PreviewProvider.webviewPanel || PreviewProvider.webviewDisposed) return;
             const doc = e.textEditor.document;
             const editor = e.textEditor;
-            const docUri = doc.uri.toString();
-            if (this.viewMode === 'diagnostic') {
-                // The symbol table follows the cursor. Highlight-only, always: the branches below
-                // exist to re-render when the cursor moves to a different *diagram*, which the
-                // diagnostic view does not have — and taking them here would run the compiler on
-                // every keystroke to produce a report that cannot have changed.
-                this.updateHighlightOnly(doc, editor);
-                return;
+            // The diagram under the cursor is only asked for in diagram mode; the diagnostic view
+            // shows no diagram, and resolving one would be work for an answer nobody reads.
+            let diagramAtCursor: string | undefined;
+            if (this.viewMode === 'diagram') {
+                try { diagramAtCursor = this.imageGenerator.findDiagramName(doc, editor); } catch { /* no diagram at cursor */ }
             }
-            if (docUri !== this.lastRenderedDocumentUri) {
-                if (!this.unsaved) this.updatePreview(doc, editor);
-                return;
-            }
-            let currentDiagram: string | undefined;
-            try { currentDiagram = this.imageGenerator.findDiagramName(doc, editor); } catch { /* no diagram at cursor */ }
-            if (currentDiagram && currentDiagram !== this.lastRenderedDiagramName && !this.unsaved) {
-                this.updatePreview(doc, editor);
-            } else {
-                this.updateHighlightOnly(doc, editor);
+
+            switch (responseToCursorMove({
+                mode: this.viewMode,
+                documentUri: doc.uri.toString(),
+                renderedUri: this.lastRenderedDocumentUri,
+                unsaved: this.unsaved,
+                diagramAtCursor,
+                renderedDiagram: this.lastRenderedDiagramName
+            })) {
+                case 'render':    this.updatePreview(doc, editor); break;
+                case 'highlight': this.updateHighlightOnly(doc, editor); break;
+                case 'nothing':   break;
             }
         });
 
@@ -299,6 +299,10 @@ export class PreviewProvider {
                 unsaved: this.unsaved
             };
             this.lastDiagnostic = message;
+            // Recorded here as well as on the diagram path: the panel has to know which file it
+            // is showing a report for, or moving to another one looks like a report that has not
+            // changed.
+            this.lastRenderedDocumentUri = document.uri.toString();
             this.post(message);
             return;
         }
