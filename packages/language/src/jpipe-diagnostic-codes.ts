@@ -13,6 +13,7 @@ export const JpipeIssue = {
     EmptyLabel:             'jpipe.empty-label',
     EmptyUnit:              'jpipe.empty-unit',
     DuplicateModelName:     'jpipe.duplicate-model-name',
+    DuplicateElementId:     'jpipe.duplicate-element-id',
     TemplateWithoutSupport: 'jpipe.template-without-support',
     UnknownOperator:        'jpipe.unknown-operator',
     OperatorArity:          'jpipe.operator-arity',
@@ -100,6 +101,7 @@ export interface JpipeIssuePayloads {
     [JpipeIssue.LoadMalformedPattern]:  { path: string };
     [JpipeIssue.LoadCircular]:          { path: string; resolved: string };
     [JpipeIssue.DuplicateModelName]:    { id: string };
+    [JpipeIssue.DuplicateElementId]:    { id: string; modelId: string };
     [JpipeIssue.TemplateWithoutSupport]: { id: string };
     // `Record<never, never>` rather than `Record<string, never>`: only the former has `keyof`
     // equal to `never`, which is what marks a code as callable through `issue(code)` alone.

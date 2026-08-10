@@ -85,6 +85,34 @@ describe('code actions', () => {
     });
 });
 
+describe('the outline never emits a nameless symbol', () => {
+
+    /** Every symbol in the tree, flattened. */
+    function flatten(symbols: readonly { name: string; children?: readonly unknown[] }[]): { name: string }[] {
+        return symbols.flatMap(s => [s, ...flatten((s.children ?? []) as never[])]);
+    }
+
+    // The client rejects a symbol whose name is empty with "name must not be falsy" and discards
+    // the entire response, so one half-typed line emptied the outline and raised a notification
+    // on every keystroke. Guarding our own code against throwing was not enough — what we hand
+    // back has to be valid too.
+    const NAMELESS: ReadonlyArray<readonly [string, string]> = [
+        ['a model with no name', 'justification '],
+        ['a model with no name and a body', 'justification  {\n    conclusion c is "C"\n}'],
+        ['a template with no name', 'template '],
+        ['both a nameless model and a nameless element', 'justification  {\n    evidence \n}']
+    ];
+
+    test.each([...MID_KEYSTROKE, ...NAMELESS])('%s yields no empty name', async (_label, source) => {
+        const document = await parse(source);
+        const symbols = await services.Jpipe.lsp.DocumentSymbolProvider!.getSymbols(
+            document, { textDocument: { uri: document.uri.toString() } }
+        );
+        const empty = flatten(symbols as never[]).filter(s => !s.name);
+        expect(empty).toEqual([]);
+    });
+});
+
 describe('an element with no name', () => {
 
     // Naming it `''` would put an index entry under the empty string, where every other

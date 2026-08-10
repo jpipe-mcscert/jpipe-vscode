@@ -397,3 +397,70 @@ describe('Cyclic implements', () => {
         expect(messages).toContain('Element label should not be empty');
     });
 });
+
+describe('Duplicate element ids', () => {
+
+    // The compiler rejects this as `no-duplicate-ids`. It matters in the editor because the model
+    // still parses: a relation naming the id resolves to whichever one the scope registered, so
+    // the argument quietly means something other than what it reads as.
+    test('two elements sharing an id in one model is an error', async () => {
+        const doc = await parse(`
+            justification j {
+                conclusion c is "A conclusion"
+                strategy   s is "A strategy"
+                evidence   e is "An evidence #1"
+                evidence   e is "An evidence #2"
+                s supports c
+                e supports s
+            }
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).some(m => m.includes("Duplicate element id 'e' in model 'j'"))).toBe(true);
+    });
+
+    // The first declaration is the one the reader thinks of as real; the copies are the problem.
+    test('only the later occurrences are marked', async () => {
+        const doc = await parse(`
+            justification j {
+                conclusion c is "C"
+                evidence   e is "One"
+                evidence   e is "Two"
+                evidence   e is "Three"
+            }
+        `);
+        assertNoParseErrors(doc);
+        const duplicates = diagnosticMessages(doc).filter(m => m.includes('Duplicate element id'));
+        expect(duplicates).toHaveLength(2);
+    });
+
+    test('the same id in two different models is fine', async () => {
+        const doc = await parse(`
+            justification a { conclusion c is "C" strategy s is "S" evidence e is "E" e supports s s supports c }
+            justification b { conclusion c is "C" strategy s is "S" evidence e is "E" e supports s s supports c }
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).some(m => m.includes('Duplicate element id'))).toBe(false);
+    });
+
+    test('an override qualified by its template does not collide with a local id', async () => {
+        const doc = await parse(`
+            template T { @support e is "Abstract" conclusion c is "C" strategy s is "S" e supports s s supports c }
+            justification J implements T {
+                conclusion c is "C"
+                strategy s is "S"
+                evidence T:e is "Concrete"
+                evidence e is "Local"
+                T:e supports s
+                s supports c
+            }
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).some(m => m.includes('Duplicate element id'))).toBe(false);
+    });
+
+    // A half-typed element has no id at all; it must not read as a duplicate of the last one.
+    test('elements still being typed are not duplicates of each other', async () => {
+        const doc = await parse('justification j {\n    conclusion c is "C"\n    evidence \n    evidence \n}');
+        expect(diagnosticMessages(doc).some(m => m.includes('Duplicate element id'))).toBe(false);
+    });
+});

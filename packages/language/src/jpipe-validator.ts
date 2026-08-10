@@ -36,8 +36,8 @@ export function registerValidationChecks(services: JpipeServices) {
         Unit:           validator.checkUnitNotEmpty,
         Load:           validator.checkLoadResolves,
         Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys],
-        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport],
-        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride],
+        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds],
+        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds],
         Evidence:       validator.checkLabelNotEmpty,
         Strategy:       [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
         Conclusion:     [validator.checkLabelNotEmpty, validator.checkConclusionIncomingFromStrategy],
@@ -253,6 +253,33 @@ export class JpipeValidator {
             accept('error', `Duplicate justification name '${justification.id}'`,
                    { node: justification, property: 'id',
                      ...issue(JpipeIssue.DuplicateModelName, { id: justification.id }) });
+        }
+    }
+
+    /**
+     * Flags two elements in one model sharing an id.
+     *
+     * The compiler rejects this as `no-duplicate-ids`, and it is worth catching in the editor
+     * because the model still *parses*: relations naming the id resolve to whichever of the two
+     * the scope happened to register, so the argument silently means something other than what
+     * it reads as.
+     *
+     * Reported on every occurrence after the first, so the original declaration is left unmarked
+     * and the squiggles land on the copies.
+     */
+    checkDuplicateElementIds(model: Justification | Template, accept: ValidationAcceptor): void {
+        const seen = new Set<string>();
+        for (const element of getLocalElements(model)) {
+            const id = qualifiedIdText(element.id);
+            // An element being typed has no id yet; it is not a duplicate of every other one.
+            if (!id) continue;
+            if (seen.has(id)) {
+                accept('error',
+                    `Duplicate element id '${id}' in model '${model.id}'`,
+                    { node: element, property: 'id',
+                      ...issue(JpipeIssue.DuplicateElementId, { id, modelId: model.id }) });
+            }
+            seen.add(id);
         }
     }
 
