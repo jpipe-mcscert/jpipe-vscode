@@ -337,7 +337,15 @@ body:not(.diag-raw) #diag-output { display: none; }
     border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
 }
 
-#diag-summary-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+/*
+ * `margin-left: auto`, not the header's `space-between`, is what holds these on the right.
+ *
+ * Text and JSON hide the tabs, leaving this row as the header's only child — and `space-between`
+ * puts a lone child at the *start*, so Copy / Report / Text / JSON slid to the left edge on every
+ * face but Report, and stayed there for a report from a compiler old enough to have no tabs at
+ * all. An automatic left margin does not care whether anything precedes it.
+ */
+#diag-summary-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; margin-left: auto; }
 #diag-faces { display: flex; gap: 2px; }
 
 .diag-chip-btn {

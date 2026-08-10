@@ -103,4 +103,20 @@ describe('the diagnostic layer is laid out as a column', () => {
     test('the panel is the part that scrolls', () => {
         expect(css).toMatch(/#diag-panel\s*\{[^}]*overflow:\s*auto/);
     });
+
+    /**
+     * Copy / Report / Text / JSON sit at the right of the header, and have to stay there when the
+     * tabs beside them are not on screen.
+     *
+     * Two states hide the tabs: any face but Report, and a report from a compiler too old to
+     * produce a structured one. In both, this row is the header's only child — and `space-between`
+     * places a lone flex child at the *start*, which slid the whole group to the left edge. So the
+     * position cannot be left to the header's distribution; the row has to push itself over.
+     */
+    test('the report controls hold the right edge without the tabs beside them', () => {
+        expect(css, 'raw faces hide the tabs, so the header can be left with one child')
+            .toMatch(/body\.diag-raw\s+#diag-tabs[^{]*\{[^}]*display:\s*none/);
+        expect(css, '#diag-summary-actions must not depend on a sibling for its position')
+            .toMatch(/#diag-summary-actions\s*\{[^}]*margin-left:\s*auto/);
+    });
 });
