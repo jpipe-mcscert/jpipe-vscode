@@ -9,6 +9,8 @@
  * is now created once and everything after that arrives as one of these messages.
  */
 
+import type { DiagnosticReport } from './diagnostic-report.js';
+
 /** Which layer of the panel is in front. */
 export type ViewMode = 'diagram' | 'diagnostic' | 'empty';
 
@@ -33,12 +35,28 @@ export interface RenderMessage {
     unsaved: boolean;
 }
 
+/**
+ * A diagnostic run, ready to display.
+ *
+ * `raw` is the compiler's text output and is always present: it is the whole of the panel when
+ * `report` is null — an older compiler, unparseable output, or a schema version this build does
+ * not know — and it stays reachable behind the raw toggle when a report did arrive.
+ */
+export interface DiagnosticMessage {
+    type: 'diagnostic';
+    /** Same purpose as `RenderMessage.revision`: two saves in flight can finish out of order. */
+    revision: number;
+    raw: string;
+    report: DiagnosticReport | null;
+    unsaved: boolean;
+}
+
 export type HostToWebview =
     | RenderMessage
     | { type: 'highlight'; name: string | null }
     | { type: 'setUnsaved'; unsaved: boolean }
     | { type: 'view'; mode: ViewMode }
-    | { type: 'diagnostic'; output: string }
+    | DiagnosticMessage
     | { type: 'busy'; busy: boolean }
     /** Settings the page needs. Sent on `ready` and again whenever they change. */
     | { type: 'config'; zoomSensitivity: number };
@@ -52,4 +70,13 @@ export type WebviewToHost =
     | { type: 'ready' }
     | { type: 'download'; format: string }
     | { type: 'openLink'; url: string }
-    | { type: 'toggleMode' };
+    | { type: 'toggleMode' }
+    /**
+     * Jump to a position in the source.
+     *
+     * `source` is already resolved to an absolute path by the page — a location may name a file
+     * other than the one being diagnosed, which is how elements pulled in by a `load` appear, so
+     * the host opens by path rather than acting on the active editor. Line is 1-based and column
+     * 0-based, the compiler's convention; the host converts.
+     */
+    | { type: 'revealLocation'; source: string; line: number; column: number };

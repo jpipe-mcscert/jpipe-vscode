@@ -130,3 +130,22 @@ export function findDiagramName(text: string, cursorLine: number): string {
     }
     return diagramName;
 }
+
+/**
+ * Did this invocation fail because the compiler does not know the option we passed?
+ *
+ * `diagnostic -f json` is asked for unconditionally, because the alternative — trusting a version
+ * number — is not reliable: `jpipe.cliPath` and `jarFile` can name any build, and a nightly or a
+ * locally built jar says whatever its POM says. Asking and reading the refusal is the honest test.
+ *
+ * picocli answers an unrecognised option with exit code 2 and an `Unknown option` (or `Unmatched
+ * argument`) line, which is a different thing from every failure that matters: a model with errors
+ * exits 1, an internal crash exits 42. Both halves are required precisely so those are never
+ * mistaken for an old compiler and silently downgraded.
+ */
+export const USAGE_ERROR_EXIT_CODE = 2;
+
+export function isUnknownOptionFailure(exitCode: unknown, stderr: string): boolean {
+    if (exitCode !== USAGE_ERROR_EXIT_CODE) return false;
+    return /^\s*(Unknown option|Unmatched argument)/mi.test(stderr);
+}

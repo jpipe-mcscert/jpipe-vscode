@@ -10,9 +10,26 @@ import { planLaunchHere } from '../process-launcher.js';
 import {
     buildPathEnv,
     findDiagramName as findDiagramNameIn,
+    isUnknownOptionFailure,
     resolveExecCommand as resolveExecCommandFrom,
     type CompilerSettings
 } from './compiler-invocation.js';
+import { isRenderableReport } from '../../shared/diagnostic-model.js';
+import type { DiagnosticReport } from '../../shared/diagnostic-report.js';
+
+/**
+ * The outcome of one `diagnostic` run.
+ *
+ * `raw` is always there — it is what the panel shows when there is no structured report, and what
+ * the copy button copies when there is. `report` is null for a compiler with no `-f json`, for
+ * output that does not parse, and for a schema version this build does not know.
+ */
+export interface DiagnosticRun {
+    raw: string;
+    report: DiagnosticReport | null;
+    /** 0 clean, 1 the model has errors, 42 the compiler crashed; undefined if it never ran. */
+    exitCode: number | undefined;
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -201,7 +218,14 @@ export class ImageGenerator {
         }
     }
 
-    public async generateDiagnostic(document: vscode.TextDocument): Promise<string> {
+    /**
+     * Run `diagnostic` and, when the compiler can produce one, parse its structured report.
+     *
+     * `report` being null is a supported outcome, not a failure: it is what an older compiler
+     * gets, and it renders the raw text exactly as this panel always has. Nothing about that is
+     * surfaced to the user, because from their point of view nothing went wrong.
+     */
+    public async generateDiagnostic(document: vscode.TextDocument): Promise<DiagnosticRun> {
         const inputFile = path.normalize(document.uri.fsPath);
         const config = vscode.workspace.getConfiguration('jpipe');
 
@@ -209,19 +233,109 @@ export class ImageGenerator {
         try {
             resolved = this.resolveExecCommand(config);
         } catch (e: any) {
-            return e.message;
+            // A misconfigured executable is the one case with nothing to render at all, so it
+            // stays a message in the raw pane rather than a silent empty panel.
+            return { raw: e.message, report: null, exitCode: undefined };
         }
 
-        const argv = [...resolved.args, 'diagnostic', '-i', inputFile];
-        this.logger.info(`Executing: ${resolved.file} ${argv.join(' ')}`);
-        try {
-            const { stdout, stderr } = await runCompiler(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
-            return [stdout, stderr].filter(Boolean).join('\n').trim() || '(no output)';
-        } catch (e: any) {
-            const out = (e.stdout ?? '').trim();
-            const err = (e.stderr ?? '').trim();
-            return [out, err].filter(Boolean).join('\n') || `Exit code ${e.code}`;
+        // Keyed by executable, since that is what the answer is actually about: switching
+        // `cliPath` to a different build must not inherit the previous one's verdict.
+        const execKey = [resolved.file, ...resolved.args].join(' ');
+        const wantsJson = this.jsonDiagnosticSupport.get(execKey) !== false;
+
+        const run = await this.runDiagnostic(resolved, inputFile, config, wantsJson);
+
+        if (wantsJson && run.unknownOption) {
+            // Asked for JSON, told the flag does not exist. Remember it, and ask again the old
+            // way — once. Every later save for this executable skips straight to the text run.
+            this.jsonDiagnosticSupport.set(execKey, false);
+            this.logger.debug(`Compiler at '${execKey}' has no 'diagnostic -f json'; using the text report`);
+            const textRun = await this.runDiagnostic(resolved, inputFile, config, false);
+            return { raw: textRun.raw, report: null, exitCode: textRun.exitCode };
         }
+
+        if (!wantsJson) return { raw: run.raw, report: null, exitCode: run.exitCode };
+
+        this.jsonDiagnosticSupport.set(execKey, true);
+        return { raw: run.raw, report: this.parseReport(run.stdout), exitCode: run.exitCode };
+    }
+
+    /**
+     * Whether a given executable understands `diagnostic -f json`.
+     *
+     * Absent means "not asked yet". Held on the instance rather than globally so that a settings
+     * change, which rebuilds the generator, starts the question over.
+     */
+    private readonly jsonDiagnosticSupport = new Map<string, boolean>();
+
+    /** One invocation, with the pieces the caller has to tell apart kept separate. */
+    private async runDiagnostic(
+        resolved: { file: string; args: string[] },
+        inputFile: string,
+        config: vscode.WorkspaceConfiguration,
+        asJson: boolean
+    ): Promise<{ raw: string; stdout: string; exitCode: number | undefined; unknownOption: boolean }> {
+        // `--headless` suppresses the compiler's logo banner, which this command used to print
+        // above every report.
+        const argv = [
+            ...resolved.args,
+            '--headless',
+            'diagnostic',
+            ...(asJson ? ['-f', 'json'] : []),
+            '-i',
+            inputFile
+        ];
+        this.logger.info(`Executing: ${resolved.file} ${argv.join(' ')}`);
+
+        const combine = (stdout: string, stderr: string): string =>
+            [stdout, stderr].map(s => s.trim()).filter(Boolean).join('\n') || '(no output)';
+
+        try {
+            const { stdout, stderr } = await runCompiler(resolved.file, argv, {
+                env: envWithPath(),
+                timeout: timeoutMs(config),
+                maxBuffer: MAX_OUTPUT_BYTES
+            });
+            return { raw: combine(stdout, stderr), stdout, exitCode: 0, unknownOption: false };
+        } catch (e: any) {
+            // A model with errors exits non-zero and still produces a full report, so a failed
+            // invocation is not the same as no output — the report is read either way.
+            const stdout: string = e.stdout ?? '';
+            const stderr: string = e.stderr ?? '';
+            const exitCode: number | undefined = typeof e.code === 'number' ? e.code : undefined;
+            return {
+                raw: combine(stdout, stderr) === '(no output)' && exitCode !== undefined
+                    ? `Exit code ${exitCode}`
+                    : combine(stdout, stderr),
+                stdout,
+                exitCode,
+                unknownOption: isUnknownOptionFailure(exitCode, stderr)
+            };
+        }
+    }
+
+    /**
+     * The structured report, or null if there isn't a usable one.
+     *
+     * Tolerant on purpose. `isRenderableReport` asks only whether this is the shape this version
+     * knows how to draw; it does not validate against the schema, because a compiler adding a
+     * field must keep rendering rather than blank the panel. Full validation lives in the tests.
+     */
+    private parseReport(stdout: string): DiagnosticReport | null {
+        const trimmed = stdout.trim();
+        if (!trimmed.startsWith('{')) return null;
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(trimmed);
+        } catch {
+            this.logger.debug('Diagnostic output announced itself as JSON but did not parse');
+            return null;
+        }
+        if (!isRenderableReport(parsed)) {
+            this.logger.debug('Diagnostic report is not a shape this version can render');
+            return null;
+        }
+        return parsed;
     }
 
     public async generateAndSave(format: ImageFormat = ImageFormat.SVG, document?: vscode.TextDocument, forcedDiagramName?: string): Promise<void> {

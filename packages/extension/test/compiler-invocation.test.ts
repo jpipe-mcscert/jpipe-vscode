@@ -4,6 +4,7 @@ import {
     buildPathEnv,
     expandTilde,
     findDiagramName,
+    isUnknownOptionFailure,
     resolveExecCommand,
     type CompilerContext,
     type CompilerSettings
@@ -220,5 +221,55 @@ describe('findDiagramName', () => {
 
     test('a declaration below the cursor is not selected', () => {
         expect(() => findDiagramName(model, 0)).toThrow(/No diagram name found/);
+    });
+});
+
+describe('isUnknownOptionFailure', () => {
+    /**
+     * This decides whether the panel quietly downgrades to the text report. Reading it too
+     * eagerly would hide real compiler failures behind a "your compiler is old" fallback, so the
+     * negative cases below matter as much as the positive ones.
+     */
+
+    /** What picocli actually prints when handed an option it does not declare. */
+    const USAGE = [
+        "Unknown option: '-f'",
+        'Usage: jpipe diagnostic [-hV] [-i=<input>] [-o=<output>]',
+        'Parse and report diagnostics without exporting.'
+    ].join('\n');
+
+    test('recognises an unknown option', () => {
+        expect(isUnknownOptionFailure(2, USAGE)).toBe(true);
+    });
+
+    test('recognises an unmatched argument', () => {
+        expect(isUnknownOptionFailure(2, "Unmatched argument at index 2: 'json'")).toBe(true);
+    });
+
+    test('a model with errors is not an old compiler', () => {
+        // Exit 1 is the compiler doing its job. Downgrading here would drop the structured
+        // report for every file that has a mistake in it — that is, exactly when it is wanted.
+        expect(isUnknownOptionFailure(1, '[ERROR] m.jd:9:15: [conclusion-supported] ...')).toBe(false);
+    });
+
+    test('a compiler crash is not an old compiler', () => {
+        expect(isUnknownOptionFailure(42, 'java.lang.NullPointerException')).toBe(false);
+    });
+
+    test('exit 2 without the diagnostic line is not enough', () => {
+        // Both halves are required: some other tool exiting 2 must not be read as a refusal.
+        expect(isUnknownOptionFailure(2, 'Segmentation fault')).toBe(false);
+        expect(isUnknownOptionFailure(2, '')).toBe(false);
+    });
+
+    test('the message alone is not enough either', () => {
+        expect(isUnknownOptionFailure(0, USAGE)).toBe(false);
+        expect(isUnknownOptionFailure(undefined, USAGE)).toBe(false);
+        expect(isUnknownOptionFailure(null, USAGE)).toBe(false);
+    });
+
+    test('finds the line wherever in stderr it lands', () => {
+        // Log lines can precede it, and picocli may or may not indent.
+        expect(isUnknownOptionFailure(2, `12:00:00 INFO starting\n  Unknown option: '-f'`)).toBe(true);
     });
 });

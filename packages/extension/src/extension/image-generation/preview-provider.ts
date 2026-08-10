@@ -1,8 +1,13 @@
 import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node';
-import { ImageGenerator, ImageFormat } from './image-generator.js';
+import { ImageGenerator, ImageFormat, type DiagnosticRun } from './image-generator.js';
 import { getShellHtml } from './preview-shell.js';
-import type { HostToWebview, RenderMessage, WebviewToHost } from '../../shared/preview-protocol.js';
+import type {
+    DiagnosticMessage,
+    HostToWebview,
+    RenderMessage,
+    WebviewToHost
+} from '../../shared/preview-protocol.js';
 import type { JpipeLogger } from '../logger.js';
 
 interface DocumentSymbol {
@@ -29,8 +34,16 @@ export class PreviewProvider {
      */
     private lastRender: RenderMessage | undefined;
     /**
+     * The diagnostic counterpart of `lastRender`, and for the same reason: without it, reloading
+     * the webview while the diagnostic view was showing dropped the user back to the diagram.
+     */
+    private lastDiagnostic: DiagnosticMessage | undefined;
+    /**
      * Renders are numbered because `updatePreview` is async: two saves in quick succession can
      * finish out of order, and the page ignores anything older than what it already shows.
+     *
+     * Diagnostic runs share the counter. They are just as async, and sharing it means the two
+     * paths cannot disagree about which is newer when the user toggles mid-run.
      */
     private revision = 0;
 
@@ -138,6 +151,14 @@ export class PreviewProvider {
             const doc = e.textEditor.document;
             const editor = e.textEditor;
             const docUri = doc.uri.toString();
+            if (this.viewMode === 'diagnostic') {
+                // The symbol table follows the cursor. Highlight-only, always: the branches below
+                // exist to re-render when the cursor moves to a different *diagram*, which the
+                // diagnostic view does not have — and taking them here would run the compiler on
+                // every keystroke to produce a report that cannot have changed.
+                this.updateHighlightOnly(doc, editor);
+                return;
+            }
             if (docUri !== this.lastRenderedDocumentUri) {
                 if (!this.unsaved) this.updatePreview(doc, editor);
                 return;
@@ -167,6 +188,39 @@ export class PreviewProvider {
         context.subscriptions.push(...this.subscriptions);
     }
     
+    /**
+     * Open a source position from the diagnostic view.
+     *
+     * Opens by path rather than acting on the active editor: a location in the report may name a
+     * file other than the one being diagnosed, which is how elements pulled in by a `load` show
+     * up, and the row the user clicked said so.
+     *
+     * This is also the single place the compiler's coordinates become VS Code's. The compiler
+     * counts lines from 1 and columns from 0; `vscode.Position` counts both from 0.
+     */
+    private async revealLocation(source: string, line: number, column: number): Promise<void> {
+        try {
+            const uri = vscode.Uri.file(source);
+            const document = await vscode.workspace.openTextDocument(uri);
+            const position = new vscode.Position(Math.max(0, line - 1), Math.max(0, column));
+            const editor = await vscode.window.showTextDocument(document, {
+                // Beside the panel, not on top of it: the preview is locked to its own group, so
+                // reusing the group the user came from keeps both visible.
+                viewColumn: vscode.ViewColumn.One,
+                preserveFocus: false
+            });
+            editor.selection = new vscode.Selection(position, position);
+            editor.revealRange(
+                new vscode.Range(position, position),
+                vscode.TextEditorRevealType.InCenterIfOutsideViewport
+            );
+        } catch (error) {
+            // A stale report can name a file that has since moved. Worth a log line, not a modal.
+            const msg = error instanceof Error ? error.message : String(error);
+            this.logger.warn(`Could not reveal ${source}:${line}:${column} — ${msg}`);
+        }
+    }
+
     /** Extract the SVG document from CLI output (drops any path or log text before/after the <svg>). */
     private extractSvgFromOutput(stdout: string): string {
         const start = stdout.indexOf('<svg');
@@ -195,17 +249,32 @@ export class PreviewProvider {
 
         // Diagnostic mode bypasses diagram-name resolution
         if (this.viewMode === 'diagnostic') {
+            const revision = ++this.revision;
             this.post({ type: 'busy', busy: true });
-            let output: string;
+            let run: DiagnosticRun;
             try {
-                output = await this.imageGenerator.generateDiagnostic(document);
+                run = await this.imageGenerator.generateDiagnostic(document);
             } catch (error) {
                 const msg = error instanceof Error ? error.message : String(error);
                 this.logger.error(`Diagnostic failed in ${document.fileName}: ${msg}`);
-                output = `Failed to run diagnostic:\n\n${msg}`;
+                run = { raw: `Failed to run diagnostic:\n\n${msg}`, report: null, exitCode: undefined };
             }
             if (this.viewMode !== 'diagnostic') return;
-            this.post({ type: 'diagnostic', output });
+            // Same guard the render path uses: a slow run landing after a faster one would
+            // otherwise replace newer content with older.
+            if (this.lastDiagnostic && revision < this.lastDiagnostic.revision) {
+                this.logger.debug(`Dropping stale diagnostic ${revision} (panel is showing ${this.lastDiagnostic.revision})`);
+                return;
+            }
+            const message: DiagnosticMessage = {
+                type: 'diagnostic',
+                revision,
+                raw: run.raw,
+                report: run.report,
+                unsaved: this.unsaved
+            };
+            this.lastDiagnostic = message;
+            this.post(message);
             return;
         }
 
@@ -412,7 +481,12 @@ export class PreviewProvider {
                 // The page is listening. Give it back whatever it was showing, so a webview
                 // content reload does not cost a recompile — or a blank panel.
                 this.postConfig();
-                if (this.lastRender) {
+                // Replay whichever view was in front. Sending the diagram unconditionally, as
+                // this used to, meant a reload while reading the diagnostics silently switched
+                // the panel back to the diagram.
+                if (this.viewMode === 'diagnostic' && this.lastDiagnostic) {
+                    panel.webview.postMessage(this.lastDiagnostic);
+                } else if (this.lastRender) {
                     panel.webview.postMessage(this.lastRender);
                 } else {
                     panel.webview.postMessage({ type: 'view', mode: 'empty' } satisfies HostToWebview);
@@ -442,6 +516,9 @@ export class PreviewProvider {
             }
             if (msg.type === 'openLink' && msg.url) {
                 vscode.env.openExternal(vscode.Uri.parse(msg.url));
+            }
+            if (msg.type === 'revealLocation') {
+                void this.revealLocation(msg.source, msg.line, msg.column);
             }
             if (msg.type === 'toggleMode') {
                 // Resolve a document BEFORE flipping viewMode so we never end up in a

@@ -11,6 +11,11 @@ import * as vscode from 'vscode';
  *
  * The four layers are all present from the start and selected by `body[data-mode]`; the busy
  * indicator sits over whichever is showing.
+ *
+ * The diagnostic layer carries both of its faces: the structured view (`#diag-panel` and the
+ * chrome above it) and the raw `<pre>`. The raw one is not a leftover — it is the whole of the
+ * layer when the compiler produced no structured report, which is what every build without
+ * `diagnostic -f json` does, and it stays reachable behind the Raw toggle otherwise.
  */
 export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     const nonce = randomBytes(16).toString('base64');
@@ -77,7 +82,27 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
     <div class="layer" id="container" tabindex="0" role="application" aria-label="Diagram canvas. Arrow keys pan, plus and minus zoom, 0 fits to window, 1 shows actual size">
         <div id="svg-wrapper"></div>
     </div>
-    <div class="layer" id="diagnostic-overlay"><pre id="diag-output" tabindex="0"></pre></div>
+    <div class="layer" id="diagnostic-overlay">
+        <div id="diag-summary">
+            <div id="diag-stats"></div>
+            <div id="diag-summary-actions">
+                <button class="diag-chip-btn" id="diag-copy">Copy</button>
+                <button class="diag-chip-btn" id="diag-raw-toggle" aria-pressed="false">Raw</button>
+            </div>
+        </div>
+        <div id="diag-tabs" role="tablist" aria-label="Diagnostic report sections">
+            <button role="tab" id="diag-tab-diagnostics" data-tab="diagnostics" aria-controls="diag-panel" aria-selected="true">Problems</button>
+            <button role="tab" id="diag-tab-models" data-tab="models" aria-controls="diag-panel" aria-selected="false">Models</button>
+            <button role="tab" id="diag-tab-symbols" data-tab="symbols" aria-controls="diag-panel" aria-selected="false">Symbols</button>
+            <button role="tab" id="diag-tab-actions" data-tab="actions" aria-controls="diag-panel" aria-selected="false">Actions</button>
+        </div>
+        <div id="diag-controls">
+            <input type="search" id="diag-filter" placeholder="Filter…" aria-label="Filter the current section">
+            <div id="diag-controls-extra"></div>
+        </div>
+        <div id="diag-panel" role="tabpanel" tabindex="0"></div>
+        <pre id="diag-output" tabindex="0"></pre>
+    </div>
     <div class="layer" id="empty-overlay">
         <div class="message">Move the cursor into a diagram block to preview it.</div>
     </div>

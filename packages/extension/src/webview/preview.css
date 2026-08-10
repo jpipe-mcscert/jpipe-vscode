@@ -298,16 +298,330 @@ body.jpipe-render-error #container {
 
 /* -------------------------------------------------------- other layers */
 
+/* ------------------------------------------------------- the diagnostic view */
+
+/*
+ * A column: summary, tabs and filter hold their height, and only the panel beneath them scrolls.
+ * Each section is a long table, and a single scroller shared by all of them would put the error
+ * count out of sight exactly when it matters.
+ */
 #diagnostic-overlay {
-    overflow: auto;
-    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
+/* The raw text is a layer within a layer: either the structured view or this, never both. */
+body.diag-raw #diag-summary #diag-stats,
+body.diag-raw #diag-tabs,
+body.diag-raw #diag-controls,
+body.diag-raw #diag-panel { display: none; }
+body:not(.diag-raw) #diag-output { display: none; }
+
+/* With no structured report there is nothing to toggle back to, so the control goes away. */
+body.diag-no-report #diag-raw-toggle { display: none; }
+
+#diag-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
+}
+
+#diag-stats {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+#diag-stats .diag-stat { white-space: nowrap; }
+#diag-stats .diag-stat strong { color: var(--vscode-foreground); font-weight: 600; }
+#diag-stats .diag-stat.errors strong { color: var(--vscode-editorError-foreground, #f14c4c); }
+#diag-stats .diag-stat.clean strong { color: var(--vscode-testing-iconPassed, #3fb950); }
+
+#diag-summary-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+.diag-chip-btn {
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+
+.diag-chip-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+.diag-chip-btn[aria-pressed="true"] {
+    background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.3));
+    border-color: var(--vscode-focusBorder);
+}
+
+#diag-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
+}
+
+#diag-tabs button {
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+#diag-tabs button:hover { color: var(--vscode-foreground); }
+
+#diag-tabs button[aria-selected="true"] {
+    color: var(--vscode-foreground);
+    border-bottom-color: var(--vscode-focusBorder);
+}
+
+#diag-tabs button .diag-tab-count {
+    margin-left: 5px;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}
+
+#diag-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.18));
+}
+
+#diag-filter {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: inherit;
+    font-size: 12px;
+}
+
+#diag-filter:focus { outline: 1px solid var(--vscode-focusBorder); }
+
+#diag-controls-extra { display: flex; gap: 4px; flex-shrink: 0; }
+
+/* The only thing that scrolls. */
+#diag-panel {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 8px 12px 16px;
+}
+
+.diag-empty {
+    padding: 24px 0;
+    color: var(--vscode-descriptionForeground);
+    font-size: 13px;
+}
+
+/* ------------------------------------------------------------ rows and tables */
+
+.diag-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+.diag-table td {
+    padding: 4px 8px 4px 0;
+    vertical-align: top;
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.12));
+}
+
+.diag-row-link { cursor: pointer; }
+.diag-row-link:hover { background: var(--vscode-list-hoverBackground); }
+
+/* What the editor cursor is currently sitting on. */
+.diag-row.current {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.diag-loc {
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    text-align: right;
+}
+
+.diag-id { font-family: var(--vscode-editor-font-family, monospace); }
+
+.diag-badge {
+    display: inline-block;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+}
+
+.diag-badge.severity-error,
+.diag-badge.severity-fatal {
+    background: color-mix(in srgb, var(--vscode-editorError-foreground, #f14c4c) 22%, transparent);
+    color: var(--vscode-editorError-foreground, #f14c4c);
+}
+
+.diag-badge.synthesized { background: transparent; color: var(--vscode-descriptionForeground); }
+
+.diag-kind { color: var(--vscode-descriptionForeground); white-space: nowrap; }
+
+/* A filter toggle, not decoration — hence a button. */
+.diag-code {
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-textPreformat-foreground, var(--vscode-foreground));
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    padding: 0 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.diag-code:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+.diag-code[aria-pressed="true"] {
+    background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.3));
+    border-color: var(--vscode-focusBorder);
+}
+
+.diag-group-heading {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--vscode-editor-background);
+    padding: 10px 0 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.diag-group-heading .diag-kind { font-weight: 400; margin-left: 6px; }
+
+/* ------------------------------------------------------------------- models */
+
+.diag-card {
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+
+.diag-card-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.diag-card-name { font-weight: 600; font-family: var(--vscode-editor-font-family, monospace); }
+.diag-card-row { font-size: 12px; margin-top: 4px; color: var(--vscode-descriptionForeground); }
+.diag-card-row .diag-label { display: inline-block; min-width: 62px; }
+
+/* Every relationship in a card is a link to somewhere else in the report. */
+.diag-link {
+    border: none;
+    background: transparent;
+    padding: 0 2px;
+    color: var(--vscode-textLink-foreground);
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.diag-link:hover { text-decoration: underline; }
+
+.diag-count-chip {
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+    border-radius: 10px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 8px;
+    margin-right: 4px;
+    cursor: pointer;
+}
+
+.diag-count-chip:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+.diag-error-badge {
+    border: none;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--vscode-editorError-foreground, #f14c4c) 18%, transparent);
+    color: var(--vscode-editorError-foreground, #f14c4c);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ actions */
+
+.diag-tree { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
+
+.diag-action {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 1px 0;
+    line-height: 1.6;
+}
+
+.diag-action:hover { background: var(--vscode-list-hoverBackground); }
+
+.diag-action-index {
+    color: var(--vscode-descriptionForeground);
+    text-align: right;
+    min-width: 3.5em;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* A disclosure control where there is something to disclose, a spacer where there is not. */
+.diag-twisty {
+    border: none;
+    background: transparent;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    padding: 0;
+    width: 1.2em;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.diag-twisty.leaf { cursor: default; opacity: 0; }
+.diag-action-macro { color: var(--vscode-charts-purple, var(--vscode-textLink-foreground)); }
+.diag-hidden-count { color: var(--vscode-descriptionForeground); font-size: 11px; }
+.diag-children { border-left: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25)); }
+
+/* -------------------------------------------------------------- the raw text */
+
 #diag-output {
+    flex: 1 1 auto;
+    overflow: auto;
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 13px;
     white-space: pre;
     margin: 0;
+    padding: 12px;
     color: var(--vscode-editor-foreground);
     line-height: 1.5;
 }
