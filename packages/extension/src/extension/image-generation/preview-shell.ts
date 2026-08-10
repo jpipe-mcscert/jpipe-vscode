@@ -89,20 +89,24 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
         <div id="svg-wrapper"></div>
     </div>
     <div class="layer" id="diagnostic-overlay">
-        <div id="diag-summary">
-            <div id="diag-stats"></div>
+        <!--
+            One header row, not two. A summary line above the tabs repeated what the tab counts
+            already say — the same problem, model and element counts twice — so the counts live
+            on the tabs and the row carries only what has nowhere else to be.
+        -->
+        <div id="diag-header">
+            <div id="diag-tabs" role="tablist" aria-label="Diagnostic report sections">
+                <button role="tab" id="diag-tab-diagnostics" data-tab="diagnostics" aria-controls="diag-panel" aria-selected="true">Problems</button>
+                <button role="tab" id="diag-tab-models" data-tab="models" aria-controls="diag-panel" aria-selected="false">Models</button>
+                <button role="tab" id="diag-tab-symbols" data-tab="symbols" aria-controls="diag-panel" aria-selected="false">Symbols</button>
+                <button role="tab" id="diag-tab-actions" data-tab="actions" aria-controls="diag-panel" aria-selected="false">Actions</button>
+            </div>
             <div id="diag-summary-actions">
                 <button class="diag-chip-btn" id="diag-copy">Copy</button>
                 <!-- Report / Text / JSON. Populated by the view, and empty when there is no
                      structured report to switch away from. -->
                 <div id="diag-faces" role="group" aria-label="How to show the report"></div>
             </div>
-        </div>
-        <div id="diag-tabs" role="tablist" aria-label="Diagnostic report sections">
-            <button role="tab" id="diag-tab-diagnostics" data-tab="diagnostics" aria-controls="diag-panel" aria-selected="true">Problems</button>
-            <button role="tab" id="diag-tab-models" data-tab="models" aria-controls="diag-panel" aria-selected="false">Models</button>
-            <button role="tab" id="diag-tab-symbols" data-tab="symbols" aria-controls="diag-panel" aria-selected="false">Symbols</button>
-            <button role="tab" id="diag-tab-actions" data-tab="actions" aria-controls="diag-panel" aria-selected="false">Actions</button>
         </div>
         <div id="diag-controls">
             <input type="search" id="diag-filter" placeholder="Filter…" aria-label="Filter the current section">

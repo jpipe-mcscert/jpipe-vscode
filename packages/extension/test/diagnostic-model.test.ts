@@ -11,8 +11,7 @@ import {
     flattenActionTree,
     formatLocation,
     isRenderableReport,
-    symbolKindOfCensusKey,
-    totalElements
+    symbolKindOfCensusKey
 } from '../src/shared/diagnostic-model.js';
 import {
     cleanTemplate,
@@ -280,11 +279,6 @@ describe('the element census', () => {
                 expect(model.symbols.length, `${report.source} / ${model.name}`).toBe(counted);
             }
         }
-    });
-
-    test('totals elements across every model', () => {
-        expect(totalElements(cleanTemplate)).toBe(3);
-        expect(totalElements(unsupportedElements)).toBe(6);
     });
 });
 

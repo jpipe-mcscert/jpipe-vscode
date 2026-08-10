@@ -33,7 +33,6 @@ import {
     formatLocation,
     matches,
     symbolKindOfCensusKey,
-    totalElements,
     type ActionNode,
     type Attribution
 } from '../shared/diagnostic-model.js';
@@ -90,7 +89,6 @@ export interface DiagnosticViewState {
 /** The elements the view writes into. Passed in so this module never queries the document. */
 export interface DiagnosticViewElements {
     overlay: HTMLElement;
-    stats: HTMLElement;
     tabs: HTMLElement;
     filter: HTMLInputElement;
     controlsExtra: HTMLElement;
@@ -220,7 +218,7 @@ export class DiagnosticView {
             this.actionTree = buildActionTree(report.actions);
         }
 
-        this.renderSummary();
+        this.leaveEmptyTab();
         this.renderTabs();
         this.renderFaces();
         this.applyFace();
@@ -361,49 +359,51 @@ export class DiagnosticView {
         this.host.persist();
     }
 
-    private renderSummary(): void {
-        const stats = this.elements.stats;
-        stats.replaceChildren();
-        const report = this.report;
-        if (!report) return;
-
-        const stat = (className: string, value: string, label: string): void => {
-            const wrap = el('span', `diag-stat ${className}`);
-            wrap.append(el('strong', undefined, value), document.createTextNode(` ${label}`));
-            stats.append(wrap);
-        };
-
-        const errors = report.diagnostics.length;
-        if (errors === 0) stat('clean', 'No', 'problems');
-        else stat('errors', String(errors), errors === 1 ? 'problem' : 'problems');
-
-        stat('', String(report.models.length), report.models.length === 1 ? 'model' : 'models');
-        stat('', String(totalElements(report)), 'elements');
-
-        const { total, macros } = report.stats.commands;
-        stat('', String(total), macros > 0 ? `commands (${macros} macro)` : 'commands');
-        // Deferrals are only interesting when there were any — they mean forward references had
-        // to be retried, which is a hint when something did not resolve.
-        if (report.stats.deferrals > 0) stat('', String(report.stats.deferrals), 'deferrals');
-    }
-
-    private renderTabs(): void {
-        const counts: Record<DiagnosticTab, number> = {
+    /** How many rows each tab holds. What the tab strip shows, and what greys an empty one out. */
+    private counts(): Record<DiagnosticTab, number> {
+        return {
             diagnostics: this.report?.diagnostics.length ?? 0,
             models: this.report?.models.length ?? 0,
             symbols: this.report?.models.reduce((n, m) => n + m.symbols.length, 0) ?? 0,
             actions: this.report?.actions.length ?? 0
         };
-        for (const button of Array.from(this.elements.tabs.querySelectorAll<HTMLElement>('[data-tab]'))) {
+    }
+
+    private renderTabs(): void {
+        const counts = this.counts();
+        for (const button of Array.from(this.elements.tabs.querySelectorAll<HTMLButtonElement>('[data-tab]'))) {
             const tab = button.dataset.tab as DiagnosticTab;
+            const count = counts[tab];
             button.setAttribute('aria-selected', String(tab === this.tab));
-            let count = button.querySelector<HTMLElement>('.diag-tab-count');
-            if (!count) {
-                count = el('span', 'diag-tab-count');
-                button.append(count);
+            // A tab with nothing in it is greyed rather than hidden: "Problems 0" is an answer,
+            // and a strip that changes width as you edit is harder to aim at than one that does
+            // not. Disabled so it cannot be selected into an empty panel.
+            button.disabled = count === 0;
+            button.setAttribute('aria-disabled', String(count === 0));
+
+            let badge = button.querySelector<HTMLElement>('.diag-tab-count');
+            if (!badge) {
+                badge = el('span', 'diag-tab-count');
+                button.append(badge);
             }
-            count.textContent = String(counts[tab]);
+            badge.textContent = String(count);
+            // The one count worth emphasising, now that the summary line that used to shout
+            // about it is gone.
+            badge.classList.toggle('has-problems', tab === 'diagnostics' && count > 0);
         }
+    }
+
+    /**
+     * Move off a tab that has nothing in it.
+     *
+     * Otherwise fixing the last problem while reading the problems tab would leave the reader
+     * staring at an empty panel whose tab has just been greyed out.
+     */
+    private leaveEmptyTab(): void {
+        const counts = this.counts();
+        if (counts[this.tab] > 0) return;
+        const somewhere = TABS.find(tab => counts[tab] > 0);
+        if (somewhere) this.tab = somewhere;
     }
 
     /* -------------------------------------------------------------------- panels */
@@ -724,6 +724,7 @@ export class DiagnosticView {
 
     private renderActions(report: DiagnosticReport): void {
         this.renderActionControls();
+        this.elements.panel.append(this.actionStats(report));
         const tree = filterActionTree(this.actionTree, this.needle());
         if (tree.length === 0) {
             const empty = report.actions.length === 0
@@ -737,6 +738,27 @@ export class DiagnosticView {
         // so opening the survivors is the only way the match is visible at all.
         this.appendActionNodes(container, tree, this.needle() !== '');
         this.elements.panel.append(container);
+    }
+
+    /**
+     * The report's Action Statistics, which have no tab of their own.
+     *
+     * Note `commands.total` is not the number of rows below it: the trace lists the steps a macro
+     * expanded into, and the command count does not. Both are shown, neither is derived from the
+     * other.
+     */
+    private actionStats(report: DiagnosticReport): HTMLElement {
+        const { total, macros } = report.stats.commands;
+        const line = el('div', 'diag-stats-note');
+        line.append(el('span', undefined, `${total} commands`));
+        if (macros > 0) line.append(el('span', undefined, `${macros} macro`));
+        line.append(el('span', undefined, `${report.actions.length} steps`));
+        // Deferrals mean forward references had to be retried — a hint when something did not
+        // resolve, and noise at zero.
+        if (report.stats.deferrals > 0) {
+            line.append(el('span', 'deferrals', `${report.stats.deferrals} deferrals`));
+        }
+        return line;
     }
 
     private renderActionControls(): void {

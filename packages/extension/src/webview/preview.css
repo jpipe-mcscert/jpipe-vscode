@@ -319,7 +319,6 @@ body.jpipe-render-error #container {
 }
 
 /* The raw text is a layer within a layer: either the structured view or this, never both. */
-body.diag-raw #diag-summary #diag-stats,
 body.diag-raw #diag-tabs,
 body.diag-raw #diag-controls,
 body.diag-raw #diag-panel { display: none; }
@@ -328,28 +327,15 @@ body:not(.diag-raw) #diag-output { display: none; }
 /* With no structured report there is nothing to toggle back to, so the control goes away. */
 /* The face buttons are built by the view, which renders none when there is no report to leave. */
 
-#diag-summary {
+/* One header row: the tabs, and the controls that act on the whole report. */
+#diag-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 8px 12px;
+    padding-right: 12px;
     border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
 }
-
-#diag-stats {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 14px;
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-}
-
-#diag-stats .diag-stat { white-space: nowrap; }
-#diag-stats .diag-stat strong { color: var(--vscode-foreground); font-weight: 600; }
-#diag-stats .diag-stat.errors strong { color: var(--vscode-editorError-foreground, #f14c4c); }
-#diag-stats .diag-stat.clean strong { color: var(--vscode-testing-iconPassed, #3fb950); }
 
 #diag-summary-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
 #diag-faces { display: flex; gap: 2px; }
@@ -376,7 +362,8 @@ body:not(.diag-raw) #diag-output { display: none; }
     display: flex;
     gap: 2px;
     padding: 0 8px;
-    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
+    min-width: 0;
+    overflow-x: auto;
 }
 
 #diag-tabs button {
@@ -402,6 +389,34 @@ body:not(.diag-raw) #diag-output { display: none; }
     opacity: 0.7;
     font-variant-numeric: tabular-nums;
 }
+
+/* An empty section is greyed rather than removed: "Problems 0" is an answer, and a strip that
+   changes width while you edit is harder to aim at than one that does not. */
+#diag-tabs button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+#diag-tabs button:disabled:hover { color: var(--vscode-descriptionForeground); }
+
+/* The only count worth emphasising, now that the summary line above has gone. */
+#diag-tabs button .diag-tab-count.has-problems {
+    opacity: 1;
+    color: var(--vscode-editorError-foreground, #f14c4c);
+    font-weight: 600;
+}
+
+/* The report's action statistics, which have no tab of their own. */
+.diag-stats-note {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.diag-stats-note .deferrals { color: var(--vscode-editorWarning-foreground); }
 
 #diag-controls {
     display: flex;

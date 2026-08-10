@@ -83,7 +83,6 @@ const drawer = document.getElementById('download-drawer') as HTMLElement;
 const diagnosticView = new DiagnosticView(
     {
         overlay: document.getElementById('diagnostic-overlay') as HTMLElement,
-        stats: document.getElementById('diag-stats') as HTMLElement,
         tabs: document.getElementById('diag-tabs') as HTMLElement,
         filter: document.getElementById('diag-filter') as HTMLInputElement,
         controlsExtra: document.getElementById('diag-controls-extra') as HTMLElement,

@@ -45,7 +45,6 @@ function mountShell(): DiagnosticViewElements {
     }
     return {
         overlay: make('div', 'diagnostic-overlay'),
-        stats: make('div', 'diag-stats'),
         tabs,
         filter: make('input', 'diag-filter') as HTMLInputElement,
         controlsExtra: make('div', 'diag-controls-extra'),
@@ -193,42 +192,80 @@ describe('the three faces of a report', () => {
 
 /* ------------------------------------------------------------------------- summary */
 
-describe('the summary strip', () => {
-    test('says so plainly when there is nothing wrong', () => {
-        view.show(cleanTemplate, '');
-        expect(elements.stats.textContent).toContain('No problems');
-    });
-
-    test('counts problems, models, elements and commands', () => {
-        view.show(unsupportedElements, '');
-        const summary = elements.stats.textContent ?? '';
-        expect(summary).toContain('3 problems');
-        expect(summary).toContain('3 models');
-        expect(summary).toContain('6 elements');
-        expect(summary).toContain('12 commands');
-    });
-
-    test('mentions macros only when there are some', () => {
-        view.show(cleanTemplate, '');
-        expect(elements.stats.textContent).not.toContain('macro');
-        view.show(loadCrossFile, '');
-        expect(elements.stats.textContent).toContain('(1 macro)');
-    });
-
-    test('mentions deferrals only when there were some', () => {
-        // Non-zero deferrals mean forward references had to be retried — a hint, and noise at 0.
-        view.show(cleanTemplate, '');
-        expect(elements.stats.textContent).not.toContain('deferrals');
-        view.show(unknownSymbol, '');
-        expect(elements.stats.textContent).toContain('3 deferrals');
-    });
-
-    test('tab counts come from the report', () => {
+describe('the tab strip', () => {
+    test('carries the counts, so nothing above it has to repeat them', () => {
         view.show(unsupportedElements, '');
         expect(tab('diagnostics').textContent).toContain('3');
         expect(tab('models').textContent).toContain('3');
         expect(tab('symbols').textContent).toContain('6');
         expect(tab('actions').textContent).toContain('12');
+    });
+
+    test('a section with nothing in it is greyed out and cannot be opened', () => {
+        view.show(cleanTemplate, '');
+        const problems = tab('diagnostics') as HTMLButtonElement;
+        expect(problems.disabled).toBe(true);
+        expect(problems.getAttribute('aria-disabled')).toBe('true');
+        expect(problems.textContent).toContain('0');
+    });
+
+    test('a clean report opens somewhere with something in it', () => {
+        // Landing on a greyed-out Problems tab showing "No problems." would waste the one screen
+        // the reader gets; the count on the tab already says it.
+        view.show(cleanTemplate, '');
+        expect(tab('diagnostics').getAttribute('aria-selected')).toBe('false');
+        expect(tab('models').getAttribute('aria-selected')).toBe('true');
+    });
+
+    test('fixing the last problem moves the reader off the tab it was on', () => {
+        view.show(unsupportedElements, '');
+        expect(tab('diagnostics').getAttribute('aria-selected')).toBe('true');
+        view.show(cleanTemplate, '');
+        expect(tab('diagnostics').getAttribute('aria-selected')).toBe('false');
+        expect(text()).not.toContain('No problems.');
+    });
+
+    test('a problem count is emphasised; a zero is not', () => {
+        view.show(unsupportedElements, '');
+        expect(tab('diagnostics').querySelector('.diag-tab-count')?.classList.contains('has-problems')).toBe(true);
+        view.show(cleanTemplate, '');
+        expect(tab('diagnostics').querySelector('.diag-tab-count')?.classList.contains('has-problems')).toBe(false);
+    });
+});
+
+describe('the action statistics', () => {
+    test('sit with the trace they describe, having no tab of their own', () => {
+        view.show(loadCrossFile, '');
+        click(tab('actions'));
+        const note = elements.panel.querySelector('.diag-stats-note')?.textContent ?? '';
+        expect(note).toContain('9 commands');
+        expect(note).toContain('1 macro');
+    });
+
+    test('command count and step count are both shown, since they differ', () => {
+        // A macro's expansion is listed in the trace but not counted as a command; deriving one
+        // from the other would misreport whichever was derived.
+        view.show(loadCrossFile, '');
+        click(tab('actions'));
+        const note = elements.panel.querySelector('.diag-stats-note')?.textContent ?? '';
+        expect(note).toContain('9 commands');
+        expect(note).toContain('12 steps');
+    });
+
+    test('macros are mentioned only when there are some', () => {
+        view.show(cleanTemplate, '');
+        click(tab('actions'));
+        expect(elements.panel.querySelector('.diag-stats-note')?.textContent).not.toContain('macro');
+    });
+
+    test('deferrals are mentioned only when there were some', () => {
+        // Non-zero deferrals mean forward references had to be retried — a hint, and noise at 0.
+        view.show(cleanTemplate, '');
+        click(tab('actions'));
+        expect(elements.panel.querySelector('.diag-stats-note')?.textContent).not.toContain('deferrals');
+        view.show(unknownSymbol, '');
+        click(tab('actions'));
+        expect(elements.panel.querySelector('.diag-stats-note')?.textContent).toContain('3 deferrals');
     });
 });
 
@@ -242,9 +279,12 @@ describe('the problems tab', () => {
         expect(text()).toContain("Conclusion 'c' in model 'missing_support_for_conclusion' has no supporting strategy");
     });
 
-    test('a clean report says there are no problems', () => {
+    test('a clean report says so on the tab, not with a screen of its own', () => {
+        // The view moves off an empty section, so the "No problems." panel is only reached by
+        // filtering everything out — the greyed "Problems 0" tab is the standing answer.
         view.show(cleanTemplate, '');
-        expect(text()).toContain('No problems.');
+        expect((tab('diagnostics') as HTMLButtonElement).disabled).toBe(true);
+        expect(tab('diagnostics').textContent).toContain('0');
     });
 
     test('clicking a row asks the host to open that position', () => {
@@ -569,7 +609,9 @@ describe('what survives a re-run', () => {
     test('changing anything worth remembering asks the page to persist', () => {
         view.show(cleanTemplate, '');
         host.persist.mockClear();
-        click(tab('models'));
+        // Not `models`: a clean report already opens there, and selecting the current tab is a
+        // no-op with nothing to remember.
+        click(tab('symbols'));
         expect(host.persist).toHaveBeenCalled();
     });
 });
