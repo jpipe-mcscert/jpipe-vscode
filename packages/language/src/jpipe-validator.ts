@@ -347,10 +347,21 @@ export class JpipeValidator {
         }
     }
 
+    /**
+     * The `@support` elements a justification implementing `template` must override.
+     *
+     * `seen` guards the `implements` walk: a template may point back at itself, which the
+     * compiler reports as `cyclic-implements`, and the model sits in that state while it is being
+     * edited. Recursing through such a chain would exhaust the stack and abort validation for the
+     * whole document.
+     */
     private getRequiredOverrides(
         template: Template,
-        refText: string
+        refText: string,
+        seen: Set<Template> = new Set()
     ): Array<{ support: AbstractSupport; expectedKey: string; sourceTemplateId: string }> {
+        if (seen.has(template)) return [];
+        seen.add(template);
         const local = template.contents?.body ?? [];
         // Keys of non-abstract elements defined directly in this template (these override parent abstracts)
         const localOverrideKeys = new Set(
@@ -372,7 +383,7 @@ export class JpipeValidator {
         // Propagate unresolved abstract supports from the parent chain
         if (template.parent?.ref) {
             const parentRefText = template.parent.$refText ?? template.parent.ref.id;
-            for (const req of this.getRequiredOverrides(template.parent.ref, parentRefText)) {
+            for (const req of this.getRequiredOverrides(template.parent.ref, parentRefText, seen)) {
                 // Skip if this template already provides a non-abstract override for it
                 if (!localOverrideKeys.has(req.expectedKey)) {
                     result.push(req);

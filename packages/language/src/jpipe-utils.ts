@@ -84,8 +84,10 @@ export function localName(id: QualifiedId): string {
 export function getRelationCandidates(node: Justification | Template): JustificationElement[] {
     const local = getLocalElements(node);
     const abstractSupports: JustificationElement[] = [];
+    const seen = new Set<Justification | Template>([node]);
     let parent = node.parent?.ref;
-    while (parent) {
+    while (parent && !seen.has(parent)) {
+        seen.add(parent);
         for (const el of getLocalElements(parent)) {
             if (isAbstractSupport(el)) abstractSupports.push(el);
         }
@@ -98,12 +100,22 @@ export function getRelationCandidates(node: Justification | Template): Justifica
  * Recursively collects all elements from a justification or template, including those
  * inherited from parent templates. Elements are returned in order: local first, then
  * inherited (most specific to least specific).
+ *
+ * A template may `implements` its way back to itself — the compiler reports that as
+ * `cyclic-implements` — and the model is still in that state while the editor is looking at it.
+ * Walking such a chain without the `seen` set exhausts the stack and takes the whole validation
+ * pass down with it, so every element is visited at most once.
  */
-export function getAllElements(node: Justification | Template): JustificationElement[] {
+export function getAllElements(
+    node: Justification | Template,
+    seen: Set<Justification | Template> = new Set()
+): JustificationElement[] {
+    if (seen.has(node)) return [];
+    seen.add(node);
     const local = getLocalElements(node);
     const parentRef = node.parent?.ref;
     if (parentRef) {
-        return [...local, ...getAllElements(parentRef)];
+        return [...local, ...getAllElements(parentRef, seen)];
     }
     return local;
 }

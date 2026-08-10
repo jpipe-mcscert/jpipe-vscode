@@ -17,12 +17,26 @@ describe('organize-loads', () => {
 
     const withLoads = (block: string) => `${block}\njustification J {\n    conclusion c is "C"\n}`;
 
-    test('sorts, de-duplicates and normalizes in one edit', async () => {
+    test('sorts and de-duplicates in one edit', async () => {
         const after = await applyCodeAction(
             withLoads('load "b.jd"\nload "./a.jd"\nload "b.jd"'),
             { title: 'Organize loads', only: ORGANIZE }
         );
-        expect(after.startsWith('load "./a.jd"\nload "./b.jd"\njustification J')).toBe(true);
+        expect(after.startsWith('load "./a.jd"\nload "b.jd"\njustification J')).toBe(true);
+    });
+
+    // `base.jd` and `./base.jd` mean the same thing, so rewriting one into the other would make
+    // this action offer itself on nearly every file that already reads fine.
+    test('leaves the path text as the author wrote it', async () => {
+        const after = await applyCodeAction(
+            withLoads('load "b.jd"\nload "a.jd"'),
+            { title: 'Organize loads', only: ORGANIZE }
+        );
+        expect(after.startsWith('load "a.jd"\nload "b.jd"')).toBe(true);
+    });
+
+    test('is not offered merely because a path lacks a ./ prefix', async () => {
+        expect(await actionTitles(withLoads('load "a.jd"\nload "b.jd"'), ORGANIZE)).toEqual([]);
     });
 
     test('keeps namespaced loads and their aliases', async () => {
@@ -30,7 +44,7 @@ describe('organize-loads', () => {
             withLoads('load "b.jd" as second\nload "a.jd" as first'),
             { title: 'Organize loads', only: ORGANIZE }
         );
-        expect(after.startsWith('load "./a.jd" as first\nload "./b.jd" as second')).toBe(true);
+        expect(after.startsWith('load "a.jd" as first\nload "b.jd" as second')).toBe(true);
     });
 
     test('two aliases of one file are two bindings, not a repetition', async () => {
@@ -38,7 +52,7 @@ describe('organize-loads', () => {
             withLoads('load "a.jd" as second\nload "a.jd" as first'),
             { title: 'Organize loads', only: ORGANIZE }
         );
-        expect(after.startsWith('load "./a.jd" as first\nload "./a.jd" as second')).toBe(true);
+        expect(after.startsWith('load "a.jd" as first\nload "a.jd" as second')).toBe(true);
     });
 
     test('sorts paths that climb out of the directory below local ones', async () => {
@@ -68,8 +82,8 @@ describe('organize-loads', () => {
             withLoads('load "z.jd"\nload "a.jd"'),
             { title: 'Organize loads', only: ORGANIZE }
         );
-        expect(after).toContain('load "./z.jd"');
-        expect(after).toContain('load "./a.jd"');
+        expect(after).toContain('load "z.jd"');
+        expect(after).toContain('load "a.jd"');
     });
 });
 

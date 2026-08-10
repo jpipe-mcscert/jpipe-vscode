@@ -355,3 +355,45 @@ describe('Operator arity', () => {
         expect(diagnosticMessages(doc).some(m => m.includes('source models'))).toBe(false);
     });
 });
+
+describe('Cyclic implements', () => {
+
+    // The compiler reports this as `cyclic-implements`, and the model sits in that state while it
+    // is being edited. Walking the chain without a guard exhausted the stack; Langium caught the
+    // overflow and turned it into a diagnostic of its own, so the Problems panel filled with
+    // "An error occurred during validation" beside the findings the user actually needed.
+    const internalFailure = (messages: string[]) =>
+        messages.filter(m => m.includes('An error occurred during validation'));
+
+    test('a template implementing itself reports findings, not an internal failure', async () => {
+        const doc = await parse(`
+            template A implements B {
+                @support a is ""
+                conclusion c is "C"
+                a supports c
+            }
+            template B implements A {
+                @support b is "B"
+                conclusion c2 is "C2"
+                b supports c2
+            }
+        `);
+        assertNoParseErrors(doc);
+        const messages = diagnosticMessages(doc);
+        expect(internalFailure(messages)).toEqual([]);
+        // The checks that follow the cyclic walk still ran.
+        expect(messages).toContain('Element label should not be empty');
+    });
+
+    test('a justification implementing a cyclic template reports findings too', async () => {
+        const doc = await parse(`
+            template A implements B { @support a is "A" conclusion c is "C" a supports c }
+            template B implements A { @support b is "B" conclusion c2 is "C2" b supports c2 }
+            justification J implements A { conclusion jc is "" strategy s is "S" s supports jc }
+        `);
+        assertNoParseErrors(doc);
+        const messages = diagnosticMessages(doc);
+        expect(internalFailure(messages)).toEqual([]);
+        expect(messages).toContain('Element label should not be empty');
+    });
+});
