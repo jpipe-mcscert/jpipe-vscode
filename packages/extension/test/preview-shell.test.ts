@@ -55,20 +55,20 @@ describe('the shell provides what the page looks up', () => {
 
 describe('toolbar order', () => {
     /**
-     * The mode switch is the only control belonging to the panel rather than to what the panel
-     * is showing. Everything else appears and disappears with the mode, so if the switch is not
-     * last it moves under the user as they use it.
+     * The mode switch and the settings gear belong to the panel rather than to what the panel is
+     * showing. Everything else appears and disappears with the mode, so if these two are not last
+     * they move under the user as they work — the gear furthest right, where a gear goes.
      */
-    test('the mode switch is the last control on the right', () => {
+    test('the panel-level controls are the last on the right', () => {
         const toolbar = shell.slice(shell.indexOf('id="toolbar-right"'), shell.indexOf('unsaved-banner'));
         const buttons = [...toolbar.matchAll(/id="([a-z-]+)"/g)].map(m => m[1]);
-        expect(buttons.at(-1)).toBe('mode-toggle');
+        expect(buttons.slice(-2)).toEqual(['mode-toggle', 'open-settings']);
     });
 
-    test('it is not in a group that hides with the diagram', () => {
-        // `diagram-only` groups vanish outside diagram mode; the switch has to survive that or
-        // there is no way back.
-        const group = shell.slice(shell.indexOf('id="mode-group"') - 200, shell.indexOf('id="mode-toggle"'));
+    test('neither is in a group that hides with the diagram', () => {
+        // `diagram-only` groups vanish outside diagram mode; these have to survive that, or the
+        // switch offers no way back and the gear disappears in half the panel's states.
+        const group = shell.slice(shell.indexOf('id="mode-group"') - 200, shell.indexOf('id="open-settings"'));
         expect(group).not.toContain('diagram-only');
     });
 });

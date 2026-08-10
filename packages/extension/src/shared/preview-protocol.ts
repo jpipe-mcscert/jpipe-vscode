@@ -80,6 +80,8 @@ export type WebviewToHost =
     | { type: 'download'; format: string }
     | { type: 'openLink'; url: string }
     | { type: 'toggleMode' }
+    /** The gear in the toolbar: show this extension's settings. */
+    | { type: 'openSettings' }
     /**
      * Jump to a position in the source.
      *

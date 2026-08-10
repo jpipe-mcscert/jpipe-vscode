@@ -74,13 +74,14 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
                 <button class="toolbar-btn zoom" id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
             </div>
             <!--
-                The mode switch is last, and stays last. It is the only control that belongs to
-                the panel rather than to whatever the panel is currently showing, so every
-                mode-specific group appearing and disappearing to its left leaves it in the same
-                place — which is what makes it findable.
+                The mode switch and settings are last, and stay last. They are the controls that
+                belong to the panel rather than to whatever the panel is currently showing, so
+                every mode-specific group appearing and disappearing to their left leaves them in
+                the same place — which is what makes them findable.
             -->
             <div class="toolbar-group" id="mode-group">
                 <button class="toolbar-btn" id="mode-toggle" aria-label="Diagnostic view" aria-pressed="false" data-tooltip="Diagnostic view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><rect x="5.75" y="1" width="4.5" height="2.6" rx="0.8"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11.5" x2="10" y2="11.5"/></svg></button>
+                <button class="toolbar-btn" id="open-settings" aria-label="jPipe settings" data-tooltip="jPipe settings"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.1"/><path d="M8 1.6v1.9M8 12.5v1.9M14.4 8h-1.9M3.5 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8L3.5 3.5"/></svg></button>
             </div>
         </div>
     </div>

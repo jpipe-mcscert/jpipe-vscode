@@ -615,6 +615,10 @@ document.getElementById('jpipe-link')?.addEventListener('click', event => {
     vscode.postMessage({ type: 'openLink', url: 'https://jpipe.org' });
 });
 
+document.getElementById('open-settings')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'openSettings' });
+});
+
 const downloadToggle = document.getElementById('download-toggle');
 downloadToggle?.addEventListener('click', event => {
     event.stopPropagation();

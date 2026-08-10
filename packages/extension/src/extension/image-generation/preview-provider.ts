@@ -545,6 +545,12 @@ export class PreviewProvider {
             if (msg.type === 'openLink' && msg.url) {
                 vscode.env.openExternal(vscode.Uri.parse(msg.url));
             }
+            if (msg.type === 'openSettings') {
+                // The `@ext:` query is how the Settings UI filters to one extension. Taken from the
+                // extension rather than written out, so it cannot drift from the manifest — and
+                // nobody is going to recall the identifier, which is the point of the button.
+                void vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${this.context.extension.id}`);
+            }
             if (msg.type === 'revealLocation') {
                 void this.revealLocation(msg.source, msg.line, msg.column);
             }
