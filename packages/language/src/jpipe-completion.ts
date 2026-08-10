@@ -13,6 +13,8 @@ import * as path from 'node:path';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import { JPIPE_OPERATORS, UNIVERSAL_CONFIG_KEYS, allowedConfigKeys } from './jpipe-operators.js';
+import { createLoadEdit, normalizeLoadPath, relativeLoadPath, wordReplaceEdit } from './jpipe-edits.js';
+import { concreteKeywordFor, overrideKeywordFor, renderElement } from './jpipe-render.js';
 import {
     isJustification,
     isTemplate,
@@ -214,17 +216,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         return out;
     }
 
-    private getRelativePath(sourcePath: string, targetPath: string): string {
-        const relative = path.relative(path.dirname(sourcePath), targetPath).replaceAll('\\', '/');
-        return relative.startsWith('../') ? relative : `./${relative}`;
-    }
 
-    private normalizePathForComparison(filePath: string): string {
-        return filePath
-            .replaceAll(/^["']|["']$/g, '')
-            .replaceAll(/^\.\//g, '')
-            .replaceAll('\\', '/');
-    }
 
     private basenameFromDescription(desc: AstNodeDescription): string | undefined {
         const uri = desc.documentUri;
@@ -272,7 +264,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         if (elementInfo && !elementInfo.isImported && elementInfo.sourceFile) {
             return {
                 ...withLabel,
-                additionalTextEdits: this.createLoadEdit(context.document, elementInfo.sourceFile)
+                additionalTextEdits: createLoadEdit(context.document as LangiumDocument<Unit>, elementInfo.sourceFile)
             };
         }
 
@@ -398,7 +390,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         const currentUnit = document.parseResult.value as Unit | undefined;
         const alreadyLoaded = new Set(currentUnit?.imports.map(l => {
-            const p = this.normalizePathForComparison(l.path);
+            const p = normalizeLoadPath(l.path);
             return p.startsWith('../') ? p : `./${p}`;
         }) ?? []);
 
@@ -567,24 +559,13 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         idText: string,
         context: CompletionContext
     ): CompletionItem | undefined {
-        let keyword: string;
-        let snippet: string;
-
-        if (isAbstractSupport(element) || isEvidence(element)) {
-            keyword = 'evidence';
-            snippet = `evidence ${idText} is "${element.name}"`;
-        } else if (isStrategy(element)) {
-            keyword = 'strategy';
-            snippet = `strategy ${idText} is "${element.name}"`;
-        } else if (isConclusion(element)) {
-            keyword = 'conclusion';
-            snippet = `conclusion ${idText} is "${element.name}"`;
-        } else if (isSubConclusion(element)) {
-            keyword = 'sub-conclusion';
-            snippet = `sub-conclusion ${idText} is "${element.name}"`;
-        } else {
-            return undefined;
-        }
+        // An @support is offered as the declaration that would override it, not as itself —
+        // `@support` is not legal in a justification body.
+        const keyword = isAbstractSupport(element)
+            ? overrideKeywordFor(element)
+            : concreteKeywordFor(element);
+        if (!keyword) return undefined;
+        const snippet = renderElement(keyword, idText, element.name);
 
         const isRequired = isAbstractSupport(element);
         const defFile = this.basenameFromAstNode(element);
@@ -596,7 +577,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             ? `Required @support element from template${fileSuffix}. Inserts: ${snippet}`
             : `Element from template${fileSuffix}. Inserts: ${snippet}`;
 
-        const textEdit = this.buildWordReplaceEdit(context, snippet + '\n');
+        const textEdit = wordReplaceEdit(context.document, context.position, snippet + '\n');
 
         return {
             label: `${keyword} ${idText}`,
@@ -625,77 +606,15 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         if (currentPath === targetPath) return undefined;
 
-        const relativePath = this.getRelativePath(currentPath, targetPath);
-        const normalizedRelativePath = this.normalizePathForComparison(relativePath);
+        const relativePath = relativeLoadPath(currentPath, targetPath);
+        const normalizedRelativePath = normalizeLoadPath(relativePath);
         const isImported = currentUnit.imports.some(
-            load => this.normalizePathForComparison(load.path) === normalizedRelativePath
+            load => normalizeLoadPath(load.path) === normalizedRelativePath
         );
 
         return { sourceFile: relativePath, isImported };
     }
 
-    private buildWordReplaceEdit(context: CompletionContext, newText: string): TextEdit {
-        const position = context.position;
-        const lines = context.document.textDocument.getText().split('\n');
-        const line = lines[position.line] ?? '';
 
-        let startCol = position.character;
-        while (startCol > 0 && /\w/.test(line[startCol - 1])) startCol--;
 
-        let endCol = position.character;
-        while (endCol < line.length && /\w/.test(line[endCol])) endCol++;
-
-        return {
-            range: {
-                start: { line: position.line, character: startCol },
-                end: { line: position.line, character: endCol }
-            },
-            newText
-        };
-    }
-
-    private findLoadInsertPosition(lines: string[]): { insertLine: number; hasExistingLoads: boolean } {
-        let insertLine = 0;
-        let lastLoadLine = -1;
-        let hasExistingLoads = false;
-
-        for (let i = 0; i < lines.length; i++) {
-            const trimmed = lines[i].trim();
-            if (trimmed.startsWith('load ')) {
-                hasExistingLoads = true;
-                lastLoadLine = i;
-                insertLine = i + 1;
-            } else if (trimmed && !trimmed.startsWith('//')) {
-                if (lastLoadLine >= 0) break;
-                insertLine = i;
-                break;
-            }
-        }
-
-        return { insertLine, hasExistingLoads };
-    }
-
-    private createLoadEdit(document: LangiumDocument, relativePath: string): TextEdit[] | undefined {
-        const currentUnit = document.parseResult.value as Unit | undefined;
-        if (!currentUnit) return undefined;
-
-        const normalizedRelativePath = this.normalizePathForComparison(relativePath);
-        const alreadyImported = currentUnit.imports.some(
-            load => this.normalizePathForComparison(load.path) === normalizedRelativePath
-        );
-        if (alreadyImported) return undefined;
-
-        const lines = document.textDocument.getText().split('\n');
-        const { insertLine, hasExistingLoads } = this.findLoadInsertPosition(lines);
-
-        const finalPath = relativePath.startsWith('../')
-            ? relativePath
-            : `./${normalizedRelativePath}`;
-        const newlineSuffix = hasExistingLoads ? '\n' : '\n\n';
-
-        return [{
-            range: { start: Position.create(insertLine, 0), end: Position.create(insertLine, 0) },
-            newText: `load "${finalPath}"${newlineSuffix}`
-        }];
-    }
 }

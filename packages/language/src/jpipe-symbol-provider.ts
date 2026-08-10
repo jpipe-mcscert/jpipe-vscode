@@ -19,6 +19,7 @@ import {
     type Unit,
 } from './generated/ast.js';
 import { getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { getDocumentAndUnit } from './jpipe-ast-context.js';
 
 const ZERO_RANGE: Range = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
 
@@ -138,7 +139,7 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
 
         // Inherited elements from parent templates (transitively).
         // localKey = templateId:elementQualifiedId, omitting any namespace prefix.
-        const { document: doc, unit } = this.getDocumentAndUnit(owner);
+        const { document: doc, unit } = getDocumentAndUnit(owner);
         const inherited = doc && unit
             ? this.importService.getInheritedElementsWithKeys(owner, unit, doc).map(({ element, localKey }) =>
                 syntheticSymbol(`(inherited) ${localKey}`, elementKind(element), ownerRange)
@@ -156,19 +157,4 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         };
     }
 
-    private getDocumentAndUnit(node: Justification | Template): {
-        document: LangiumDocument | undefined;
-        unit: Unit | undefined;
-    } {
-        let document = (node as unknown as Record<string, unknown>).$document as LangiumDocument | undefined;
-        if (!document) {
-            let current: unknown = node;
-            while (current && !document) {
-                document = (current as Record<string, unknown>).$document as LangiumDocument | undefined;
-                current = (current as Record<string, unknown>).$container;
-            }
-        }
-        const unit = document?.parseResult?.value as Unit | undefined;
-        return { document, unit };
-    }
 }

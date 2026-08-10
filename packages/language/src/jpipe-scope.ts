@@ -1,4 +1,4 @@
-import { DefaultScopeProvider, AstUtils, type AstNodeDescription, type Scope, type ReferenceInfo, type LangiumDocument } from 'langium';
+import { DefaultScopeProvider, AstUtils, type AstNodeDescription, type Scope, type ReferenceInfo } from 'langium';
 import { type JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import {
@@ -10,6 +10,7 @@ import {
     type Unit
 } from './generated/ast.js';
 import { getAllElements, getLocalElements, localName, qualifiedIdText } from './jpipe-utils.js';
+import { getDocumentAndUnit } from './jpipe-ast-context.js';
 
 
 export class JpipeScopeProvider extends DefaultScopeProvider {
@@ -45,7 +46,7 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
     }
 
     private parentScope(owner: Justification | Template): Scope | undefined {
-        const { document, unit } = this.getDocumentAndUnit(owner);
+        const { document, unit } = getDocumentAndUnit(owner);
         if (!document || !unit) return undefined;
         const localEntries = this.getLocalTemplates(unit).map(t => ({ template: t, ns: undefined as string | undefined }));
         const importedEntries = this.importService.getTemplatesWithNamespace(unit, document);
@@ -55,7 +56,7 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
     private refsScope(context: ReferenceInfo): Scope | undefined {
         const composition = context.container.$container as Composition;
         const owner = composition.$container as Justification | Template;
-        const { document, unit } = this.getDocumentAndUnit(owner);
+        const { document, unit } = getDocumentAndUnit(owner);
         if (!document || !unit) return undefined;
         const local = unit.body.filter((b): b is Justification | Template => isJustification(b) || isTemplate(b));
         const imported = this.importService.getJustificationsAndTemplatesWithNamespace(unit, document);
@@ -77,7 +78,7 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
         // Relation-type filtering (e.g. evidence→strategy only) is done in the completion
         // provider, which runs after linking is complete.
 
-        const { document, unit } = this.getDocumentAndUnit(owner);
+        const { document, unit } = getDocumentAndUnit(owner);
         const localElements = getLocalElements(owner);
 
         // Local element keys take priority; inherited entries with the same key are
@@ -126,21 +127,6 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
         }
 
         return this.createScope(desc);
-    }
-
-    private getDocumentAndUnit(node: any): { document: LangiumDocument | undefined, unit: Unit | undefined } {
-        let document = node.$document as LangiumDocument | undefined;
-
-        if (!document) {
-            let current: any = node;
-            while (current && !document) {
-                document = current.$document;
-                current = current.$container;
-            }
-        }
-
-        const unit = document?.parseResult?.value as Unit | undefined;
-        return { document, unit };
     }
 
     private createScopeFromTemplates(entries: Array<{ template: Template; ns: string | undefined }>) {
