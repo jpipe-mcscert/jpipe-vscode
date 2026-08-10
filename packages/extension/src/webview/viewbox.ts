@@ -142,11 +142,16 @@ export function initialBox(frame: Frame): Box {
 }
 
 /**
- * The zoom range.
+ * The zoom range: a quarter of intrinsic size up to four times it.
  *
- * Anchored on the intrinsic scale rather than on the fit, so "400%" means the same thing to a
- * four-node model and a four-hundred-node one. The floor also admits the fit scale, since a
- * diagram far too big for the panel must still be viewable in full.
+ * Anchored on the intrinsic scale rather than on the fit, which is the point. The old ceiling
+ * was a multiple of whatever the panel had shrunk the diagram to, so on a large model it capped
+ * out while the labels were still unreadable. Measured against the size the compiler laid the
+ * diagram out for, 100% is legible by construction whatever the model's size, and 400% is
+ * generous magnification rather than a barely-adequate one.
+ *
+ * The floor also admits the fit scale, since a diagram far too big for the panel must still be
+ * viewable in full.
  */
 export function kMin(frame: Frame): number {
     return Math.min(scaleOf(fitBox(frame.content, frame.viewport), frame.viewport), frame.baseScale) / 4;

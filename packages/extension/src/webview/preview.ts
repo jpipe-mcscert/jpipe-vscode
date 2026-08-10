@@ -87,6 +87,13 @@ let lastRevision = -1;
 let lastDocumentUri: string | null = null;
 let lastDiagramName: string | null = null;
 let diagramName: string | null = null;
+/**
+ * The compiler's SVG exactly as it arrived, kept so the diagram can be rebuilt without asking
+ * for a recompile — which is what following a theme change needs, since adapting to a dark
+ * theme throws away the canvas Graphviz painted and cannot be reversed in place.
+ */
+let lastSvg: string | null = null;
+let lastDocumentPath: string | null = null;
 
 /**
  * True while the view is still exactly what the diagram opened at.
@@ -258,7 +265,10 @@ function installSvg(svgText: string): SVGSVGElement | null {
 function setMode(mode: ViewMode): void {
     document.body.dataset.mode = mode;
     modeToggle.classList.toggle('active', mode === 'diagnostic');
-    modeToggle.dataset.tooltip = mode === 'diagnostic' ? 'Back to diagram view' : 'Diagnostic view';
+    modeToggle.setAttribute('aria-pressed', String(mode === 'diagnostic'));
+    const modeLabel = mode === 'diagnostic' ? 'Back to diagram view' : 'Diagnostic view';
+    modeToggle.dataset.tooltip = modeLabel;
+    modeToggle.setAttribute('aria-label', modeLabel);
     if (mode !== 'diagram') minimap.hide();
     else if (vb && content) minimap.update(vb, content, panelSize());
     // The banner says what is stale, which depends on what is being shown.
@@ -287,6 +297,35 @@ function setBusy(busy: boolean): void {
  * the page persists, anything left half-set stays set — a failed compile would tint the panel
  * permanently, for instance.
  */
+/**
+ * Put the compiler's SVG into the page and make it presentable: caption stripped, adapted to
+ * the theme, geometry resolved.
+ *
+ * Kept separate from `applyRender` because it has to be repeatable. The theme adaptation is
+ * destructive — it deletes the canvas Graphviz painted — so following a theme change means
+ * rebuilding from the original text rather than trying to undo it.
+ */
+function installDiagram(): void {
+    svgEl = lastSvg === null ? null : installSvg(lastSvg);
+    lastMatched = null;
+
+    if (svgEl) {
+        stripCaptions(svgEl, lastDocumentPath, diagramName);
+        if (isDarkTheme()) adaptToDarkTheme(svgEl);
+        content = resolveContent(svgEl);
+        baseScale = naturalScale(content ?? { x: 0, y: 0, w: 1, h: 1 }, parseLength(svgEl.getAttribute('width')));
+        navigable = content !== null;
+        // Serialised now, while the viewBox still spans the whole diagram: panning rewrites it,
+        // so a copy taken later would show the current view as though it were the whole thing.
+        // Taken from the live element rather than the raw text so the overview matches what the
+        // canvas shows, theme adaptation included.
+        if (content) minimap.setSource(new XMLSerializer().serializeToString(svgEl));
+    } else {
+        content = null;
+        navigable = false;
+    }
+}
+
 function applyRender(msg: RenderMessage): void {
     if (msg.revision < lastRevision) return;
     lastRevision = msg.revision;
@@ -294,20 +333,10 @@ function applyRender(msg: RenderMessage): void {
     const sameDiagram = msg.documentUri === lastDocumentUri && msg.diagramName === lastDiagramName;
     const previous = vb;
 
-    svgEl = installSvg(msg.svg);
+    lastSvg = msg.svg;
+    lastDocumentPath = msg.documentPath;
     diagramName = msg.diagramName;
-    lastMatched = null;
-
-    if (svgEl) {
-        stripCaptions(svgEl, msg.documentPath, msg.diagramName);
-        if (isDarkTheme()) adaptToDarkTheme(svgEl);
-        content = resolveContent(svgEl);
-        baseScale = naturalScale(content ?? { x: 0, y: 0, w: 1, h: 1 }, parseLength(svgEl.getAttribute('width')));
-        navigable = content !== null;
-    } else {
-        content = null;
-        navigable = false;
-    }
+    installDiagram();
 
     setMode('diagram');
     document.body.classList.toggle('jpipe-render-error', msg.error !== null);
@@ -315,11 +344,6 @@ function applyRender(msg: RenderMessage): void {
     setBusy(false);
 
     if (svgEl && content) {
-        // Serialised now, while the viewBox still spans the whole diagram: panning rewrites it,
-        // so a copy taken later would show the current view as though it were the whole thing.
-        // Taken from the live element rather than the message so the overview matches what the
-        // canvas shows, dark-theme adaptation included.
-        minimap.setSource(new XMLSerializer().serializeToString(svgEl));
         // The panel may have been resized while the compiler ran, so a preserved view still
         // has to be re-fitted to the current aspect ratio.
         const f = { content, viewport: panelSize(), baseScale };
@@ -426,7 +450,7 @@ container.addEventListener('pointerdown', event => {
     if (event.button !== 0 && event.button !== 1) return;
     if (isChrome(event.target)) return;
     // The drawer closes on a document click, which preventDefault below would suppress.
-    drawer.classList.remove('open');
+    setDrawerOpen(false);
     if (!navigable) return;
     adjusted();
     drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
@@ -464,8 +488,25 @@ document.addEventListener('keydown', event => {
     } else if (event.key === '0') {
         event.preventDefault();
         fit();
+    } else if (PAN_KEYS[event.key]) {
+        // Panning without a pointer. The minimap is a mouse convenience; the canvas itself has
+        // to be navigable from the keyboard, and arrow keys are what people try first.
+        const f = frame();
+        if (!vb || !f) return;
+        event.preventDefault();
+        adjusted();
+        const [dx, dy] = PAN_KEYS[event.key];
+        const stride = event.shiftKey ? PAN_STRIDE_FAST : PAN_STRIDE;
+        setViewBox(panBy(vb, -dx * stride, -dy * stride, svgRect(), f.content));
     }
 });
+
+/** Arrow keys, in client pixels per press. Shift moves a screenful at a time. */
+const PAN_KEYS: Record<string, [number, number]> = {
+    ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]
+};
+const PAN_STRIDE = 60;
+const PAN_STRIDE_FAST = 300;
 
 function zoomStep(direction: 'in' | 'out'): void {
     const f = frame();
@@ -482,6 +523,7 @@ zoomValue.addEventListener('click', fit);
 highlightToggle.addEventListener('click', () => {
     highlightEnabled = !highlightEnabled;
     highlightToggle.classList.toggle('active', highlightEnabled);
+    highlightToggle.setAttribute('aria-pressed', String(highlightEnabled));
     lastMatched = null;
     applyHighlight(highlightName);
     persist();
@@ -494,21 +536,27 @@ document.getElementById('jpipe-link')?.addEventListener('click', event => {
     vscode.postMessage({ type: 'openLink', url: 'https://jpipe.org' });
 });
 
-document.getElementById('download-toggle')?.addEventListener('click', event => {
+const downloadToggle = document.getElementById('download-toggle');
+downloadToggle?.addEventListener('click', event => {
     event.stopPropagation();
-    drawer.classList.toggle('open');
+    setDrawerOpen(!drawer.classList.contains('open'));
 });
+
+function setDrawerOpen(open: boolean): void {
+    drawer.classList.toggle('open', open);
+    downloadToggle?.setAttribute('aria-expanded', String(open));
+}
 drawer.addEventListener('click', event => event.stopPropagation());
 drawer.querySelectorAll('button[data-format]').forEach(btn => {
     btn.addEventListener('click', () => {
         const format = btn.getAttribute('data-format');
         if (format) {
             vscode.postMessage({ type: 'download', format });
-            drawer.classList.remove('open');
+            setDrawerOpen(false);
         }
     });
 });
-document.addEventListener('click', () => drawer.classList.remove('open'));
+document.addEventListener('click', () => setDrawerOpen(false));
 
 function onMinimapNavigate(left: number, top: number, mm: Size): void {
     if (!vb || !content) return;
@@ -525,6 +573,24 @@ new ResizeObserver(() => {
     if (!vb || !f || !navigable) return;
     setViewBox(pristine ? initialBox(f) : clampTranslation(normalizeAspect(vb, f.viewport), f.content));
 }).observe(container);
+
+/**
+ * Follow the editor's theme while the panel stays open.
+ *
+ * VS Code swaps the theme class on the body rather than reloading the webview, and the page now
+ * outlives many renders, so without this a light-to-dark switch would leave the previous
+ * theme's rendering in place until the next compile.
+ */
+let wasDark = isDarkTheme();
+new MutationObserver(() => {
+    if (isDarkTheme() === wasDark) return;
+    wasDark = !wasDark;
+    if (lastSvg === null) return;
+    const keep = vb;
+    installDiagram();
+    if (keep && content) setViewBox(clampTranslation(normalizeAspect(keep, panelSize()), content));
+    applyHighlight(highlightName);
+}).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
 /* --------------------------------------------------------------- messages */
 
@@ -562,12 +628,17 @@ if (restored) {
     if (restored.highlightEnabled) {
         highlightEnabled = true;
         highlightToggle.classList.add('active');
+        highlightToggle.setAttribute('aria-pressed', 'true');
     }
     // Seed the view so the replayed render counts as "the same diagram" and keeps this frame
     // rather than re-fitting.
     vb = restored.vb ?? null;
     lastDocumentUri = restored.documentUri ?? null;
     lastDiagramName = restored.diagramName ?? null;
+    // A restored view is someone's deliberate framing, not the default one. Leaving it marked
+    // pristine would let the first resize after the replay — which the empty-to-diagram layer
+    // switch is enough to trigger — throw it away and snap back to the opening view.
+    if (vb) pristine = false;
 }
 
 // The extension replays its last render in response, so a reloaded webview comes back with the

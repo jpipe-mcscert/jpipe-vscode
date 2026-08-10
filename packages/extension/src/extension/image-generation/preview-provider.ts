@@ -216,6 +216,10 @@ export class PreviewProvider {
             // it from activeTextEditor (which may have a different cursor position).
             const stdout = await this.imageGenerator.generate(false, ImageFormat.SVG, document, diagramName);
             this.logger.debug(`Preview updated: '${diagramName}' in ${document.fileName}`);
+            // The user may have switched to the diagnostic view while the compiler ran; a render
+            // sent now would yank them back to the diagram. Mirrors the same check the
+            // diagnostic branch makes above.
+            if (this.viewMode !== 'diagram') return;
             this.sendRender(revision, this.extractSvgFromOutput(stdout), document, editor, diagramName, null);
         } catch (error: any) {
             const stdout = typeof error?.stdout === 'string' ? error.stdout : '';
@@ -225,6 +229,7 @@ export class PreviewProvider {
             this.logRenderError(document.fileName, exitCode, error);
             this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
 
+            if (this.viewMode !== 'diagram') return;
             const svgFromError = this.extractSvgFromOutput(stdout);
             if (svgFromError.includes('<svg')) {
                 this.sendRender(revision, svgFromError, document, editor, diagramName, { exitCode });
@@ -251,6 +256,15 @@ export class PreviewProvider {
     ): Promise<void> {
         let highlight = await this.getSymbolNameAtCursor(document, editor);
         if (highlight === diagramName) highlight = null;
+
+        // The page drops out-of-order renders by revision, but the host has to as well.
+        // Otherwise a slow first compile landing after a fast second one would leave the panel
+        // showing the newer diagram while `lastRender` and the export target regressed to the
+        // older one — so a reload, or a download, would quietly act on the wrong diagram.
+        if (this.lastRender && revision < this.lastRender.revision) {
+            this.logger.debug(`Dropping stale render ${revision} (panel is showing ${this.lastRender.revision})`);
+            return;
+        }
 
         const message: RenderMessage = {
             type: 'render',
