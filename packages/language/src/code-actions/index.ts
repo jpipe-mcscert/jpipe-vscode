@@ -10,6 +10,7 @@ import { addRequiredConfigKeys } from './add-required-config-keys.js';
 import { addSupportOverride } from './add-support-override.js';
 import { addMissingLoad } from './add-missing-load.js';
 import { addSupporter } from './add-supporter.js';
+import { extractTemplate } from './extract-template.js';
 import { fixConfigKey } from './fix-config-key.js';
 import { fixLoadPath } from './fix-load-path.js';
 import { fixOperatorName } from './fix-operator-name.js';
@@ -35,5 +36,6 @@ export const JPIPE_REFACTORINGS: readonly RefactoringDefinition[] = [
     addMissingLoad,
     organizeLoads,
     convertModelKind,
-    sortElements
+    sortElements,
+    extractTemplate
 ];

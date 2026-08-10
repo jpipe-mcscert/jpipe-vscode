@@ -8,7 +8,8 @@
  */
 import { describe, expect, test } from 'vitest';
 import { CodeActionKind } from 'vscode-languageserver';
-import { CURSOR, actionTitles, applyCodeAction } from './code-action-helper.js';
+import { Diagnostic, DiagnosticSeverity } from 'vscode-languageserver-types';
+import { CURSOR, actionTitles, applyCodeAction, parseValidated } from './code-action-helper.js';
 
 const ORGANIZE = 'source.organizeImports';
 
@@ -160,5 +161,92 @@ describe('sort-elements', () => {
         const lines = after.split('\n').map(l => l.trim());
         expect(lines.indexOf('evidence second is "Second"'))
             .toBeLessThan(lines.indexOf('evidence first is "First"'));
+    });
+});
+
+describe('extract-template', () => {
+
+    const ARGUMENT = `justification ${CURSOR}Release {
+    conclusion ready is "Version 2.0 is ready to ship"
+    strategy gates is "All release gates pass"
+    evidence tested is "The suite is green"
+    evidence documented is "The changelog is written"
+    tested supports gates
+    documented supports gates
+    gates supports ready
+}`;
+
+    test('keeps the structure and turns the leaves into slots', async () => {
+        const after = await applyCodeAction(ARGUMENT, { title: "Extract template from 'Release'" });
+        expect(after).toContain('template ReleaseTemplate {');
+        expect(after).toContain('conclusion ready is "Version 2.0 is ready to ship"');
+        expect(after).toContain('strategy gates is "All release gates pass"');
+        expect(after).toContain('@support tested is "The suite is green"');
+        expect(after).toContain('@support documented is "The changelog is written"');
+    });
+
+    test('carries the relations into the template unchanged', async () => {
+        const after = await applyCodeAction(ARGUMENT, { title: "Extract template from 'Release'" });
+        expect(after).toContain('tested supports gates');
+        expect(after).toContain('gates supports ready');
+    });
+
+    test('rewrites the justification to implement it, requalifying each override', async () => {
+        const after = await applyCodeAction(ARGUMENT, { title: "Extract template from 'Release'" });
+        expect(after).toContain('justification Release implements ReleaseTemplate {');
+        expect(after).toContain('evidence ReleaseTemplate:tested is "The suite is green"');
+        expect(after).toContain('evidence ReleaseTemplate:documented is "The changelog is written"');
+    });
+
+    // The whole point: the result has to be a model the compiler would accept.
+    test('the result parses and reports no errors', async () => {
+        const after = await applyCodeAction(ARGUMENT, { title: "Extract template from 'Release'" });
+        const reparsed = await parseValidated(after);
+        expect(reparsed.parseResult.parserErrors).toEqual([]);
+        const errors = (reparsed.diagnostics ?? []).filter(d => d.severity === DiagnosticSeverity.Error);
+        expect(errors.map(d => Diagnostic.getMessageString(d))).toEqual([]);
+    });
+
+    // Evidence with something under it is part of the structure, not a slot in it — and an
+    // @support may only be refined by an evidence or a sub-conclusion, never by a sub-argument.
+    test('abstracts only the evidence at the bottom of the argument', async () => {
+        const after = await applyCodeAction(
+            `justification ${CURSOR}J {
+    conclusion c is "C"
+    strategy top is "Top"
+    sub-conclusion mid is "Mid"
+    strategy lower is "Lower"
+    evidence leaf is "Leaf"
+    leaf supports lower
+    lower supports mid
+    mid supports top
+    top supports c
+}`,
+            { title: "Extract template from 'J'" }
+        );
+        expect(after).toContain('@support leaf is "Leaf"');
+        expect(after).toContain('sub-conclusion mid is "Mid"');
+        expect(after).not.toContain('@support mid');
+    });
+
+    test('is not offered where there is no evidence to abstract', async () => {
+        expect(await actionTitles(
+            `justification ${CURSOR}J {\n    conclusion c is "C"\n    strategy s is "S"\n    s supports c\n}`,
+            CodeActionKind.Refactor
+        )).not.toContain("Extract template from 'J'");
+    });
+
+    test('is not offered on a model that already implements a template', async () => {
+        expect(await actionTitles(
+            `template T {\n    @support a is "A"\n    conclusion c is "C"\n    strategy s is "S"\n    a supports s\n    s supports c\n}\njustification ${CURSOR}J implements T {\n    evidence T:a is "A"\n}`,
+            CodeActionKind.Refactor
+        )).not.toContain("Extract template from 'J'");
+    });
+
+    test('is not offered on a composition', async () => {
+        expect(await actionTitles(
+            `justification A {\n    conclusion c is "C"\n}\njustification ${CURSOR}B is assemble(A) { conclusionLabel: "C" strategyLabel: "S" }`,
+            CodeActionKind.Refactor
+        )).not.toContain("Extract template from 'B'");
     });
 });
