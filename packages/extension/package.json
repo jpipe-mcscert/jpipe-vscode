@@ -193,6 +193,12 @@
                 "icon": "$(list-ordered)"
             },
             {
+                "command": "jpipe.autoIndent",
+                "title": "Auto-indent and Align",
+                "category": "jPipe",
+                "icon": "$(list-flat)"
+            },
+            {
                 "command": "jpipe.convertModelKind",
                 "title": "Convert Justification to Template (or back)",
                 "category": "jPipe",

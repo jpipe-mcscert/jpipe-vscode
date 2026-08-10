@@ -10,7 +10,7 @@ import { JpipeLogger } from './logger.js';
 import {
     CONVERT_MODEL_KIND,
     EXTRACT_TEMPLATE_KIND,
-    ORGANIZE_LOADS_KIND,
+    ORGANIZE_LOADS_KIND, AUTO_INDENT_KIND,
     SORT_ELEMENTS_KIND
 } from 'jpipe-language';
 
@@ -228,12 +228,13 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('jpipe.excludeResource', (uri?: vscode.Uri) => excludeResource(uri)),
         // Source Action… is where this belongs and where it now appears; the command is the
         // palette shortcut to it, the way other languages offer one for organizing imports.
-        vscode.commands.registerCommand('jpipe.organizeLoads', async () => {
-            await vscode.commands.executeCommand('editor.action.sourceAction', {
-                kind: ORGANIZE_LOADS_KIND,
-                apply: 'first'
-            });
-        }),
+        ...[
+            ['jpipe.organizeLoads', ORGANIZE_LOADS_KIND],
+            ['jpipe.autoIndent', AUTO_INDENT_KIND]
+        ].map(([command, kind]) =>
+            vscode.commands.registerCommand(command, async () => {
+                await vscode.commands.executeCommand('editor.action.sourceAction', { kind, apply: 'first' });
+            })),
         // The refactorings are already in the lightbulb and under Refactor…, but both ask you to
         // know they are there. A named command is the one route that answers "what can jPipe do
         // here?" without a shortcut, so each gets one.
