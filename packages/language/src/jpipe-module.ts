@@ -1,5 +1,5 @@
 import { type Module, inject } from 'langium';
-import { createDefaultModule, createDefaultSharedModule, type DefaultSharedModuleContext, type LangiumServices, type LangiumSharedServices, type PartialLangiumServices } from 'langium/lsp';
+import { createDefaultModule, createDefaultSharedModule, type DefaultSharedModuleContext, type LangiumServices, type LangiumSharedServices, type PartialLangiumServices, type PartialLangiumSharedServices } from 'langium/lsp';
 import { JpipeGeneratedModule, JpipeGeneratedSharedModule } from './generated/module.js';
 import { JpipeValidator, registerValidationChecks } from './jpipe-validator.js';
 import { JpipeScopeProvider } from './jpipe-scope.js';
@@ -12,6 +12,7 @@ import { JpipeHoverProvider } from './jpipe-hover-provider.js';
 import { JpipeSemanticTokenProvider } from './jpipe-semantic-token-provider.js';
 import { JpipeRenameProvider } from './jpipe-rename-provider.js';
 import { JpipeCodeActionProvider } from './jpipe-code-action-provider.js';
+import { JpipeLanguageServer } from './jpipe-language-server.js';
 import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 import { JpipeDocumentValidator } from './jpipe-document-validator.js';
 import { JpipeExclusionService } from './jpipe-exclusions.js';
@@ -35,6 +36,18 @@ export type JpipeAddedServices = {
  * of custom service classes.
  */
 export type JpipeServices = LangiumServices & JpipeAddedServices
+
+/**
+ * Shared-service overrides.
+ *
+ * Only the language server itself, so that the code-action capability arrives with its kinds
+ * attached rather than as a bare boolean.
+ */
+const JpipeSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServices> = {
+    lsp: {
+        LanguageServer: (services) => new JpipeLanguageServer(services)
+    }
+};
 
 function buildJpipeModule(logger: JpipeServerLogger, exclusions: JpipeExclusionService): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
     return {
@@ -87,7 +100,8 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
     const exclusions = new JpipeExclusionService(logger);
     const shared = inject(
         createDefaultSharedModule(context),
-        JpipeGeneratedSharedModule
+        JpipeGeneratedSharedModule,
+        JpipeSharedModule
     );
     const Jpipe = inject(
         createDefaultModule({ shared }),
