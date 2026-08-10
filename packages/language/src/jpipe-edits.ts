@@ -126,6 +126,54 @@ export function findElementInsertion(
     return { line: headerLine + 1, indent: `${indentationOf(document, headerLine)}    ` };
 }
 
+/**
+ * One edit adding declarations to a model, wherever its body currently stands.
+ *
+ * Handles the case `findElementInsertion` cannot: a model whose body is empty. `{ }` does not
+ * parse — a body needs at least one member — so a justification just pointed at a template sits
+ * in exactly that state, with the override it is missing being the very thing that would make it
+ * parse again. Declining to write it there would withhold the fix at the one moment it is most
+ * wanted.
+ *
+ * Returns `undefined` only when the model has no braces to write into at all.
+ */
+export function insertDeclarationsEdit(
+    document: LangiumDocument<Unit>,
+    model: Justification | Template,
+    declarations: readonly string[]
+): TextEdit | undefined {
+    if (declarations.length === 0) return undefined;
+
+    const existing = findElementInsertion(document, model);
+    if (existing) {
+        return insertLinesEdit(existing.line, declarations, existing.indent);
+    }
+
+    // No body: write inside the braces, opening the block out onto its own lines.
+    const modelNode = model.$cstNode;
+    if (!modelNode) return undefined;
+    const text = document.textDocument.getText();
+    const open = text.indexOf('{', modelNode.offset);
+    const close = text.lastIndexOf('}', modelNode.end);
+    if (open < 0 || close < open) return undefined;
+
+    const outer = indentationOf(document, document.textDocument.positionAt(open).line);
+    const inner = `${outer}    `;
+    const body = declarations.map(line => `\n${inner}${line}`).join('');
+
+    // Replaces whatever sits between the braces — whitespace, or a comment left where the
+    // declarations should go, which stays below them.
+    const between = text.slice(open + 1, close);
+    const kept = between.trim().length > 0 ? `\n${inner}${between.trim()}` : '';
+    return {
+        range: {
+            start: document.textDocument.positionAt(open + 1),
+            end: document.textDocument.positionAt(close)
+        },
+        newText: `${body}${kept}\n${outer}`
+    };
+}
+
 // ── generic edits ────────────────────────────────────────────────────────────────────────────
 
 /** The range a CST node spans. */

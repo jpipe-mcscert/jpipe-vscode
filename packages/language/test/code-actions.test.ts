@@ -217,6 +217,55 @@ justification ${CURSOR}j implements t {
         }
     });
 
+    // `{ }` does not parse — a body needs at least one member — so a justification just pointed
+    // at a template sits in exactly that state, with the override it is missing being the very
+    // thing that would make it parse again. The insertion logic used to give up on a model with
+    // no body, withholding the fix at the one moment it is most wanted.
+    describe('a justification whose body is still empty', () => {
+
+        const EMPTY = (body: string) => `template t {
+    conclusion c is "A conclusion"
+    strategy s is "A strategy"
+    @support abs is "Abstract"
+    s supports c
+    abs supports s
+}
+justification ${CURSOR}no_namespace implements t {${body}}`;
+
+        const SHAPES: ReadonlyArray<readonly [string, string]> = [
+            ['nothing at all', '\n'],
+            ['only a comment', '\n    //evidence abs is "Evidence"\n'],
+            ['braces on one line', ' ']
+        ];
+
+        test.each(SHAPES)('is offered the override when it holds %s', async (_label, body) => {
+            const titles = await actionTitles(EMPTY(body), CodeActionKind.QuickFix);
+            expect(titles).toContain("Override '@support abs' with evidence");
+        });
+
+        test.each(SHAPES)('applying it leaves a file that parses, from %s', async (_label, body) => {
+            const after = await applyCodeAction(EMPTY(body), { title: "Override '@support abs' with evidence" });
+            const reparsed = await parseValidated(after);
+            expect(reparsed.parseResult.parserErrors.map(e => e.message)).toEqual([]);
+            expect(after).toContain('evidence t:abs is "Abstract"');
+        });
+
+        // A comment sitting where the declarations go is the author's note about what belongs
+        // there; the fix writes above it rather than over it.
+        test('a comment in the body is kept', async () => {
+            const after = await applyCodeAction(
+                EMPTY('\n    //evidence abs is "Evidence"\n'),
+                { title: "Override '@support abs' with evidence" }
+            );
+            expect(after).toContain('//evidence abs is "Evidence"');
+        });
+
+        test('the declaration is indented inside the braces', async () => {
+            const after = await applyCodeAction(EMPTY('\n'), { title: "Override '@support abs' with evidence" });
+            expect(after).toContain('{\n    evidence t:abs is "Abstract"\n}');
+        });
+    });
+
     test('offers both keywords that may refine an @support, plus a fix-all', async () => {
         expect(await titlesMatching(missing(SKELETON), /^Override /)).toEqual([
             'Override all 2 missing @support elements',

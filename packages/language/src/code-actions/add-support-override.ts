@@ -12,7 +12,7 @@
 import { CodeActionKind, type CodeAction } from 'vscode-languageserver';
 import { isJustification, type Justification } from '../generated/ast.js';
 import { nodeForDiagnostic } from '../jpipe-ast-context.js';
-import { findElementInsertion, insertLinesEdit } from '../jpipe-edits.js';
+import { insertDeclarationsEdit } from '../jpipe-edits.js';
 import { JpipeIssue } from '../jpipe-diagnostic-codes.js';
 import { renderElement, type ElementKeyword } from '../jpipe-render.js';
 import { getLocalElements, qualifiedIdText } from '../jpipe-utils.js';
@@ -29,9 +29,6 @@ export const addSupportOverride = quickFix<typeof JpipeIssue.MissingSupportOverr
         const justification = justificationFor(context, diagnostic);
         if (!justification) return [];
 
-        const insertion = findElementInsertion(context.document, justification);
-        if (!insertion) return [];
-
         // The payload was computed when the diagnostic was published and the user may have typed
         // since; anything already declared is no longer missing.
         const declared = new Set(getLocalElements(justification).map(e => qualifiedIdText(e.id)));
@@ -41,6 +38,10 @@ export const addSupportOverride = quickFix<typeof JpipeIssue.MissingSupportOverr
         const uri = context.document.uri.toString();
         const several = missing.length > 1;
         const actions: CodeAction[] = [];
+
+        /** The single edit writing these declarations into the justification, wherever its body is. */
+        const write = (lines: readonly string[]) =>
+            insertDeclarationsEdit(context.document, justification, lines);
 
         // First, and preferred, when there is more than one gap: a justification that has just
         // been pointed at a template is missing all of them, and closing them one at a time is
@@ -52,15 +53,9 @@ export const addSupportOverride = quickFix<typeof JpipeIssue.MissingSupportOverr
                 title: `Override all ${missing.length} missing @support elements`,
                 kind: CodeActionKind.QuickFix,
                 isPreferred: true,
-                edit: {
-                    changes: {
-                        [uri]: [insertLinesEdit(
-                            insertion.line,
-                            missing.map(entry => renderElement('evidence', entry.expectedKey, entry.supportLabel)),
-                            insertion.indent
-                        )]
-                    }
-                }
+                edit: { changes: { [uri]: toEdits(write(
+                    missing.map(entry => renderElement('evidence', entry.expectedKey, entry.supportLabel))
+                )) } }
             });
         }
 
@@ -69,18 +64,14 @@ export const addSupportOverride = quickFix<typeof JpipeIssue.MissingSupportOverr
             kind: CodeActionKind.QuickFix,
             // Only one action may lead; with several gaps that is the fix-all.
             isPreferred: !several && index === 0,
-            edit: {
-                changes: {
-                    [uri]: [insertLinesEdit(
-                        insertion.line,
-                        [renderElement(keyword, data.expectedKey, data.supportLabel)],
-                        insertion.indent
-                    )]
-                }
-            }
+            edit: { changes: { [uri]: toEdits(write(
+                [renderElement(keyword, data.expectedKey, data.supportLabel)]
+            )) } }
         })));
 
-        return actions;
+        // A model with no braces at all has nowhere to write; offer nothing rather than a no-op.
+        return actions.filter(action =>
+            (action.edit?.changes?.[uri] ?? []).length > 0);
     }
 });
 
@@ -92,4 +83,9 @@ function justificationFor(
     let node = nodeForDiagnostic(context.document, diagnostic);
     while (node && !isJustification(node)) node = node.$container;
     return node;
+}
+
+/** An edit list from a possibly-absent edit, so a caller can filter on emptiness. */
+function toEdits(edit: ReturnType<typeof insertDeclarationsEdit>) {
+    return edit ? [edit] : [];
 }
