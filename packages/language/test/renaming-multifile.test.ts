@@ -162,6 +162,56 @@ describe('renaming a template loaded under an alias', () => {
         expect(await services.Jpipe.lsp.RenameProvider!.rename(user, { ...params, newName: 'other' })).toBeUndefined();
     });
 
+    // The other half of the same problem: an `@support` names what implementers must restate, and
+    // in another file they restate it through the alias.
+    test('renaming the @support carries into the loading file, alias and all', async () => {
+        write('library.jd', LIBRARY);
+        write('user.jd', USER);
+        const documents = await build('library.jd', 'user.jd');
+        const after = await renameAcross(documents, documents[0], '@support a', '@support '.length, 'signoff');
+
+        expect(after[uriOf('library.jd')]).toContain('@support signoff is "A"');
+        expect(after[uriOf('library.jd')]).toContain('signoff supports s');
+        expect(after[uriOf('user.jd')]).toContain('evidence lib:T:signoff is "Signed off"');
+        expect(after[uriOf('user.jd')]).toContain('lib:T:signoff supports lib:T:s');
+    });
+
+    test('the pair still validates once the @support is renamed', async () => {
+        write('library.jd', LIBRARY);
+        write('user.jd', USER);
+        const documents = await build('library.jd', 'user.jd');
+        const after = await renameAcross(documents, documents[0], '@support a', '@support '.length, 'signoff');
+
+        services = createJpipeServices(NodeFileSystem);
+        write('library.jd', after[uriOf('library.jd')]);
+        write('user.jd', after[uriOf('user.jd')]);
+        const [, user] = await build('library.jd', 'user.jd');
+        expect(errorsIn(user)).toEqual([]);
+    });
+
+    // Renaming it where it is restated would have to rename the template's declaration and every
+    // sibling restatement, from a line that reads like a local edit.
+    test('rename is declined at the override, naming the template it came from', async () => {
+        write('library.jd', LIBRARY);
+        write('user.jd', USER);
+        const documents = await build('library.jd', 'user.jd');
+        const user = documents[1];
+        const index = user.textDocument.getText().indexOf('lib:T:a is') + 'lib:T:'.length;
+        const params = {
+            textDocument: { uri: user.uri.toString() },
+            position: user.textDocument.positionAt(index)
+        };
+        // `prepareRename` declines synchronously and `rename` from a promise; the LSP handler
+        // wraps both, so the test does too rather than picking one shape.
+        let message: string | undefined;
+        try {
+            await services.Jpipe.lsp.RenameProvider!.prepareRename!(user, params);
+        } catch (error) {
+            message = (error as Error).message;
+        }
+        expect(message).toContain(`'lib:T:a' restates '@support a' in template 'T'`);
+    });
+
     // A file that never loads the library cannot be talking about its template, however much its
     // own names look alike.
     test('a same-named template in an unrelated file is untouched', async () => {

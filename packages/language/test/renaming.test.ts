@@ -57,6 +57,31 @@ async function isRenameOffered(source: string, needle: string, column = 0): Prom
     return await services.Jpipe.lsp.RenameProvider!.prepareRename!(document, params) !== undefined;
 }
 
+/**
+ * The message a declined rename puts in front of the user, or `undefined` if it declined silently.
+ *
+ * Both requests are asked, because a client may send `textDocument/rename` without preparing it
+ * first — and a refusal that only holds on one of them is a refusal that can be walked past.
+ */
+async function refusal(source: string, needle: string, column = 0): Promise<string | undefined> {
+    const { document, params } = await at(source, needle, column);
+    const provider = services.Jpipe.lsp.RenameProvider!;
+    const messages: Array<string | undefined> = [];
+    for (const request of [
+        () => provider.prepareRename!(document, params),
+        () => provider.rename(document, { ...params, newName: 'NEW' })
+    ]) {
+        try {
+            expect(await request(), 'declined requests return nothing').toBeUndefined();
+            messages.push(undefined);
+        } catch (error) {
+            messages.push((error as Error).message);
+        }
+    }
+    expect(messages[0], 'prepare and rename decline alike').toBe(messages[1]);
+    return messages[0];
+}
+
 /** The source text each edit replaces, so assertions read as what the user sees. */
 function replaced(source: string, edits: TextEdit[]): string[] {
     const lines = source.split('\n');
@@ -184,12 +209,139 @@ justification J implements T { evidence T:a is "A" strategy T is "S" }`;
             expect(replaced(LOCAL_ELEMENTS, edits)).toEqual(['e', 'e']);
             expect(edits.some(e => e.range.start.line === 0)).toBe(true);
         });
+
+        /**
+         * An element's id is a nested `QualifiedId`, so the cursor's CST leaf belongs to *that*
+         * node rather than to the element. Langium's resolution stopped there and found nothing to
+         * rename — which made an element renameable from every relation naming it and not from the
+         * line declaring it.
+         */
+        test('renaming from the declaration reaches just as far as from a relation', async () => {
+            expect(await isRenameOffered(LOCAL_ELEMENTS, 'evidence e', 'evidence '.length)).toBe(true);
+            expect(await renamed(LOCAL_ELEMENTS, 'evidence e', 'evidence '.length))
+                .toBe(await renamed(LOCAL_ELEMENTS, 'e supports s'));
+        });
     });
 
-    describe('qualified elements are refused, not mangled', () => {
+    /**
+     * An `@support` names something every implementer has to restate, so its name is the one name
+     * in a model that other files are obliged to spell out. Renaming it has to carry to all of
+     * them, and renaming it *from* one of them has to be declined — the restatement is not where
+     * the name lives.
+     */
+    describe('an element name used through a template', () => {
 
-        // `T:a` is one CST node, so the default provider replaces the whole thing and the element
-        // stops overriding `@support a`. Refusing keeps the model intact.
+        const OVERRIDDEN = `template T {
+ @support abs is "An abstract support"
+ strategy s is "S"
+ conclusion c is "C"
+ abs supports s
+ s supports c
+}
+justification J implements T {
+ evidence T:abs is "Direct evidence"
+}
+justification K implements T {
+ sub-conclusion T:abs is "An intermediate step"
+ strategy s2 is "S2"
+ evidence e2 is "E2"
+ s2 supports T:abs
+ e2 supports s2
+}`;
+
+        test('the fixture is a set of models with nothing wrong with them', async () => {
+            expect(await errorsIn(OVERRIDDEN)).toEqual([]);
+        });
+
+        test('renaming the @support carries to every override and every relation naming one', async () => {
+            const after = await renamed(OVERRIDDEN, '@support abs', '@support '.length, 'signoff');
+            expect(after).toContain('@support signoff is');
+            expect(after).toContain('signoff supports s');
+            expect(after).toContain('evidence T:signoff is');
+            expect(after).toContain('sub-conclusion T:signoff is');
+            expect(after).toContain('s2 supports T:signoff');
+            expect(after, 'no occurrence of the old name survives').not.toMatch(/\babs\b/);
+        });
+
+        test('the renamed models still validate', async () => {
+            expect(await errorsIn(await renamed(OVERRIDDEN, '@support abs', '@support '.length, 'signoff'))).toEqual([]);
+        });
+
+        test('renaming from a relation inside the template carries just as far', async () => {
+            expect(await renamed(OVERRIDDEN, 'abs supports s', 0, 'signoff'))
+                .toBe(await renamed(OVERRIDDEN, '@support abs', '@support '.length, 'signoff'));
+        });
+
+        /**
+         * The scope provider registers each element under a short alias too, when that alias is
+         * unambiguous — so a relation in the implementing model can say `abs` and mean the
+         * override. Nothing about that spelling says which element it is; only the resolved
+         * reference does.
+         */
+        test('a relation using the unqualified short alias follows too', async () => {
+            const source = `template T {
+ @support abs is "A"
+ strategy s is "S"
+ conclusion c is "C"
+ abs supports s
+ s supports c
+}
+justification J implements T {
+ evidence T:abs is "E"
+ abs supports s
+}`;
+            expect(await errorsIn(source), 'the fixture is a working model').toEqual([]);
+            const after = await renamed(source, '@support abs', '@support '.length, 'signoff');
+            expect(after).toContain('evidence T:signoff is "E"');
+            expect(after).toContain(' signoff supports s\n');
+            expect(await errorsIn(after)).toEqual([]);
+        });
+
+        /**
+         * The other way round: while an `implements` line is being written, every relation in the
+         * file below it is unresolved. Matching those by how they are spelled is what keeps a
+         * half-finished file no more broken after the rename than before it.
+         */
+        test('a relation that does not resolve is matched by how it is spelled', async () => {
+            const source = `template T {
+ @support abs is "A"
+ strategy s is "S"
+ conclusion c is "C"
+ abs supports s
+ s supports c
+}
+justification J {
+ conclusion c2 is "C2"
+ strategy s2 is "S2"
+ T:abs supports s2
+ s2 supports c2
+}`;
+            const after = await renamed(source, '@support abs', '@support '.length, 'signoff');
+            expect(after).toContain('T:signoff supports s2');
+        });
+
+        // A plain element of a template is restated the same way an `@support` is, the difference
+        // being only that implementers may leave it alone.
+        test('a template element that is not a @support carries the same way', async () => {
+            const source = `template T {
+ @support abs is "A"
+ strategy s is "S"
+ conclusion c is "C"
+ abs supports s
+ s supports c
+}
+justification J implements T {
+ evidence T:abs is "E"
+ strategy T:s is "A sharper strategy"
+}`;
+            const after = await renamed(source, 'strategy s is', 'strategy '.length, 'ground');
+            expect(after).toContain('strategy ground is "S"');
+            expect(after).toContain('strategy T:ground is "A sharper strategy"');
+        });
+    });
+
+    describe('an override is renamed at the template, not where it is restated', () => {
+
         const QUALIFIED_RELATION = `template T { @support a is "A" }
 justification J implements T { evidence T:a is "A" conclusion c is "C" strategy s is "S"
  T:a supports s
@@ -198,14 +350,22 @@ justification J implements T { evidence T:a is "A" conclusion c is "C" strategy 
         test.each([
             ['the qualifier segment', 0],
             ['the local segment', 2]
-        ])('rename is not offered on %s of a qualified reference', async (_label, column) => {
-            expect(await isRenameOffered(QUALIFIED_RELATION, 'T:a supports', column)).toBe(false);
-            expect(await renameEdits(QUALIFIED_RELATION, 'T:a supports', column)).toHaveLength(0);
+        ])('rename is declined on %s of a qualified reference, and says why', async (_label, column) => {
+            expect(await refusal(QUALIFIED_RELATION, 'T:a supports', column))
+                .toContain(`restates '@support a' in template 'T'`);
         });
 
-        test('rename is not offered on a qualified override declaration', async () => {
-            expect(await isRenameOffered(TEMPLATE_AND_USER, 'T:a is')).toBe(false);
-            expect(await renameEdits(TEMPLATE_AND_USER, 'T:a is')).toHaveLength(0);
+        test('rename is declined on a qualified override declaration, and says why', async () => {
+            const message = await refusal(TEMPLATE_AND_USER, 'T:a is');
+            expect(message).toContain(`'T:a' restates '@support a' in template 'T'`);
+            expect(message, 'the message says what to do instead').toContain('Rename it there');
+        });
+
+        // The template may be in a file this one only loads, or not resolve at all while the
+        // `implements` is being typed. The refusal still has to name something.
+        test('an override whose template cannot be resolved still says where the name lives', async () => {
+            const message = await refusal('justification J implements Missing { evidence Missing:a is "A" }', 'Missing:a is');
+            expect(message).toContain(`'a' in template 'Missing'`);
         });
 
         // The guard keys on the id's shape, not on the presence of a template, so a plain
