@@ -60,6 +60,31 @@ export function adaptToDarkTheme(svg: SVGSVGElement): void {
         if (el.getAttribute('stroke') === 'black') el.setAttribute('stroke', 'currentColor');
         if (el.getAttribute('fill') === 'black') el.setAttribute('fill', 'currentColor');
     });
+
+    // Text defaults to black, which is readable on a filled node and invisible on anything
+    // else — a sub-conclusion, whose whole visual identity is being an *unfilled* box, and any
+    // label drawn straight onto the canvas. So the rule is by backdrop, not by element type:
+    // keep black only where the compiler painted something light to sit on.
+    //
+    // Giving the unfilled box a fill instead would read as simpler, and would erase exactly the
+    // distinction the compiler is drawing between a sub-conclusion and everything around it.
+    svg.querySelectorAll('text').forEach(text => {
+        if (text.getAttribute('fill')) return;
+        const node = text.closest('g.node');
+        if (node && isFilled(node)) return;
+        text.setAttribute('fill', 'currentColor');
+    });
+}
+
+/** Shapes that can carry a background; `polyline` is excluded, being decoration on a corner. */
+const FILLABLE = 'polygon, path, ellipse, rect, circle';
+
+/** Whether anything in this node paints a backdrop for its label to sit on. */
+function isFilled(node: Element): boolean {
+    return Array.from(node.querySelectorAll(FILLABLE)).some(shape => {
+        const fill = shape.getAttribute('fill');
+        return fill !== null && fill !== 'none';
+    });
 }
 
 /**
