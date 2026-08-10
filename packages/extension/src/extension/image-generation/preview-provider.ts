@@ -189,6 +189,31 @@ export class PreviewProvider {
     }
     
     /**
+     * Run the compiler again for its text report, and hand it to the page.
+     *
+     * Tagged with the revision of the diagnostic the page is showing, so a reply that arrives
+     * after the user has saved again is recognisably about the previous run and dropped.
+     */
+    private async sendTextReport(): Promise<void> {
+        const showing = this.lastDiagnostic;
+        if (!showing) return;
+        const resolved = await this.resolveActiveJpipeDocument();
+        if (!resolved) return;
+        try {
+            const text = await this.imageGenerator.generateTextDiagnostic(resolved.document);
+            this.post({ type: 'diagnosticText', revision: showing.revision, text });
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            this.logger.warn(`Could not produce the text diagnostic report: ${msg}`);
+            this.post({
+                type: 'diagnosticText',
+                revision: showing.revision,
+                text: `Could not produce the text report:\n\n${msg}`
+            });
+        }
+    }
+
+    /**
      * Open a source position from the diagnostic view.
      *
      * Opens by path rather than acting on the active editor: a location in the report may name a
@@ -519,6 +544,9 @@ export class PreviewProvider {
             }
             if (msg.type === 'revealLocation') {
                 void this.revealLocation(msg.source, msg.line, msg.column);
+            }
+            if (msg.type === 'requestTextReport') {
+                void this.sendTextReport();
             }
             if (msg.type === 'toggleMode') {
                 // Resolve a document BEFORE flipping viewMode so we never end up in a

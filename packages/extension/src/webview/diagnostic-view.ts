@@ -42,6 +42,25 @@ export type DiagnosticTab = 'diagnostics' | 'models' | 'symbols' | 'actions';
 
 const TABS: DiagnosticTab[] = ['diagnostics', 'models', 'symbols', 'actions'];
 
+/**
+ * Which of the report's three presentations is showing.
+ *
+ * `report` is the structured view. `text` is the compiler's own human-readable report — the one
+ * the panel used to show, and still the thing to copy into a bug report or diff against a
+ * previous run. `json` is exactly what the compiler emitted.
+ *
+ * The last two are not the same document once the compiler speaks JSON: asking for `-f json`
+ * means the run's own output *is* the JSON, and the text report has to be fetched separately.
+ * That is why `text` is requested from the host rather than sliced out of what we already have.
+ */
+export type DiagnosticFace = 'report' | 'text' | 'json';
+
+const FACE_LABELS: ReadonlyArray<{ face: DiagnosticFace; label: string; title: string }> = [
+    { face: 'report', label: 'Report', title: 'The structured report' },
+    { face: 'text', label: 'Text', title: "The compiler's own text report" },
+    { face: 'json', label: 'JSON', title: 'Exactly what the compiler emitted' }
+];
+
 /** What survives a save, a tab switch, and a webview reload. */
 export interface DiagnosticViewState {
     tab: DiagnosticTab;
@@ -57,7 +76,7 @@ export interface DiagnosticViewState {
     /** Restrict the problems list to one model, as the Models tab's error badge does. */
     modelFocus: string | null;
     codeFocus: string | null;
-    raw: boolean;
+    face: DiagnosticFace;
     /**
      * The report this state belongs to.
      *
@@ -77,7 +96,7 @@ export interface DiagnosticViewElements {
     controlsExtra: HTMLElement;
     panel: HTMLElement;
     output: HTMLElement;
-    rawToggle: HTMLElement;
+    faces: HTMLElement;
     copyButton: HTMLElement;
 }
 
@@ -85,6 +104,14 @@ export interface DiagnosticViewElements {
 export interface DiagnosticViewHost {
     revealLocation(source: string, line: number, column: number): void;
     copy(text: string): void;
+    /**
+     * Fetch the compiler's text report.
+     *
+     * Only ever called when the structured report came from a JSON run, where the text version
+     * is a second invocation. Requested when the user first asks for it rather than alongside
+     * every save, since most readers never open it.
+     */
+    requestTextReport(): void;
     /** Called whenever something worth remembering changes. */
     persist(): void;
 }
@@ -117,7 +144,14 @@ export class DiagnosticView {
     private expandedMacros = new Set<number>();
     private modelFocus: string | null = null;
     private codeFocus: string | null = null;
-    private rawMode = false;
+    private face: DiagnosticFace = 'report';
+    /**
+     * The compiler's text report, once fetched.
+     *
+     * Null means "not asked for yet" when a structured report is showing; when there is no
+     * structured report the run's own output is already the text, and this is unused.
+     */
+    private textReport: string | null = null;
     /** The report the current view state belongs to. See `DiagnosticViewState.source`. */
     private lastSource: string | null = null;
     /** The element id under the editor cursor, for the Symbols tab to follow. */
@@ -139,8 +173,15 @@ export class DiagnosticView {
             this.host.persist();
         });
 
-        this.elements.rawToggle.addEventListener('click', () => this.setRaw(!this.rawMode));
-        this.elements.copyButton.addEventListener('click', () => this.host.copy(this.raw));
+        this.elements.faces.addEventListener('click', event => {
+            const button = (event.target as HTMLElement).closest<HTMLElement>('[data-face]');
+            if (button) this.setFace(button.dataset.face as DiagnosticFace);
+        });
+
+        // Copies what the reader is looking at, so the button means the same thing wherever it
+        // is pressed. In the structured view there is no single text to copy, so it hands over
+        // the compiler's own report — which is what a bug report wants anyway.
+        this.elements.copyButton.addEventListener('click', () => this.host.copy(this.copyable()));
 
         // Remembering where the user was reading is the whole point of keeping state across a
         // save; the panel is re-rendered on every run and would otherwise snap back to the top.
@@ -169,15 +210,11 @@ export class DiagnosticView {
         if (report !== null) this.lastSource = report.source;
         this.report = report;
         this.raw = raw;
-        this.elements.output.textContent = raw;
+        // A new run means a new text report; the old one describes the previous save.
+        this.textReport = report === null ? raw : null;
 
         document.body.classList.toggle('diag-no-report', report === null);
-        if (report === null) {
-            this.setRaw(true, { silent: true });
-        } else {
-            if (this.rawMode) this.setRaw(false, { silent: true });
-            // A different file is a different report: carrying a filter or an expanded macro
-            // across would be pointing at things that no longer exist.
+        if (report !== null) {
             if (changedDocument) this.resetViewState();
             this.attribution = attributeDiagnostics(report);
             this.actionTree = buildActionTree(report.actions);
@@ -185,14 +222,22 @@ export class DiagnosticView {
 
         this.renderSummary();
         this.renderTabs();
+        this.renderFaces();
+        this.applyFace();
         this.renderPanel();
+    }
+
+    /** The compiler's text report, which the host fetched on request. */
+    showTextReport(text: string): void {
+        this.textReport = text;
+        if (this.effectiveFace() === 'text') this.applyFace();
     }
 
     /** The element under the editor cursor, or null. Drives the Symbols tab's follow behaviour. */
     setCursorSymbol(name: string | null): void {
         if (name === this.cursorSymbol) return;
         this.cursorSymbol = name;
-        if (this.tab === 'symbols' && !this.rawMode) this.renderPanel();
+        if (this.tab === 'symbols' && this.effectiveFace() === 'report') this.renderPanel();
     }
 
     /* --------------------------------------------------------------- persistence */
@@ -205,7 +250,7 @@ export class DiagnosticView {
             expandedMacros: [...this.expandedMacros],
             modelFocus: this.modelFocus,
             codeFocus: this.codeFocus,
-            raw: this.rawMode,
+            face: this.face,
             source: this.lastSource
         };
     }
@@ -227,7 +272,7 @@ export class DiagnosticView {
         this.expandedMacros = new Set(state.expandedMacros ?? []);
         this.modelFocus = state.modelFocus ?? null;
         this.codeFocus = state.codeFocus ?? null;
-        this.rawMode = state.raw ?? false;
+        this.face = state.face ?? 'report';
         this.lastSource = state.source ?? null;
     }
 
@@ -241,11 +286,70 @@ export class DiagnosticView {
 
     /* -------------------------------------------------------------------- chrome */
 
-    private setRaw(raw: boolean, options: { silent?: boolean } = {}): void {
-        this.rawMode = raw;
-        document.body.classList.toggle('diag-raw', raw);
-        this.elements.rawToggle.setAttribute('aria-pressed', String(raw));
-        if (!options.silent) this.host.persist();
+    /**
+     * What is actually on screen.
+     *
+     * `face` is the reader's choice; this is that choice once reality is taken into account.
+     * Without a structured report the only thing to show is the text — but the choice is not
+     * overwritten, so a reader who was on the structured view before switching to a file the
+     * compiler cannot report on lands back on it when one arrives, rather than being left in a
+     * text view they never asked for.
+     */
+    private effectiveFace(): DiagnosticFace {
+        return this.report === null ? 'text' : this.face;
+    }
+
+    private setFace(face: DiagnosticFace): void {
+        if (face === this.face) return;
+        this.face = face;
+        this.applyFace();
+        this.host.persist();
+    }
+
+    /** What the copy button hands over: whatever is on screen, in text form. */
+    private copyable(): string {
+        if (this.effectiveFace() === 'json') return this.raw;
+        return this.textReport ?? this.raw;
+    }
+
+    private applyFace(): void {
+        const face = this.effectiveFace();
+        document.body.classList.toggle('diag-raw', face !== 'report');
+        for (const button of Array.from(this.elements.faces.querySelectorAll<HTMLElement>('[data-face]'))) {
+            button.setAttribute('aria-pressed', String(button.dataset.face === face));
+        }
+        if (face === 'report') return;
+
+        if (face === 'json') {
+            this.elements.output.textContent = this.raw;
+            return;
+        }
+        if (this.textReport !== null) {
+            this.elements.output.textContent = this.textReport;
+            return;
+        }
+        // A JSON run's output is the JSON, so the text report is a second invocation. Asked for
+        // only when someone actually wants it.
+        this.elements.output.textContent = 'Fetching the compiler’s text report…';
+        this.host.requestTextReport();
+    }
+
+    /**
+     * The face selector.
+     *
+     * Absent when there is no structured report: the run's own output is the text report, so all
+     * three buttons would show the same thing.
+     */
+    private renderFaces(): void {
+        this.elements.faces.replaceChildren();
+        if (this.report === null) return;
+        for (const { face, label, title } of FACE_LABELS) {
+            const button = el('button', 'diag-chip-btn', label);
+            button.dataset.face = face;
+            button.title = title;
+            button.setAttribute('aria-pressed', String(face === this.face));
+            this.elements.faces.append(button);
+        }
     }
 
     private selectTab(tab: DiagnosticTab): void {
@@ -326,12 +430,34 @@ export class DiagnosticView {
         return this.filters.get(this.tab) ?? '';
     }
 
+    /**
+     * A full-width heading inside a table.
+     *
+     * Deliberately a row rather than a heading element between separate tables. Each group used
+     * to get its own `<table>`, and separate tables size their columns independently — so the
+     * same column landed at a different width under every model, which reads as broken. One
+     * table for the whole tab means one set of column widths.
+     */
+    private groupRow(columns: number, label: string, note?: string): HTMLElement {
+        const row = el('tr', 'diag-group-row');
+        const cell = el('td', 'diag-group-cell', label);
+        cell.colSpan = columns;
+        if (note !== undefined) cell.append(el('span', 'diag-kind', note));
+        row.append(cell);
+        return row;
+    }
+
     /** A row that jumps to a source position when clicked, or a plain one when there is none. */
     private locationCell(location: SourceLocation | undefined, row: HTMLElement, report: DiagnosticReport): HTMLElement {
         const cell = el('td', 'diag-loc', formatLocation(location, report.source));
         if (location) {
             row.classList.add('diag-row-link');
-            row.addEventListener('click', () => {
+            row.addEventListener('click', event => {
+                // A model row carries buttons of its own — census chips, links to other models,
+                // the problem badge. Those have already acted by the time the click reaches the
+                // row, and revealing the source on top of that would be a second, unasked-for
+                // action from one click.
+                if ((event.target as HTMLElement).closest('button')) return;
                 this.host.revealLocation(sourceOf(location, report.source), location.line, location.column);
             });
         }
@@ -370,45 +496,45 @@ export class DiagnosticView {
         const attributed = shown.filter(d => !this.attribution.unattributed.includes(d));
         const unattributed = shown.filter(d => this.attribution.unattributed.includes(d));
 
-        if (attributed.length > 0) {
-            this.elements.panel.append(this.diagnosticsTable(attributed, report));
-        }
+        const table = el('table', 'diag-table');
+        const body = el('tbody');
+        for (const diagnostic of attributed) body.append(this.diagnosticRow(diagnostic, report));
         if (unattributed.length > 0) {
             // Kept visible rather than dropped: attribution is inferred from an exact position
             // match, so a diagnostic that resolves to no model is a limit of the inference, not
             // a reason for the user to stop seeing it. The two groups always sum to the count in
             // the tab.
-            const heading = el('div', 'diag-group-heading', 'Not tied to a model');
-            heading.append(el('span', 'diag-kind', `${unattributed.length}`));
-            this.elements.panel.append(heading, this.diagnosticsTable(unattributed, report));
-        }
-    }
-
-    private diagnosticsTable(diagnostics: readonly Diagnostic[], report: DiagnosticReport): HTMLElement {
-        const table = el('table', 'diag-table');
-        const body = el('tbody');
-        for (const diagnostic of diagnostics) {
-            const row = el('tr', 'diag-row');
-
-            const severity = el('td');
-            severity.append(el('span', `diag-badge severity-${diagnostic.severity}`, diagnostic.severity));
-            row.append(severity);
-
-            const code = el('td');
-            if (diagnostic.code !== undefined) {
-                code.append(el('span', 'diag-kind', diagnostic.code));
+            // Shown even when everything is unattributed: it is the answer to "why does no
+            // model show a problem count". Suppressed only when there were no models to tie
+            // anything to in the first place, where it would be stating the obvious.
+            if (report.models.length > 0) {
+                body.append(this.groupRow(4, 'Not tied to a model', String(unattributed.length)));
             }
-            row.append(code, el('td', undefined, diagnostic.message));
-
-            // A diagnostic always names a file, even when it has no position in it.
-            const location = diagnostic.line === undefined
-                ? undefined
-                : { source: diagnostic.source, line: diagnostic.line, column: diagnostic.column };
-            row.append(this.locationCell(location, row, report));
-            body.append(row);
+            for (const diagnostic of unattributed) body.append(this.diagnosticRow(diagnostic, report));
         }
         table.append(body);
-        return table;
+        this.elements.panel.append(table);
+    }
+
+    private diagnosticRow(diagnostic: Diagnostic, report: DiagnosticReport): HTMLElement {
+        const row = el('tr', 'diag-row');
+
+        const severity = el('td');
+        severity.append(el('span', `diag-badge severity-${diagnostic.severity}`, diagnostic.severity));
+        row.append(severity);
+
+        const code = el('td');
+        if (diagnostic.code !== undefined) {
+            code.append(el('span', 'diag-kind', diagnostic.code));
+        }
+        row.append(code, el('td', 'diag-message', diagnostic.message));
+
+        // A diagnostic always names a file, even when it has no position in it.
+        const location = diagnostic.line === undefined
+            ? undefined
+            : { source: diagnostic.source, line: diagnostic.line, column: diagnostic.column };
+        row.append(this.locationCell(location, row, report));
+        return row;
     }
 
     private renderCodeChips(report: DiagnosticReport): void {
@@ -441,55 +567,56 @@ export class DiagnosticView {
             this.elements.panel.append(el('div', 'diag-empty', 'No models match the current filter.'));
             return;
         }
-        for (const model of shown) this.elements.panel.append(this.modelCard(model, report));
+        const table = el('table', 'diag-table');
+        const body = el('tbody');
+        for (const model of shown) body.append(this.modelRow(model, report));
+        table.append(body);
+        this.elements.panel.append(table);
     }
 
-    private modelCard(model: ModelSummary, report: DiagnosticReport): HTMLElement {
-        const card = el('div', 'diag-card');
+    /**
+     * One model, as a row.
+     *
+     * A card would give each model more room, but every other tab is a table, and a panel that
+     * changes shape between tabs is harder to read than one that does not. The columns are the
+     * questions the model summary answers: what kind, what it is called, what is in it, what it
+     * relates to, whether anything is wrong with it, and where it is.
+     */
+    private modelRow(model: ModelSummary, report: DiagnosticReport): HTMLElement {
+        const row = el('tr', 'diag-row');
 
-        const head = el('div', 'diag-card-head');
-        head.append(el('span', 'diag-badge', model.kind), el('span', 'diag-card-name', model.name));
-        if (model.implements !== undefined) {
-            const target = model.implements;
-            head.append(el('span', 'diag-kind', 'implements'), this.modelLink(target));
-        }
-        if (model.location) {
-            const location = model.location;
-            const link = el('button', 'diag-link', formatLocation(location, report.source));
-            link.addEventListener('click', () => {
-                this.host.revealLocation(sourceOf(location, report.source), location.line, location.column);
-            });
-            head.append(link);
-        }
-        card.append(head);
+        const kind = el('td');
+        kind.append(el('span', 'diag-badge', model.kind));
+        row.append(kind, el('td', 'diag-id', model.name));
 
         // Each count is a way in to the symbols it counts, which is the question a census
         // invites: "which three strategies?"
-        const counts = el('div', 'diag-card-row');
+        const counts = el('td', 'diag-census');
         for (const { key, count } of censusEntries(model.elements)) {
             const chip = el('button', 'diag-count-chip', `${symbolKindOfCensusKey(key)} ${count}`);
             chip.addEventListener('click', () => this.focusSymbols(model.name));
             counts.append(chip);
         }
-        card.append(counts);
+        row.append(counts);
 
-        // Guaranteed empty for a justification, so the row is absent rather than shown blank.
+        const relations = el('td', 'diag-relations');
+        if (model.implements !== undefined) {
+            relations.append(el('span', 'diag-kind', 'implements '), this.modelLink(model.implements));
+        }
+        // `usedBy` is guaranteed empty for a justification, so nothing is rendered rather than an
+        // empty label.
         if (model.usedBy.length > 0) {
-            const row = el('div', 'diag-card-row');
-            row.append(el('span', 'diag-label', 'used by'));
-            for (const user of model.usedBy) row.append(this.modelLink(user.name));
-            card.append(row);
+            relations.append(el('span', 'diag-kind', 'used by '));
+            for (const user of model.usedBy) relations.append(this.modelLink(user.name));
         }
-
         if (model.aliases.length > 0) {
-            const row = el('div', 'diag-card-row');
-            row.append(el('span', 'diag-label', 'aliases'), document.createTextNode(String(model.aliases.length)));
-            card.append(row);
+            relations.append(el('span', 'diag-kind', ` ${model.aliases.length} aliases`));
         }
+        row.append(relations);
 
+        const problems = el('td', 'diag-problems');
         const errors = errorCountFor(this.attribution, model);
         if (errors > 0) {
-            const row = el('div', 'diag-card-row');
             const badge = el('button', 'diag-error-badge', `${errors} ${errors === 1 ? 'problem' : 'problems'}`);
             badge.addEventListener('click', () => {
                 this.modelFocus = model.name;
@@ -497,11 +624,10 @@ export class DiagnosticView {
                 this.filters.delete('diagnostics');
                 this.selectTabDirect('diagnostics');
             });
-            row.append(badge);
-            card.append(row);
+            problems.append(badge);
         }
-
-        return card;
+        row.append(problems, this.locationCell(model.location, row, report));
+        return row;
     }
 
     private modelLink(name: string): HTMLElement {
@@ -535,6 +661,13 @@ export class DiagnosticView {
         let rendered = 0;
         let cursorRow: HTMLElement | null = null;
 
+        // One table for every model, with the model names as full-width rows inside it. Giving
+        // each model its own table let each size its columns independently, so the same column
+        // sat at a different width under every heading — which reads as a broken layout rather
+        // than as grouping.
+        const table = el('table', 'diag-table');
+        const body = el('tbody');
+
         for (const model of report.models) {
             const modelMatches = matches(model.name, needle);
             const symbols = model.symbols.filter(s => modelMatches || matches(s.id, needle));
@@ -542,12 +675,8 @@ export class DiagnosticView {
             if (symbols.length === 0 && aliases.length === 0) continue;
             rendered += symbols.length + aliases.length;
 
-            const heading = el('div', 'diag-group-heading', model.name);
-            heading.append(el('span', 'diag-kind', model.kind));
-            this.elements.panel.append(heading);
+            body.append(this.groupRow(4, model.name, model.kind));
 
-            const table = el('table', 'diag-table');
-            const body = el('tbody');
             for (const symbol of symbols) {
                 const row = this.symbolRow(symbol, report);
                 if (this.cursorSymbol !== null && symbol.id === this.cursorSymbol) {
@@ -566,14 +695,15 @@ export class DiagnosticView {
                 );
                 body.append(row);
             }
-            table.append(body);
-            this.elements.panel.append(table);
         }
 
         if (rendered === 0) {
             this.elements.panel.append(el('div', 'diag-empty', 'No symbols match the current filter.'));
             return;
         }
+
+        table.append(body);
+        this.elements.panel.append(table);
 
         // Following the cursor is only useful if the row it lands on is actually on screen.
         cursorRow?.scrollIntoView({ block: 'nearest' });

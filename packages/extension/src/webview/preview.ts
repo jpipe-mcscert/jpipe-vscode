@@ -89,12 +89,13 @@ const diagnosticView = new DiagnosticView(
         controlsExtra: document.getElementById('diag-controls-extra') as HTMLElement,
         panel: document.getElementById('diag-panel') as HTMLElement,
         output: diagOutput,
-        rawToggle: document.getElementById('diag-raw-toggle') as HTMLElement,
+        faces: document.getElementById('diag-faces') as HTMLElement,
         copyButton: document.getElementById('diag-copy') as HTMLElement
     },
     {
         revealLocation: (source, line, column) =>
             vscode.postMessage({ type: 'revealLocation', source, line, column }),
+        requestTextReport: () => vscode.postMessage({ type: 'requestTextReport' }),
         // `navigator.clipboard` is available in the webview and needs no extra permission; the
         // host is not involved.
         copy: text => void navigator.clipboard?.writeText(text),
@@ -689,6 +690,10 @@ window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
             setMode('diagnostic');
             setUnsaved(msg.unsaved);
             setBusy(false);
+            break;
+        case 'diagnosticText':
+            // A reply about a run the panel has already moved past describes the previous save.
+            if (msg.revision === lastDiagnosticRevision) diagnosticView.showTextReport(msg.text);
             break;
         case 'busy':
             setBusy(msg.busy);

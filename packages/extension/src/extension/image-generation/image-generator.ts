@@ -259,6 +259,25 @@ export class ImageGenerator {
     }
 
     /**
+     * The compiler's human-readable report, for a reader who wants the classical output.
+     *
+     * A separate invocation: asking for `-f json` means the run's own output is the JSON, so on a
+     * compiler new enough to have the flag there is no text report lying around to show.
+     */
+    public async generateTextDiagnostic(document: vscode.TextDocument): Promise<string> {
+        const inputFile = path.normalize(document.uri.fsPath);
+        const config = vscode.workspace.getConfiguration('jpipe');
+        let resolved: { file: string; args: string[] };
+        try {
+            resolved = this.resolveExecCommand(config);
+        } catch (e: any) {
+            return e.message;
+        }
+        const run = await this.runDiagnostic(resolved, inputFile, config, false);
+        return run.raw;
+    }
+
+    /**
      * Whether this compiler is new enough to report diagnostics as JSON.
      *
      * Asked once per executable and cached: the answer is a property of the build, and running

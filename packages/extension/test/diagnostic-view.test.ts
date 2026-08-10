@@ -51,7 +51,7 @@ function mountShell(): DiagnosticViewElements {
         controlsExtra: make('div', 'diag-controls-extra'),
         panel: make('div', 'diag-panel'),
         output: make('pre', 'diag-output'),
-        rawToggle: make('button', 'diag-raw-toggle'),
+        faces: make('div', 'diag-faces'),
         copyButton: make('button', 'diag-copy')
     };
 }
@@ -60,6 +60,7 @@ function mountShell(): DiagnosticViewElements {
 interface MockHost extends DiagnosticViewHost {
     revealLocation: Mock<DiagnosticViewHost['revealLocation']>;
     copy: Mock<DiagnosticViewHost['copy']>;
+    requestTextReport: Mock<DiagnosticViewHost['requestTextReport']>;
     persist: Mock<DiagnosticViewHost['persist']>;
 }
 
@@ -72,6 +73,7 @@ beforeEach(() => {
     host = {
         revealLocation: vi.fn<DiagnosticViewHost['revealLocation']>(),
         copy: vi.fn<DiagnosticViewHost['copy']>(),
+        requestTextReport: vi.fn<DiagnosticViewHost['requestTextReport']>(),
         persist: vi.fn<DiagnosticViewHost['persist']>()
     };
     view = new DiagnosticView(elements, host);
@@ -80,7 +82,11 @@ beforeEach(() => {
 const text = (): string => elements.panel.textContent ?? '';
 const tab = (name: string): HTMLElement =>
     elements.tabs.querySelector<HTMLElement>(`[data-tab="${name}"]`)!;
-const rows = (): HTMLElement[] => Array.from(elements.panel.querySelectorAll('tr'));
+/** Data rows only: group headings are full-width rows inside the same table. */
+const rows = (): HTMLElement[] =>
+    Array.from(elements.panel.querySelectorAll('tr:not(.diag-group-row)'));
+const face = (name: string): HTMLElement =>
+    elements.faces.querySelector<HTMLElement>(`[data-face="${name}"]`)!;
 
 /**
  * A click that bubbles, as a real one does.
@@ -118,20 +124,70 @@ describe('with no structured report', () => {
     });
 });
 
-describe('the raw toggle', () => {
-    test('switches between the two faces of the layer', () => {
-        view.show(cleanTemplate, 'raw text');
-        click(elements.rawToggle);
-        expect(document.body.classList.contains('diag-raw')).toBe(true);
-        expect(elements.rawToggle.getAttribute('aria-pressed')).toBe('true');
-        click(elements.rawToggle);
-        expect(document.body.classList.contains('diag-raw')).toBe(false);
+describe('the three faces of a report', () => {
+    test('a structured report offers all three', () => {
+        view.show(cleanTemplate, '{"schemaVersion":1}');
+        expect(Array.from(elements.faces.querySelectorAll('[data-face]')).map(b => b.textContent))
+            .toEqual(['Report', 'Text', 'JSON']);
+        expect(face('report').getAttribute('aria-pressed')).toBe('true');
     });
 
-    test('copies the compiler’s text, not the rendered tables', () => {
-        view.show(cleanTemplate, 'the original report');
+    test('JSON shows exactly what the compiler emitted', () => {
+        view.show(cleanTemplate, '{"schemaVersion":1}');
+        click(face('json'));
+        expect(elements.output.textContent).toBe('{"schemaVersion":1}');
+        expect(document.body.classList.contains('diag-raw')).toBe(true);
+    });
+
+    test('the text report is fetched, because the JSON run did not produce one', () => {
+        // The point of having a Text face at all: once the compiler answers `-f json`, its own
+        // output *is* the JSON, so the classical report is a second invocation or nothing.
+        view.show(cleanTemplate, '{"schemaVersion":1}');
+        click(face('text'));
+        expect(host.requestTextReport).toHaveBeenCalledTimes(1);
+        expect(elements.output.textContent).toContain('Fetching');
+
+        view.showTextReport('=== Diagnostics ===\n(none)\n');
+        expect(elements.output.textContent).toContain('=== Diagnostics ===');
+    });
+
+    test('it is not fetched again on the way back to it', () => {
+        view.show(cleanTemplate, '{}');
+        click(face('text'));
+        view.showTextReport('the text report');
+        click(face('report'));
+        click(face('text'));
+        expect(host.requestTextReport).toHaveBeenCalledTimes(1);
+        expect(elements.output.textContent).toBe('the text report');
+    });
+
+    test('a new run invalidates the text report it was fetched for', () => {
+        view.show(cleanTemplate, '{}');
+        click(face('text'));
+        view.showTextReport('report for the first save');
+        view.show(cleanTemplate, '{}');
+        click(face('text'));
+        expect(host.requestTextReport).toHaveBeenCalledTimes(2);
+    });
+
+    test('with no structured report there is nothing to choose between', () => {
+        // The run's own output already is the text report, so all three would show the same file.
+        view.show(null, 'the text report');
+        expect(elements.faces.querySelectorAll('[data-face]')).toHaveLength(0);
+        expect(elements.output.textContent).toBe('the text report');
+        expect(host.requestTextReport).not.toHaveBeenCalled();
+    });
+
+    test('copy hands over what is on screen', () => {
+        view.show(cleanTemplate, '{"schemaVersion":1}');
+        click(face('json'));
         click(elements.copyButton);
-        expect(host.copy).toHaveBeenCalledWith('the original report');
+        expect(host.copy).toHaveBeenCalledWith('{"schemaVersion":1}');
+
+        click(face('text'));
+        view.showTextReport('the text report');
+        click(elements.copyButton);
+        expect(host.copy).toHaveBeenLastCalledWith('the text report');
     });
 });
 
@@ -239,36 +295,44 @@ describe('the problems tab', () => {
 describe('the models tab', () => {
     beforeEach(() => view.show(loadCrossFile, ''));
 
-    test('shows a card per model with its kind and census', () => {
+    test('shows a row per model with its kind and census', () => {
+        // A table, like every other tab: a panel that changes shape between tabs is harder to
+        // read than one that does not.
         click(tab('models'));
-        const cards = elements.panel.querySelectorAll('.diag-card');
-        expect(cards).toHaveLength(2);
-        expect(cards[0].textContent).toContain('template');
-        expect(cards[0].textContent).toContain('base:t');
-        expect(cards[0].textContent).toContain('conclusion 1');
-        expect(cards[0].textContent).toContain('abstract-support 1');
+        expect(rows()).toHaveLength(2);
+        expect(rows()[0].textContent).toContain('template');
+        expect(rows()[0].textContent).toContain('base:t');
+        expect(rows()[0].textContent).toContain('conclusion 1');
+        expect(rows()[0].textContent).toContain('abstract-support 1');
     });
 
     test('names the template a justification implements', () => {
         click(tab('models'));
-        const justification = elements.panel.querySelectorAll('.diag-card')[1];
-        expect(justification.textContent).toContain('implements');
-        expect(justification.textContent).toContain('base:t');
+        expect(rows()[1].textContent).toContain('implements');
+        expect(rows()[1].textContent).toContain('base:t');
     });
 
     test('lists implementors on the template, and only there', () => {
-        // `usedBy` is guaranteed empty for a justification, so the row is absent rather than blank.
+        // `usedBy` is guaranteed empty for a justification, so nothing is rendered rather than
+        // an empty label.
         click(tab('models'));
-        const cards = elements.panel.querySelectorAll('.diag-card');
-        expect(cards[0].textContent).toContain('used by');
-        expect(cards[1].textContent).not.toContain('used by');
+        expect(rows()[0].textContent).toContain('used by');
+        expect(rows()[1].textContent).not.toContain('used by');
     });
 
     test('the model’s own location opens the file it is actually in', () => {
         // The template is declared in a loaded file, not the one being diagnosed.
         click(tab('models'));
-        click(elements.panel.querySelector('.diag-card .diag-link'));
+        click(rows()[0].querySelector('.diag-loc'));
         expect(host.revealLocation).toHaveBeenCalledWith('/work/examples/004_template.jd', 8, 9);
+    });
+
+    test('a button in the row does not also fire the row', () => {
+        // A model row is clickable *and* carries buttons. Without a guard, one click on a census
+        // chip would both jump to the symbols and open the source.
+        click(tab('models'));
+        click(elements.panel.querySelector('.diag-count-chip'));
+        expect(host.revealLocation).not.toHaveBeenCalled();
     });
 
     test('a count chip jumps to that model’s symbols', () => {
@@ -283,7 +347,7 @@ describe('the models tab', () => {
         click(tab('models'));
         expect(elements.panel.querySelectorAll('.diag-error-badge')).toHaveLength(3);
 
-        // This fixture's diagnostics all resist attribution, so no card claims them.
+        // This fixture's diagnostics all resist attribution, so no row claims them.
         view.show(unknownSymbol, '');
         click(tab('models'));
         expect(elements.panel.querySelectorAll('.diag-error-badge')).toHaveLength(0);
@@ -306,8 +370,24 @@ describe('the symbols tab', () => {
 
     test('groups by model, in the compiler’s display order', () => {
         view.show(cleanTemplate, '');
-        expect(elements.panel.querySelectorAll('.diag-group-heading')).toHaveLength(1);
+        expect(elements.panel.querySelectorAll('.diag-group-row')).toHaveLength(1);
         expect(rows().map(r => r.querySelector('.diag-id')?.textContent)).toEqual(['c', 's', 'abs']);
+    });
+
+    test('every model shares one table, so the columns line up', () => {
+        // Each model used to get its own <table>, and separate tables size their columns
+        // independently — so the same column sat at a different width under every heading.
+        view.show(unsupportedElements, '');
+        expect(elements.panel.querySelectorAll('table')).toHaveLength(1);
+        expect(elements.panel.querySelectorAll('.diag-group-row')).toHaveLength(3);
+        expect(rows()).toHaveLength(6);
+    });
+
+    test('the model name is a full-width row spanning every column', () => {
+        view.show(unsupportedElements, '');
+        const heading = elements.panel.querySelector('.diag-group-cell') as HTMLTableCellElement;
+        expect(heading.colSpan).toBe(4);
+        expect(heading.textContent).toContain('missing_support_for_conclusion');
     });
 
     test('marks synthesized elements, which have no location to show', () => {
@@ -455,7 +535,7 @@ describe('what survives a re-run', () => {
         expandedMacros: [],
         modelFocus: null,
         codeFocus: null,
-        raw: false,
+        face: 'report' as const,
         source
     });
 

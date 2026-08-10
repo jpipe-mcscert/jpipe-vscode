@@ -93,7 +93,9 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
             <div id="diag-stats"></div>
             <div id="diag-summary-actions">
                 <button class="diag-chip-btn" id="diag-copy">Copy</button>
-                <button class="diag-chip-btn" id="diag-raw-toggle" aria-pressed="false">Raw</button>
+                <!-- Report / Text / JSON. Populated by the view, and empty when there is no
+                     structured report to switch away from. -->
+                <div id="diag-faces" role="group" aria-label="How to show the report"></div>
             </div>
         </div>
         <div id="diag-tabs" role="tablist" aria-label="Diagnostic report sections">

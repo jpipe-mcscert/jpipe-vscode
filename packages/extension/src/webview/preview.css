@@ -326,7 +326,7 @@ body.diag-raw #diag-panel { display: none; }
 body:not(.diag-raw) #diag-output { display: none; }
 
 /* With no structured report there is nothing to toggle back to, so the control goes away. */
-body.diag-no-report #diag-raw-toggle { display: none; }
+/* The face buttons are built by the view, which renders none when there is no report to leave. */
 
 #diag-summary {
     display: flex;
@@ -351,7 +351,8 @@ body.diag-no-report #diag-raw-toggle { display: none; }
 #diag-stats .diag-stat.errors strong { color: var(--vscode-editorError-foreground, #f14c4c); }
 #diag-stats .diag-stat.clean strong { color: var(--vscode-testing-iconPassed, #3fb950); }
 
-#diag-summary-actions { display: flex; gap: 4px; flex-shrink: 0; }
+#diag-summary-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+#diag-faces { display: flex; gap: 2px; }
 
 .diag-chip-btn {
     border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
@@ -449,6 +450,10 @@ body.diag-no-report #diag-raw-toggle { display: none; }
     border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.12));
 }
 
+/* The message and the relations are what should absorb the spare width. */
+.diag-message, .diag-relations { width: 100%; }
+.diag-census, .diag-problems, .diag-relations { white-space: nowrap; }
+
 .diag-row-link { cursor: pointer; }
 .diag-row-link:hover { background: var(--vscode-list-hoverBackground); }
 
@@ -508,40 +513,27 @@ body.diag-no-report #diag-raw-toggle { display: none; }
     border-color: var(--vscode-focusBorder);
 }
 
-.diag-group-heading {
+/*
+ * A heading is a row inside the one table, not a element between several. Separate tables size
+ * their columns independently, which put the same column at a different width under every model.
+ */
+.diag-group-cell {
     position: sticky;
     top: 0;
     z-index: 1;
     background: var(--vscode-editor-background);
-    padding: 10px 0 4px;
+    padding: 12px 0 4px;
     font-size: 12px;
     font-weight: 600;
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
 }
 
-.diag-group-heading .diag-kind { font-weight: 400; margin-left: 6px; }
+.diag-group-row:first-child .diag-group-cell { padding-top: 2px; }
+.diag-group-cell .diag-kind { font-weight: 400; margin-left: 8px; }
 
 /* ------------------------------------------------------------------- models */
 
-.diag-card {
-    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
-    border-radius: 6px;
-    padding: 10px 12px;
-    margin-bottom: 8px;
-}
-
-.diag-card-head {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 6px;
-}
-
-.diag-card-name { font-weight: 600; font-family: var(--vscode-editor-font-family, monospace); }
-.diag-card-row { font-size: 12px; margin-top: 4px; color: var(--vscode-descriptionForeground); }
-.diag-card-row .diag-label { display: inline-block; min-width: 62px; }
-
-/* Every relationship in a card is a link to somewhere else in the report. */
+/* Every relationship in a model row is a link to somewhere else in the report. */
 .diag-link {
     border: none;
     background: transparent;

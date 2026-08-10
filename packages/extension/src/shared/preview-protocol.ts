@@ -57,6 +57,8 @@ export type HostToWebview =
     | { type: 'setUnsaved'; unsaved: boolean }
     | { type: 'view'; mode: ViewMode }
     | DiagnosticMessage
+    /** The compiler's text report, in reply to `requestTextReport`. */
+    | { type: 'diagnosticText'; revision: number; text: string }
     | { type: 'busy'; busy: boolean }
     /** Settings the page needs. Sent on `ready` and again whenever they change. */
     | { type: 'config'; zoomSensitivity: number };
@@ -79,4 +81,12 @@ export type WebviewToHost =
      * the host opens by path rather than acting on the active editor. Line is 1-based and column
      * 0-based, the compiler's convention; the host converts.
      */
-    | { type: 'revealLocation'; source: string; line: number; column: number };
+    | { type: 'revealLocation'; source: string; line: number; column: number }
+    /**
+     * Ask for the compiler's human-readable report.
+     *
+     * Only meaningful once the compiler reports as JSON, where the run's own output is the JSON
+     * and the text version is a second invocation. Requested when a reader asks for it rather
+     * than fetched alongside every save, since most never open it.
+     */
+    | { type: 'requestTextReport' };
