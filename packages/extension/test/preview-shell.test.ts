@@ -55,21 +55,37 @@ describe('the shell provides what the page looks up', () => {
 
 describe('toolbar order', () => {
     /**
-     * The mode switch and the settings gear belong to the panel rather than to what the panel is
-     * showing. Everything else appears and disappears with the mode, so if these two are not last
-     * they move under the user as they work — the gear furthest right, where a gear goes.
+     * The mode switch is the only control on the right belonging to the panel rather than to what
+     * the panel is showing. Everything else there appears and disappears with the mode, so if the
+     * switch is not last it moves under the user as they use it.
      */
-    test('the panel-level controls are the last on the right', () => {
+    test('the mode switch is the last control on the right', () => {
         const toolbar = shell.slice(shell.indexOf('id="toolbar-right"'), shell.indexOf('unsaved-banner'));
         const buttons = [...toolbar.matchAll(/id="([a-z-]+)"/g)].map(m => m[1]);
-        expect(buttons.slice(-2)).toEqual(['mode-toggle', 'open-settings']);
+        expect(buttons.at(-1)).toBe('mode-toggle');
     });
 
-    test('neither is in a group that hides with the diagram', () => {
-        // `diagram-only` groups vanish outside diagram mode; these have to survive that, or the
-        // switch offers no way back and the gear disappears in half the panel's states.
-        const group = shell.slice(shell.indexOf('id="mode-group"') - 200, shell.indexOf('id="open-settings"'));
+    test('it is not in a group that hides with the diagram', () => {
+        // `diagram-only` groups vanish outside diagram mode; the switch has to survive that or
+        // there is no way back.
+        const group = shell.slice(shell.indexOf('id="mode-group"') - 200, shell.indexOf('id="mode-toggle"'));
         expect(group).not.toContain('diagram-only');
+    });
+
+    // Settings belong to the extension, not to the diagram or the report, so the gear sits with
+    // the brand rather than among the controls that change with the mode.
+    test('the settings gear sits in the brand, beside the jpipe.org link', () => {
+        const brand = shell.slice(shell.indexOf('id="brand"'), shell.indexOf('id="toolbar-right"'));
+        expect(brand).toContain('id="open-settings"');
+        expect(brand.indexOf('id="jpipe-link"')).toBeLessThan(brand.indexOf('id="open-settings"'));
+    });
+
+    // A gear is a rim with teeth on it; a ring of detached strokes around a dot is a sun.
+    test('the gear is drawn as a rim with teeth, not as rays', () => {
+        const button = shell.slice(shell.indexOf('id="open-settings"'), shell.indexOf('</button>', shell.indexOf('id="open-settings"')));
+        expect(button).toContain('<circle');
+        // Teeth are struck thicker than the rim so they read as part of it.
+        expect(button).toMatch(/stroke-width="2(\.\d+)?"/);
     });
 });
 
