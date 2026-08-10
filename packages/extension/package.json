@@ -473,9 +473,9 @@
         "clean": "shx rm -fr *.tsbuildinfo out syntaxes",
         "vscode:prepublish": "npm run build",
         "build:prepare": "shx mkdir -p ./syntaxes/ && shx cp -f ../language/syntaxes/jpipe.tmLanguage.json ./syntaxes/jpipe.tmLanguage.json",
-        "build": "npm run build:prepare && tsc -b tsconfig.json tsconfig.webview.json && node esbuild.mjs",
+        "build": "npm run build:prepare && tsc -b tsconfig.json src/webview && node esbuild.mjs",
         "build:clean": "npm run clean && npm run build",
-        "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json tsconfig.webview.json --watch\" \"node esbuild.mjs --watch\"",
+        "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json src/webview --watch\" \"node esbuild.mjs --watch\"",
         "test": "vitest run"
     },
     "dependencies": {
