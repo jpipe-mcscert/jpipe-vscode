@@ -56,3 +56,42 @@ export function isSameOrInside(parent: string, child: string): boolean {
     const childPath = stripTrailingSlash(child);
     return childPath === parentPath || childPath.startsWith(`${parentPath}/`);
 }
+
+/** The jPipe language id, as contributed in `package.json`. */
+const JPIPE_LANGUAGE_ID = 'jpipe';
+
+/**
+ * Whether an open document should carry the "not being validated" banner.
+ *
+ * Deliberately narrower than the Explorer badge, which also marks excluded *directories*. A
+ * banner answers "why is this file not reporting problems?", so it belongs only on a file that
+ * would otherwise be validated — a `README.md` sitting beside the counter-examples never was.
+ *
+ * Untitled and other non-file documents are excluded by the containment check itself: their URIs
+ * are not under any workspace path.
+ */
+export function shouldShowExclusionBanner(
+    languageId: string,
+    documentUri: string,
+    excludedUris: readonly string[]
+): boolean {
+    if (languageId !== JPIPE_LANGUAGE_ID) return false;
+    return excludedUris.some(excluded => isSameOrInside(excluded, documentUri));
+}
+
+/**
+ * The declared entry responsible for a document being excluded, or `undefined` if none is.
+ *
+ * The most specific one wins. A file listed in its own right, inside a folder that is also
+ * listed, is best described — and best undone — by the entry naming the file: removing the
+ * folder would leave the file excluded and the banner still up, which reads as the click having
+ * done nothing.
+ */
+export function findExcludingPath(
+    documentUri: string,
+    excludedUris: readonly string[]
+): string | undefined {
+    return excludedUris
+        .filter(excluded => isSameOrInside(excluded, documentUri))
+        .sort((a, b) => stripTrailingSlash(b).length - stripTrailingSlash(a).length)[0];
+}

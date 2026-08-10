@@ -1,5 +1,12 @@
 ## Changelog
 
+### v1.7.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Features:
+    - **An excluded file says so, and offers to come back:** Opening a file that jPipe is not validating now shows a line above the first line telling you why it is quiet — and clicking it stops excluding whatever is responsible, whether that is the file itself or the folder holding it. The Explorer badge only helps if you happen to be looking at the Explorer; open a counter-example from a search result or a `load` and the absence of squiggles is indistinguishable from a model that is simply correct
+  - Bug Fixes:
+    - **Excluded paths are dimmed as soon as you open the window.** The `⊘` badge and the greying only appeared once you opened a `.jd` file, so a fresh window showed an Explorer where nothing looked excluded — the extension had not started yet, because it only ever woke on a jPipe file being opened. It now wakes when the workspace contains one. The right-click Exclude/Include entries and the Problems panel were held back by the same thing
+
 ### v1.6.0 (2026-08-10)
 - Leader: Sébastien Mosser
   - Features:

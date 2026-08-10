@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { formatEntry, isSameOrInside, parseEntry, stripTrailingSlash } from './exclusion-paths.js';
+import { findExcludingPath, formatEntry, isSameOrInside, parseEntry, shouldShowExclusionBanner, stripTrailingSlash } from './exclusion-paths.js';
 
 const SETTING = 'excludedPaths';
 /** Pre-1.4 name, still honoured so existing settings keep working. Never written to. */
@@ -168,6 +168,58 @@ export class ExclusionManager implements vscode.Disposable {
     }
 }
 
+/**
+ * Says, in the editor, that this file is not being validated — and offers to undo it.
+ *
+ * The Explorer badge answers the question only if you happen to be looking at the Explorer. Open
+ * a counter-example directly — from a search result, from `Go to File`, from a `load` — and the
+ * absence of squiggles is indistinguishable from a model that is simply correct. This is the one
+ * place the file itself can say otherwise.
+ *
+ * A code lens rather than a decoration. A `before` decoration can be made to look like a banner
+ * by forcing `display: block`, but the editor still reserves a single line's height for it and
+ * recycles line boxes as you scroll, so the text ends up drawn over the code. A lens is a surface
+ * the editor lays out and scrolls itself, and it is clickable, which lets the banner offer the
+ * one action anybody reading it wants.
+ */
+export class ExclusionCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposable {
+    private readonly changeEmitter = new vscode.EventEmitter<void>();
+    private readonly subscription: vscode.Disposable;
+
+    readonly onDidChangeCodeLenses = this.changeEmitter.event;
+
+    constructor(private readonly manager: ExclusionManager) {
+        this.subscription = manager.onDidChange(() => this.changeEmitter.fire());
+    }
+
+    provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
+        const uri = document.uri.toString();
+        const excluded = this.manager.getResolvedUris();
+        if (!shouldShowExclusionBanner(document.languageId, uri, excluded)) return [];
+
+        const source = findExcludingPath(uri, excluded);
+        if (!source) return [];
+
+        const isFileItself = stripTrailingSlash(source) === stripTrailingSlash(uri);
+        const label = isFileItself
+            ? 'this file'
+            : `the folder ${vscode.workspace.asRelativePath(vscode.Uri.parse(source), false)}`;
+
+        return [new vscode.CodeLens(new vscode.Range(0, 0, 0, 0), {
+            title: `⊘ jPipe is not validating this file — click to stop excluding ${label}`,
+            // Undoes the entry actually responsible. Removing anything else would leave the file
+            // excluded and the lens still showing, which reads as the click having failed.
+            command: 'jpipe.includeResource',
+            arguments: [vscode.Uri.parse(source)]
+        })];
+    }
+
+    dispose(): void {
+        this.subscription.dispose();
+        this.changeEmitter.dispose();
+    }
+}
+
 const DECLARED_DECORATION: vscode.FileDecoration = {
     badge: '⊘',
     color: new vscode.ThemeColor('disabledForeground'),
@@ -206,6 +258,17 @@ export class ExclusionDecorationProvider implements vscode.FileDecorationProvide
             this.directoryCache.clear();
             this.decorationEmitter.fire(undefined);
         });
+    }
+
+    /**
+     * Asks the editor to re-query every decoration.
+     *
+     * Called once after registration. A provider registered while the Explorer is already on
+     * screen — which is the normal case, since the extension activates part-way through startup —
+     * only shows up in the tree if something asks the editor to look again.
+     */
+    refresh(): void {
+        this.decorationEmitter.fire(undefined);
     }
 
     dispose(): void {
