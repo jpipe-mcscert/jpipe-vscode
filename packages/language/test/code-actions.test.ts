@@ -259,7 +259,17 @@ describe('add-required-config-keys', () => {
             { title: 'Add all 2 required keys' },
             JpipeIssue.MissingConfigKey
         );
-        expect(after).toContain('is assemble(A) { conclusionLabel: "" strategyLabel: "" }');
+        // Laid out the way every config block in the language's own examples is written.
+        expect(after).toContain('justification B is assemble(A) {\n    conclusionLabel: ""\n    strategyLabel: ""\n}');
+    });
+
+    test('a created block follows the indentation of the model it belongs to', async () => {
+        const after = await expectFixResolves(
+            'justification A {\n    conclusion c is "C"\n}\n    justification B is refine(A, A)',
+            { title: "Add required key 'hook'" },
+            JpipeIssue.MissingConfigKey
+        );
+        expect(after).toContain('    justification B is refine(A, A) {\n        hook: ""\n    }');
     });
 
     test('offers a fix-all only when more than one key is missing', async () => {

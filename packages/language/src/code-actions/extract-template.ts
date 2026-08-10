@@ -58,7 +58,9 @@ export const extractTemplate = refactoring({
                     ? renderElement('@support', id, element.name)
                     : renderElement(keywordFor(element), id, element.name);
             }),
-            ...relations.map(relation => renderRelation(relation.from.$refText, relation.to.$refText))
+            ...relations
+                .filter(relation => relation.from?.$refText && relation.to?.$refText)
+                .map(relation => renderRelation(relation.from.$refText, relation.to.$refText))
         ];
 
         const template = [
@@ -101,7 +103,7 @@ function leafEvidence(
     elements: readonly JustificationElement[],
     relations: readonly Relation[]
 ): JustificationElement[] {
-    const supported = new Set(relations.map(relation => relation.to.$refText));
+    const supported = new Set(relations.map(relation => relation.to?.$refText).filter(Boolean));
     return elements.filter(element =>
         isEvidence(element) && !supported.has(qualifiedIdText(element.id)));
 }

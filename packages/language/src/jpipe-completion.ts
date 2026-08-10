@@ -157,10 +157,12 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                     ...inheritedEntries
                 ];
 
-                if (refInfo.property === 'to' && relation.from?.ref) {
-                    withKeys = withKeys.filter(({ element }) => this.filterRelationTargets(relation.from.ref!, [element]).length > 0);
-                } else if (refInfo.property === 'from' && relation.to?.ref) {
-                    withKeys = withKeys.filter(({ element }) => this.filterRelationSources(relation.to.ref!, [element]).length > 0);
+                const fromRef = relation.from?.ref;
+                const toRef = relation.to?.ref;
+                if (refInfo.property === 'to' && fromRef) {
+                    withKeys = withKeys.filter(({ element }) => this.filterRelationTargets(fromRef, [element]).length > 0);
+                } else if (refInfo.property === 'from' && toRef) {
+                    withKeys = withKeys.filter(({ element }) => this.filterRelationSources(toRef, [element]).length > 0);
                 }
 
                 return stream(withKeys.flatMap(({ element, key }) => {
@@ -349,8 +351,14 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
      *
      * `hook` is a plain string in the grammar, so nothing links it, nothing validates it, and
      * nothing has ever offered it — the only way to learn what may go there has been to read the
-     * model being refined. Offered as ids because that is what the compiler resolves against, and
-     * labelled with each element's text so the right one is recognisable.
+     * model being refined. Offered as ids because that is what the compiler resolves against,
+     * showing each element's label alongside, since an id like `e` says nothing on its own.
+     *
+     * Only evidence is offered. `refine` replaces the hooked element with a sub-conclusion
+     * carrying the refinement's whole argument, which is a sensible thing to do to a leaf and not
+     * to anything else — hooking a strategy or a conclusion would graft an argument into the
+     * middle of one. The compiler resolves the hook by id and does not check its type, so this
+     * narrows what is suggested rather than what is permitted.
      */
     private getHookValueCompletions(document: LangiumDocument, params: CompletionParams): CompletionItem[] {
         const textToCursor = document.textDocument.getText({
@@ -377,13 +385,17 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         );
 
         return getAllElements(base)
+            .filter(element => isEvidence(element))
+            .filter(element => qualifiedIdText(element.id).length > 0)
             .filter(element => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, qualifiedIdText(element.id)))
             .map(element => {
                 const id = qualifiedIdText(element.id);
                 return {
                     label: id,
                     kind: CompletionItemKind.Value,
-                    detail: `${element.$type} in ${firstParam}`,
+                    // The id is what gets inserted; the label is what makes it recognisable.
+                    labelDetails: { detail: `  "${element.name}"` },
+                    detail: `evidence in ${firstParam}`,
                     documentation: element.name,
                     sortText: `0_hook_${id}`,
                     // Replaces what has been typed so far inside the quotes, and nothing else.

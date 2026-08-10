@@ -62,7 +62,7 @@ export class JpipeRenameProvider extends DefaultRenameProvider {
             leaf.astNode
         ];
         return candidates.some(node =>
-            (isJustificationElement(node) || isAbstractSupport(node)) && node.id.parts.length > 1
+            (isJustificationElement(node) || isAbstractSupport(node)) && (node.id?.parts?.length ?? 0) > 1
         );
     }
 }

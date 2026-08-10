@@ -260,7 +260,8 @@ export class JpipeValidator {
         const body = strategy.$container;
         if (!body?.rels) return;
 
-        const incoming = body.rels.filter(r => r.to.ref === strategy);
+        // `to` is absent while `e supports ` is still being typed, which is most of the time.
+        const incoming = body.rels.filter(r => r.to?.ref === strategy);
         if (incoming.length === 0) {
             accept('warning',
                 `Strategy '${qualifiedIdText(strategy.id)}' is not supported by any evidence, sub-conclusion, or @support.`,
@@ -269,7 +270,7 @@ export class JpipeValidator {
             return;
         }
         for (const rel of incoming) {
-            const fromElem = rel.from.ref;
+            const fromElem = rel.from?.ref;
             if (!fromElem) continue;
             if (!isEvidence(fromElem) && !isSubConclusion(fromElem) && !isAbstractSupport(fromElem)) {
                 accept('error',
@@ -287,7 +288,7 @@ export class JpipeValidator {
         const body = conclusion.$container;
         if (!body?.rels) return;
 
-        const incoming = body.rels.filter(r => r.to.ref === conclusion);
+        const incoming = body.rels.filter(r => r.to?.ref === conclusion);
         if (incoming.length === 0) {
             accept('warning',
                 `Conclusion '${qualifiedIdText(conclusion.id)}' is not supported by any strategy.`,
@@ -295,7 +296,7 @@ export class JpipeValidator {
                   ...issue(JpipeIssue.ConclusionUnsupported, { targetId: qualifiedIdText(conclusion.id) }) });
             return;
         }
-        const hasStrategy = incoming.some(rel => isStrategy(rel.from.ref));
+        const hasStrategy = incoming.some(rel => isStrategy(rel.from?.ref));
         if (!hasStrategy) {
             accept('error',
                 `Conclusion '${qualifiedIdText(conclusion.id)}' must be supported by at least one strategy.`,

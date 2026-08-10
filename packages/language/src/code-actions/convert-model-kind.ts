@@ -52,7 +52,7 @@ export const convertModelKind = refactoring({
         const droppedIds = new Set(dropped);
 
         const relations = (model.contents?.rels ?? []).filter(relation =>
-            droppedIds.has(relation.from.$refText) || droppedIds.has(relation.to.$refText));
+            droppedIds.has(relation.from?.$refText) || droppedIds.has(relation.to?.$refText));
 
         const removals = [...abstracts, ...relations]
             .map(node => node.$cstNode)

@@ -34,7 +34,9 @@ export class JpipeNameProvider extends DefaultNameProvider {
         const id = n['id'];
         if (typeof id === 'string') return id;
         if (id && typeof id === 'object' && Array.isArray((id as QualifiedId).parts)) {
-            return qualifiedIdText(id as QualifiedId);
+            // An element being typed has an id node with no parts yet. Naming it `''` would put
+            // an entry under the empty string into the index; it has no name until it has one.
+            return qualifiedIdText(id as QualifiedId) || undefined;
         }
         return super.getName(node);
     }
@@ -65,14 +67,20 @@ export class JpipeNameProvider extends DefaultNameProvider {
     }
 }
 
-/** Returns the colon-joined string form of a QualifiedId, e.g. ['t','abs'] → 't:abs'. */
-export function qualifiedIdText(id: QualifiedId): string {
-    return id.parts.join(':');
+/**
+ * Returns the colon-joined string form of a QualifiedId, e.g. ['t','abs'] → 't:abs'.
+ *
+ * Tolerates a missing id and returns `''`. `evidence ` with nothing after it parses to an element
+ * whose `id` is absent, and that state exists for as long as it takes to type a name — so every
+ * caller here is one a user passes through on the way to a valid model, not an edge case.
+ */
+export function qualifiedIdText(id: QualifiedId | undefined): string {
+    return id?.parts?.join(':') ?? '';
 }
 
 /** Returns the last segment of a QualifiedId — the local name ('t:abs' → 'abs', 'e1' → 'e1'). */
-export function localName(id: QualifiedId): string {
-    return id.parts.at(-1) ?? '';
+export function localName(id: QualifiedId | undefined): string {
+    return id?.parts?.at(-1) ?? '';
 }
 
 /**

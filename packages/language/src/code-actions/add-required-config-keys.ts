@@ -69,9 +69,13 @@ function writeKeys(
         return { range: { start: insertAt, end: insertAt }, newText: ` ${keys.map(renderEntry).join(' ')}` };
     }
 
-    // No block at all: write it and its entries together, since `{}` would not parse.
+    // No block at all: write it and its entries together, since `{}` would not parse. Laid out
+    // over several lines, which is how every config block in the language's own examples is
+    // written — a one-liner would be legal but would not look like the rest of the file.
     const end = composition.$cstNode!.range.end;
-    return { range: { start: end, end }, newText: ` { ${keys.map(renderEntry).join(' ')} }` };
+    const indent = indentationOf(context.document, end.line);
+    const body = keys.map(key => `\n${indent}    ${renderEntry(key)}`).join('');
+    return { range: { start: end, end }, newText: ` {${body}\n${indent}}` };
 }
 
 function renderEntry(key: string): string {
