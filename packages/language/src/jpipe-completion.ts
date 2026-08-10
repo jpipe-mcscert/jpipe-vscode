@@ -7,12 +7,12 @@ import {
     type CompletionValueItem,
     type NextFeature
 } from 'langium/lsp';
-import { Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, CompletionParams, InsertTextFormat } from 'vscode-languageserver';
+import { MarkupKind, Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, CompletionParams, InsertTextFormat } from 'vscode-languageserver';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
-import { JPIPE_OPERATORS, UNIVERSAL_CONFIG_KEYS, allowedConfigKeys } from './jpipe-operators.js';
+import { JPIPE_OPERATORS, UNIVERSAL_CONFIG_KEYS, allowedConfigKeys, renderInvocation } from './jpipe-operators.js';
 import { createLoadEdit, normalizeLoadPath, relativeLoadPath, wordReplaceEdit } from './jpipe-edits.js';
 import { concreteKeywordFor, overrideKeywordFor, renderElement } from './jpipe-render.js';
 import {
@@ -310,7 +310,8 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         const operatorMatch = /(?:justification|template)\s+\w+\s+is\s+(\w*)$/.exec(linePfx);
         if (operatorMatch) {
-            const operatorItems = this.getOperatorCompletions(operatorMatch[1]);
+            const indent = /^[ \t]*/.exec(linePfx)?.[0] ?? '';
+            const operatorItems = this.getOperatorCompletions(operatorMatch[1], indent);
             if (operatorItems.length > 0) {
                 items = [...operatorItems, ...items.filter(i => !operatorItems.some(o => o.label === i.label))];
             }
@@ -412,16 +413,34 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         return imported.find(({ node, ns }) => (ns ? `${ns}:${node.id}` : node.id) === refText)?.node;
     }
 
-    private getOperatorCompletions(partial: string): CompletionItem[] {
+    /**
+     * Completes a composition operator with its whole invocation, not just its name.
+     *
+     * The name alone leaves three things still to look up: how many source models the operator
+     * takes and in what order, which config keys it cannot run without, and the fact that an
+     * empty `{}` does not parse. Writing the shape answers all three, and the documentation shows
+     * what will be inserted before it is accepted.
+     */
+    private getOperatorCompletions(partial: string, indent: string): CompletionItem[] {
         return JPIPE_OPERATORS
             .filter(spec => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, spec.name))
-            .map(spec => ({
-                label: spec.name,
-                kind: CompletionItemKind.Keyword,
-                detail: 'composition operator',
-                documentation: spec.summary,
-                sortText: `0_op_${spec.name}`
-            }));
+            .map(spec => {
+                // Tab stops for the editor; the same shape with the names left in for the preview.
+                const snippet = renderInvocation(spec, indent, (i, text) => text ? `\${${i}:${text}}` : `\${${i}}`);
+                const preview = renderInvocation(spec, '', (_i, text) => text);
+                return {
+                    label: spec.name,
+                    kind: CompletionItemKind.Snippet,
+                    detail: `composition operator — ${spec.summary}`,
+                    documentation: {
+                        kind: MarkupKind.Markdown,
+                        value: `${spec.summary}\n\n\`\`\`jpipe\n${preview}\n\`\`\``
+                    },
+                    insertText: snippet,
+                    insertTextFormat: InsertTextFormat.Snippet,
+                    sortText: `0_op_${spec.name}`
+                };
+            });
     }
 
     private getConfigKeyCompletions(operator: string, partial: string): CompletionItem[] {

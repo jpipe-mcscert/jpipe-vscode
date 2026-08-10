@@ -22,6 +22,12 @@ export interface OperatorSpec {
     readonly optionalKeys: readonly string[];
     /** Number of source models the operator accepts; `max` omitted means unbounded. */
     readonly arity: { readonly min: number; readonly max?: number };
+    /**
+     * What each source model is called, in order — `refine(base, refinement)` reads very
+     * differently from `refine(a, b)`, and the order is not interchangeable. Used to name the
+     * placeholders when completion writes an invocation.
+     */
+    readonly paramNames: readonly string[];
 }
 
 /**
@@ -39,14 +45,16 @@ export const JPIPE_OPERATORS: readonly OperatorSpec[] = [
         summary: 'combine models under a freshly synthesized conclusion',
         requiredKeys: ['conclusionLabel', 'strategyLabel'],
         optionalKeys: [],
-        arity: { min: 1 }
+        arity: { min: 1 },
+        paramNames: ['model']
     },
     {
         name: 'refine',
         summary: 'graft a model onto a hooked element of another',
         requiredKeys: ['hook'],
         optionalKeys: [],
-        arity: { min: 2, max: 2 }
+        arity: { min: 2, max: 2 },
+        paramNames: ['base', 'refinement']
     }
 ];
 
@@ -78,4 +86,29 @@ export function allowedConfigKeys(operator: string): readonly string[] {
     const spec = operatorSpec(operator);
     if (!spec) return [];
     return [...spec.requiredKeys, ...spec.optionalKeys, ...UNIVERSAL_CONFIG_KEYS];
+}
+
+/**
+ * The whole invocation an operator needs, laid out the way the language's own examples are.
+ *
+ * Completing an operator writes this rather than the bare word: the parameters are positional and
+ * not interchangeable, the required keys are not guessable, and an empty config block does not
+ * parse — so the word on its own leaves three separate things still to look up.
+ *
+ * `placeholder` wraps each editable part — it is handed the tab-stop number and the default text,
+ * so one description renders both the snippet an editor inserts and the plain preview shown
+ * beside it.
+ */
+export function renderInvocation(
+    spec: OperatorSpec,
+    indent: string,
+    placeholder: (index: number, text: string) => string
+): string {
+    const params = spec.paramNames
+        .map((name, i) => placeholder(i + 1, name))
+        .join(', ');
+    const keys = spec.requiredKeys
+        .map((key, i) => `${indent}    ${key}: "${placeholder(spec.paramNames.length + i + 1, '')}"`)
+        .join('\n');
+    return `${spec.name}(${params})${keys ? ` {\n${keys}\n${indent}}` : ''}`;
 }

@@ -7,6 +7,7 @@ import { EmptyFileSystem, type LangiumDocument } from 'langium';
 import { clearDocuments, expectCompletion, parseHelper } from 'langium/test';
 import type { Unit } from 'jpipe-language';
 import { createJpipeServices, isUnit, isJustification, isTemplate } from 'jpipe-language';
+import { InsertTextFormat } from 'vscode-languageserver';
 import { getRelationCandidates, qualifiedIdText } from '../src/jpipe-utils.js';
 
 let services: ReturnType<typeof createJpipeServices>;
@@ -533,6 +534,78 @@ describe('Load path completion', () => {
             assert: (completions) => {
                 const labels = completions.items.map(i => i.label);
                 expect(labels.every(l => !l.endsWith('.jd'))).toBe(true);
+            }
+        });
+    });
+});
+
+describe('Operator invocation completion', () => {
+
+    // The operator's name alone leaves three things still to look up: how many source models it
+    // takes and in what order, which config keys it cannot run without, and that an empty `{}`
+    // does not parse. Completing the whole invocation answers all three at once.
+    test('writes the whole invocation, not just the name', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification B is <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const refine = completions.items.find(i => i.label === 'refine');
+                expect(refine?.insertTextFormat).toBe(InsertTextFormat.Snippet);
+                expect(refine?.insertText).toContain('refine(${1:base}, ${2:refinement})');
+                expect(refine?.insertText).toContain('hook: "${3}"');
+            }
+        });
+    });
+
+    // `refine(a, b)` reads very differently from `refine(base, refinement)`, and the order is not
+    // interchangeable, so the placeholders are named rather than numbered.
+    test('names the source models in order', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification B is <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const assemble = completions.items.find(i => i.label === 'assemble');
+                expect(assemble?.insertText).toContain('assemble(${1:model})');
+                expect(assemble?.insertText).toContain('conclusionLabel');
+                expect(assemble?.insertText).toContain('strategyLabel');
+            }
+        });
+    });
+
+    test('shows what will be inserted before it is accepted', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification B is <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const refine = completions.items.find(i => i.label === 'refine');
+                const documentation = refine?.documentation as { value?: string } | undefined;
+                expect(documentation?.value).toContain('refine(base, refinement)');
+                expect(documentation?.value).toContain('hook: ""');
+            }
+        });
+    });
+
+    // An invocation written into an indented model has to line up with it.
+    test('follows the indentation of the line it is written on', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                    justification B is <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const refine = completions.items.find(i => i.label === 'refine');
+                // The fixture indents by twenty spaces, plus four more for the model itself.
+                expect(refine?.insertText).toContain('\n                        hook:');
             }
         });
     });
