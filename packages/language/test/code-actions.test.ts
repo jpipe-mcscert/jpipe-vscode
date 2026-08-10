@@ -11,6 +11,17 @@ import { CodeActionKind } from 'vscode-languageserver';
 import { JpipeIssue } from 'jpipe-language';
 import { actionTitles, applyCodeAction, expectFixResolves, listCodeActions, listWithRegistry } from './code-action-helper.js';
 
+/**
+ * The titles offered by one action, in order.
+ *
+ * A fixture that exercises one rule usually trips others in passing — an override written with
+ * the wrong keyword is also, incidentally, a strategy nothing supports. Asserting on the whole
+ * menu would make every test a test of every action, so each names the repair it is about.
+ */
+async function titlesMatching(input: string, pattern: RegExp): Promise<string[]> {
+    return (await actionTitles(input)).filter(title => pattern.test(title));
+}
+
 /** A template with two abstract supports, used wherever an override is under test. */
 const TEMPLATE = `template T {
     @support a is "An abstract support"
@@ -97,7 +108,7 @@ describe('fix-override-type', () => {
         `${TEMPLATE}\njustification J implements T { ${keyword} T:a is "A" evidence T:b is "B" }`;
 
     test('offers one action per keyword that may refine an @support', async () => {
-        expect(await actionTitles(wrongType('strategy'))).toEqual([
+        expect(await titlesMatching(wrongType('strategy'), /^Change '/)).toEqual([
             "Change 'strategy' to 'evidence'",
             "Change 'strategy' to 'sub-conclusion'"
         ]);
@@ -134,15 +145,16 @@ describe('fix-override-type', () => {
     });
 
     test('a conclusion used as an override is offered the same repair', async () => {
-        expect(await actionTitles(wrongType('conclusion'))).toEqual([
+        expect(await titlesMatching(wrongType('conclusion'), /^Change '/)).toEqual([
             "Change 'conclusion' to 'evidence'",
             "Change 'conclusion' to 'sub-conclusion'"
         ]);
     });
 
     test('is not offered where the override is already well typed', async () => {
-        expect(await actionTitles(
-            `${TEMPLATE}\njustification J implements T { evidence T:a is "A" sub-conclusion T:b is "B" }`
+        expect(await titlesMatching(
+            `${TEMPLATE}\njustification J implements T { evidence T:a is "A" sub-conclusion T:b is "B" }`,
+            /^Change '/
         )).toEqual([]);
     });
 });
@@ -153,7 +165,7 @@ describe('add-support-override', () => {
     const SKELETON = '    conclusion own is "Own claim"\n    strategy st is "Own strategy"\n    st supports own';
 
     test('offers both keywords that may refine an @support, plus a fix-all', async () => {
-        expect(await actionTitles(missing(SKELETON))).toEqual([
+        expect(await titlesMatching(missing(SKELETON), /^Override /)).toEqual([
             "Override '@support a' with evidence",
             "Override '@support a' with sub-conclusion",
             'Override all 2 missing @support elements',
@@ -190,7 +202,7 @@ describe('add-support-override', () => {
     });
 
     test('an override already written is not offered again, and not counted', async () => {
-        const titles = await actionTitles(missing(`    evidence T:a is "An abstract support"\n${SKELETON}`));
+        const titles = await titlesMatching(missing(`    evidence T:a is "An abstract support"\n${SKELETON}`), /^Override /);
         expect(titles).toContain("Override '@support b' with evidence");
         expect(titles).not.toContain("Override '@support a' with evidence");
         // One gap left, so no fix-all.
@@ -204,14 +216,14 @@ describe('fix-operator-name', () => {
         `justification A {\n    conclusion c is "C"\n}\njustification B is ${operator}(A) { conclusionLabel: "C" strategyLabel: "S" }`;
 
     test('offers the known operators, nearest spelling first', async () => {
-        expect(await actionTitles(composed('assmble'))).toEqual([
+        expect(await titlesMatching(composed('assmble'), /^Change to /)).toEqual([
             "Change to 'assemble'",
             "Change to 'refine'"
         ]);
     });
 
     test('ranks by edit distance rather than declaration order', async () => {
-        expect((await actionTitles(composed('refin')))[0]).toBe("Change to 'refine'");
+        expect((await titlesMatching(composed('refin'), /^Change to /))[0]).toBe("Change to 'refine'");
     });
 
     test('replaces the operator and resolves the diagnostic', async () => {
@@ -224,7 +236,7 @@ describe('fix-operator-name', () => {
     });
 
     test('is not offered for a valid operator', async () => {
-        expect(await actionTitles(composed('assemble'))).toEqual([]);
+        expect(await titlesMatching(composed('assemble'), /^Change to /)).toEqual([]);
     });
 });
 
@@ -271,7 +283,7 @@ describe('fix-config-key', () => {
         `justification A {\n    conclusion c is "C"\n}\njustification B is assemble(A) { conclusionLabel: "C" strategyLabel: "S" ${key}: "X" }`;
 
     test('suggests the near-matching key and offers removal', async () => {
-        expect(await actionTitles(withKey('unifyBu'))).toEqual([
+        expect(await titlesMatching(withKey('unifyBu'), /^(Change to|Remove config key) /)).toEqual([
             "Change to 'unifyBy'",
             "Remove config key 'unifyBu'"
         ]);
@@ -303,7 +315,8 @@ describe('fix-config-key', () => {
     });
 
     test('a key nothing resembles is only offered removal', async () => {
-        expect(await actionTitles(withKey('zzzzzzzzzzzz'))).toEqual(["Remove config key 'zzzzzzzzzzzz'"]);
+        expect(await titlesMatching(withKey('zzzzzzzzzzzz'), /^(Change to|Remove config key) /))
+            .toEqual(["Remove config key 'zzzzzzzzzzzz'"]);
     });
 });
 
@@ -334,7 +347,72 @@ describe('remove-load', () => {
     });
 
     test('is not offered for a load that resolves', async () => {
-        expect(await actionTitles('justification J {\n    conclusion c is "C"\n    strategy s is "S"\n    s supports c\n}'))
-            .toEqual([]);
+        expect(await titlesMatching(
+            'justification J {\n    conclusion c is "C"\n    strategy s is "S"\n    s supports c\n}',
+            /^Remove load /
+        )).toEqual([]);
+    });
+});
+
+describe('add-supporter', () => {
+
+    const lonelyConclusion = 'justification J {\n    conclusion c is "A claim"\n}';
+    const lonelyStrategy = 'justification J {\n    conclusion c is "A claim"\n    strategy s is "A strategy"\n    s supports c\n}';
+
+    test('a conclusion may only be offered a strategy', async () => {
+        expect(await actionTitles(lonelyConclusion)).toEqual(["Add a strategy supporting 'c'"]);
+    });
+
+    test('a strategy is offered evidence or a sub-conclusion', async () => {
+        expect(await actionTitles(lonelyStrategy)).toEqual([
+            "Add some evidence supporting 's'",
+            "Add a sub-conclusion supporting 's'"
+        ]);
+    });
+
+    test('writes both the declaration and the relation, and resolves the diagnostic', async () => {
+        const after = await expectFixResolves(
+            lonelyConclusion,
+            { title: "Add a strategy supporting 'c'" },
+            JpipeIssue.ConclusionUnsupported
+        );
+        expect(after).toContain('strategy s is ""');
+        expect(after).toContain('s supports c');
+    });
+
+    test('puts the relation below the relations already there', async () => {
+        const after = await expectFixResolves(
+            lonelyStrategy,
+            { title: "Add some evidence supporting 's'" },
+            JpipeIssue.StrategyUnsupported
+        );
+        const lines = after.split('\n').map(l => l.trim());
+        expect(lines.indexOf('evidence e is ""')).toBeLessThan(lines.indexOf('s supports c'));
+        expect(lines.indexOf('s supports c')).toBeLessThan(lines.indexOf('e supports s'));
+    });
+
+    test('picks an id that is not already taken', async () => {
+        const after = await applyCodeAction(
+            'justification J {\n    conclusion c is "A claim"\n    strategy s is "Taken"\n    evidence e is "E"\n    e supports s\n    s supports c\n}\njustification K {\n    conclusion c2 is "Another"\n}',
+            { title: "Add a strategy supporting 'c2'" }
+        );
+        // `s` belongs to the other model, so the fresh id here may still be `s`.
+        expect(after).toContain('strategy s is ""');
+        expect(after).toContain('s supports c2');
+    });
+
+    test('avoids colliding with an id in the same model', async () => {
+        const after = await applyCodeAction(
+            'justification J {\n    conclusion c is "A claim"\n    strategy s is "Unrelated"\n    evidence e is "E"\n    e supports s\n}',
+            { title: "Add a strategy supporting 'c'" }
+        );
+        expect(after).toContain('strategy s1 is ""');
+        expect(after).toContain('s1 supports c');
+    });
+
+    test('is not offered to an element that is already supported', async () => {
+        expect(await actionTitles(
+            'justification J {\n    conclusion c is "C"\n    strategy s is "S"\n    evidence e is "E"\n    e supports s\n    s supports c\n}'
+        )).toEqual([]);
     });
 });
