@@ -29,10 +29,17 @@ export function normalizeLoadPath(filePath: string): string {
         .replaceAll('\\', '/');
 }
 
-/** Whether the unit already loads the given path, comparing in normalized form. */
-export function isLoaded(unit: Unit, relativePath: string): boolean {
+/**
+ * Whether the unit already loads the given path under the given alias.
+ *
+ * The alias is part of the question, not a detail: a reference written `lib:alpha` resolves only
+ * through a load aliased `as lib`, so a plain load of the same file does not satisfy it — and the
+ * two are legitimately different bindings of one file.
+ */
+export function isLoaded(unit: Unit, relativePath: string, namespace?: string): boolean {
     const wanted = normalizeLoadPath(relativePath);
-    return unit.imports.some(load => normalizeLoadPath(load.path) === wanted);
+    return unit.imports.some(load =>
+        normalizeLoadPath(load.path) === wanted && (load.namespace ?? undefined) === namespace);
 }
 
 /** Where a new `load` belongs, and what must follow it to keep the file readable. */
@@ -70,18 +77,23 @@ export function findLoadInsertion(document: LangiumDocument<Unit>): LoadInsertio
 /**
  * The edit that adds a `load` for `relativePath`, or `undefined` if the file already loads it.
  */
-export function createLoadEdit(document: LangiumDocument<Unit>, relativePath: string): TextEdit[] | undefined {
+export function createLoadEdit(
+    document: LangiumDocument<Unit>,
+    relativePath: string,
+    namespace?: string
+): TextEdit[] | undefined {
     const unit = document.parseResult.value;
-    if (!unit || isLoaded(unit, relativePath)) return undefined;
+    if (!unit || isLoaded(unit, relativePath, namespace)) return undefined;
 
     const { line, suffix } = findLoadInsertion(document);
     const finalPath = relativePath.startsWith('../')
         ? relativePath
         : `./${normalizeLoadPath(relativePath)}`;
+    const alias = namespace ? ` as ${namespace}` : '';
 
     return [{
         range: { start: Position.create(line, 0), end: Position.create(line, 0) },
-        newText: `load "${finalPath}"${suffix}`
+        newText: `load "${finalPath}"${alias}${suffix}`
     }];
 }
 

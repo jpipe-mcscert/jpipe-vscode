@@ -20,6 +20,35 @@ import type { JpipeActionContext, RefactoringDefinition } from './types.js';
 const LINKING_ERROR = 'linking-error';
 
 /**
+ * The references a `load` can possibly fix: the ones naming a *model*.
+ *
+ * `implements` and a composition's sources name models, which is what a file brings in. A
+ * relation's endpoints name elements, and `t:abs` there is a qualified element id, not
+ * `namespace:model` — reading it as one would offer to load any file that happened to declare a
+ * model called `abs`.
+ */
+const MODEL_REFERENCE_PROPERTIES = new Set(['parent', 'refs']);
+
+/** A reference split into the alias it reaches through and the model it names. */
+interface ModelReference {
+    readonly namespace: string | undefined;
+    readonly modelId: string;
+}
+
+/**
+ * Reads `alpha` or `lib:alpha`, and nothing longer.
+ *
+ * A load contributes at most one alias, so `a:b:c` names something no `load` can produce and
+ * there is no fix to offer for it.
+ */
+function parseModelReference(refText: string): ModelReference | undefined {
+    const parts = refText.split(':');
+    if (parts.length === 1 && parts[0]) return { namespace: undefined, modelId: parts[0] };
+    if (parts.length === 2 && parts[0] && parts[1]) return { namespace: parts[0], modelId: parts[1] };
+    return undefined;
+}
+
+/**
  * Offered as a quick fix, but registered as a refactoring because it keys on a diagnostic the
  * jPipe codes do not cover; the dispatcher routes quick fixes by `JpipeIssueCode` alone.
  */
@@ -34,14 +63,20 @@ export const addMissingLoad: RefactoringDefinition = {
         for (const diagnostic of context.params.context.diagnostics) {
             const refText = linkingErrorRefText(diagnostic);
             if (!refText) continue;
+            const reference = parseModelReference(refText);
+            if (!reference) continue;
 
-            for (const relative of candidatePathsFor(context, refText)) {
-                const title = `Load '${relative}' and use '${refText}'`;
+            for (const relative of candidatePathsFor(context, reference)) {
+                // The alias is what makes the reference resolve; without it the load lands and
+                // `lib:alpha` is still unresolved, which is a fix that does not fix anything.
+                const edit = createLoadEdit(context.document, relative, reference.namespace);
+                if (!edit) continue;
+
+                const alias = reference.namespace ? ` as ${reference.namespace}` : '';
+                const title = `Load '${relative}'${alias} and use '${refText}'`;
                 if (seen.has(title)) continue;
                 seen.add(title);
 
-                const edit = createLoadEdit(context.document, relative);
-                if (!edit) continue;
                 actions.push({
                     title,
                     kind: CodeActionKind.QuickFix,
@@ -57,21 +92,20 @@ export const addMissingLoad: RefactoringDefinition = {
 
 /** The unresolved name, if this diagnostic is a linking error. */
 function linkingErrorRefText(diagnostic: Diagnostic): string | undefined {
-    const data = diagnostic.data as { code?: string; refText?: string } | undefined;
+    const data = diagnostic.data as { code?: string; refText?: string; property?: string } | undefined;
     if (data?.code !== LINKING_ERROR) return undefined;
+    if (!MODEL_REFERENCE_PROPERTIES.has(data.property ?? '')) return undefined;
     return typeof data.refText === 'string' && data.refText.length > 0 ? data.refText : undefined;
 }
 
 /**
- * Files in the workspace declaring a model of this name, as paths relative to the current file.
+ * Files in the workspace declaring the referenced model, as paths relative to the current file.
  *
- * The name may be namespaced (`base:T`); only the last segment names the model, since the prefix
- * is whatever the load was aliased to.
+ * Only the model's own name is matched: the prefix, when there is one, is whatever alias the
+ * author expects to reach it through, and it is the load being written that will establish it.
  */
-function candidatePathsFor(context: JpipeActionContext, refText: string): string[] {
-    const wanted = refText.split(':').at(-1);
-    if (!wanted) return [];
-
+function candidatePathsFor(context: JpipeActionContext, reference: ModelReference): string[] {
+    const wanted = reference.modelId;
     const index = context.services.shared.workspace.IndexManager;
     const currentPath = fsPathOf(context.document.uri);
     const paths = new Set<string>();
@@ -82,7 +116,7 @@ function candidatePathsFor(context: JpipeActionContext, refText: string): string
             const targetPath = fsPathOf(description.documentUri);
             if (targetPath === currentPath) continue;
             const relative = relativeLoadPath(currentPath, targetPath);
-            if (isLoaded(context.unit, relative)) continue;
+            if (isLoaded(context.unit, relative, reference.namespace)) continue;
             paths.add(relative);
         }
     }

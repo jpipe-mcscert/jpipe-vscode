@@ -179,6 +179,65 @@ justification J implements Base {
         expect(unresolved).toEqual([]);
     });
 
+    // Without the alias the load lands and `lib:alpha` is still unresolved — a fix that reports
+    // success and leaves the problem exactly where it was.
+    test('carries the alias a namespaced reference needs', async () => {
+        write('lib/alpha.jd', TEMPLATE.replace('Base', 'alpha'));
+        write('main.jd', `justification J implements lib:alpha {
+    evidence lib:alpha:a is "An abstract support"
+}`);
+        const [, main] = await build('lib/alpha.jd', 'main.jd');
+
+        expect(await titlesFor(main)).toContain("Load './lib/alpha.jd' as lib and use 'lib:alpha'");
+        const after = await apply(main, "Load './lib/alpha.jd' as lib and use 'lib:alpha'");
+        expect(after.startsWith('load "./lib/alpha.jd" as lib')).toBe(true);
+    });
+
+    test('the aliased load actually resolves the reference', async () => {
+        write('lib/alpha.jd', TEMPLATE.replace('Base', 'alpha'));
+        write('main.jd', `justification J implements lib:alpha {
+    evidence lib:alpha:a is "An abstract support"
+}`);
+        const [, main] = await build('lib/alpha.jd', 'main.jd');
+        const after = await apply(main, "Load './lib/alpha.jd' as lib and use 'lib:alpha'");
+
+        fs.writeFileSync(path.join(workspace, 'main.jd'), after);
+        const rebuilt = createJpipeServices(NodeFileSystem);
+        const uri = URI.parse(pathToFileURL(path.join(workspace, 'main.jd')).toString());
+        const document = await rebuilt.shared.workspace.LangiumDocuments.getOrCreateDocument(uri);
+        await rebuilt.shared.workspace.DocumentBuilder.build([document], { validation: true });
+
+        const unresolved = (document.diagnostics ?? [])
+            .filter(d => (d.data as { code?: string } | undefined)?.code === 'linking-error');
+        expect(unresolved).toEqual([]);
+    });
+
+    // A plain load does not satisfy a reference that reaches through an alias, so the offer has
+    // to stand even when the same file is already loaded without one.
+    test('is still offered when the file is loaded without the alias', async () => {
+        write('lib/alpha.jd', TEMPLATE.replace('Base', 'alpha'));
+        write('main.jd', `load "./lib/alpha.jd"
+justification J implements lib:alpha {
+    evidence lib:alpha:a is "An abstract support"
+}`);
+        const [, main] = await build('lib/alpha.jd', 'main.jd');
+        expect(await titlesFor(main)).toContain("Load './lib/alpha.jd' as lib and use 'lib:alpha'");
+    });
+
+    // `t:abs` in a relation is a qualified element id, not `namespace:model`. Reading it as one
+    // would offer to load any file that happened to declare a model called `abs`.
+    test('is not offered for an unresolved relation endpoint', async () => {
+        write('lib/abs.jd', COMPLETE('abs'));
+        write('main.jd', `justification J {
+    conclusion c is "C"
+    strategy s is "S"
+    t:abs supports s
+    s supports c
+}`);
+        const [, main] = await build('lib/abs.jd', 'main.jd');
+        expect(await titlesFor(main)).not.toContain("Load './lib/abs.jd' as t and use 't:abs'");
+    });
+
     test('names every file that could supply the reference', async () => {
         write('lib/base.jd', TEMPLATE);
         write('other/base.jd', TEMPLATE);
