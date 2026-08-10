@@ -67,14 +67,20 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
                     <svg class="eye-closed" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/><line x1="2" y1="2" x2="14" y2="14"/></svg>
                 </button>
             </div>
-            <div class="toolbar-group">
-                <button class="toolbar-btn" id="mode-toggle" aria-label="Diagnostic view" aria-pressed="false" data-tooltip="Diagnostic view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><rect x="5.75" y="1" width="4.5" height="2.6" rx="0.8"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11.5" x2="10" y2="11.5"/></svg></button>
-            </div>
             <div class="toolbar-group diagram-only">
                 <button class="toolbar-btn" id="zoom-fit" aria-label="Fit to window" data-tooltip="Fit to window"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2.5h3.5M14 6V2.5h-3.5M2 10v3.5h3.5M14 10v3.5h-3.5"/></svg></button>
                 <button class="toolbar-btn zoom" id="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
                 <button id="zoom-value" aria-label="Current zoom. Activate for actual size" title="Actual size (100%)">100%</button>
                 <button class="toolbar-btn zoom" id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+            </div>
+            <!--
+                The mode switch is last, and stays last. It is the only control that belongs to
+                the panel rather than to whatever the panel is currently showing, so every
+                mode-specific group appearing and disappearing to its left leaves it in the same
+                place — which is what makes it findable.
+            -->
+            <div class="toolbar-group" id="mode-group">
+                <button class="toolbar-btn" id="mode-toggle" aria-label="Diagnostic view" aria-pressed="false" data-tooltip="Diagnostic view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><rect x="5.75" y="1" width="4.5" height="2.6" rx="0.8"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11.5" x2="10" y2="11.5"/></svg></button>
             </div>
         </div>
     </div>

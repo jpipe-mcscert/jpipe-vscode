@@ -231,15 +231,26 @@ describe('isUnknownOptionFailure', () => {
      * negative cases below matter as much as the positive ones.
      */
 
-    /** What picocli actually prints when handed an option it does not declare. */
+    /**
+     * Captured verbatim from `jpipe --headless diagnostic -f json -i m.jd` on 2.3.1, the last
+     * release without the flag. Note the plural: picocli reports `-f` and its value together, so
+     * a matcher anchored on the singular "Unknown option:" would miss the one case that actually
+     * happens in the field.
+     */
     const USAGE = [
-        "Unknown option: '-f'",
+        "Unknown options: '-f', 'json'",
         'Usage: jpipe diagnostic [-hV] [-i=<input>] [-o=<output>]',
-        'Parse and report diagnostics without exporting.'
+        'Parse and report diagnostics without exporting.',
+        '  -h, --help              Show this help message and exit.',
+        '  -i, --input=<input>     Input .jd source file (default: stdin).'
     ].join('\n');
 
-    test('recognises an unknown option', () => {
+    test('recognises the refusal a released compiler actually prints', () => {
         expect(isUnknownOptionFailure(2, USAGE)).toBe(true);
+    });
+
+    test('recognises the singular form too', () => {
+        expect(isUnknownOptionFailure(2, "Unknown option: '-f'")).toBe(true);
     });
 
     test('recognises an unmatched argument', () => {

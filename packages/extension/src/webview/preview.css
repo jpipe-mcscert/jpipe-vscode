@@ -214,8 +214,15 @@ body:not([data-mode="diagram"]) .diagram-only { display: none; }
 body.has-unsaved-banner .layer { top: 72px; }
 
 body[data-mode="diagram"] #container,
-body[data-mode="diagnostic"] #diagnostic-overlay,
 body[data-mode="empty"] #empty-overlay { display: block; }
+
+/*
+ * The diagnostic layer is a flex column, and it has to be said *here*, in the rule that selects
+ * it. A bare `#diagnostic-overlay { display: flex }` further down loses to this selector on
+ * specificity, which leaves the layer `display: block` — and then the panel inside it has no
+ * flex context, so it grows past the fixed layer instead of scrolling within it.
+ */
+body[data-mode="diagnostic"] #diagnostic-overlay { display: flex; }
 
 #container, #diagnostic-overlay, #empty-overlay { display: none; }
 
@@ -305,8 +312,8 @@ body.jpipe-render-error #container {
  * Each section is a long table, and a single scroller shared by all of them would put the error
  * count out of sight exactly when it matters.
  */
+/* `display` is set by the layer-selection rule above, which outranks this one. */
 #diagnostic-overlay {
-    display: flex;
     flex-direction: column;
     overflow: hidden;
 }

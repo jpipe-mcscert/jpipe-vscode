@@ -426,10 +426,12 @@ function applyRender(msg: RenderMessage): void {
 
 function applyHighlight(name: string | null): void {
     highlightName = name;
-    // The same signal drives both views. In the diagram it dims everything else; in the symbol
-    // table it marks the row and scrolls to it. Sent unconditionally so the table is up to date
-    // the moment the user switches to it.
-    diagnosticView.setCursorSymbol(highlightEnabled ? name : null);
+    // The same signal drives both views, but not on the same terms. Dimming a diagram is
+    // intrusive enough to be opt-in; marking a row in a table is not, and the control that opts
+    // in lives in the diagram toolbar — which the diagnostic view does not show. Gating the
+    // symbol table on it would mean leaving the diagnostic view, enabling highlighting, and
+    // coming back, to get behaviour the other panel has no say in.
+    diagnosticView.setCursorSymbol(name);
     if (!svgEl) return;
 
     if (!highlightEnabled || !name) {
