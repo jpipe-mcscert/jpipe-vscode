@@ -1,0 +1,670 @@
+{
+  "schemaVersion": 1,
+  "source": "/work/examples/011_unifying_while_compising.jd",
+  "status": "ok",
+  "diagnostics": [],
+  "stats": {
+    "commands": {
+      "total": 36,
+      "macros": 1
+    },
+    "deferrals": 0
+  },
+  "models": [
+    {
+      "name": "a_claim",
+      "kind": "justification",
+      "location": {
+        "line": 8,
+        "column": 14
+      },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 0,
+        "strategy": 1,
+        "evidence": 2,
+        "abstractSupport": 0
+      },
+      "usedBy": [],
+      "aliases": [],
+      "symbols": [
+        {
+          "id": "c",
+          "kind": "conclusion",
+          "synthesized": false,
+          "location": {
+            "line": 9,
+            "column": 15
+          }
+        },
+        {
+          "id": "s",
+          "kind": "strategy",
+          "synthesized": false,
+          "location": {
+            "line": 10,
+            "column": 15
+          }
+        },
+        {
+          "id": "e",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": {
+            "line": 11,
+            "column": 15
+          }
+        },
+        {
+          "id": "s1",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": {
+            "line": 12,
+            "column": 15
+          }
+        }
+      ]
+    },
+    {
+      "name": "another_claim",
+      "kind": "justification",
+      "location": {
+        "line": 20,
+        "column": 14
+      },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 0,
+        "strategy": 1,
+        "evidence": 2,
+        "abstractSupport": 0
+      },
+      "usedBy": [],
+      "aliases": [],
+      "symbols": [
+        {
+          "id": "c",
+          "kind": "conclusion",
+          "synthesized": false,
+          "location": {
+            "line": 21,
+            "column": 15
+          }
+        },
+        {
+          "id": "s",
+          "kind": "strategy",
+          "synthesized": false,
+          "location": {
+            "line": 22,
+            "column": 15
+          }
+        },
+        {
+          "id": "e",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": {
+            "line": 23,
+            "column": 15
+          }
+        },
+        {
+          "id": "s2",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": {
+            "line": 24,
+            "column": 15
+          }
+        }
+      ]
+    },
+    {
+      "name": "assembled_2",
+      "kind": "justification",
+      "location": {
+        "line": 32,
+        "column": 14
+      },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 2,
+        "strategy": 3,
+        "evidence": 3,
+        "abstractSupport": 0
+      },
+      "usedBy": [],
+      "aliases": [
+        {
+          "from": "a_claim:s1",
+          "to": "unified_0"
+        },
+        {
+          "from": "another_claim:s2",
+          "to": "unified_0"
+        }
+      ],
+      "symbols": [
+        {
+          "id": "assembleConclusion",
+          "kind": "conclusion",
+          "synthesized": true
+        },
+        {
+          "id": "a_claim:c",
+          "kind": "sub-conclusion",
+          "synthesized": false,
+          "location": {
+            "line": 9,
+            "column": 15
+          }
+        },
+        {
+          "id": "another_claim:c",
+          "kind": "sub-conclusion",
+          "synthesized": false,
+          "location": {
+            "line": 21,
+            "column": 15
+          }
+        },
+        {
+          "id": "a_claim:s",
+          "kind": "strategy",
+          "synthesized": false,
+          "location": {
+            "line": 10,
+            "column": 15
+          }
+        },
+        {
+          "id": "another_claim:s",
+          "kind": "strategy",
+          "synthesized": false,
+          "location": {
+            "line": 22,
+            "column": 15
+          }
+        },
+        {
+          "id": "assembleStrategy",
+          "kind": "strategy",
+          "synthesized": true
+        },
+        {
+          "id": "a_claim:e",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": {
+            "line": 11,
+            "column": 15
+          }
+        },
+        {
+          "id": "unified_0",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": {
+            "line": 12,
+            "column": 15
+          }
+        },
+        {
+          "id": "another_claim:e",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": {
+            "line": 23,
+            "column": 15
+          }
+        }
+      ]
+    },
+    {
+      "name": "expected_2",
+      "kind": "justification",
+      "location": {
+        "line": 38,
+        "column": 14
+      },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 2,
+        "strategy": 3,
+        "evidence": 3,
+        "abstractSupport": 0
+      },
+      "usedBy": [],
+      "aliases": [],
+      "symbols": [
+        {
+          "id": "anonymous4",
+          "kind": "conclusion",
+          "synthesized": false,
+          "location": {
+            "line": 55,
+            "column": 15
+          }
+        },
+        {
+          "id": "anonymous1",
+          "kind": "sub-conclusion",
+          "synthesized": false,
+          "location": {
+            "line": 52,
+            "column": 19
+          }
+        },
+        {
+          "id": "anonymous2",
+          "kind": "sub-conclusion",
+          "synthesized": false,
+          "location": {
+            "line": 53,
+            "column": 19
+          }
+        },
+        {
+          "id": "a_claim_s",
+          "kind": "strategy",
+          "synthesized": false,
+          "location": {
+            "line": 40,
+            "column": 15
+          }
+        },
+        {
+          "id": "another_claim_s",
+          "kind": "strategy",
+          "synthesized": false,
+          "location": {
+            "line": 46,
+            "column": 15
+          }
+        },
+        {
+          "id": "anonymous3",
+          "kind": "strategy",
+          "synthesized": false,
+          "location": {
+            "line": 54,
+            "column": 13
+          }
+        },
+        {
+          "id": "a_claim_e",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": {
+            "line": 41,
+            "column": 15
+          }
+        },
+        {
+          "id": "another_claim_e",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": {
+            "line": 47,
+            "column": 15
+          }
+        },
+        {
+          "id": "anonymous5",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": {
+            "line": 64,
+            "column": 13
+          }
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "index": 1,
+      "depth": 0,
+      "macro": false,
+      "description": "create_justification('a_claim')."
+    },
+    {
+      "index": 2,
+      "depth": 0,
+      "macro": false,
+      "description": "create_conclusion('a_claim', 'c', 'A conclusion')."
+    },
+    {
+      "index": 3,
+      "depth": 0,
+      "macro": false,
+      "description": "create_strategy('a_claim', 's', 'A strategy')."
+    },
+    {
+      "index": 4,
+      "depth": 0,
+      "macro": false,
+      "description": "create_evidence('a_claim', 'e', 'An evidence')."
+    },
+    {
+      "index": 5,
+      "depth": 0,
+      "macro": false,
+      "description": "create_evidence('a_claim', 's1', 'A shared evidence')."
+    },
+    {
+      "index": 6,
+      "depth": 0,
+      "macro": false,
+      "description": "support('a_claim', 'c', 's')."
+    },
+    {
+      "index": 7,
+      "depth": 0,
+      "macro": false,
+      "description": "support('a_claim', 's', 'e')."
+    },
+    {
+      "index": 8,
+      "depth": 0,
+      "macro": false,
+      "description": "support('a_claim', 's', 's1')."
+    },
+    {
+      "index": 9,
+      "depth": 0,
+      "macro": false,
+      "description": "create_justification('another_claim')."
+    },
+    {
+      "index": 10,
+      "depth": 0,
+      "macro": false,
+      "description": "create_conclusion('another_claim', 'c', 'Another conclusion')."
+    },
+    {
+      "index": 11,
+      "depth": 0,
+      "macro": false,
+      "description": "create_strategy('another_claim', 's', 'Another strategy')."
+    },
+    {
+      "index": 12,
+      "depth": 0,
+      "macro": false,
+      "description": "create_evidence('another_claim', 'e', 'Another evidence')."
+    },
+    {
+      "index": 13,
+      "depth": 0,
+      "macro": false,
+      "description": "create_evidence('another_claim', 's2', 'A shared evidence')."
+    },
+    {
+      "index": 14,
+      "depth": 0,
+      "macro": false,
+      "description": "support('another_claim', 'c', 's')."
+    },
+    {
+      "index": 15,
+      "depth": 0,
+      "macro": false,
+      "description": "support('another_claim', 's', 'e')."
+    },
+    {
+      "index": 16,
+      "depth": 0,
+      "macro": false,
+      "description": "support('another_claim', 's', 's2')."
+    },
+    {
+      "index": 17,
+      "depth": 0,
+      "macro": true,
+      "description": "applyOperator('assembled_2', 'assemble', [a_claim, another_claim])."
+    },
+    {
+      "index": 18,
+      "depth": 1,
+      "macro": false,
+      "description": "create_justification('assembled_2')."
+    },
+    {
+      "index": 19,
+      "depth": 1,
+      "macro": false,
+      "description": "create_sub_conclusion('assembled_2', 'a_claim:c', 'A conclusion')."
+    },
+    {
+      "index": 20,
+      "depth": 1,
+      "macro": false,
+      "description": "create_strategy('assembled_2', 'a_claim:s', 'A strategy')."
+    },
+    {
+      "index": 21,
+      "depth": 1,
+      "macro": false,
+      "description": "create_evidence('assembled_2', 'a_claim:e', 'An evidence')."
+    },
+    {
+      "index": 22,
+      "depth": 1,
+      "macro": false,
+      "description": "create_evidence('assembled_2', 'unified_0', 'A shared evidence')."
+    },
+    {
+      "index": 23,
+      "depth": 1,
+      "macro": false,
+      "description": "create_sub_conclusion('assembled_2', 'another_claim:c', 'Another conclusion')."
+    },
+    {
+      "index": 24,
+      "depth": 1,
+      "macro": false,
+      "description": "create_strategy('assembled_2', 'another_claim:s', 'Another strategy')."
+    },
+    {
+      "index": 25,
+      "depth": 1,
+      "macro": false,
+      "description": "create_evidence('assembled_2', 'another_claim:e', 'Another evidence')."
+    },
+    {
+      "index": 26,
+      "depth": 1,
+      "macro": false,
+      "description": "support('assembled_2', 'a_claim:c', 'a_claim:s')."
+    },
+    {
+      "index": 27,
+      "depth": 1,
+      "macro": false,
+      "description": "support('assembled_2', 'a_claim:s', 'a_claim:e')."
+    },
+    {
+      "index": 28,
+      "depth": 1,
+      "macro": false,
+      "description": "support('assembled_2', 'a_claim:s', 'unified_0')."
+    },
+    {
+      "index": 29,
+      "depth": 1,
+      "macro": false,
+      "description": "support('assembled_2', 'another_claim:c', 'another_claim:s')."
+    },
+    {
+      "index": 30,
+      "depth": 1,
+      "macro": false,
+      "description": "support('assembled_2', 'another_claim:s', 'another_claim:e')."
+    },
+    {
+      "index": 31,
+      "depth": 1,
+      "macro": false,
+      "description": "support('assembled_2', 'another_claim:s', 'unified_0')."
+    },
+    {
+      "index": 32,
+      "depth": 1,
+      "macro": false,
+      "description": "create_strategy('assembled_2', 'assembleStrategy', 'An aggregating strategy')."
+    },
+    {
+      "index": 33,
+      "depth": 1,
+      "macro": false,
+      "description": "create_conclusion('assembled_2', 'assembleConclusion', 'A global conclusion')."
+    },
+    {
+      "index": 34,
+      "depth": 1,
+      "macro": false,
+      "description": "support('assembled_2', 'assembleStrategy', 'a_claim:c')."
+    },
+    {
+      "index": 35,
+      "depth": 1,
+      "macro": false,
+      "description": "support('assembled_2', 'assembleStrategy', 'another_claim:c')."
+    },
+    {
+      "index": 36,
+      "depth": 1,
+      "macro": false,
+      "description": "support('assembled_2', 'assembleConclusion', 'assembleStrategy')."
+    },
+    {
+      "index": 37,
+      "depth": 1,
+      "macro": false,
+      "description": "registerAlias('assembled_2', 'a_claim:s1' -> 'unified_0')."
+    },
+    {
+      "index": 38,
+      "depth": 1,
+      "macro": false,
+      "description": "registerAlias('assembled_2', 'another_claim:s2' -> 'unified_0')."
+    },
+    {
+      "index": 39,
+      "depth": 0,
+      "macro": false,
+      "description": "create_justification('expected_2')."
+    },
+    {
+      "index": 40,
+      "depth": 0,
+      "macro": false,
+      "description": "create_strategy('expected_2', 'a_claim_s', 'A strategy')."
+    },
+    {
+      "index": 41,
+      "depth": 0,
+      "macro": false,
+      "description": "create_evidence('expected_2', 'a_claim_e', 'An evidence')."
+    },
+    {
+      "index": 42,
+      "depth": 0,
+      "macro": false,
+      "description": "support('expected_2', 'a_claim_s', 'a_claim_e')."
+    },
+    {
+      "index": 43,
+      "depth": 0,
+      "macro": false,
+      "description": "create_strategy('expected_2', 'another_claim_s', 'Another strategy')."
+    },
+    {
+      "index": 44,
+      "depth": 0,
+      "macro": false,
+      "description": "create_evidence('expected_2', 'another_claim_e', 'Another evidence')."
+    },
+    {
+      "index": 45,
+      "depth": 0,
+      "macro": false,
+      "description": "support('expected_2', 'another_claim_s', 'another_claim_e')."
+    },
+    {
+      "index": 46,
+      "depth": 0,
+      "macro": false,
+      "description": "create_sub_conclusion('expected_2', 'anonymous1', 'A conclusion')."
+    },
+    {
+      "index": 47,
+      "depth": 0,
+      "macro": false,
+      "description": "create_sub_conclusion('expected_2', 'anonymous2', 'Another conclusion')."
+    },
+    {
+      "index": 48,
+      "depth": 0,
+      "macro": false,
+      "description": "create_strategy('expected_2', 'anonymous3', 'An aggregating strategy')."
+    },
+    {
+      "index": 49,
+      "depth": 0,
+      "macro": false,
+      "description": "create_conclusion('expected_2', 'anonymous4', 'A global conclusion')."
+    },
+    {
+      "index": 50,
+      "depth": 0,
+      "macro": false,
+      "description": "support('expected_2', 'anonymous1', 'a_claim_s')."
+    },
+    {
+      "index": 51,
+      "depth": 0,
+      "macro": false,
+      "description": "support('expected_2', 'anonymous3', 'anonymous1')."
+    },
+    {
+      "index": 52,
+      "depth": 0,
+      "macro": false,
+      "description": "support('expected_2', 'anonymous2', 'another_claim_s')."
+    },
+    {
+      "index": 53,
+      "depth": 0,
+      "macro": false,
+      "description": "support('expected_2', 'anonymous3', 'anonymous2')."
+    },
+    {
+      "index": 54,
+      "depth": 0,
+      "macro": false,
+      "description": "support('expected_2', 'anonymous4', 'anonymous3')."
+    },
+    {
+      "index": 55,
+      "depth": 0,
+      "macro": false,
+      "description": "create_evidence('expected_2', 'anonymous5', 'A shared evidence')."
+    },
+    {
+      "index": 56,
+      "depth": 0,
+      "macro": false,
+      "description": "support('expected_2', 'a_claim_s', 'anonymous5')."
+    },
+    {
+      "index": 57,
+      "depth": 0,
+      "macro": false,
+      "description": "support('expected_2', 'another_claim_s', 'anonymous5')."
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "source": "/work/examples/invalid/003_unknown_symbol.jd",
+  "status": "errors",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "unknown-element",
+      "source": "/work/examples/invalid/003_unknown_symbol.jd",
+      "line": 24,
+      "column": 4,
+      "message": "unknown element 'unknown' in model 'unknown_suporter'"
+    },
+    {
+      "severity": "error",
+      "code": "unknown-element",
+      "source": "/work/examples/invalid/003_unknown_symbol.jd",
+      "line": 14,
+      "column": 4,
+      "message": "unknown element 'unknown' in model 'unknown_suportee'"
+    },
+    {
+      "severity": "error",
+      "source": "/work/examples/invalid/003_unknown_symbol.jd",
+      "message": "unresolved symbol(s) — model cannot be built"
+    }
+  ],
+  "stats": {
+    "commands": { "total": 14, "macros": 0 },
+    "deferrals": 3
+  },
+  "models": [
+    {
+      "name": "unknown_suportee",
+      "kind": "justification",
+      "location": { "line": 7, "column": 14 },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 0,
+        "strategy": 1,
+        "evidence": 1,
+        "abstractSupport": 0
+      },
+      "usedBy": [],
+      "symbols": [
+        { "id": "c", "kind": "conclusion", "synthesized": false, "location": { "line": 8, "column": 15 } },
+        { "id": "s", "kind": "strategy", "synthesized": false, "location": { "line": 9, "column": 15 } },
+        { "id": "e", "kind": "evidence", "synthesized": false, "location": { "line": 10, "column": 15 } }
+      ],
+      "aliases": []
+    },
+    {
+      "name": "unknown_suporter",
+      "kind": "justification",
+      "location": { "line": 17, "column": 14 },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 0,
+        "strategy": 1,
+        "evidence": 1,
+        "abstractSupport": 0
+      },
+      "usedBy": [],
+      "symbols": [
+        { "id": "c", "kind": "conclusion", "synthesized": false, "location": { "line": 18, "column": 15 } },
+        { "id": "s", "kind": "strategy", "synthesized": false, "location": { "line": 19, "column": 15 } },
+        { "id": "e", "kind": "evidence", "synthesized": false, "location": { "line": 20, "column": 15 } }
+      ],
+      "aliases": []
+    }
+  ],
+  "actions": [
+    { "index": 1, "depth": 0, "macro": false, "description": "create_justification('unknown_suportee')." },
+    { "index": 2, "depth": 0, "macro": false, "description": "create_conclusion('unknown_suportee', 'c', 'A conclusion')." },
+    { "index": 3, "depth": 0, "macro": false, "description": "create_strategy('unknown_suportee', 's', 'A strategy')." },
+    { "index": 4, "depth": 0, "macro": false, "description": "create_evidence('unknown_suportee', 'e', 'An evidence')." },
+    { "index": 5, "depth": 0, "macro": false, "description": "support('unknown_suportee', 'c', 's')." },
+    { "index": 6, "depth": 0, "macro": false, "description": "support('unknown_suportee', 's', 'e')." },
+    { "index": 7, "depth": 0, "macro": false, "description": "create_justification('unknown_suporter')." },
+    { "index": 8, "depth": 0, "macro": false, "description": "create_conclusion('unknown_suporter', 'c', 'A conclusion')." },
+    { "index": 9, "depth": 0, "macro": false, "description": "create_strategy('unknown_suporter', 's', 'A strategy')." },
+    { "index": 10, "depth": 0, "macro": false, "description": "create_evidence('unknown_suporter', 'e', 'An evidence')." },
+    { "index": 11, "depth": 0, "macro": false, "description": "support('unknown_suporter', 'c', 's')." },
+    { "index": 12, "depth": 0, "macro": false, "description": "support('unknown_suporter', 's', 'e')." }
+  ]
+}
