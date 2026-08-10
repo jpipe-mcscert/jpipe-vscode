@@ -508,6 +508,19 @@ body:not(.diag-raw) #diag-output { display: none; }
 
 .diag-kind { color: var(--vscode-descriptionForeground); white-space: nowrap; }
 
+/*
+ * An alias is not a declaration — it is an id the composition rewrote — so it is set in italic
+ * to be told apart from the elements it sits among.
+ */
+.diag-alias { font-style: italic; }
+
+/*
+ * Rows sit slightly in from their model name, so the name reads as a heading over them rather
+ * than as another row among them. Light on purpose: enough to group, not enough to look like a
+ * tree.
+ */
+.diag-grouped .diag-row td:first-child { padding-left: 14px; }
+
 /* A filter toggle, not decoration — hence a button. */
 .diag-code {
     border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));

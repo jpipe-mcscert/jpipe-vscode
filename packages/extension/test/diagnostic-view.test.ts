@@ -437,10 +437,23 @@ describe('the symbols tab', () => {
         expect(synthesized.querySelector('.diag-loc')?.textContent).toBe('');
     });
 
-    test('renders alias rewrites as their own rows', () => {
+    test('renders alias rewrites as their own rows, set apart from declarations', () => {
         view.show(unifyAliases, '');
         const alias = rows().find(r => r.textContent?.includes('a_claim:s1'))!;
         expect(alias.textContent).toContain('→ unified_0');
+        // Italic, via the class: an alias is a rewrite, not something declared in the source.
+        expect(alias.classList.contains('diag-alias')).toBe(true);
+    });
+
+    test('declarations are not marked as aliases', () => {
+        view.show(unifyAliases, '');
+        const declared = rows().find(r => r.querySelector('.diag-id')?.textContent === 'unified_0')!;
+        expect(declared.classList.contains('diag-alias')).toBe(false);
+    });
+
+    test('the table is grouped, so its rows indent under their model name', () => {
+        view.show(unsupportedElements, '');
+        expect(elements.panel.querySelector('table')?.classList.contains('diag-grouped')).toBe(true);
     });
 
     test('names the file for a symbol declared somewhere else', () => {

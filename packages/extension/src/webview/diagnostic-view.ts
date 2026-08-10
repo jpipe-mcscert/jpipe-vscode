@@ -676,8 +676,9 @@ export class DiagnosticView {
         // One table for every model, with the model names as full-width rows inside it. Giving
         // each model its own table let each size its columns independently, so the same column
         // sat at a different width under every heading — which reads as a broken layout rather
-        // than as grouping.
-        const table = el('table', 'diag-table');
+        // than as grouping. `diag-grouped` is what indents the rows under their model, so the
+        // model name reads as a heading rather than as another row.
+        const table = el('table', 'diag-table diag-grouped');
         const body = el('tbody');
 
         for (const model of report.models) {
@@ -700,7 +701,9 @@ export class DiagnosticView {
                 body.append(row);
             }
             for (const alias of aliases) {
-                const row = el('tr', 'diag-row');
+                // Italic, because an alias is not a declaration: it is an id the composition
+                // rewrote. Worth telling apart from the elements around it at a glance.
+                const row = el('tr', 'diag-row diag-alias');
                 row.append(
                     el('td', 'diag-id', alias.from),
                     el('td', 'diag-kind', `→ ${alias.to}`),
