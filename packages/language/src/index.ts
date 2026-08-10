@@ -2,6 +2,7 @@ export * from './jpipe-module.js';
 export * from './jpipe-validator.js';
 export * from './jpipe-operators.js';
 export * from './jpipe-diagnostic-codes.js';
+export * from './jpipe-code-action-provider.js';
 export * from './jpipe-logger.js';
 export * from './jpipe-exclusions.js';
 export * from './generated/ast.js';
