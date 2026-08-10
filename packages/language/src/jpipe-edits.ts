@@ -8,7 +8,7 @@
 import * as path from 'node:path';
 import { type CstNode, type LangiumDocument } from 'langium';
 import { Position, type Range, type TextEdit } from 'vscode-languageserver';
-import type { Unit } from './generated/ast.js';
+import type { Justification, Template, Unit } from './generated/ast.js';
 
 // ── load paths ───────────────────────────────────────────────────────────────────────────────
 
@@ -83,6 +83,47 @@ export function createLoadEdit(document: LangiumDocument<Unit>, relativePath: st
         range: { start: Position.create(line, 0), end: Position.create(line, 0) },
         newText: `load "${finalPath}"${suffix}`
     }];
+}
+
+/** Where a new element declaration belongs inside a model, and how far to indent it. */
+export interface BodyInsertion {
+    readonly line: number;
+    readonly indent: string;
+}
+
+/**
+ * Decides where a new element declaration goes inside a justification or template: after the last
+ * declaration already there, and before the relations.
+ *
+ * jPipe models conventionally read as a block of declarations followed by a block of
+ * `x supports y` lines, and an element inserted among the relations reads as a mistake even
+ * though it parses. Where a file has only relations, the declaration goes above them for the same
+ * reason.
+ */
+export function findElementInsertion(
+    document: LangiumDocument<Unit>,
+    model: Justification | Template
+): BodyInsertion | undefined {
+    const body = model.contents;
+    const modelNode = model.$cstNode;
+    if (!body || !modelNode) return undefined;
+
+    const lastElement = body.body.at(-1)?.$cstNode;
+    if (lastElement) {
+        const line = document.textDocument.positionAt(lastElement.end).line;
+        return { line: line + 1, indent: indentationOf(document, line) };
+    }
+
+    const firstRelation = body.rels.at(-1)?.$cstNode;
+    if (firstRelation) {
+        const line = document.textDocument.positionAt(firstRelation.offset).line;
+        return { line, indent: indentationOf(document, line) };
+    }
+
+    // A body with neither is not reachable through the grammar, but the header's own line is the
+    // one sane answer if it ever becomes so.
+    const headerLine = document.textDocument.positionAt(modelNode.offset).line;
+    return { line: headerLine + 1, indent: `${indentationOf(document, headerLine)}    ` };
 }
 
 // ── generic edits ────────────────────────────────────────────────────────────────────────────
