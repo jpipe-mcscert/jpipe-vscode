@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { formatEntry, isSameOrInside, parseEntry, stripTrailingSlash } from './exclusion-paths.js';
+import { formatEntry, isSameOrInside, parseEntry, shouldShowExclusionBanner, stripTrailingSlash } from './exclusion-paths.js';
 
 const SETTING = 'excludedPaths';
 /** Pre-1.4 name, still honoured so existing settings keep working. Never written to. */
@@ -165,6 +165,64 @@ export class ExclusionManager implements vscode.Disposable {
         const roots = vscode.workspace.workspaceFolders ?? [];
         const rel = vscode.workspace.asRelativePath(target, false).replaceAll('\\', '/');
         return formatEntry(roots.length > 1 ? workspaceFolder.name : undefined, rel);
+    }
+}
+
+/**
+ * Says, in the editor, that this file is not being validated.
+ *
+ * The Explorer badge answers the question only if you happen to be looking at the Explorer. Open
+ * a counter-example directly — from a search result, from `Go to File`, from a `load` — and the
+ * absence of squiggles is indistinguishable from a model that is simply correct. This is the one
+ * place the file itself can say otherwise.
+ *
+ * Drawn as a decoration on the first line rather than a notification: the file's state is
+ * permanent while it stays excluded, and a notification that has to be dismissed would be wrong
+ * for something that is not an event. `display: block` is what lifts the text onto its own line
+ * above the code instead of indenting line 1 to the right.
+ */
+export class ExclusionBanner implements vscode.Disposable {
+    private readonly decoration = vscode.window.createTextEditorDecorationType({
+        isWholeLine: true,
+        before: {
+            contentText: '⊘  jPipe is not validating this file — it is excluded from validation.',
+            color: new vscode.ThemeColor('editorWarning.foreground'),
+            fontStyle: 'italic',
+            margin: '0 0 0.4rem 0',
+            textDecoration: 'none; display: block;'
+        }
+    });
+    private readonly disposables: vscode.Disposable[] = [];
+
+    constructor(private readonly manager: ExclusionManager) {
+        this.disposables.push(
+            vscode.window.onDidChangeVisibleTextEditors(() => this.refresh()),
+            // A document's language id is not final at open; it settles a tick later, and until
+            // then the banner would be withheld from a file that does qualify.
+            vscode.workspace.onDidOpenTextDocument(() => this.refresh()),
+            manager.onDidChange(() => this.refresh())
+        );
+        this.refresh();
+    }
+
+    /** Re-evaluates every visible editor. Cheap: a handful of editors, a handful of entries. */
+    refresh(): void {
+        const excluded = this.manager.getResolvedUris();
+        for (const editor of vscode.window.visibleTextEditors) {
+            const show = shouldShowExclusionBanner(
+                editor.document.languageId,
+                editor.document.uri.toString(),
+                excluded
+            );
+            // Anchored at the very start; `isWholeLine` gives it the width of the line.
+            editor.setDecorations(this.decoration, show ? [new vscode.Range(0, 0, 0, 0)] : []);
+        }
+    }
+
+    dispose(): void {
+        this.disposables.forEach(d => d.dispose());
+        // Disposing the type removes the banner from every editor showing it.
+        this.decoration.dispose();
     }
 }
 
