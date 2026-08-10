@@ -87,6 +87,33 @@ describe('adapting to a dark theme', () => {
         expect(text.getAttribute('fill')).toBeNull();
     });
 
+    /**
+     * An `@support` is a dotted rectangle and a label, and nothing else — no fill, no colour of
+     * its own. Its outline was left in the compiler's default black, which on a dark ground meant
+     * black on black: the label floated with no box around it at all.
+     */
+    test('an unfilled outline takes the foreground colour', () => {
+        // Selected by the dashes rather than by id: an override and the `@support` it refines
+        // share one id, so the dotted outline is what identifies an `@support` here — which is
+        // also what it is for a reader.
+        const dotted = Array.from(svg.querySelectorAll('g.node [stroke-dasharray]'));
+        expect(dotted.length, 'fixture should contain @support elements').toBeGreaterThanOrEqual(2);
+        for (const shape of dotted) {
+            expect(shape.getAttribute('stroke')).toBe('currentColor');
+        }
+    });
+
+    // A filled node's outline traces the edge of something light and reads against it.
+    test('a filled node keeps its black outline', () => {
+        expect(node('refined:base:s').querySelector('polygon')!.getAttribute('stroke')).toBe('black');
+    });
+
+    // Blue is a colour the compiler chose, not a default it fell back to, and it reads on either
+    // ground — so it is not ours to redirect.
+    test('a sub-conclusion keeps the colour the compiler gave it', () => {
+        expect(node('refined:base:sc').querySelector('polygon')!.getAttribute('stroke')).toBe('#0072b2');
+    });
+
     test('the white canvas is still removed', () => {
         const canvas = Array.from(svg.querySelectorAll('polygon'))
             .filter(p => p.getAttribute('fill') === 'white' && p.getAttribute('stroke') === 'none');

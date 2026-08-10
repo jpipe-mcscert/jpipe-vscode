@@ -76,6 +76,20 @@ export function adaptToDarkTheme(svg: SVGSVGElement): void {
         if (node && isFilled(node)) return;
         text.setAttribute('fill', 'currentColor');
     });
+
+    // An outline is black for the same reason a label is, and answers to the same rule. On a
+    // filled node the outline traces the edge of something light and reads against it, so it
+    // stays. On an unfilled one it lies directly on the editor background, which cost an
+    // `@support` everything it has: a dotted rectangle and nothing else, drawn in black on black.
+    //
+    // Only *black* is redirected. A sub-conclusion is outlined in the compiler's own blue, which
+    // it chose as a colour rather than as a default, and which reads on either ground.
+    svg.querySelectorAll('g.node').forEach(node => {
+        if (isFilled(node)) return;
+        node.querySelectorAll('[stroke="black"]').forEach(shape => {
+            shape.setAttribute('stroke', 'currentColor');
+        });
+    });
 }
 
 /**
