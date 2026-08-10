@@ -418,3 +418,24 @@ describe('add-supporter', () => {
         )).toEqual([]);
     });
 });
+
+describe('remove-load on a broken pattern', () => {
+
+    // A pattern that does not compile cannot have a file suggested for it, so without this the
+    // lightbulb offers nothing at all on the one load the user most clearly has to deal with.
+    test('offers removal for a malformed glob', async () => {
+        const titles = await actionTitles(
+            'load "models/[.jd"\njustification J {\n    conclusion c is "C"\n    strategy s is "S"\n    s supports c\n}',
+            CodeActionKind.QuickFix
+        );
+        expect(titles).toContain("Remove load 'models/[.jd'");
+    });
+
+    test('removal leaves a parseable file', async () => {
+        const after = await applyCodeAction(
+            'load "models/[.jd"\njustification J {\n    conclusion c is "C"\n}',
+            { title: "Remove load 'models/[.jd'" }
+        );
+        expect(after).toBe('justification J {\n    conclusion c is "C"\n}');
+    });
+});
