@@ -120,13 +120,34 @@ export function fitBox(content: Box, viewport: Size, padding: number = FIT_PADDI
     return centerOnPoint({ x: 0, y: 0, w, h }, boxCenter(content));
 }
 
+/** The viewBox that shows the diagram at a given scale, centred on it. */
+export function boxAtScale(frame: Frame, k: number): Box {
+    return centerOnPoint(
+        { x: 0, y: 0, w: frame.viewport.width / k, h: frame.viewport.height / k },
+        boxCenter(frame.content)
+    );
+}
+
 /** The viewBox showing the diagram at its intrinsic size, centred. */
 export function naturalBox(frame: Frame): Box {
-    const { content, viewport, baseScale } = frame;
-    return centerOnPoint(
-        { x: 0, y: 0, w: viewport.width / baseScale, h: viewport.height / baseScale },
-        boxCenter(content)
-    );
+    return boxAtScale(frame, frame.baseScale);
+}
+
+/**
+ * Fill the panel with the diagram, enlarging it if there is room.
+ *
+ * Distinct from `initialBox`, which caps at intrinsic size. The distinction is who asked: an
+ * opening view is chosen for the user and should not inflate a four-node model to fill a wide
+ * panel, whereas someone clicking "fit to window" is asking for exactly that.
+ *
+ * Capped at the same ceiling as every other route to a zoom level, so the control cannot reach
+ * a magnification the wheel and the buttons refuse to.
+ */
+export function fitToWindowBox(frame: Frame): Box {
+    const fitted = fitBox(frame.content, frame.viewport);
+    const wanted = scaleOf(fitted, frame.viewport);
+    const capped = Math.min(wanted, kMax(frame));
+    return capped === wanted ? fitted : boxAtScale(frame, capped);
 }
 
 /**
@@ -305,6 +326,34 @@ export function wheelZoomFactor(deltaY: number, sensitivity = 1): number {
  */
 export function wheelPixels(deltaMode: number, viewportSize: number): number {
     return deltaMode === 1 ? 16 : deltaMode === 2 ? viewportSize : 1;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Resize                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How the current view came about. A resize has to honour the reason, not just the numbers.
+ *
+ * `initial` — untouched since the diagram loaded.
+ * `fitted` — the user asked to fill the panel.
+ * `custom` — the user framed it themselves, by zooming, panning or following the cursor.
+ */
+export type ViewOrigin = 'initial' | 'fitted' | 'custom';
+
+/**
+ * The view to adopt when the panel changes size.
+ *
+ * An untouched view is re-derived rather than adjusted, because adjusting it drifts: preserving
+ * on-screen area through the panel settling to its final size just after the first render was
+ * enough to turn a clean 100% into 109%. A fitted view re-fits, so it keeps meaning what the
+ * user asked for. Only a view someone framed themselves is preserved as-is, and then what is
+ * worth preserving is how much of the diagram is showing.
+ */
+export function viewOnResize(origin: ViewOrigin, vb: Box, frame: Frame): Box {
+    if (origin === 'initial') return initialBox(frame);
+    if (origin === 'fitted') return fitToWindowBox(frame);
+    return clampTranslation(normalizeAspect(vb, frame.viewport), frame.content);
 }
 
 /** Pan by a drag delta in client pixels. Dragging right moves the content right, so the viewBox moves left. */

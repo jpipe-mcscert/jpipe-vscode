@@ -5,6 +5,7 @@
   - Features:
     - **Jump to actual size:** Clicking the zoom percentage in the preview toolbar — or pressing `1` — shows the diagram at 100%, the size the compiler laid it out for. Useful on a large model, where the preview opens zoomed out to fit and you want a readable size in one click. The fit button, and `0`, still return you to that opening view
     - **Your trackpad behaves like a trackpad:** Two-finger scrolling now pans the diagram and pinching zooms it, which is what those gestures do everywhere else. A mouse wheel still zooms, as before. Previously every scroll gesture zoomed, which was fine with a wheel and unpleasant on a laptop
+    - **Fit to window really fits:** The fit button now enlarges a small diagram to fill the panel, instead of stopping at 100% — which is what the button says it does, and what you are asking for by clicking it. The view the preview *opens* at is unchanged: it still caps at the diagram's own size, so a four-node justification does not start out filling a wide panel
     - **Zoom sensitivity is adjustable:** A new preview setting controls how far each scroll step zooms, for pointing devices that feel too fast or too slow
 
 ### v1.5.0 (2026-08-09)

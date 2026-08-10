@@ -5,12 +5,15 @@ import {
     type Box,
     type Frame,
     type Size,
+    type ViewOrigin,
     type WheelGesture,
     centerOn,
     clampTranslation,
     clientToUser,
     formatViewBox,
+    fitToWindowBox,
     initialBox,
+    viewOnResize,
     isPannable,
     naturalScale,
     needsPan,
@@ -101,14 +104,15 @@ let lastSvg: string | null = null;
 let lastDocumentPath: string | null = null;
 
 /**
- * True while the view is still exactly what the diagram opened at.
+ * How the current view came about, which is what a panel resize needs to know.
  *
- * It decides what a panel resize does. Preserving how much of the diagram is on screen is the
- * right answer once someone has chosen a zoom, but applying it to an untouched view drifts off
- * the default: the panel settling to its final size just after the first render was enough to
- * turn a clean 100% into 109%.
+ * `initial` — untouched since the diagram loaded, so a resize re-derives the opening view.
+ *   Preserving on-screen area instead would drift it: the panel settling to its final size just
+ *   after the first render was enough to turn a clean 100% into 109%.
+ * `fitted` — the user asked to fill the panel, so a resize fills the new panel.
+ * `custom` — the user framed it themselves; a resize keeps how much of the diagram is showing.
  */
-let pristine = true;
+let viewOrigin: ViewOrigin = 'initial';
 /** Multiplier on the wheel zoom step, from the user's settings. */
 let zoomSensitivity = 1;
 let unsaved = false;
@@ -158,17 +162,24 @@ function actualSize(): void {
     setViewBox(clampTranslation(naturalBox(f), f.content));
 }
 
-/** Back to the view the diagram opened at: intrinsic size, or shrunk if it does not fit. */
+/**
+ * Fill the panel with the whole diagram, enlarging a small one to do it.
+ *
+ * Deliberately not the same as the opening view, which caps at intrinsic size. The difference
+ * is who asked: opening is automatic and should not inflate a four-node model to fill a wide
+ * panel, whereas clicking "fit to window" is a request to do exactly that.
+ */
 function fit(): void {
     const f = frame();
     if (!f) return;
-    setViewBox(initialBox(f));
-    pristine = true;
+    cancelAnimation();
+    setViewBox(fitToWindowBox(f));
+    viewOrigin = 'fitted';
 }
 
-/** Record that the view is now the user's rather than the default. */
+/** Record that the view is now the user's rather than one we chose. */
 function adjusted(): void {
-    pristine = false;
+    viewOrigin = 'custom';
     cancelAnimation();
 }
 
@@ -366,7 +377,7 @@ function applyRender(msg: RenderMessage): void {
         const f = { content, viewport: panelSize(), baseScale };
         const keep = sameDiagram && previous !== null;
         setViewBox(keep ? clampTranslation(normalizeAspect(previous, f.viewport), content) : initialBox(f));
-        if (!keep) pristine = true;
+        if (!keep) viewOrigin = 'initial';
     } else {
         minimap.release();
         minimap.hide();
@@ -428,9 +439,9 @@ function revealElement(el: SVGGraphicsElement): void {
     };
 
     if (!needsPan(target, vb)) return;
-    // The view is no longer the default framing, so a later resize must preserve it rather
-    // than snap back and undo the reveal.
-    pristine = false;
+    // The view is no longer one we chose, so a later resize must preserve it rather than snap
+    // back and undo the reveal.
+    viewOrigin = 'custom';
     animateTo(centerOn(vb, target, content));
 }
 
@@ -592,7 +603,7 @@ function onMinimapNavigate(left: number, top: number, mm: Size): void {
 new ResizeObserver(() => {
     const f = frame();
     if (!vb || !f || !navigable) return;
-    setViewBox(pristine ? initialBox(f) : clampTranslation(normalizeAspect(vb, f.viewport), f.content));
+    setViewBox(viewOnResize(viewOrigin, vb, f));
 }).observe(container);
 
 /**
@@ -659,10 +670,10 @@ if (restored) {
     vb = restored.vb ?? null;
     lastDocumentUri = restored.documentUri ?? null;
     lastDiagramName = restored.diagramName ?? null;
-    // A restored view is someone's deliberate framing, not the default one. Leaving it marked
-    // pristine would let the first resize after the replay — which the empty-to-diagram layer
+    // A restored view is someone's deliberate framing, not one we chose. Leaving it marked
+    // `initial` would let the first resize after the replay — which the empty-to-diagram layer
     // switch is enough to trigger — throw it away and snap back to the opening view.
-    if (vb) pristine = false;
+    if (vb) viewOrigin = 'custom';
 }
 
 // The extension replays its last render in response, so a reloaded webview comes back with the

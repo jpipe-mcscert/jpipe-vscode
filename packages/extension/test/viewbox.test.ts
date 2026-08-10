@@ -8,7 +8,9 @@ import {
     centerOn,
     clampTranslation,
     clientToUser,
+    boxAtScale,
     fitBox,
+    fitToWindowBox,
     initialBox,
     isPannable,
     kMax,
@@ -25,6 +27,7 @@ import {
     scaleOf,
     shouldShowMinimap,
     stepZoom,
+    viewOnResize,
     gestureIntent,
     NO_WHEEL_GESTURE,
     WHEEL_GESTURE_GAP_MS,
@@ -345,6 +348,112 @@ describe('initialBox', () => {
 
     test('naturalBox reads exactly 100% by construction', () => {
         expect(zoomPercent(naturalBox(frameOf()), frameOf())).toBe(100);
+    });
+});
+
+describe('fitToWindowBox', () => {
+    /**
+     * The fit control and the opening view diverge on purpose: opening is automatic and caps at
+     * intrinsic size so a four-node model does not fill a wide panel, while clicking "fit to
+     * window" is a request to fill it.
+     */
+    test('enlarges a small diagram to fill the panel, unlike the opening view', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 100, h: 80 });
+        expect(zoomPercent(initialBox(frame), frame)).toBe(100);
+        expect(zoomPercent(fitToWindowBox(frame), frame)).toBeGreaterThan(100);
+    });
+
+    test('agrees with the opening view when the diagram is too big to fit', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 4000, h: 3000 });
+        expect(fitToWindowBox(frame)).toEqual(initialBox(frame));
+    });
+
+    test('shows the whole diagram either way', () => {
+        for (const content of [{ x: 0, y: 0, w: 100, h: 80 }, { x: 0, y: 0, w: 4000, h: 3000 }]) {
+            const box = fitToWindowBox(frameOf(content));
+            expect(box.x).toBeLessThanOrEqual(content.x);
+            expect(box.y).toBeLessThanOrEqual(content.y);
+            expect(box.x + box.w).toBeGreaterThanOrEqual(content.x + content.w);
+            expect(box.y + box.h).toBeGreaterThanOrEqual(content.y + content.h);
+        }
+    });
+
+    test('keeps the aspect invariant', () => {
+        expect(aspect(fitToWindowBox(frameOf({ x: 0, y: 0, w: 100, h: 80 })))).toBeCloseTo(aspect(VIEWPORT), 9);
+    });
+
+    test('will not exceed the zoom ceiling the other controls respect', () => {
+        // A tiny diagram would otherwise fit at a magnification the wheel refuses to reach.
+        const frame = frameOf({ x: 0, y: 0, w: 8, h: 6 });
+        expect(scaleOf(fitToWindowBox(frame), VIEWPORT)).toBeCloseTo(kMax(frame), 6);
+        expect(zoomPercent(fitToWindowBox(frame), frame)).toBe(400);
+    });
+
+    test('stays centred on the diagram when the ceiling binds', () => {
+        const content: Box = { x: 100, y: 200, w: 8, h: 6 };
+        const box = fitToWindowBox(frameOf(content));
+        expect(box.x + box.w / 2).toBeCloseTo(content.x + content.w / 2, 9);
+        expect(box.y + box.h / 2).toBeCloseTo(content.y + content.h / 2, 9);
+    });
+});
+
+describe('viewOnResize', () => {
+    /**
+     * A resize has to honour why the view looks the way it does. This lives here rather than in
+     * the ResizeObserver callback precisely so it can be checked: observer delivery is tied to
+     * the frame loop, which the browser harness cannot drive.
+     */
+    const small = frameOf({ x: 0, y: 0, w: 100, h: 80 });
+    const taller: Size = { width: 800, height: 1000 };
+
+    test('an untouched view is re-derived, not adjusted', () => {
+        const grown = { ...small, viewport: taller };
+        expect(viewOnResize('initial', initialBox(small), grown)).toEqual(initialBox(grown));
+    });
+
+    test('an untouched small diagram still reads 100% after a resize', () => {
+        const grown = { ...small, viewport: taller };
+        expect(zoomPercent(viewOnResize('initial', initialBox(small), grown), grown)).toBe(100);
+    });
+
+    test('a fitted view re-fits the new panel', () => {
+        const grown = { ...small, viewport: taller };
+        expect(viewOnResize('fitted', fitToWindowBox(small), grown)).toEqual(fitToWindowBox(grown));
+    });
+
+    test('a fitted view still shows the whole diagram after a resize', () => {
+        const grown = { ...small, viewport: taller };
+        const box = viewOnResize('fitted', fitToWindowBox(small), grown);
+        expect(box.x).toBeLessThanOrEqual(small.content.x);
+        expect(box.x + box.w).toBeGreaterThanOrEqual(small.content.x + small.content.w);
+    });
+
+    test('a view the user framed keeps how much of the diagram is showing', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 4000, h: 3000 });
+        const chosen: Box = { x: 1000, y: 800, w: 400, h: 300 };
+        const out = viewOnResize('custom', chosen, { ...frame, viewport: taller });
+        expect(out.w * out.h).toBeCloseTo(chosen.w * chosen.h, 6);
+        expect(out.x + out.w / 2).toBeCloseTo(chosen.x + chosen.w / 2, 6);
+    });
+
+    test('every origin comes back matching the new panel aspect', () => {
+        const grown = { ...small, viewport: taller };
+        for (const origin of ['initial', 'fitted', 'custom'] as const) {
+            expect(aspect(viewOnResize(origin, initialBox(small), grown))).toBeCloseTo(aspect(taller), 9);
+        }
+    });
+});
+
+describe('boxAtScale', () => {
+    test('produces exactly the scale asked for', () => {
+        const frame = frameOf();
+        for (const k of [0.5, 1, BASE, 3]) {
+            expect(scaleOf(boxAtScale(frame, k), VIEWPORT)).toBeCloseTo(k, 9);
+        }
+    });
+
+    test('naturalBox is the intrinsic-scale case', () => {
+        expect(boxAtScale(frameOf(), BASE)).toEqual(naturalBox(frameOf()));
     });
 });
 
