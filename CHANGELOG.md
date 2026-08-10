@@ -1,6 +1,6 @@
 ## Changelog
 
-### v1.5.0 (Unreleased)
+### v1.5.0 (2026-08-09)
 - Leader: Sébastien Mosser
   - Features:
     - **Pan and zoom that actually work:** Scroll to zoom and drag to move around — or pinch on a trackpad. Zooming now homes in on wherever your pointer is, and runs from a quarter of the diagram's own size up to four times it. That range used to be measured against whatever the panel had shrunk the diagram to, so a large justification could be magnified to three times an already-illegible size and no further — and whatever you did manage to magnify was clipped off the edge of the panel with no way to reach it. Hold Shift while scrolling to pan instead of zoom
