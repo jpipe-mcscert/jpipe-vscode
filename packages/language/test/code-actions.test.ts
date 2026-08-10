@@ -496,18 +496,58 @@ justification J implements T {
         expect(titles.some(t => t.startsWith("Override '@support"))).toBe(true);
     });
 
-    // Widening stops at the line: a model-level repair offered from anywhere inside a long
-    // justification would put it in front of people who are not looking at it.
-    test('the fix is not offered from an unrelated line', async () => {
+    // A missing override is a fact about the whole justification, and `Convert to template` is
+    // already offered throughout it. Having the fix and the refactoring disagree about where they
+    // apply was the confusing part.
+    test('a model-level fix reaches the whole model, like the refactorings do', async () => {
         const lines = MISSING_OVERRIDE.split('\n');
-        const bodyLine = lines.findIndex(l => l.includes('ev supports st'));
-        const marked = [
-            ...lines.slice(0, bodyLine),
-            CURSOR + lines[bodyLine],
-            ...lines.slice(bodyLine + 1)
-        ].join('\n');
+        const start = lines.findIndex(l => l.startsWith('justification J'));
 
-        const titles = await actionTitles(marked, CodeActionKind.QuickFix);
-        expect(titles.some(t => t.startsWith("Override '@support"))).toBe(false);
+        for (let line = start; line < lines.length; line++) {
+            const marked = [
+                ...lines.slice(0, line),
+                CURSOR + lines[line],
+                ...lines.slice(line + 1)
+            ].join('\n');
+            const titles = await actionTitles(marked, CodeActionKind.QuickFix);
+            expect(
+                titles.some(t => t.startsWith("Override '@support")),
+                `no override fix offered on "${lines[line].trim()}"`
+            ).toBe(true);
+        }
+    });
+
+    // The other half of the rule: a fix about one declaration must not follow you around the
+    // model, or every line inside a justification ends up carrying every other line's repairs.
+    test('a declaration-level fix stays on its declaration', async () => {
+        const lines = [
+            'template T {',
+            '    @support abs is "Abstract"',
+            '    conclusion c is "C"',
+            '    strategy s is "S"',
+            '    abs supports s',
+            '    s supports c',
+            '}',
+            'justification J implements T {',
+            '    strategy T:abs is "Wrong keyword"',
+            '    conclusion own is "Own"',
+            '    strategy st is "St"',
+            '    evidence ev is "Ev"',
+            '    ev supports st',
+            '    st supports own',
+            '}'
+        ];
+        const declaration = lines.findIndex(l => l.includes('strategy T:abs'));
+
+        for (let line = 0; line < lines.length; line++) {
+            const marked = [
+                ...lines.slice(0, line),
+                CURSOR + lines[line],
+                ...lines.slice(line + 1)
+            ].join('\n');
+            const titles = await actionTitles(marked, CodeActionKind.QuickFix);
+            const offered = titles.some(t => t.startsWith("Change 'strategy' to"));
+            expect(offered, `line ${line}: "${lines[line].trim()}"`).toBe(line === declaration);
+        }
     });
 });
