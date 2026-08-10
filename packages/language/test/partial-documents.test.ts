@@ -126,3 +126,64 @@ describe('an element with no name', () => {
         expect(services.Jpipe.references.NameProvider.getName(nameless!)).toBeUndefined();
     });
 });
+
+describe('no action edits outside the document', () => {
+
+    /**
+     * An edit naming a line the document does not have is rejected by the editor with a popup,
+     * not ignored — so an action that anchors to "the line after the last one" breaks on exactly
+     * the files where the last line is the last thing typed. These shapes all end without the
+     * tidy trailing newline a finished file has.
+     */
+    const RAGGED: ReadonlyArray<readonly [string, string]> = [
+        ['relation sharing the closing line',
+         'justification J {\n    conclusion c is "C"\n    strategy s is "S"\n    s supports c }'],
+        ['the whole model on one line',
+         'justification J { conclusion c is "C" strategy s is "S" s supports c }'],
+        ['declaration sharing the closing line',
+         'justification J {\n    conclusion c is "C" }'],
+        ['relations written before declarations',
+         'justification J {\n    s supports c\n    conclusion c is "C"\n    strategy s is "S"\n}'],
+        ['no trailing newline after the brace',
+         'justification J {\n    conclusion c is "C"\n    strategy s is "S"\n    s supports c\n}'],
+        ['a template ending raggedly',
+         'template T {\n    @support a is "A"\n    conclusion c is "C"\n    a supports c }'],
+        ['a composition with no config',
+         'justification A { conclusion c is "C" }\njustification B is assemble(A)'],
+        ['an unresolvable load and nothing else',
+         'load "nowhere.jd"'],
+        ['a model with an empty body',
+         'template T {\n    @support a is "A"\n    conclusion c is "C"\n    a supports c\n}\njustification J implements T {}']
+    ];
+
+    test.each(RAGGED)('%s', async (_label, source) => {
+        const document = await parse(source);
+        const uri = document.uri.toString();
+        const lineCount = source.split('\n').length;
+        const lastLineLength = source.split('\n')[lineCount - 1].length;
+
+        const produced = await services.Jpipe.lsp.CodeActionProvider!.getCodeActions(document, {
+            textDocument: { uri },
+            range: {
+                start: document.textDocument.positionAt(0),
+                end: document.textDocument.positionAt(source.length)
+            },
+            context: { diagnostics: document.diagnostics ?? [] }
+        });
+
+        const offences: string[] = [];
+        for (const action of produced ?? []) {
+            if (!('title' in action) || !('edit' in action)) continue;
+            for (const edit of action.edit?.changes?.[uri] ?? []) {
+                for (const [which, position] of [['start', edit.range.start], ['end', edit.range.end]] as const) {
+                    if (position.line >= lineCount) {
+                        offences.push(`'${action.title}' ${which} line ${position.line}, document has ${lineCount}`);
+                    } else if (position.line === lineCount - 1 && position.character > lastLineLength) {
+                        offences.push(`'${action.title}' ${which} character ${position.character} past the last line`);
+                    }
+                }
+            }
+        }
+        expect(offences).toEqual([]);
+    });
+});

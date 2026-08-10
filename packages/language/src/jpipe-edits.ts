@@ -85,10 +85,39 @@ export function createLoadEdit(document: LangiumDocument<Unit>, relativePath: st
     }];
 }
 
-/** Where a new element declaration belongs inside a model, and how far to indent it. */
+/**
+ * Where new lines go: immediately *after* this position, each on its own line.
+ *
+ * An anchor rather than a line number, because "the line after the last declaration" is not
+ * always a line that exists. A model still being typed often ends `s supports c }` with no
+ * newline after it, and asking for the line beyond that produced an edit outside the document —
+ * which the editor rejects with a popup rather than ignoring. Anchoring to a position that
+ * definitely exists cannot run off the end, and keeps the insertion inside the braces.
+ */
 export interface BodyInsertion {
-    readonly line: number;
+    readonly position: Position;
     readonly indent: string;
+}
+
+/** The edit writing `lines` at an insertion point. */
+export function insertAfterEdit(insertion: BodyInsertion, lines: readonly string[]): TextEdit {
+    return {
+        range: { start: insertion.position, end: insertion.position },
+        newText: lines.map(line => `\n${insertion.indent}${line}`).join('')
+    };
+}
+
+/** The point just inside a model's opening brace, for a body with nothing to sit after. */
+function insideOpeningBrace(
+    document: LangiumDocument<Unit>,
+    model: Justification | Template
+): BodyInsertion | undefined {
+    const modelNode = model.$cstNode;
+    if (!modelNode) return undefined;
+    const open = document.textDocument.getText().indexOf('{', modelNode.offset);
+    if (open < 0) return undefined;
+    const position = document.textDocument.positionAt(open + 1);
+    return { position, indent: `${indentationOf(document, position.line)}    ` };
 }
 
 /**
@@ -104,26 +133,33 @@ export function findElementInsertion(
     document: LangiumDocument<Unit>,
     model: Justification | Template
 ): BodyInsertion | undefined {
-    const body = model.contents;
-    const modelNode = model.$cstNode;
-    if (!body || !modelNode) return undefined;
-
-    const lastElement = body.body.at(-1)?.$cstNode;
+    const lastElement = model.contents?.body.at(-1)?.$cstNode;
     if (lastElement) {
-        const line = document.textDocument.positionAt(lastElement.end).line;
-        return { line: line + 1, indent: indentationOf(document, line) };
+        return {
+            position: lastElement.range.end,
+            indent: indentationOf(document, lastElement.range.start.line)
+        };
     }
+    // Nothing to sit after — a body of relations only, or none at all.
+    return insideOpeningBrace(document, model);
+}
 
-    const firstRelation = body.rels.at(-1)?.$cstNode;
-    if (firstRelation) {
-        const line = document.textDocument.positionAt(firstRelation.offset).line;
-        return { line, indent: indentationOf(document, line) };
+/**
+ * Where a new relation belongs: after the relations already there, else after the declarations,
+ * so the two blocks stay apart the way models are conventionally written.
+ */
+export function findRelationInsertion(
+    document: LangiumDocument<Unit>,
+    model: Justification | Template
+): BodyInsertion | undefined {
+    const lastRelation = model.contents?.rels.at(-1)?.$cstNode;
+    if (lastRelation) {
+        return {
+            position: lastRelation.range.end,
+            indent: indentationOf(document, lastRelation.range.start.line)
+        };
     }
-
-    // A body with neither is not reachable through the grammar, but the header's own line is the
-    // one sane answer if it ever becomes so.
-    const headerLine = document.textDocument.positionAt(modelNode.offset).line;
-    return { line: headerLine + 1, indent: `${indentationOf(document, headerLine)}    ` };
+    return findElementInsertion(document, model);
 }
 
 /**
@@ -144,9 +180,9 @@ export function insertDeclarationsEdit(
 ): TextEdit | undefined {
     if (declarations.length === 0) return undefined;
 
-    const existing = findElementInsertion(document, model);
+    const existing = model.contents ? findElementInsertion(document, model) : undefined;
     if (existing) {
-        return insertLinesEdit(existing.line, declarations, existing.indent);
+        return insertAfterEdit(existing, declarations);
     }
 
     // No body: write inside the braces, opening the block out onto its own lines.

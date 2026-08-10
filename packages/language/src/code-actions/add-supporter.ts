@@ -17,7 +17,7 @@ import {
     type Template
 } from '../generated/ast.js';
 import { nodeForDiagnostic } from '../jpipe-ast-context.js';
-import { findElementInsertion, indentationOf, insertLinesEdit } from '../jpipe-edits.js';
+import { findElementInsertion, findRelationInsertion, insertAfterEdit } from '../jpipe-edits.js';
 import { JpipeIssue } from '../jpipe-diagnostic-codes.js';
 import { freshLocalId, renderElement, renderRelation, type ElementKeyword } from '../jpipe-render.js';
 import { qualifiedIdText } from '../jpipe-utils.js';
@@ -42,8 +42,9 @@ export const addSupporter = quickFix<
         const owner = ownerOf(element);
         if (!owner) return [];
 
-        const insertion = findElementInsertion(context.document, owner);
-        if (!insertion) return [];
+        const declarationAt = findElementInsertion(context.document, owner);
+        const relationAt = findRelationInsertion(context.document, owner);
+        if (!declarationAt || !relationAt) return [];
 
         // A conclusion may only be supported by a strategy; a strategy by evidence or a
         // sub-conclusion. Evidence comes first because it ends the chain rather than extending it.
@@ -52,22 +53,21 @@ export const addSupporter = quickFix<
             : ['evidence', 'sub-conclusion'];
 
         const targetId = qualifiedIdText(element.id);
-        const relationIndent = relationIndentFor(context, owner, insertion.indent);
-
-        const relationAt = relationLine(context, owner);
+        const samePlace = declarationAt.position.line === relationAt.position.line
+            && declarationAt.position.character === relationAt.position.character;
 
         return candidates.map((keyword, index) => {
             const id = freshLocalId(owner, stemFor(keyword));
             const declaration = renderElement(keyword, id, '');
             const relation = renderRelation(id, targetId);
 
-            // Where the model has no relations yet, both lines land at the same offset. Two
-            // zero-width edits at one position have no defined order, so they become one edit.
-            const edits = relationAt === insertion.line
-                ? [insertLinesEdit(insertion.line, [declaration, relation], insertion.indent)]
+            // With no relations yet, both anchor to the same spot. Two zero-width edits at one
+            // position have no defined order between them, so they become one.
+            const edits = samePlace
+                ? [insertAfterEdit(declarationAt, [declaration, relation])]
                 : [
-                    insertLinesEdit(insertion.line, [declaration], insertion.indent),
-                    insertLinesEdit(relationAt, [relation], relationIndent)
+                    insertAfterEdit(declarationAt, [declaration]),
+                    insertAfterEdit(relationAt, [relation])
                 ];
 
             return {
@@ -103,20 +103,4 @@ function ownerOf(element: JustificationElement): Justification | Template | unde
     return owner && (isJustification(owner) || isTemplate(owner)) ? owner : undefined;
 }
 
-/** Relations go after the ones already there, or at the end of the body if there are none. */
-function relationLine(context: JpipeActionContext, owner: Justification | Template): number {
-    const lastRelation = owner.contents?.rels.at(-1)?.$cstNode;
-    if (lastRelation) return lastRelation.range.end.line + 1;
-    const lastElement = owner.contents?.body.at(-1)?.$cstNode;
-    if (lastElement) return lastElement.range.end.line + 1;
-    return context.document.textDocument.positionAt(owner.$cstNode!.offset).line + 1;
-}
 
-function relationIndentFor(
-    context: JpipeActionContext,
-    owner: Justification | Template,
-    fallback: string
-): string {
-    const lastRelation = owner.contents?.rels.at(-1)?.$cstNode;
-    return lastRelation ? indentationOf(context.document, lastRelation.range.start.line) : fallback;
-}
