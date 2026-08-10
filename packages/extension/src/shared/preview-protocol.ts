@@ -53,7 +53,14 @@ export interface DiagnosticMessage {
 
 export type HostToWebview =
     | RenderMessage
-    | { type: 'highlight'; name: string | null }
+    /**
+     * The element under the cursor.
+     *
+     * `model` is the model it is declared in, and is required to identify it: element ids are
+     * unique only within a model, and every justification tends to have a `c` and an `s`. Without
+     * it the symbol table lights up one row per model rather than the one the cursor is in.
+     */
+    | { type: 'highlight'; name: string | null; model: string | null }
     | { type: 'setUnsaved'; unsaved: boolean }
     | { type: 'view'; mode: ViewMode }
     | DiagnosticMessage

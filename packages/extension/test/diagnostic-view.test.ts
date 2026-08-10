@@ -465,11 +465,33 @@ describe('the symbols tab', () => {
 
     test('follows the editor cursor', () => {
         view.show(cleanTemplate, '');
-        view.setCursorSymbol('s');
+        view.setCursorSymbol('s', 't');
         const current = elements.panel.querySelectorAll('tr.current');
         expect(current).toHaveLength(1);
         expect(current[0].textContent).toContain('s');
-        view.setCursorSymbol(null);
+        view.setCursorSymbol(null, null);
+        expect(elements.panel.querySelectorAll('tr.current')).toHaveLength(0);
+    });
+
+    test('marks the one row the cursor is in, not the same id in every model', () => {
+        // Element ids are unique only within a model, and all three of this fixture's models
+        // declare a `c`. Matching on the id alone lit up all of them.
+        view.show(unsupportedElements, '');
+        view.setCursorSymbol('c', 'missing_support_for_strategy');
+        const current = elements.panel.querySelectorAll('tr.current');
+        expect(current).toHaveLength(1);
+        expect(current[0].querySelector('.diag-loc')?.textContent).toBe('14:15');
+    });
+
+    test('a symbol with no model to place it in is not guessed at', () => {
+        view.show(unsupportedElements, '');
+        view.setCursorSymbol('c', null);
+        expect(elements.panel.querySelectorAll('tr.current')).toHaveLength(0);
+    });
+
+    test('a cursor in a model that declares no such element marks nothing', () => {
+        view.show(unsupportedElements, '');
+        view.setCursorSymbol('sc', 'missing_support_for_conclusion');
         expect(elements.panel.querySelectorAll('tr.current')).toHaveLength(0);
     });
 });

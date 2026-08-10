@@ -152,8 +152,14 @@ export class DiagnosticView {
     private textReport: string | null = null;
     /** The report the current view state belongs to. See `DiagnosticViewState.source`. */
     private lastSource: string | null = null;
-    /** The element id under the editor cursor, for the Symbols tab to follow. */
-    private cursorSymbol: string | null = null;
+    /**
+     * The element under the editor cursor, for the Symbols tab to follow.
+     *
+     * Both halves are needed. An element id is unique only inside its own model, and nearly every
+     * justification declares a `c` and an `s`, so matching on the id alone marks one row per
+     * model instead of the one the cursor is actually in.
+     */
+    private cursorSymbol: { id: string; model: string } | null = null;
 
     constructor(
         private readonly elements: DiagnosticViewElements,
@@ -231,10 +237,16 @@ export class DiagnosticView {
         if (this.effectiveFace() === 'text') this.applyFace();
     }
 
-    /** The element under the editor cursor, or null. Drives the Symbols tab's follow behaviour. */
-    setCursorSymbol(name: string | null): void {
-        if (name === this.cursorSymbol) return;
-        this.cursorSymbol = name;
+    /**
+     * The element under the editor cursor, or null. Drives the Symbols tab's follow behaviour.
+     *
+     * A name without a model is not enough to identify a row, so it is treated as no highlight
+     * rather than guessed at.
+     */
+    setCursorSymbol(name: string | null, model: string | null): void {
+        const next = name !== null && model !== null ? { id: name, model } : null;
+        if (next?.id === this.cursorSymbol?.id && next?.model === this.cursorSymbol?.model) return;
+        this.cursorSymbol = next;
         if (this.tab === 'symbols' && this.effectiveFace() === 'report') this.renderPanel();
     }
 
@@ -679,7 +691,9 @@ export class DiagnosticView {
 
             for (const symbol of symbols) {
                 const row = this.symbolRow(symbol, report);
-                if (this.cursorSymbol !== null && symbol.id === this.cursorSymbol) {
+                if (this.cursorSymbol !== null
+                    && symbol.id === this.cursorSymbol.id
+                    && model.name === this.cursorSymbol.model) {
                     row.classList.add('current');
                     cursorRow ??= row;
                 }

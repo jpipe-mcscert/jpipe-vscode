@@ -148,6 +148,8 @@ let viewOrigin: ViewOrigin = 'initial';
 let zoomSensitivity = 1;
 let highlightEnabled = false;
 let highlightName: string | null = null;
+/** The model `highlightName` belongs to; an element id alone does not identify a row. */
+let highlightModel: string | null = null;
 let lastMatched: SVGGraphicsElement | null = null;
 
 let animation = 0;
@@ -419,19 +421,24 @@ function applyRender(msg: RenderMessage): void {
 
     lastDocumentUri = msg.documentUri;
     lastDiagramName = msg.diagramName;
-    applyHighlight(msg.highlight);
+    applyHighlight(msg.highlight, msg.diagramName);
 }
 
 /* -------------------------------------------------------------- highlight */
 
-function applyHighlight(name: string | null): void {
+/**
+ * `model` is the model the element is declared in. The diagram only ever shows one model, so it
+ * ignores it; the symbol table shows them all, and an element id is unique only within its model.
+ */
+function applyHighlight(name: string | null, model: string | null): void {
     highlightName = name;
+    highlightModel = model;
     // The same signal drives both views, but not on the same terms. Dimming a diagram is
     // intrusive enough to be opt-in; marking a row in a table is not, and the control that opts
     // in lives in the diagram toolbar — which the diagnostic view does not show. Gating the
     // symbol table on it would mean leaving the diagnostic view, enabling highlighting, and
     // coming back, to get behaviour the other panel has no say in.
-    diagnosticView.setCursorSymbol(name);
+    diagnosticView.setCursorSymbol(name, model);
     if (!svgEl) return;
 
     if (!highlightEnabled || !name) {
@@ -597,7 +604,7 @@ highlightToggle.addEventListener('click', () => {
     highlightToggle.classList.toggle('active', highlightEnabled);
     highlightToggle.setAttribute('aria-pressed', String(highlightEnabled));
     lastMatched = null;
-    applyHighlight(highlightName);
+    applyHighlight(highlightName, highlightModel);
     persist();
 });
 
@@ -661,7 +668,7 @@ new MutationObserver(() => {
     const keep = vb;
     installDiagram();
     if (keep && content) setViewBox(clampTranslation(normalizeAspect(keep, panelSize()), content));
-    applyHighlight(highlightName);
+    applyHighlight(highlightName, highlightModel);
 }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
 /* --------------------------------------------------------------- messages */
@@ -673,7 +680,7 @@ window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
             applyRender(msg);
             break;
         case 'highlight':
-            applyHighlight(msg.name);
+            applyHighlight(msg.name, msg.model);
             break;
         case 'setUnsaved':
             setUnsaved(msg.unsaved);

@@ -417,7 +417,10 @@ export class PreviewProvider {
         let name = await this.getSymbolNameAtCursor(document, editor);
         if (name === diagramName) name = null;
         if (this.logger.shouldLog('trace')) this.logger.trace(`Highlight-only update: '${name ?? '(none)'}' in '${diagramName ?? '(none)'}'`);
-        this.post({ type: 'highlight', name: name ?? null });
+        // The model goes with the name. An element id only identifies an element within its own
+        // model — nearly every justification has a `c` and an `s` — so the symbol table needs
+        // both to mark one row rather than one row per model.
+        this.post({ type: 'highlight', name: name ?? null, model: diagramName ?? null });
     }
     
     /**
