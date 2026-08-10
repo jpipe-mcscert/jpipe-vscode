@@ -197,7 +197,10 @@ function deduplicate(actions: readonly CodeAction[]): CodeAction[] {
     const seen = new Set<string>();
     const unique: CodeAction[] = [];
     for (const action of actions) {
-        const key = `${action.title} ${JSON.stringify(action.edit ?? null)}`;
+        // `\u0000` written as an escape, not as the character itself: a title cannot contain
+        // one, which is what makes it an unambiguous separator, but an invisible control
+        // character sitting in a source file is one an editor can silently eat.
+        const key = `${action.title}\u0000${JSON.stringify(action.edit ?? null)}`;
         if (seen.has(key)) continue;
         seen.add(key);
         unique.push(action);

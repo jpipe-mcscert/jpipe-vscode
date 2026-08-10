@@ -6,7 +6,7 @@
  * do is as much a part of its behaviour as what it does. Each block therefore pins both: the
  * rewrite, and the shapes it must leave alone.
  */
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { CodeActionKind } from 'vscode-languageserver';
 import { Diagnostic, DiagnosticSeverity } from 'vscode-languageserver-types';
 import {
@@ -363,6 +363,42 @@ describe('extract-template', () => {
         expect(after).toContain('@support leaf is "Leaf"');
         expect(after).toContain('sub-conclusion mid is "Mid"');
         expect(after).not.toContain('@support mid');
+    });
+
+    /**
+     * Every name is copied into the template and then back into the rewritten justification, so a
+     * name still being typed reaches the file twice. Before this, a header reading `justification `
+     * offered "Extract template from 'undefined'" and wrote `template undefinedTemplate`; an
+     * element with no id yet produced `@support  is "…"` beside the override `evidence JTemplate:`;
+     * and an element with no label threw outright, logging an error on each keystroke.
+     */
+    test.each([
+        ['the model has no name yet',
+         `justification ${CURSOR} {\n    evidence e is "E"\n    strategy s is "S"\n    conclusion c is "C"\n    e supports s\n    s supports c\n}`],
+        ['an element has no id yet',
+         `justification ${CURSOR}J {\n    evidence  is "E"\n    evidence e2 is "E2"\n    strategy s is "S"\n    conclusion c is "C"\n    e2 supports s\n    s supports c\n}`],
+        ['an element has no label yet',
+         `justification ${CURSOR}J {\n    evidence e is\n    strategy s is "S"\n    conclusion c is "C"\n    e supports s\n    s supports c\n}`]
+    ])('is not offered while %s', async (_label, source) => {
+        // Both halves matter. The provider catches whatever a module throws, so an action that
+        // blows up on a half-written model *also* offers nothing — and a test asserting only the
+        // absence would pass on the crash it was written to rule out.
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            expect(await actionTitles(source, EXTRACT_TEMPLATE_KIND)).toEqual([]);
+            expect(logged.mock.calls.flat(), 'it should decline, not throw and be caught').toEqual([]);
+        } finally {
+            logged.mockRestore();
+        }
+    });
+
+    // The guard keys on the names this action copies, not on the file parsing: an unfinished line
+    // at the bottom is no reason to refuse to extract from a finished model at the top.
+    test('is still offered when the incomplete model is a different one', async () => {
+        expect(await actionTitles(
+            `${ARGUMENT}\njustification `,
+            EXTRACT_TEMPLATE_KIND
+        )).toContain("Extract template from 'Release'");
     });
 
     test('is not offered where there is no evidence to abstract', async () => {

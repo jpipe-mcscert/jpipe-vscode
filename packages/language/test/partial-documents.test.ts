@@ -125,6 +125,34 @@ describe('an element with no name', () => {
         expect(nameless, 'fixture should contain an element with no id').toBeDefined();
         expect(services.Jpipe.references.NameProvider.getName(nameless!)).toBeUndefined();
     });
+
+    /**
+     * The same fault as the outline's, in the scope provider: Langium refuses to describe a node
+     * with no name and *throws*, so one element being typed took down the scope every relation in
+     * the model resolves through. It surfaced as a linking failure on each of them — "An error
+     * occurred while resolving reference to 's'" — rather than as anything about the element the
+     * author was actually writing.
+     */
+    test('does not break the scope the relations around it resolve through', async () => {
+        const document = await parse(
+            'justification J {\n'
+            + '    evidence  is "Being typed"\n'
+            + '    evidence e2 is "E2"\n'
+            + '    strategy s is "S"\n'
+            + '    conclusion c is "C"\n'
+            + '    e2 supports s\n'
+            + '    s supports c\n'
+            + '}');
+        const messages = (document.diagnostics ?? []).map(d => Diagnostic.getMessageString(d));
+        expect(messages.filter(m => m.includes('An error occurred'))).toEqual([]);
+
+        const relations = document.parseResult.value.body[0].contents?.rels ?? [];
+        expect(relations.length, 'fixture should contain relations').toBe(2);
+        for (const relation of relations) {
+            expect(relation.from.ref, `'${relation.from.$refText}' should still resolve`).toBeDefined();
+            expect(relation.to.ref, `'${relation.to.$refText}' should still resolve`).toBeDefined();
+        }
+    });
 });
 
 describe('no action edits outside the document', () => {

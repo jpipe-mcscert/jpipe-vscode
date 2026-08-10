@@ -6,6 +6,7 @@ import {
     isTemplate,
     type Composition,
     type Justification,
+    type JustificationElement,
     type Template,
     type Unit
 } from './generated/ast.js';
@@ -106,21 +107,30 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
 
         const desc: AstNodeDescription[] = [];
 
+        /**
+         * Naming a description `''` is not merely useless, it throws: Langium refuses to describe a
+         * node with no name, and the throw surfaces per reference as "An error occurred while
+         * resolving reference to 'x'". An element being typed has no id yet, so every relation in
+         * the model would fail to link while the author writes one — the same fault the outline
+         * had, in a different provider.
+         */
+        const named = (element: JustificationElement) => qualifiedIdText(element.id) !== '';
+
         // Primary entries: full qualified keys.
-        for (const e of localElements) {
+        for (const e of localElements.filter(named)) {
             desc.push(this.descriptions.createDescription(e, qualifiedIdText(e.id)));
         }
         for (const { element, key } of inheritedEntries) {
-            desc.push(this.descriptions.createDescription(element, key));
+            if (key !== '') desc.push(this.descriptions.createDescription(element, key));
         }
 
         // Short-name aliases: only when unambiguous (two-pass resolution per ADR 0012).
-        for (const e of localElements) {
+        for (const e of localElements.filter(named)) {
             const s = localName(e.id);
             if ((shortNameCount.get(s) ?? 0) === 1)
                 desc.push(this.descriptions.createDescription(e, s));
         }
-        for (const { element } of inheritedEntries) {
+        for (const { element } of inheritedEntries.filter(entry => named(entry.element))) {
             const s = localName(element.id);
             if ((shortNameCount.get(s) ?? 0) === 1)
                 desc.push(this.descriptions.createDescription(element, s));

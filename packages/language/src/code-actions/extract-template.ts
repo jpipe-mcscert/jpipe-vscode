@@ -43,6 +43,19 @@ export const extractTemplate = refactoring({
 
         const elements = getLocalElements(justification);
         const relations = justification.contents?.rels ?? [];
+
+        // Every name here is copied into the extracted template and then back into the rewritten
+        // justification, so one that is still being typed reaches the file twice. Without this,
+        // a model whose header reads `justification ` offered "Extract template from 'undefined'"
+        // and wrote `template undefinedTemplate`, and an element with no id yet produced
+        // `@support  is "…"` alongside the override `evidence JTemplate: is "…"`.
+        //
+        // Keyed on what this action actually copies rather than on `parseResult.parserErrors`:
+        // an unfinished line at the bottom of a file is no reason to refuse to extract from a
+        // model at the top of it that is complete.
+        if (!justification.id) return [];
+        if (!elements.every(isFullyNamed)) return [];
+
         const leaves = leafEvidence(elements, relations);
         if (leaves.length === 0) return [];
         // Nothing is left to abstract if every element is a leaf.
@@ -119,4 +132,9 @@ function justificationAtCursor(context: JpipeActionContext): Justification | und
             && context.offsets.end <= node.end;
     });
     return model && isJustification(model) ? model : undefined;
+}
+
+/** Whether an element has both the pieces this action has to reproduce: an id and a label. */
+function isFullyNamed(element: JustificationElement): boolean {
+    return qualifiedIdText(element.id) !== '' && typeof element.name === 'string';
 }
