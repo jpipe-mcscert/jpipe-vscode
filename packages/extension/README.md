@@ -42,8 +42,9 @@ it: write the declaration a template's `@support` demands, correct a mistyped op
 config key, add the missing `load` for a model you referenced, or wire up a conclusion that
 nothing supports yet.
 
-Three more are offered for wherever your cursor is, under **Refactor** (`⌃⇧R` /
-`Ctrl+Shift+R`):
+Three more are offered for wherever your cursor is. Reach them from the lightbulb, from
+**Refactor…** in the right-click menu (or `⌃⇧R` / `Ctrl+Shift+R`), or by name in the command
+palette — *jPipe: Convert Justification to Template*, *Sort Elements*, *Extract Template*:
 
   - **Convert to template / justification** — switch what a model is. Converting a template says
     up front how many `@support` elements it would drop.

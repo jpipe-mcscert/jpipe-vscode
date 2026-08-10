@@ -13,7 +13,15 @@
 import { describe, expect, test } from 'vitest';
 import { EmptyFileSystem } from 'langium';
 import { CodeActionKind } from 'vscode-languageserver';
-import { JPIPE_REFACTORINGS, ORGANIZE_LOADS_KIND, createJpipeServices, providedCodeActionKinds } from 'jpipe-language';
+import {
+    CONVERT_MODEL_KIND,
+    EXTRACT_TEMPLATE_KIND,
+    JPIPE_REFACTORINGS,
+    ORGANIZE_LOADS_KIND,
+    SORT_ELEMENTS_KIND,
+    createJpipeServices,
+    providedCodeActionKinds
+} from 'jpipe-language';
 
 /** The capabilities the server would return from `initialize`. */
 async function capabilities() {
@@ -60,6 +68,23 @@ describe('the code action capability', () => {
             expect(advertised, `'${refactoring.id}' provides an unadvertised kind`)
                 .toContain(refactoring.actionKind);
         }
+    });
+
+    // Each refactoring has its own sub-kind so a command can ask for exactly one of them. That
+    // only works while they stay *inside* the generic kinds, which is what keeps them in the
+    // lightbulb and under Refactor…
+    test.each([
+        [CONVERT_MODEL_KIND, CodeActionKind.RefactorRewrite],
+        [SORT_ELEMENTS_KIND, CodeActionKind.RefactorRewrite],
+        [EXTRACT_TEMPLATE_KIND, CodeActionKind.Refactor]
+    ])('%s still answers to %s', (kind, generic) => {
+        expect(kind === generic || kind.startsWith(`${generic}.`)).toBe(true);
+    });
+
+    test('each refactoring has a kind of its own', () => {
+        const kinds = JPIPE_REFACTORINGS.map(r => r.actionKind);
+        expect(new Set(kinds).size, 'two refactorings share a kind, so a command cannot target one')
+            .toBe(kinds.length);
     });
 
     test('claims nothing it cannot produce', async () => {

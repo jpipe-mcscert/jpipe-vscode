@@ -24,9 +24,12 @@ const ORDER: readonly AnyElementKeyword[] = [
     'conclusion'
 ];
 
+/** This action's own kind, so a command can ask for it by name. See `convert-model-kind`. */
+export const SORT_ELEMENTS_KIND = `${CodeActionKind.RefactorRewrite}.jpipe.sortElements`;
+
 export const sortElements = refactoring({
     id: 'sort-elements',
-    actionKind: CodeActionKind.RefactorRewrite,
+    actionKind: SORT_ELEMENTS_KIND,
 
     create(context): CodeAction[] {
         const model = modelAtCursor(context);
@@ -52,7 +55,7 @@ export const sortElements = refactoring({
 
         return [{
             title: 'Sort elements',
-            kind: CodeActionKind.RefactorRewrite,
+            kind: SORT_ELEMENTS_KIND,
             edit: {
                 changes: {
                     [context.document.uri.toString()]: [{ range: { start, end }, newText: rendered }]

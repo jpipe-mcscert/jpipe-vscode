@@ -191,6 +191,24 @@
                 "title": "Organize Loads",
                 "category": "jPipe",
                 "icon": "$(list-ordered)"
+            },
+            {
+                "command": "jpipe.convertModelKind",
+                "title": "Convert Justification to Template (or back)",
+                "category": "jPipe",
+                "icon": "$(replace)"
+            },
+            {
+                "command": "jpipe.sortElements",
+                "title": "Sort Elements in Reading Order",
+                "category": "jPipe",
+                "icon": "$(sort-precedence)"
+            },
+            {
+                "command": "jpipe.extractTemplate",
+                "title": "Extract Template from Justification",
+                "category": "jPipe",
+                "icon": "$(symbol-interface)"
             }
         ],
         "submenus": [

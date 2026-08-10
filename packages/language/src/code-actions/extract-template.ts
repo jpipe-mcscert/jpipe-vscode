@@ -27,9 +27,12 @@ import { keywordFor, renderElement, renderRelation } from '../jpipe-render.js';
 import { getLocalElements, qualifiedIdText } from '../jpipe-utils.js';
 import { refactoring, type JpipeActionContext } from './types.js';
 
+/** This action's own kind, so a command can ask for it by name. See `convert-model-kind`. */
+export const EXTRACT_TEMPLATE_KIND = `${CodeActionKind.RefactorExtract}.jpipe.template`;
+
 export const extractTemplate = refactoring({
     id: 'extract-template',
-    actionKind: CodeActionKind.RefactorExtract,
+    actionKind: EXTRACT_TEMPLATE_KIND,
 
     create(context): CodeAction[] {
         const justification = justificationAtCursor(context);
@@ -79,7 +82,7 @@ export const extractTemplate = refactoring({
 
         return [{
             title: `Extract template from '${justification.id}'`,
-            kind: CodeActionKind.RefactorExtract,
+            kind: EXTRACT_TEMPLATE_KIND,
             edit: {
                 changes: {
                     [context.document.uri.toString()]: [{

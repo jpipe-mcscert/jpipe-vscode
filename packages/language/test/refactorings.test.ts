@@ -9,7 +9,12 @@
 import { describe, expect, test } from 'vitest';
 import { CodeActionKind } from 'vscode-languageserver';
 import { Diagnostic, DiagnosticSeverity } from 'vscode-languageserver-types';
-import { ORGANIZE_LOADS_KIND } from 'jpipe-language';
+import {
+    CONVERT_MODEL_KIND,
+    EXTRACT_TEMPLATE_KIND,
+    ORGANIZE_LOADS_KIND,
+    SORT_ELEMENTS_KIND
+} from 'jpipe-language';
 import { CURSOR, actionTitles, applyCodeAction, parseValidated } from './code-action-helper.js';
 
 const ORGANIZE = ORGANIZE_LOADS_KIND;
@@ -85,6 +90,37 @@ describe('organize-loads', () => {
         );
         expect(after).toContain('load "z.jd"');
         expect(after).toContain('load "a.jd"');
+    });
+});
+
+// The lightbulb asks with no filter; Refactor… asks for `refactor`; a command asks for one
+// specific kind. All three have to reach these actions or the only way in is a shortcut.
+describe('every route to a refactoring', () => {
+
+    const MODEL = `justification ${CURSOR}J {
+    conclusion c is "C"
+    strategy s is "S"
+    evidence e is "E"
+    e supports s
+    s supports c
+}`;
+
+    test.each([
+        ['the lightbulb', undefined],
+        ['Refactor…', CodeActionKind.Refactor]
+    ])('%s offers all of them', async (_label, only) => {
+        const titles = await actionTitles(MODEL, only);
+        expect(titles).toContain('Convert to template');
+        expect(titles).toContain('Sort elements');
+        expect(titles).toContain("Extract template from 'J'");
+    });
+
+    test.each([
+        [CONVERT_MODEL_KIND, 'Convert to template'],
+        [SORT_ELEMENTS_KIND, 'Sort elements'],
+        [EXTRACT_TEMPLATE_KIND, "Extract template from 'J'"]
+    ])('a command asking for %s gets only that one', async (kind, expected) => {
+        expect(await actionTitles(MODEL, kind)).toEqual([expected]);
     });
 });
 

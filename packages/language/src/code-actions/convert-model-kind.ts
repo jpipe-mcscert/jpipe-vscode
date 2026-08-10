@@ -18,9 +18,16 @@ import { deleteLinesEdit } from '../jpipe-edits.js';
 import { getLocalElements, qualifiedIdText } from '../jpipe-utils.js';
 import { refactoring, type JpipeActionContext } from './types.js';
 
+/**
+ * This action's own kind. A sub-kind of `refactor.rewrite` rather than the bare kind, so a
+ * command can ask for *this* refactoring; it still matches `refactor` and `refactor.rewrite` by
+ * prefix, so the lightbulb and the Refactor menu are unaffected.
+ */
+export const CONVERT_MODEL_KIND = `${CodeActionKind.RefactorRewrite}.jpipe.convertModelKind`;
+
 export const convertModelKind = refactoring({
     id: 'convert-model-kind',
-    actionKind: CodeActionKind.RefactorRewrite,
+    actionKind: CONVERT_MODEL_KIND,
 
     create(context): CodeAction[] {
         const model = modelAtCursor(context);
@@ -42,7 +49,7 @@ export const convertModelKind = refactoring({
         if (isJustification(model)) {
             return [{
                 title: 'Convert to template',
-                kind: CodeActionKind.RefactorRewrite,
+                kind: CONVERT_MODEL_KIND,
                 edit: { changes: { [uri]: [keywordEdit] } }
             }];
         }
@@ -65,7 +72,7 @@ export const convertModelKind = refactoring({
 
         return [{
             title,
-            kind: CodeActionKind.RefactorRewrite,
+            kind: CONVERT_MODEL_KIND,
             edit: { changes: { [uri]: [keywordEdit, ...removals] } }
         }];
     }

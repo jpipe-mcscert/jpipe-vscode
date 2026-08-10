@@ -7,7 +7,12 @@ import { PreviewProvider } from './image-generation/preview-provider.js';
 import { ReleaseManager, JpipeRelease } from './image-generation/release-manager.js';
 import { ExclusionManager, ExclusionDecorationProvider, ExclusionCodeLensProvider } from './exclusions.js';
 import { JpipeLogger } from './logger.js';
-import { ORGANIZE_LOADS_KIND } from 'jpipe-language';
+import {
+    CONVERT_MODEL_KIND,
+    EXTRACT_TEMPLATE_KIND,
+    ORGANIZE_LOADS_KIND,
+    SORT_ELEMENTS_KIND
+} from 'jpipe-language';
 
 let client: LanguageClient;
 
@@ -209,6 +214,17 @@ export function activate(context: vscode.ExtensionContext): void {
                 apply: 'first'
             });
         }),
+        // The refactorings are already in the lightbulb and under Refactor…, but both ask you to
+        // know they are there. A named command is the one route that answers "what can jPipe do
+        // here?" without a shortcut, so each gets one.
+        ...[
+            ['jpipe.convertModelKind', CONVERT_MODEL_KIND],
+            ['jpipe.sortElements', SORT_ELEMENTS_KIND],
+            ['jpipe.extractTemplate', EXTRACT_TEMPLATE_KIND]
+        ].map(([command, kind]) =>
+            vscode.commands.registerCommand(command, async () => {
+                await vscode.commands.executeCommand('editor.action.refactor', { kind, apply: 'first' });
+            })),
         vscode.commands.registerCommand('jpipe.includeResource', async (uri?: vscode.Uri) => {
             const target = resolveExclusionTarget(uri);
             if (!target) return;
