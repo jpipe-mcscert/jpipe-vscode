@@ -740,6 +740,28 @@ describe('Hook value completion', () => {
         });
     });
 
+    // The scan between `{` and the key must not stop at an earlier quoted value, or a key written
+    // after any other key is never completed.
+    test('still offers hooks when another config key comes first', async () => {
+        await checkCompletion({
+            text: `
+                justification Base {
+                    conclusion c is "C"
+                    strategy s is "S"
+                    evidence e is "E"
+                    e supports s
+                    s supports c
+                }
+                justification Ref { conclusion rc is "RC" }
+                justification Composed is refine(Base, Ref) { unifyBy: "sameLabel" hook: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).toContain('e');
+            }
+        });
+    });
+
     test('offers nothing for assemble, which has no hook', async () => {
         await checkCompletion({
             text: `
@@ -749,6 +771,89 @@ describe('Hook value completion', () => {
             index: 0,
             assert: (completions) => {
                 expect(completions.items.map(i => i.label)).not.toContain('c');
+            }
+        });
+    });
+});
+
+describe('Unification method completion', () => {
+
+    const composed = (partial: string) => `
+        justification A { conclusion c is "C" }
+        justification B { conclusion c is "C" }
+        justification Composed is refine(A, B) { hook: "c" unifyBy: "${partial}<|>" }
+    `;
+
+    test('offers what jPipe ships, marked as core', async () => {
+        await checkCompletion({
+            text: composed(''),
+            index: 0,
+            assert: (completions) => {
+                const item = completions.items.find(i => i.label === 'sameLabel');
+                expect(item).toBeDefined();
+                expect(item?.detail).toBe('jPipe core');
+            }
+        });
+    });
+
+    // The two halves mean different things: one is what jPipe ships, the other is what this
+    // workspace has been told its build registers.
+    test('offers declared relations, marked as declared', async () => {
+        services.Jpipe.unification.setAdditionalMethods(['similarLabel']);
+        try {
+            await checkCompletion({
+                text: composed(''),
+                index: 0,
+                assert: (completions) => {
+                    const item = completions.items.find(i => i.label === 'similarLabel');
+                    expect(item).toBeDefined();
+                    expect(item?.detail).toBe('declared in settings');
+                }
+            });
+        } finally {
+            services.Jpipe.unification.setAdditionalMethods([]);
+        }
+    });
+
+    test('puts the core relations first', async () => {
+        services.Jpipe.unification.setAdditionalMethods(['aaaCustom']);
+        try {
+            await checkCompletion({
+                text: composed(''),
+                index: 0,
+                assert: (completions) => {
+                    const sorted = [...completions.items]
+                        .sort((a, b) => String(a.sortText).localeCompare(String(b.sortText)))
+                        .map(i => i.label);
+                    expect(sorted[0]).toBe('sameLabel');
+                }
+            });
+        } finally {
+            services.Jpipe.unification.setAdditionalMethods([]);
+        }
+    });
+
+    test('says which one applies when unifyBy is left out', async () => {
+        await checkCompletion({
+            text: composed(''),
+            index: 0,
+            assert: (completions) => {
+                const item = completions.items.find(i => i.label === 'sameLabel');
+                expect(String(item?.documentation)).toContain('sets no unifyBy');
+            }
+        });
+    });
+
+    test('is not offered for another config value', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification B { conclusion c is "C" }
+                justification Composed is refine(A, B) { hook: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).not.toContain('sameLabel');
             }
         });
     });

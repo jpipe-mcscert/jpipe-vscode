@@ -13,6 +13,7 @@ import * as path from 'node:path';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import { JPIPE_OPERATORS, UNIVERSAL_CONFIG_KEYS, allowedConfigKeys, renderInvocation } from './jpipe-operators.js';
+import { BUILT_IN_UNIFICATION_METHODS, DEFAULT_UNIFICATION_METHOD } from './jpipe-unification.js';
 import { createLoadEdit, normalizeLoadPath, relativeLoadPath, wordReplaceEdit } from './jpipe-edits.js';
 import { concreteKeywordFor, overrideKeywordFor, renderElement } from './jpipe-render.js';
 import {
@@ -369,6 +370,11 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             return { ...result, items: hookItems };
         }
 
+        const unifyItems = this.getUnificationMethodCompletions(document, params);
+        if (unifyItems.length > 0) {
+            return { ...result, items: unifyItems };
+        }
+
         const contexts = Array.from(this.buildContexts(document, params.position));
         if (contexts.length > 0) {
             const templateCompletions = this.getTemplateElementCompletions(contexts[0]);
@@ -403,7 +409,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         });
 
         // Inside an unterminated `hook: "` of a composition, with the partial value so far.
-        const inHookValue = /is\s+(\w+)\s*\(([^)]*)\)\s*\{[^}"]*\bhook\s*:\s*"([^"\n]*)$/.exec(textToCursor);
+        const inHookValue = /is\s+(\w+)\s*\(([^)]*)\)\s*\{[^}]*\bhook\s*:\s*"([^"\n]*)$/.exec(textToCursor);
         if (!inHookValue) return [];
         const [, operator, paramList, partial] = inHookValue;
         if (operator !== 'refine') return [];
@@ -436,6 +442,47 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                     sortText: `0_hook_${id}`,
                     // Replaces what has been typed so far inside the quotes, and nothing else.
                     textEdit: { range: { start, end: params.position }, newText: id }
+                };
+            });
+    }
+
+    /**
+     * Completes the value of `unifyBy`, which names an equivalence relation.
+     *
+     * The relations live in a registry the compiler fills at startup, so the list has two halves
+     * and the difference matters: one is what jPipe ships, the other is what this workspace has
+     * been *told* its build registers. Each is labelled, so accepting a name makes clear whether
+     * the editor knows it exists or has merely been assured of it.
+     */
+    private getUnificationMethodCompletions(document: LangiumDocument, params: CompletionParams): CompletionItem[] {
+        const textToCursor = document.textDocument.getText({
+            start: Position.create(0, 0),
+            end: params.position
+        });
+
+        // Inside an unterminated `unifyBy: "` of a composition's config block.
+        const inValue = /is\s+\w+\s*\([^)]*\)\s*\{[^}]*\bunifyBy\s*:\s*"([^"\n]*)$/.exec(textToCursor);
+        if (!inValue) return [];
+        const partial = inValue[1];
+
+        const start = document.textDocument.positionAt(
+            document.textDocument.offsetAt(params.position) - partial.length
+        );
+
+        return this.services.unification.known()
+            .filter(name => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, name))
+            .map(name => {
+                const isCore = BUILT_IN_UNIFICATION_METHODS.includes(name);
+                return {
+                    label: name,
+                    kind: CompletionItemKind.EnumMember,
+                    detail: isCore ? 'jPipe core' : 'declared in settings',
+                    documentation: name === DEFAULT_UNIFICATION_METHOD
+                        ? 'Used when a composition sets no unifyBy.'
+                        : undefined,
+                    // Core relations first: they are the ones certain to exist.
+                    sortText: `${isCore ? '0' : '1'}_unify_${name}`,
+                    textEdit: { range: { start, end: params.position }, newText: name }
                 };
             });
     }
