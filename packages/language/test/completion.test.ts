@@ -611,6 +611,75 @@ describe('Operator invocation completion', () => {
     });
 });
 
+describe('Composition source completion', () => {
+
+    const MODELS = `justification alpha { conclusion c is "C" }
+justification beta { conclusion c is "C" }
+justification gamma { conclusion c is "C" }`;
+
+    // Composing `x` out of `x` is circular, and `x` is the one name guaranteed to be on the tip
+    // of the author's fingers — so without this it sits near the top of the list.
+    test('does not offer the model being defined', async () => {
+        await checkCompletion({
+            text: `${MODELS}\njustification composed is assemble(<|>)`,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).not.toContain('composed');
+                expect(labels).toContain('alpha');
+            }
+        });
+    });
+
+    test('does not offer a model already named in the same call', async () => {
+        await checkCompletion({
+            text: `${MODELS}\njustification composed is assemble(alpha, <|>)`,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).not.toContain('alpha');
+                expect(labels).toContain('beta');
+                expect(labels).toContain('gamma');
+            }
+        });
+    });
+
+    test('drops every model already used, not just the last', async () => {
+        await checkCompletion({
+            text: `${MODELS}\njustification composed is assemble(alpha, beta, <|>)`,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).not.toContain('alpha');
+                expect(labels).not.toContain('beta');
+                expect(labels).toContain('gamma');
+            }
+        });
+    });
+
+    // The slot being completed holds partial text of its own; treating that as "already used"
+    // would remove the very candidate being typed towards.
+    test('still offers a model matching what is being typed in this slot', async () => {
+        await checkCompletion({
+            text: `${MODELS}\njustification composed is assemble(al<|>)`,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).toContain('alpha');
+            }
+        });
+    });
+
+    test('a template is still offered as a source', async () => {
+        await checkCompletion({
+            text: `template t { @support a is "A" conclusion c is "C" a supports c }\njustification composed is assemble(<|>)`,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).toContain('t');
+            }
+        });
+    });
+});
+
 describe('Hook value completion', () => {
 
     // `hook` is a plain string in the grammar: nothing links it, nothing validates it, and until

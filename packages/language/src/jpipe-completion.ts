@@ -16,6 +16,7 @@ import { JPIPE_OPERATORS, UNIVERSAL_CONFIG_KEYS, allowedConfigKeys, renderInvoca
 import { createLoadEdit, normalizeLoadPath, relativeLoadPath, wordReplaceEdit } from './jpipe-edits.js';
 import { concreteKeywordFor, overrideKeywordFor, renderElement } from './jpipe-render.js';
 import {
+    isComposition,
     isJustification,
     isTemplate,
     isJustificationBody,
@@ -176,8 +177,42 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             }
         }
 
-        // For 'refs' and other cross-refs: delegate to the scope provider via super.
+        if (refInfo.property === 'refs') {
+            return super.getReferenceCandidates(refInfo, context)
+                .filter(candidate => this.isUsefulCompositionSource(refInfo, candidate));
+        }
+
+        // For other cross-refs: delegate to the scope provider via super.
         return super.getReferenceCandidates(refInfo, context);
+    }
+
+    /**
+     * Whether a model is worth offering as a source of the composition being written.
+     *
+     * Two are not. The model being defined: `justification x is assemble(…)` composing `x` out of
+     * `x` is circular, and it is the one name guaranteed to be on the tip of the author's fingers,
+     * so it would sit at the top of the list. And a model already named in this same call:
+     * composing something with a second copy of an input it already has cannot say anything the
+     * first copy did not.
+     *
+     * Both remain *resolvable* — this narrows what is suggested, not what the grammar accepts, so
+     * a model written by hand still links and is reported by the rules that judge it rather than
+     * vanishing into an unresolved reference.
+     */
+    private isUsefulCompositionSource(refInfo: ReferenceInfo, candidate: AstNodeDescription): boolean {
+        const composition = AstUtils.getContainerOfType(refInfo.container, isComposition);
+        if (!composition) return true;
+
+        const owner = composition.$container;
+        if ((isJustification(owner) || isTemplate(owner)) && owner.id === candidate.name) return false;
+
+        // Every other slot in this call — not the one being typed, whose partial text is the
+        // very thing being completed.
+        const elsewhere = (composition.params?.refs ?? [])
+            .filter((_ref, index) => index !== refInfo.index)
+            .map(ref => ref.$refText)
+            .filter(text => text.length > 0);
+        return !elsewhere.includes(candidate.name);
     }
 
     private filterRelationTargets(from: JustificationElement, candidates: JustificationElement[]): JustificationElement[] {
