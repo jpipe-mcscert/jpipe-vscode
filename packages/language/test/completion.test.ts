@@ -537,3 +537,46 @@ describe('Load path completion', () => {
         });
     });
 });
+
+describe('Hook value completion', () => {
+
+    // `hook` is a plain string in the grammar: nothing links it, nothing validates it, and until
+    // now nothing offered it, so the only way to find a legal value was to read the model.
+    test('offers the elements of the first source model', async () => {
+        await checkCompletion({
+            text: `
+                justification Base {
+                    conclusion c is "C"
+                    strategy s is "S"
+                    evidence e is "E"
+                    e supports s
+                    s supports c
+                }
+                justification Ref { conclusion rc is "RC" }
+                justification Composed is refine(Base, Ref) { hook: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).toContain('c');
+                expect(labels).toContain('s');
+                expect(labels).toContain('e');
+                // The hook names an element of the first source, not the second.
+                expect(labels).not.toContain('rc');
+            }
+        });
+    });
+
+    test('offers nothing for assemble, which has no hook', async () => {
+        await checkCompletion({
+            text: `
+                justification Base { conclusion c is "C" }
+                justification Composed is assemble(Base) { conclusionLabel: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).not.toContain('c');
+            }
+        });
+    });
+});

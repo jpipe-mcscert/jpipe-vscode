@@ -312,3 +312,46 @@ describe('Validation tests', () => {
         expect(messages.some(m => m.includes('operator') || m.includes('config key'))).toBe(false);
     });
 });
+
+describe('Operator arity', () => {
+
+    // Nothing checked this before: `refine(a)` parsed, validated clean, and failed at build time
+    // in RefineOperator, which throws on anything but two sources.
+    test.each([
+        ['refine(A)', 'refine requires exactly 2 source models, got 1.'],
+        ['refine(A, B, A)', 'refine requires exactly 2 source models, got 3.'],
+        ['refine()', 'refine requires exactly 2 source models, got 0.'],
+        ['assemble()', 'assemble requires at least 1 source model, got 0.']
+    ])('%s is rejected', async (call, expected) => {
+        const doc = await parse(`
+            justification A { conclusion c is "C" }
+            justification B { conclusion c is "C" }
+            justification Composed is ${call} { hook: "c" conclusionLabel: "C" strategyLabel: "S" }
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).some(m => m.includes(expected))).toBe(true);
+    });
+
+    test.each([
+        'refine(A, B)',
+        'assemble(A)',
+        'assemble(A, B)'
+    ])('%s is accepted', async (call) => {
+        const doc = await parse(`
+            justification A { conclusion c is "C" }
+            justification B { conclusion c is "C" }
+            justification Composed is ${call} { hook: "c" conclusionLabel: "C" strategyLabel: "S" }
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).some(m => m.includes('source models'))).toBe(false);
+    });
+
+    test('an unknown operator is not also reported for its arity', async () => {
+        const doc = await parse(`
+            justification A { conclusion c is "C" }
+            justification Composed is nope(A)
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).some(m => m.includes('source models'))).toBe(false);
+    });
+});

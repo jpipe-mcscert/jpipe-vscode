@@ -25,7 +25,7 @@ import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import type { JpipeImportService } from './jpipe-import.js';
 import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
-import { allowedConfigKeys, isKnownOperator, knownOperatorNames, requiredConfigKeys } from './jpipe-operators.js';
+import { allowedConfigKeys, isKnownOperator, knownOperatorNames, operatorSpec, requiredConfigKeys } from './jpipe-operators.js';
 import { JpipeIssue, issue } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 
@@ -35,7 +35,7 @@ export function registerValidationChecks(services: JpipeServices) {
     const checks: ValidationChecks<JpipeAstType> = {
         Unit:           validator.checkUnitNotEmpty,
         Load:           validator.checkLoadResolves,
-        Composition:    [validator.checkOperatorName, validator.checkConfigKeys],
+        Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys],
         Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport],
         Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride],
         Evidence:       validator.checkLabelNotEmpty,
@@ -133,6 +133,33 @@ export class JpipeValidator {
                   ...issue(JpipeIssue.UnknownOperator,
                            { actual: composition.operator, known: knownOperatorNames() }) });
         }
+    }
+
+    /**
+     * Checks how many source models a composition passes its operator.
+     *
+     * Nothing checked this before, so `refine(a)` reached the compiler and failed there —
+     * `RefineOperator` throws on anything but two sources, and the grammar allows none at all.
+     */
+    checkOperatorArity(composition: Composition, accept: ValidationAcceptor): void {
+        const spec = operatorSpec(composition.operator);
+        if (!spec) return;
+
+        const actual = composition.params?.refs.length ?? 0;
+        const { min, max } = spec.arity;
+        if (actual >= min && (max === undefined || actual <= max)) return;
+
+        const expected = max === min
+            ? `exactly ${min}`
+            : max === undefined
+                ? `at least ${min}`
+                : `between ${min} and ${max}`;
+        // The noun agrees with the number that immediately precedes it.
+        const count = max === undefined ? min : max;
+        accept('error',
+            `${composition.operator} requires ${expected} source ${count === 1 ? 'model' : 'models'}, got ${actual}.`,
+            { node: composition, property: 'operator',
+              ...issue(JpipeIssue.OperatorArity, { operator: composition.operator, actual, min, ...(max !== undefined ? { max } : {}) }) });
     }
 
     /**

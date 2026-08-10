@@ -33,7 +33,7 @@ import {
     type JustificationElement,
     type AbstractSupport
 } from './generated/ast.js';
-import { fsPathOf, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { fsPathOf, getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
 
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private readonly services: JpipeServices;
@@ -326,6 +326,11 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             }
         }
 
+        const hookItems = this.getHookValueCompletions(document, params);
+        if (hookItems.length > 0) {
+            return { ...result, items: hookItems };
+        }
+
         const contexts = Array.from(this.buildContexts(document, params.position));
         if (contexts.length > 0) {
             const templateCompletions = this.getTemplateElementCompletions(contexts[0]);
@@ -336,6 +341,63 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         items = this.deduplicateItems(items);
         return { ...result, items };
+    }
+
+    /**
+     * Completes the value of `refine`'s `hook`, which names an element of the *first* source
+     * model.
+     *
+     * `hook` is a plain string in the grammar, so nothing links it, nothing validates it, and
+     * nothing has ever offered it — the only way to learn what may go there has been to read the
+     * model being refined. Offered as ids because that is what the compiler resolves against, and
+     * labelled with each element's text so the right one is recognisable.
+     */
+    private getHookValueCompletions(document: LangiumDocument, params: CompletionParams): CompletionItem[] {
+        const textToCursor = document.textDocument.getText({
+            start: Position.create(0, 0),
+            end: params.position
+        });
+
+        // Inside an unterminated `hook: "` of a composition, with the partial value so far.
+        const inHookValue = /is\s+(\w+)\s*\(([^)]*)\)\s*\{[^}"]*\bhook\s*:\s*"([^"\n]*)$/.exec(textToCursor);
+        if (!inHookValue) return [];
+        const [, operator, paramList, partial] = inHookValue;
+        if (operator !== 'refine') return [];
+
+        const firstParam = paramList.split(',')[0]?.trim();
+        if (!firstParam) return [];
+
+        const unit = document.parseResult.value as Unit | undefined;
+        if (!unit) return [];
+        const base = this.findModelByRefText(unit, document, firstParam);
+        if (!base) return [];
+
+        const start = document.textDocument.positionAt(
+            document.textDocument.offsetAt(params.position) - partial.length
+        );
+
+        return getAllElements(base)
+            .filter(element => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, qualifiedIdText(element.id)))
+            .map(element => {
+                const id = qualifiedIdText(element.id);
+                return {
+                    label: id,
+                    kind: CompletionItemKind.Value,
+                    detail: `${element.$type} in ${firstParam}`,
+                    documentation: element.name,
+                    sortText: `0_hook_${id}`,
+                    // Replaces what has been typed so far inside the quotes, and nothing else.
+                    textEdit: { range: { start, end: params.position }, newText: id }
+                };
+            });
+    }
+
+    /** Resolves a composition parameter's text to a local or loaded model. */
+    private findModelByRefText(unit: Unit, document: LangiumDocument, refText: string): Justification | Template | undefined {
+        const local = unit.body.find(model => model.id === refText);
+        if (local) return local;
+        const imported = this.importService.getJustificationsAndTemplatesWithNamespace(unit, document);
+        return imported.find(({ node, ns }) => (ns ? `${ns}:${node.id}` : node.id) === refText)?.node;
     }
 
     private getOperatorCompletions(partial: string): CompletionItem[] {

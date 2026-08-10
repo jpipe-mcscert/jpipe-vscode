@@ -15,6 +15,7 @@ export const JpipeIssue = {
     DuplicateModelName:     'jpipe.duplicate-model-name',
     TemplateWithoutSupport: 'jpipe.template-without-support',
     UnknownOperator:        'jpipe.unknown-operator',
+    OperatorArity:          'jpipe.operator-arity',
     UnknownConfigKey:       'jpipe.unknown-config-key',
     MissingConfigKey:       'jpipe.missing-config-key',
     MissingSupportOverride: 'jpipe.missing-support-override',
@@ -68,6 +69,14 @@ export interface JpipeIssuePayloads {
     [JpipeIssue.UnknownOperator]: {
         actual: string;
         known: readonly string[];
+    };
+    [JpipeIssue.OperatorArity]: {
+        operator: string;
+        /** Source models actually passed. */
+        actual: number;
+        min: number;
+        /** Absent when the operator takes any number above `min`. */
+        max?: number;
     };
     [JpipeIssue.UnknownConfigKey]: {
         actual: string;
