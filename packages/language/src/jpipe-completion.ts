@@ -12,6 +12,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
+import { JPIPE_OPERATORS, UNIVERSAL_CONFIG_KEYS, allowedConfigKeys } from './jpipe-operators.js';
 import {
     isJustification,
     isTemplate,
@@ -345,36 +346,35 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         return { ...result, items };
     }
 
-    private static readonly KNOWN_OPERATORS = ['assemble', 'refine'] as const;
-
-    private static readonly OPERATOR_CONFIG_KEYS: Record<string, string[]> = {
-        assemble: ['conclusionLabel', 'strategyLabel'],
-        refine: ['hook']
-    };
-
     private getOperatorCompletions(partial: string): CompletionItem[] {
-        return JpipeCompletionProvider.KNOWN_OPERATORS
-            .filter(op => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, op))
-            .map(op => ({
-                label: op,
+        return JPIPE_OPERATORS
+            .filter(spec => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, spec.name))
+            .map(spec => ({
+                label: spec.name,
                 kind: CompletionItemKind.Keyword,
                 detail: 'composition operator',
-                sortText: `0_op_${op}`
+                documentation: spec.summary,
+                sortText: `0_op_${spec.name}`
             }));
     }
 
     private getConfigKeyCompletions(operator: string, partial: string): CompletionItem[] {
-        const keys = JpipeCompletionProvider.OPERATOR_CONFIG_KEYS[operator] ?? [];
+        const keys = allowedConfigKeys(operator);
         return keys
             .filter((k: string) => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, k))
-            .map((k: string) => ({
-                label: k,
-                kind: CompletionItemKind.Property,
-                detail: `${operator} argument`,
-                sortText: `0_cfg_${k}`,
-                insertText: `${k}: "$0"`,
-                insertTextFormat: InsertTextFormat.Snippet
-            }));
+            .map((k: string) => {
+                // The unification keys read the same on every operator, so naming one would
+                // misdescribe them; they also sort below the operator's own arguments.
+                const universal = (UNIVERSAL_CONFIG_KEYS as readonly string[]).includes(k);
+                return {
+                    label: k,
+                    kind: CompletionItemKind.Property,
+                    detail: universal ? 'unification argument' : `${operator} argument`,
+                    sortText: universal ? `1_cfg_${k}` : `0_cfg_${k}`,
+                    insertText: `${k}: "$0"`,
+                    insertTextFormat: InsertTextFormat.Snippet
+                };
+            });
     }
 
     private async getLoadPathCompletions(document: LangiumDocument, params: CompletionParams): Promise<CompletionItem[]> {

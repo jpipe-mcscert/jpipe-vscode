@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { EmptyFileSystem, type LangiumDocument } from "langium";
 import { parseHelper } from "langium/test";
-import { Diagnostic } from "vscode-languageserver-types";
+import { Diagnostic, DiagnosticSeverity } from "vscode-languageserver-types";
 import type { Unit } from "jpipe-language";
 import { createJpipeServices, isUnit } from "jpipe-language";
 
@@ -248,7 +248,9 @@ describe('Validation tests', () => {
         expect(messages.some(m => m.includes("Unknown operator 'unknown'"))).toBe(true);
     });
 
-    test('unknown config key triggers error', async () => {
+    // Only a warning: the compiler ignores config keys it does not recognise, so an error here
+    // would announce a build failure that never comes.
+    test('unknown config key triggers a warning, not an error', async () => {
         const doc = await parse(`
             justification A { conclusion c is "C" }
             justification Composed is assemble(A) {
@@ -258,8 +260,31 @@ describe('Validation tests', () => {
             }
         `);
         assertNoParseErrors(doc);
+        const unknownKey = (doc.diagnostics ?? []).filter(
+            (d: Diagnostic) => Diagnostic.getMessageString(d).includes("Unknown config key 'wrongKey'")
+        );
+        expect(unknownKey).toHaveLength(1);
+        expect(unknownKey[0].severity).toBe(DiagnosticSeverity.Warning);
+    });
+
+    // `unifyBy` and `unifyExclude` are read by the compiler's post-composition Unifier, which
+    // runs over every operator's config map — so they are legal wherever a config block is.
+    test.each(['assemble', 'refine'])('accepts the unification keys on %s', async (operator) => {
+        const config = operator === 'assemble'
+            ? 'conclusionLabel: "C"\n                strategyLabel: "S"'
+            : 'hook: "c"';
+        const doc = await parse(`
+            justification A { conclusion c is "C" }
+            justification B { conclusion c is "C" }
+            justification Composed is ${operator}(A, B) {
+                ${config}
+                unifyBy: "sameLabel"
+                unifyExclude: "c"
+            }
+        `);
+        assertNoParseErrors(doc);
         const messages = diagnosticMessages(doc);
-        expect(messages.some(m => m.includes("Unknown config key 'wrongKey'"))).toBe(true);
+        expect(messages.some(m => m.includes('Unknown config key'))).toBe(false);
     });
 
     test('missing required config key triggers error', async () => {

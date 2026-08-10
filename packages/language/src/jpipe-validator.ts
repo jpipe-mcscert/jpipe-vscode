@@ -27,6 +27,7 @@ import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import type { JpipeImportService } from './jpipe-import.js';
 import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { allowedConfigKeys, isKnownOperator, knownOperatorNames, requiredConfigKeys } from './jpipe-operators.js';
 
 export function registerValidationChecks(services: JpipeServices) {
     const registry = services.validation.ValidationRegistry;
@@ -49,18 +50,6 @@ export function registerValidationChecks(services: JpipeServices) {
 export class JpipeValidator {
     private readonly logger: JpipeServerLogger;
     private readonly importService: JpipeImportService;
-
-    private static readonly KNOWN_OPERATORS = new Set(['assemble', 'refine']);
-
-    private static readonly OPERATOR_ALLOWED_KEYS: Record<string, Set<string>> = {
-        assemble: new Set(['conclusionLabel', 'strategyLabel']),
-        refine:   new Set(['hook'])
-    };
-
-    private static readonly OPERATOR_REQUIRED_KEYS: Record<string, Set<string>> = {
-        assemble: new Set(['conclusionLabel', 'strategyLabel']),
-        refine:   new Set(['hook'])
-    };
 
     constructor(services: JpipeServices) {
         this.logger = services.logger;
@@ -131,27 +120,33 @@ export class JpipeValidator {
     }
 
     checkOperatorName(composition: Composition, accept: ValidationAcceptor): void {
-        if (!JpipeValidator.KNOWN_OPERATORS.has(composition.operator)) {
+        if (!isKnownOperator(composition.operator)) {
             accept('error',
-                `Unknown operator '${composition.operator}'. Expected: ${[...JpipeValidator.KNOWN_OPERATORS].join(', ')}.`,
+                `Unknown operator '${composition.operator}'. Expected: ${knownOperatorNames().join(', ')}.`,
                 { node: composition, property: 'operator' });
         }
     }
 
+    /**
+     * Checks a composition's config block against the operator's key table.
+     *
+     * A missing required key is an error: the compiler refuses to run without it. An unknown key
+     * is only a warning, because the compiler ignores keys it does not recognise — flagging one
+     * as an error would claim a build failure that will not happen.
+     */
     checkConfigKeys(composition: Composition, accept: ValidationAcceptor): void {
         const op = composition.operator;
-        if (!JpipeValidator.KNOWN_OPERATORS.has(op)) return;
-        const allowed = JpipeValidator.OPERATOR_ALLOWED_KEYS[op] ?? new Set<string>();
-        const required = JpipeValidator.OPERATOR_REQUIRED_KEYS[op] ?? new Set<string>();
+        if (!isKnownOperator(op)) return;
+        const allowed = allowedConfigKeys(op);
         const present = new Set(composition.config?.entries.map(e => e.key) ?? []);
         for (const entry of composition.config?.entries ?? []) {
-            if (!allowed.has(entry.key)) {
-                accept('error',
-                    `Unknown config key '${entry.key}' for operator '${op}'. Allowed: ${[...allowed].join(', ')}.`,
+            if (!allowed.includes(entry.key)) {
+                accept('warning',
+                    `Unknown config key '${entry.key}' for operator '${op}'. Allowed: ${allowed.join(', ')}.`,
                     { node: entry, property: 'key' });
             }
         }
-        for (const key of required) {
+        for (const key of requiredConfigKeys(op)) {
             if (!present.has(key)) {
                 accept('error',
                     `Missing required config key '${key}' for operator '${op}'.`,

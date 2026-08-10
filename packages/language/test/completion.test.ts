@@ -314,6 +314,27 @@ describe('Operator completion', () => {
             }
         });
     });
+
+    // The Unifier reads these from every composition's config, so they belong to no single
+    // operator — and were offered by neither before the operator tables were unified.
+    test('suggests the unification keys for every operator', async () => {
+        for (const text of [
+            `justification A { conclusion c is "C" }
+             justification Composed is assemble(A) { <|>`,
+            `template T { conclusion c is "C" }
+             justification Composed is refine(T) { <|>`
+        ]) {
+            await checkCompletion({
+                text,
+                index: 0,
+                assert: (completions) => {
+                    const labels = completions.items.map(i => i.label);
+                    expect(labels).toContain('unifyBy');
+                    expect(labels).toContain('unifyExclude');
+                }
+            });
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------
