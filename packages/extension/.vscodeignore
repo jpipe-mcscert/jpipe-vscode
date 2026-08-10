@@ -7,7 +7,7 @@
 .git/
 node_modules/
 src/
-tsconfig.json
+tsconfig*.json
 .eslintrc.json
 .gitignore
 .vscodeignore

@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node';
 import { ImageGenerator, ImageFormat } from './image-generator.js';
+import { getShellHtml } from './preview-shell.js';
+import type { HostToWebview, RenderMessage, WebviewToHost } from '../../shared/preview-protocol.js';
 import type { JpipeLogger } from '../logger.js';
 
 interface DocumentSymbol {
@@ -17,7 +19,20 @@ export class PreviewProvider {
     private subscriptions: vscode.Disposable[] = [];
     private lastRenderedDocumentUri: string | undefined;
     private lastRenderedDiagramName: string | undefined;
-    private lastGoodHtml: string | undefined;
+    /**
+     * The last render that succeeded, replayed when the webview announces itself.
+     *
+     * This used to be the last good HTML document, kept so that a failed compile would not
+     * blank the panel. The page is no longer rebuilt per render, so it holds its own contents
+     * and that job disappears; what remains is recovery — a webview whose content was reloaded
+     * gets its diagram back without waiting on the compiler.
+     */
+    private lastRender: RenderMessage | undefined;
+    /**
+     * Renders are numbered because `updatePreview` is async: two saves in quick succession can
+     * finish out of order, and the page ignores anything older than what it already shows.
+     */
+    private revision = 0;
 
     public getLastRenderedDocumentUri(): string | undefined {
         return this.lastRenderedDocumentUri;
@@ -107,7 +122,7 @@ export class PreviewProvider {
         const saveListener = vscode.workspace.onDidSaveTextDocument((document) => {
             if (document.languageId !== 'jpipe' || !PreviewProvider.webviewPanel || PreviewProvider.webviewDisposed) return;
             this.unsaved = false;
-            PreviewProvider.webviewPanel.webview.postMessage({ type: 'setUnsaved', unsaved: false });
+            this.post({ type: 'setUnsaved', unsaved: false });
             const editor = vscode.window.visibleTextEditors.find(e => e.document === document);
             this.updatePreview(document, editor);
         });
@@ -115,7 +130,7 @@ export class PreviewProvider {
         const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
             if (e.document.languageId !== 'jpipe' || !PreviewProvider.webviewPanel || PreviewProvider.webviewDisposed) return;
             this.unsaved = true;
-            PreviewProvider.webviewPanel.webview.postMessage({ type: 'setUnsaved', unsaved: true });
+            this.post({ type: 'setUnsaved', unsaved: true });
         });
 
         const cursorListener = vscode.window.onDidChangeTextEditorSelection((e) => {
@@ -155,13 +170,17 @@ export class PreviewProvider {
         return stdout.slice(start, end + 6);
     }
     
+    /** Send a message to the panel, if there still is one. */
+    private post(message: HostToWebview): void {
+        PreviewProvider.webviewPanel?.webview.postMessage(message);
+    }
+
     private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         if (!PreviewProvider.webviewPanel) return;
 
         // Diagnostic mode bypasses diagram-name resolution
         if (this.viewMode === 'diagnostic') {
-            // Show a loading indicator while the CLI runs so the panel never looks frozen.
-            PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
+            this.post({ type: 'busy', busy: true });
             let output: string;
             try {
                 output = await this.imageGenerator.generateDiagnostic(document);
@@ -170,8 +189,8 @@ export class PreviewProvider {
                 this.logger.error(`Diagnostic failed in ${document.fileName}: ${msg}`);
                 output = `Failed to run diagnostic:\n\n${msg}`;
             }
-            if (this.viewMode !== 'diagnostic' || !PreviewProvider.webviewPanel) return;
-            PreviewProvider.webviewPanel.webview.html = this.getHtmlForDiagnostic(output, this.unsaved);
+            if (this.viewMode !== 'diagnostic') return;
+            this.post({ type: 'diagnostic', output });
             return;
         }
 
@@ -182,32 +201,26 @@ export class PreviewProvider {
         try {
             diagramName = this.imageGenerator.findDiagramName(document, editor);
         } catch {
-            if (this.lastGoodHtml) {
-                PreviewProvider.webviewPanel.webview.html = this.lastGoodHtml;
-            } else {
-                PreviewProvider.webviewPanel.webview.html = this.getNodiagramHtml();
-            }
+            // No diagram under the cursor. The panel keeps whatever it was showing, but the
+            // mode still has to be sent: this path is how the diagnostic toggle comes back, and
+            // without it the panel would stay on the diagnostic text.
+            this.post({ type: 'busy', busy: false });
+            this.post({ type: 'view', mode: this.lastRender ? 'diagram' : 'empty' });
             return;
         }
 
+        const revision = ++this.revision;
         try {
-            // Avoid blanking the whole preview on transient render errors:
-            // only show a full loading screen if we have nothing rendered yet.
-            if (!this.lastGoodHtml) {
-                PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
-            }
+            this.post({ type: 'busy', busy: true });
             // Pass the pre-resolved diagramName so generate() does not re-derive
             // it from activeTextEditor (which may have a different cursor position).
-            let svg = await this.imageGenerator.generate(false, ImageFormat.SVG, document, diagramName);
-            svg = this.extractSvgFromOutput(svg);
+            const stdout = await this.imageGenerator.generate(false, ImageFormat.SVG, document, diagramName);
             this.logger.debug(`Preview updated: '${diagramName}' in ${document.fileName}`);
-            let highlightName = await this.getSymbolNameAtCursor(document, editor);
-            if (highlightName === diagramName) highlightName = null;
-            const html = this.getHtmlForWebview(svg, highlightName ?? undefined, document.uri.fsPath, diagramName, undefined, this.unsaved);
-            PreviewProvider.webviewPanel.webview.html = html;
-            this.lastGoodHtml = html;
-            this.lastRenderedDocumentUri = document.uri.toString();
-            this.lastRenderedDiagramName = diagramName;
+            // The user may have switched to the diagnostic view while the compiler ran; a render
+            // sent now would yank them back to the diagram. Mirrors the same check the
+            // diagnostic branch makes above.
+            if (this.viewMode !== 'diagram') return;
+            this.sendRender(revision, this.extractSvgFromOutput(stdout), document, editor, diagramName, null);
         } catch (error: any) {
             const stdout = typeof error?.stdout === 'string' ? error.stdout : '';
             const exitCode = typeof error?.exitCode === 'number'
@@ -216,37 +229,60 @@ export class PreviewProvider {
             this.logRenderError(document.fileName, exitCode, error);
             this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
 
+            if (this.viewMode !== 'diagram') return;
             const svgFromError = this.extractSvgFromOutput(stdout);
-            const hasSvg = svgFromError.includes('<svg');
-            let highlightName = await this.getSymbolNameAtCursor(document, editor);
-            if (highlightName === diagramName) highlightName = null;
-
-            if (hasSvg) {
-                const html = this.getHtmlForWebview(
-                    svgFromError,
-                    highlightName ?? undefined,
-                    document.uri.fsPath,
-                    diagramName,
-                    { hasError: true, exitCode },
-                    this.unsaved
-                );
-                PreviewProvider.webviewPanel.webview.html = html;
-                this.lastGoodHtml = html;
-                this.lastRenderedDocumentUri = document.uri.toString();
-                this.lastRenderedDiagramName = diagramName;
+            if (svgFromError.includes('<svg')) {
+                this.sendRender(revision, svgFromError, document, editor, diagramName, { exitCode });
             } else {
-                // Keep the last successfully rendered preview visible; don't replace it with a full-screen error view.
-                // Intentionally retain lastRenderedDocumentUri/lastRenderedDiagramName: they describe what the panel
-                // is still showing (the last good diagram), so the diagnostic toggle always has a document to render.
-                if (this.lastGoodHtml) {
-                    PreviewProvider.webviewPanel.webview.html = this.lastGoodHtml;
-                } else {
-                    PreviewProvider.webviewPanel.webview.html = this.getLoadingHtml();
-                }
+                // Leave the last good diagram up rather than replacing it with an error screen.
+                // With a persistent document that costs nothing: not sending is already the
+                // right behaviour. lastRender is intentionally retained too, since it describes
+                // what the panel is still showing, so the diagnostic toggle keeps a document to
+                // work from.
+                this.post({ type: 'busy', busy: false });
+                if (!this.lastRender) this.post({ type: 'view', mode: 'empty' });
             }
         }
     }
-    
+
+    /** Build and send a render message, and remember it for the `ready` replay. */
+    private async sendRender(
+        revision: number,
+        svg: string,
+        document: vscode.TextDocument,
+        editor: vscode.TextEditor | undefined,
+        diagramName: string,
+        error: { exitCode?: number } | null
+    ): Promise<void> {
+        let highlight = await this.getSymbolNameAtCursor(document, editor);
+        if (highlight === diagramName) highlight = null;
+
+        // The page drops out-of-order renders by revision, but the host has to as well.
+        // Otherwise a slow first compile landing after a fast second one would leave the panel
+        // showing the newer diagram while `lastRender` and the export target regressed to the
+        // older one — so a reload, or a download, would quietly act on the wrong diagram.
+        if (this.lastRender && revision < this.lastRender.revision) {
+            this.logger.debug(`Dropping stale render ${revision} (panel is showing ${this.lastRender.revision})`);
+            return;
+        }
+
+        const message: RenderMessage = {
+            type: 'render',
+            revision,
+            svg,
+            documentUri: document.uri.toString(),
+            documentPath: document.uri.fsPath,
+            diagramName,
+            highlight,
+            error,
+            unsaved: this.unsaved
+        };
+        this.lastRender = message;
+        this.lastRenderedDocumentUri = message.documentUri;
+        this.lastRenderedDiagramName = diagramName;
+        this.post(message);
+    }
+
     private logRenderError(fileName: string, exitCode: number | undefined, error: unknown): void {
         if (exitCode === 1) {
             this.logger.warn(`Render: model errors (exit 1) in ${fileName}`);
@@ -264,11 +300,15 @@ export class PreviewProvider {
     /** Update only which node is highlighted (no SVG reload). */
     private async updateHighlightOnly(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         if (!PreviewProvider.webviewPanel) return;
-        const diagramName = this.imageGenerator.findDiagramName(document, editor);
+        // findDiagramName throws when the cursor sits outside every diagram block, which is an
+        // ordinary thing for a cursor to do; without this the highlight update rejects on each
+        // such keystroke.
+        let diagramName: string | undefined;
+        try { diagramName = this.imageGenerator.findDiagramName(document, editor); } catch { /* no diagram at cursor */ }
         let name = await this.getSymbolNameAtCursor(document, editor);
         if (name === diagramName) name = null;
-        if (this.logger.shouldLog('trace')) this.logger.trace(`Highlight-only update: '${name ?? '(none)'}' in '${diagramName}'`);
-        PreviewProvider.webviewPanel.webview.postMessage({ type: 'highlight', name: name ?? null });
+        if (this.logger.shouldLog('trace')) this.logger.trace(`Highlight-only update: '${name ?? '(none)'}' in '${diagramName ?? '(none)'}'`);
+        this.post({ type: 'highlight', name: name ?? null });
     }
     
     /**
@@ -328,10 +368,18 @@ export class PreviewProvider {
             },
             {
                 enableScripts: true,
+                // Matters more now than it used to: losing the context loses the user's zoom
+                // and pan along with the rendered diagram.
                 retainContextWhenHidden: true,
-                localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'images')]
+                localResourceRoots: [
+                    vscode.Uri.joinPath(this.context.extensionUri, 'images'),
+                    vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview')
+                ]
             }
         );
+
+        // Built once. Everything after this point is a message.
+        panel.webview.html = getShellHtml(panel.webview, this.context.extensionUri);
 
         panel.iconPath = {
             light: vscode.Uri.joinPath(this.context.extensionUri, 'images', 'icon_light.svg'),
@@ -344,7 +392,16 @@ export class PreviewProvider {
             this.logger.info('Webview panel disposed');
         });
         
-        panel.webview.onDidReceiveMessage((msg: { type?: string; format?: string; url?: string }) => {
+        panel.webview.onDidReceiveMessage((msg: WebviewToHost) => {
+            if (msg.type === 'ready') {
+                // The page is listening. Give it back whatever it was showing, so a webview
+                // content reload does not cost a recompile — or a blank panel.
+                if (this.lastRender) {
+                    panel.webview.postMessage(this.lastRender);
+                } else {
+                    panel.webview.postMessage({ type: 'view', mode: 'empty' } satisfies HostToWebview);
+                }
+            }
             if (msg.type === 'download' && msg.format) {
                 const fmt = (ImageFormat as Record<string, ImageFormat>)[msg.format];
                 if (fmt !== undefined) {
@@ -387,661 +444,4 @@ export class PreviewProvider {
         return panel;
     }
     
-    private getHtmlForWebview(
-        svg: string,
-        highlightNodeName?: string,
-        documentPath?: string,
-        diagramName?: string,
-        render?: { hasError?: boolean; exitCode?: number },
-        unsaved?: boolean
-    ): string {
-        const highlightJson = highlightNodeName != null ? JSON.stringify(highlightNodeName) : 'null';
-        const pathToStripJson = documentPath != null ? JSON.stringify(documentPath) : 'null';
-        const diagramNameJson = diagramName != null ? JSON.stringify(diagramName) : 'null';
-        const renderJson = render ? JSON.stringify(render) : 'null';
-        const unsavedJson = unsaved ? 'true' : 'false';
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>jPipe Preview</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: var(--vscode-editor-background);
-            color: var(--vscode-editor-foreground);
-            font-family: var(--vscode-font-family), system-ui, sans-serif;
-        }
-        body.jpipe-render-error #container {
-            background: color-mix(in srgb, var(--vscode-errorForeground) 18%, var(--vscode-editor-background));
-        }
-        #toolbar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 44px;
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 12px 0 8px;
-            background: var(--vscode-editorWidget-background);
-            border-bottom: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.35));
-        }
-        #brand {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        #brand a {
-            color: var(--vscode-foreground);
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 15px;
-            letter-spacing: 0.02em;
-            padding: 6px 10px;
-            border-radius: 6px;
-            transition: background 0.15s ease, color 0.15s ease;
-        }
-        #brand a:hover {
-            background: var(--vscode-toolbar-hoverBackground);
-            color: var(--vscode-foreground);
-        }
-        #brand a { cursor: pointer; }
-        #toolbar-right {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .toolbar-group {
-            display: flex;
-            align-items: center;
-            gap: 2px;
-            padding: 0 6px;
-            border-right: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.2));
-        }
-        .toolbar-group:last-of-type { border-right: none; padding-right: 0; }
-        .toolbar-btn {
-            width: 32px;
-            height: 32px;
-            border: none;
-            border-radius: 6px;
-            background: transparent;
-            color: var(--vscode-foreground);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.15s ease;
-        }
-        .toolbar-btn:hover {
-            background: var(--vscode-toolbar-hoverBackground);
-        }
-        .toolbar-btn svg { width: 18px; height: 18px; }
-        .toolbar-btn.zoom { width: 28px; }
-        .toolbar-btn.active {
-            background: var(--vscode-toolbar-activeBackground, rgba(128,128,128,0.3));
-            color: var(--vscode-focusBorder);
-        }
-        .toolbar-btn[data-tooltip] { position: relative; }
-        .toolbar-btn[data-tooltip]::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: calc(100% + 6px);
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--vscode-editorHoverWidget-background);
-            border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.4));
-            color: var(--vscode-editorHoverWidget-foreground);
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-size: 11px;
-            white-space: nowrap;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.15s ease;
-            z-index: 2000;
-        }
-        .toolbar-btn[data-tooltip]:hover::after { opacity: 1; }
-        #highlight-toggle .eye-open  { display: none; }
-        #highlight-toggle .eye-closed { display: flex; }
-        #highlight-toggle.active .eye-open  { display: flex; }
-        #highlight-toggle.active .eye-closed { display: none; }
-        .download-wrap {
-            position: relative;
-        }
-        #download-drawer {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            margin-top: 4px;
-            min-width: 100%;
-            background: var(--vscode-dropdown-background);
-            border: 1px solid var(--vscode-dropdown-border);
-            border-radius: 6px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            padding: 4px 0;
-            display: none;
-            z-index: 1001;
-        }
-        #download-drawer.open { display: block; }
-        #download-drawer button {
-            width: 100%;
-            padding: 8px 14px;
-            font-size: 12px;
-            text-align: left;
-            border: none;
-            background: none;
-            color: var(--vscode-foreground);
-            cursor: pointer;
-            white-space: nowrap;
-        }
-        #download-drawer button:hover {
-            background: var(--vscode-list-hoverBackground);
-        }
-        #zoom-value {
-            min-width: 44px;
-            text-align: center;
-            font-size: 12px;
-            color: var(--vscode-descriptionForeground);
-        }
-        body.has-unsaved-banner #container { top: 72px; }
-        #container {
-            position: fixed;
-            top: 44px;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            overflow: auto;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        #svg-wrapper {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transform-origin: center center;
-            transition: transform 0.15s ease-out;
-        }
-        #svg-wrapper > svg {
-            max-width: 100%;
-            max-height: 100%;
-            width: auto;
-            height: auto;
-            object-fit: contain;
-        }
-        #svg-wrapper g.node, #svg-wrapper g.edge { transition: opacity 0.15s ease; }
-        #svg-wrapper .jpipe-dimmed { opacity: 0.2; }
-        #unsaved-banner {
-            position: fixed;
-            top: 44px;
-            left: 0;
-            right: 0;
-            z-index: 999;
-            padding: 5px 12px;
-            font-size: 12px;
-            background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 15%, var(--vscode-editorWidget-background));
-            border-bottom: 1px solid var(--vscode-editorWarning-foreground);
-            color: var(--vscode-editorWarning-foreground);
-            display: none;
-        }
-        #unsaved-banner.visible { display: block; }
-    </style>
-</head>
-<body>
-    <div id="toolbar">
-        <div id="brand">
-            <a href="#" id="jpipe-link" title="Open jpipe.org">JPIPE</a>
-        </div>
-        <div id="toolbar-right">
-            <div class="toolbar-group download-wrap">
-                <button class="toolbar-btn" id="download-toggle" data-tooltip="Download"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5l3-3H9V2H7v5.5H5l3 3zM2 12v2h12v-2H2z"/></svg></button>
-                <div id="download-drawer">
-                    <button data-format="SVG">SVG</button>
-                    <button data-format="PNG">PNG</button>
-                    <button data-format="JPEG">JPEG</button>
-                    <button data-format="JSON">JSON</button>
-                    <button data-format="DOT">DOT</button>
-                    <button data-format="PYTHON">Python</button>
-                    <button data-format="JPIPE">jPipe</button>
-                </div>
-            </div>
-            <div class="toolbar-group">
-                <button class="toolbar-btn" id="highlight-toggle" data-tooltip="Highlight on cursor">
-                    <svg class="eye-open" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg>
-                    <svg class="eye-closed" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/><line x1="2" y1="2" x2="14" y2="14"/></svg>
-                </button>
-            </div>
-            <div class="toolbar-group">
-                <button class="toolbar-btn" id="mode-toggle" data-tooltip="Diagnostic view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><rect x="5.75" y="1" width="4.5" height="2.6" rx="0.8"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11.5" x2="10" y2="11.5"/></svg></button>
-            </div>
-            <div class="toolbar-group">
-                <button class="toolbar-btn zoom" id="zoom-out" title="Zoom out">−</button>
-                <span id="zoom-value">100%</span>
-                <button class="toolbar-btn zoom" id="zoom-in" title="Zoom in">+</button>
-            </div>
-        </div>
-    </div>
-    <div id="unsaved-banner">⚠ Unsaved changes — showing last saved version</div>
-    <div id="container">
-        <div id="svg-wrapper">
-            ${svg}
-        </div>
-    </div>
-    <script>
-        const render = ${renderJson};
-        if (render && render.hasError) {
-            document.body.classList.add('jpipe-render-error');
-        }
-        (function() {
-            var banner = document.getElementById('unsaved-banner');
-            function setUnsaved(val) {
-                if (!banner) return;
-                if (val) {
-                    banner.classList.add('visible');
-                    document.body.classList.add('has-unsaved-banner');
-                } else {
-                    banner.classList.remove('visible');
-                    document.body.classList.remove('has-unsaved-banner');
-                }
-            }
-            setUnsaved(${unsavedJson});
-            window.addEventListener('message', function(event) {
-                var msg = event.data;
-                if (msg && msg.type === 'setUnsaved') setUnsaved(!!msg.unsaved);
-            });
-        })();
-        const wrapper = document.getElementById('svg-wrapper');
-        const svgEl = wrapper && wrapper.querySelector('svg');
-        var pathToStrip = ${pathToStripJson};
-        var captionToStrip = ${diagramNameJson};
-        if (svgEl) {
-            function shouldRemove(el) {
-                var t = (el.textContent || '').trim();
-                if (pathToStrip && typeof pathToStrip === 'string' && (el.textContent || '').indexOf(pathToStrip) >= 0) return true;
-                if (captionToStrip && typeof captionToStrip === 'string' && t === captionToStrip) return true;
-                return false;
-            }
-            svgEl.querySelectorAll('text, title').forEach(function(el) {
-                if (shouldRemove(el)) el.remove();
-            });
-            svgEl.querySelectorAll('g').forEach(function(g) {
-                var directText = g.querySelectorAll(':scope > text');
-                if (directText.length === 1 && shouldRemove(directText[0])) g.remove();
-            });
-        }
-        
-        var highlightEnabled = false;
-        var lastHighlightName = null;
-        (function() {
-            var btn = document.getElementById('highlight-toggle');
-            if (!btn) return;
-            btn.addEventListener('click', function() {
-                highlightEnabled = !highlightEnabled;
-                btn.classList.toggle('active', highlightEnabled);
-                applyHighlight(lastHighlightName);
-            });
-        })();
-
-        function applyHighlight(symbolName) {
-            lastHighlightName = symbolName;
-            if (!svgEl) return;
-            var all = Array.from(svgEl.querySelectorAll('g.node, g.edge'));
-            all.forEach(function(g) { g.classList.remove('jpipe-dimmed'); });
-            if (!highlightEnabled) return;
-            var name = (symbolName && typeof symbolName === 'string') ? symbolName.trim() : '';
-            if (!name) return;
-            var matched = null;
-            if (captionToStrip) {
-                var byId = document.getElementById(captionToStrip + ':' + name);
-                if (byId && svgEl.contains(byId)) matched = byId.closest('g.node') || byId.closest('g.edge') || byId;
-            }
-            if (!matched) {
-                var qualifiedName = captionToStrip ? captionToStrip + ':' + name : name;
-                svgEl.querySelectorAll('title').forEach(function(t) {
-                    if (!matched) {
-                        var txt = (t.textContent || '').trim();
-                        if (txt === qualifiedName || txt === name) {
-                            matched = t.closest('g.node') || t.closest('g.edge') || t.closest('g');
-                        }
-                    }
-                });
-            }
-            if (!matched) {
-                svgEl.querySelectorAll('g.node text, g.edge text').forEach(function(t) {
-                    if (!matched && (t.textContent || '').trim() === name) {
-                        matched = t.closest('g.node') || t.closest('g.edge') || t.closest('g');
-                    }
-                });
-            }
-            if (matched) {
-                all.forEach(function(g) { if (g !== matched) g.classList.add('jpipe-dimmed'); });
-            }
-        }
-
-        applyHighlight(${highlightJson});
-        window.addEventListener('message', function(event) {
-            var msg = event.data;
-            if (msg && msg.type === 'highlight') applyHighlight(msg.name);
-        });
-        
-        (function() {
-            try {
-                var vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
-                var drawer = document.getElementById('download-drawer');
-                var downloadToggle = document.getElementById('download-toggle');
-                if (downloadToggle && drawer) {
-                    downloadToggle.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        drawer.classList.toggle('open');
-                    });
-                    document.getElementById('download-drawer').querySelectorAll('button[data-format]').forEach(function(btn) {
-                        btn.addEventListener('click', function() {
-                            var format = this.getAttribute('data-format');
-                            if (format && vscodeApi) {
-                                vscodeApi.postMessage({ type: 'download', format: format });
-                                drawer.classList.remove('open');
-                            }
-                        });
-                    });
-                    document.addEventListener('click', function() {
-                        drawer.classList.remove('open');
-                    });
-                    drawer.addEventListener('click', function(e) { e.stopPropagation(); });
-                }
-                if (vscodeApi) {
-                    var jpipeLink = document.getElementById('jpipe-link');
-                    if (jpipeLink) {
-                        jpipeLink.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            vscodeApi.postMessage({ type: 'openLink', url: 'https://jpipe.org' });
-                        });
-                    }
-                    var modeToggle = document.getElementById('mode-toggle');
-                    if (modeToggle) {
-                        modeToggle.addEventListener('click', function() {
-                            vscodeApi.postMessage({ type: 'toggleMode' });
-                        });
-                    }
-                }
-            } catch (err) {}
-        })();
-        
-        let scale = 1;
-        const zoomInBtn = document.getElementById('zoom-in');
-        const zoomOutBtn = document.getElementById('zoom-out');
-        const zoomValueEl = document.getElementById('zoom-value');
-        
-        function updateZoom() {
-            wrapper.style.transform = 'scale(' + scale + ')';
-            if (zoomValueEl) zoomValueEl.textContent = Math.round(scale * 100) + '%';
-        }
-        
-        zoomInBtn.addEventListener('click', function() {
-            scale = Math.min(scale + 0.25, 3);
-            updateZoom();
-        });
-        
-        zoomOutBtn.addEventListener('click', function() {
-            scale = Math.max(scale - 0.25, 0.25);
-            updateZoom();
-        });
-        
-        if (zoomValueEl) zoomValueEl.addEventListener('click', function() {
-            scale = 1;
-            updateZoom();
-        });
-        
-        document.addEventListener('keydown', function(e) {
-            if (e.key === '=' || e.key === '+') {
-                e.preventDefault();
-                scale = Math.min(scale + 0.25, 3);
-                updateZoom();
-            } else if (e.key === '-') {
-                e.preventDefault();
-                scale = Math.max(scale - 0.25, 0.25);
-                updateZoom();
-            } else if (e.key === '0') {
-                e.preventDefault();
-                scale = 1;
-                updateZoom();
-            }
-        });
-    </script>
-</body>
-</html>`;
-    }
-    
-    private getHtmlForDiagnostic(output: string, unsaved: boolean = false): string {
-        const escaped = output
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;');
-        const unsavedJson = unsaved ? 'true' : 'false';
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>jPipe Diagnostic</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: var(--vscode-editor-background);
-            color: var(--vscode-editor-foreground);
-            font-family: var(--vscode-font-family), system-ui, sans-serif;
-        }
-        #toolbar {
-            position: fixed;
-            top: 0; left: 0; right: 0;
-            height: 44px;
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 12px 0 8px;
-            background: var(--vscode-editorWidget-background);
-            border-bottom: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.35));
-        }
-        #brand a {
-            color: var(--vscode-foreground);
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 15px;
-            letter-spacing: 0.02em;
-            padding: 6px 10px;
-            border-radius: 6px;
-            transition: background 0.15s ease;
-        }
-        #brand a:hover { background: var(--vscode-toolbar-hoverBackground); }
-        .toolbar-btn {
-            width: 32px; height: 32px;
-            border: none; border-radius: 6px;
-            background: transparent;
-            color: var(--vscode-foreground);
-            cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            transition: background 0.15s ease;
-        }
-        .toolbar-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
-        .toolbar-btn.active {
-            background: var(--vscode-toolbar-activeBackground, rgba(128,128,128,0.3));
-            color: var(--vscode-focusBorder);
-        }
-        .toolbar-btn[data-tooltip] { position: relative; }
-        .toolbar-btn[data-tooltip]::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: calc(100% + 6px); left: 50%;
-            transform: translateX(-50%);
-            background: var(--vscode-editorHoverWidget-background);
-            border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.4));
-            color: var(--vscode-editorHoverWidget-foreground);
-            padding: 3px 8px; border-radius: 3px;
-            font-size: 11px; white-space: nowrap;
-            pointer-events: none; opacity: 0;
-            transition: opacity 0.15s ease; z-index: 2000;
-        }
-        .toolbar-btn[data-tooltip]:hover::after { opacity: 1; }
-        #unsaved-banner {
-            position: fixed;
-            top: 44px; left: 0; right: 0;
-            z-index: 999;
-            padding: 5px 12px;
-            font-size: 12px;
-            background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 15%, var(--vscode-editorWidget-background));
-            border-bottom: 1px solid var(--vscode-editorWarning-foreground);
-            color: var(--vscode-editorWarning-foreground);
-            display: none;
-        }
-        #unsaved-banner.visible { display: block; }
-        body.has-unsaved-banner #container { top: 72px; }
-        #container {
-            position: fixed;
-            top: 44px; left: 0; right: 0; bottom: 0;
-            overflow: auto;
-            padding: 12px;
-        }
-        #diag-output {
-            font-family: var(--vscode-editor-font-family, monospace);
-            font-size: 13px;
-            white-space: pre;
-            margin: 0;
-            color: var(--vscode-editor-foreground);
-            line-height: 1.5;
-        }
-    </style>
-</head>
-<body>
-    <div id="toolbar">
-        <div id="brand">
-            <a href="#" id="jpipe-link" title="Open jpipe.org">JPIPE</a>
-        </div>
-        <div>
-            <button class="toolbar-btn active" id="mode-toggle" data-tooltip="Back to diagram view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><rect x="5.75" y="1" width="4.5" height="2.6" rx="0.8"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11.5" x2="10" y2="11.5"/></svg></button>
-        </div>
-    </div>
-    <div id="unsaved-banner">⚠ Unsaved changes — diagnostic reflects last saved version</div>
-    <div id="container">
-        <pre id="diag-output">${escaped}</pre>
-    </div>
-    <script>
-        (function() {
-            var banner = document.getElementById('unsaved-banner');
-            function setUnsaved(val) {
-                if (!banner) return;
-                if (val) {
-                    banner.classList.add('visible');
-                    document.body.classList.add('has-unsaved-banner');
-                } else {
-                    banner.classList.remove('visible');
-                    document.body.classList.remove('has-unsaved-banner');
-                }
-            }
-            setUnsaved(${unsavedJson});
-            window.addEventListener('message', function(event) {
-                var msg = event.data;
-                if (msg && msg.type === 'setUnsaved') setUnsaved(!!msg.unsaved);
-            });
-        })();
-        (function() {
-            try {
-                var vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
-                if (!vscodeApi) return;
-                document.getElementById('mode-toggle').addEventListener('click', function() {
-                    vscodeApi.postMessage({ type: 'toggleMode' });
-                });
-                document.getElementById('jpipe-link').addEventListener('click', function(e) {
-                    e.preventDefault();
-                    vscodeApi.postMessage({ type: 'openLink', url: 'https://jpipe.org' });
-                });
-            } catch (err) {}
-        })();
-    </script>
-</body>
-</html>`;
-    }
-
-    private getNodiagramHtml(): string {
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>jPipe Preview</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 24px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            box-sizing: border-box;
-            background-color: var(--vscode-editor-background);
-            color: var(--vscode-foreground);
-            font-family: var(--vscode-font-family);
-        }
-        .message {
-            max-width: 32rem;
-            text-align: center;
-            opacity: 0.8;
-            line-height: 1.5;
-        }
-    </style>
-</head>
-<body>
-    <div class="message">Move the cursor into a diagram block to preview it.</div>
-</body>
-</html>`;
-    }
-
-    private getLoadingHtml(): string {
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>jPipe Preview</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background-color: var(--vscode-editor-background);
-            color: var(--vscode-editor-foreground);
-        }
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid var(--vscode-editor-foreground);
-            border-top: 3px solid var(--vscode-button-background);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
-</head>
-<body>
-    <div class="spinner"></div>
-</body>
-</html>`;
-    }
 }

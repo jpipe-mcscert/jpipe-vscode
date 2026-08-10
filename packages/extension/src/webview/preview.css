@@ -1,0 +1,369 @@
+/*
+ * The preview panel's styles.
+ *
+ * The page is created once and never rebuilt; the diagram, the diagnostic text and the two
+ * placeholder states are layers within it, toggled by `body[data-mode]`. That is what lets a
+ * save, or a trip to the diagnostic view and back, leave the zoom and pan where the user put
+ * them.
+ */
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-font-family), system-ui, sans-serif;
+}
+
+/* ---------------------------------------------------------------- toolbar */
+
+#toolbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px 0 8px;
+    background: var(--vscode-editorWidget-background);
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+}
+
+#brand { display: flex; align-items: center; gap: 8px; }
+
+#brand a {
+    color: var(--vscode-foreground);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+#brand a:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-foreground);
+}
+
+#toolbar-right { display: flex; align-items: center; gap: 4px; }
+
+.toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 6px;
+    border-right: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+}
+
+.toolbar-group:last-of-type { border-right: none; padding-right: 0; }
+
+.toolbar-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease;
+}
+
+.toolbar-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
+.toolbar-btn svg { width: 18px; height: 18px; }
+.toolbar-btn.zoom { width: 28px; }
+
+.toolbar-btn.active {
+    background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.3));
+    color: var(--vscode-focusBorder);
+}
+
+.toolbar-btn[data-tooltip] { position: relative; }
+
+/*
+ * Below the button, not above it: the toolbar is pinned to the top of the panel, so a tooltip
+ * placed above it is rendered outside the webview and never seen.
+ */
+.toolbar-btn[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--vscode-editorHoverWidget-background);
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
+    color: var(--vscode-editorHoverWidget-foreground);
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 2000;
+}
+
+.toolbar-btn[data-tooltip]:hover::after { opacity: 1; }
+
+#highlight-toggle .eye-open { display: none; }
+#highlight-toggle .eye-closed { display: flex; }
+#highlight-toggle.active .eye-open { display: flex; }
+#highlight-toggle.active .eye-closed { display: none; }
+
+/* The diagram-only controls have nothing to act on in the other modes. */
+body:not([data-mode="diagram"]) .diagram-only { display: none; }
+
+#zoom-value {
+    min-width: 44px;
+    padding: 4px 2px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    text-align: center;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+}
+
+#zoom-value:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+/* Keyboard focus has to be visible, since the canvas and the toolbar are now tab stops. */
+.toolbar-btn:focus-visible,
+#zoom-value:focus-visible,
+#brand a:focus-visible,
+#container:focus-visible,
+#diag-output:focus-visible,
+#download-drawer button:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.download-wrap { position: relative; }
+
+#download-drawer {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    min-width: 100%;
+    background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 4px 0;
+    display: none;
+    z-index: 1001;
+}
+
+#download-drawer.open { display: block; }
+
+#download-drawer button {
+    width: 100%;
+    padding: 8px 14px;
+    font-size: 12px;
+    text-align: left;
+    border: none;
+    background: none;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+#download-drawer button:hover { background: var(--vscode-list-hoverBackground); }
+
+/* ----------------------------------------------------------------- banner */
+
+#unsaved-banner {
+    position: fixed;
+    top: 44px;
+    left: 0;
+    right: 0;
+    z-index: 999;
+    padding: 5px 12px;
+    font-size: 12px;
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 15%, var(--vscode-editorWidget-background));
+    border-bottom: 1px solid var(--vscode-editorWarning-foreground);
+    color: var(--vscode-editorWarning-foreground);
+    display: none;
+}
+
+#unsaved-banner.visible { display: block; }
+
+/* ------------------------------------------------------------ the layers */
+
+.layer {
+    position: fixed;
+    top: 44px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+body.has-unsaved-banner .layer { top: 72px; }
+
+body[data-mode="diagram"] #container,
+body[data-mode="diagnostic"] #diagnostic-overlay,
+body[data-mode="empty"] #empty-overlay { display: block; }
+
+#container, #diagnostic-overlay, #empty-overlay { display: none; }
+
+/* ---------------------------------------------------------- the diagram */
+
+#container {
+    /*
+     * `overflow: hidden` and no flex centring: navigation happens by rewriting the SVG's
+     * viewBox, so the browser must not also try to scroll or centre anything. `touch-action`
+     * stops the webview claiming trackpad gestures before the wheel handler sees them.
+     */
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+}
+
+body.jpipe-render-error #container {
+    background: color-mix(in srgb, var(--vscode-errorForeground) 18%, var(--vscode-editor-background));
+}
+
+#container.pannable { cursor: grab; }
+#container.dragging { cursor: grabbing; }
+
+/*
+ * `color` is what the dark-theme adaptation re-points the diagram's edges and arrowheads at,
+ * after the compiler's opaque white canvas is removed.
+ */
+#svg-wrapper {
+    position: absolute;
+    inset: 0;
+    color: var(--vscode-editor-foreground);
+}
+
+#svg-wrapper > svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#svg-wrapper g.node, #svg-wrapper g.edge { transition: opacity 0.15s ease; }
+#svg-wrapper .jpipe-dimmed { opacity: 0.2; }
+
+/* ---------------------------------------------------------------- minimap */
+
+/*
+ * Deliberately a sibling of #container rather than a child: the pan handler is on #container,
+ * so keeping the minimap outside it means no hit-testing guard is needed, and anchoring to the
+ * bottom keeps it clear of the unsaved banner shifting the layers down.
+ */
+#minimap {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    z-index: 900;
+    overflow: hidden;
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.5));
+    border-radius: 4px;
+    background: var(--vscode-editorWidget-background);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+}
+
+#minimap[hidden] { display: none; }
+
+#minimap-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#minimap-rect {
+    position: absolute;
+    border: 1.5px solid var(--vscode-focusBorder);
+    background: color-mix(in srgb, var(--vscode-focusBorder) 15%, transparent);
+    pointer-events: none;
+}
+
+/* -------------------------------------------------------- other layers */
+
+#diagnostic-overlay {
+    overflow: auto;
+    padding: 12px;
+}
+
+#diag-output {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    white-space: pre;
+    margin: 0;
+    color: var(--vscode-editor-foreground);
+    line-height: 1.5;
+}
+
+#empty-overlay {
+    display: none;
+    padding: 24px;
+}
+
+body[data-mode="empty"] #empty-overlay {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#empty-overlay .message {
+    max-width: 32rem;
+    text-align: center;
+    opacity: 0.8;
+    line-height: 1.5;
+}
+
+/*
+ * The busy indicator is an overlay rather than a whole-page replacement, so the panel can
+ * acknowledge every recompile without ever blanking the diagram already on screen.
+ */
+#busy-overlay {
+    position: fixed;
+    top: 44px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 950;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    background: color-mix(in srgb, var(--vscode-editor-background) 55%, transparent);
+}
+
+body.busy #busy-overlay { display: flex; }
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--vscode-editor-foreground);
+    border-top: 3px solid var(--vscode-button-background);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner { animation-duration: 2.5s; }
+    #svg-wrapper g.node, #svg-wrapper g.edge { transition: none; }
+}

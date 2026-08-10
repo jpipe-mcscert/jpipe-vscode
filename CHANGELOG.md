@@ -1,5 +1,22 @@
 ## Changelog
 
+### v1.5.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Features:
+    - **Pan and zoom that actually work:** Scroll to zoom and drag to move around — or pinch on a trackpad. Zooming now homes in on wherever your pointer is, and runs from a quarter of the diagram's own size up to four times it. That range used to be measured against whatever the panel had shrunk the diagram to, so a large justification could be magnified to three times an already-illegible size and no further — and whatever you did manage to magnify was clipped off the edge of the panel with no way to reach it. Hold Shift while scrolling to pan instead of zoom
+    - **Keyboard navigation:** The diagram is a tab stop, and arrow keys pan it — hold Shift to move a screenful at a time. `+` and `−` zoom, `0` fits to window
+    - **100% now means the diagram's own size:** The preview opens at the size the compiler laid the model out for, and only shrinks it when it is too big for the panel — a four-node justification no longer fills a wide panel at cartoon size. The reset control (the `0` key, the fit button, or clicking the percentage) returns you to exactly that view, and the `+` and `−` buttons step out from it
+    - **Readable in dark themes:** Diagrams are drawn straight onto the editor background instead of on a white sheet, so panning feels like moving a canvas rather than shoving a page around. Node colours are untouched — they carry meaning — while the connecting arrows, and the labels of sub-conclusions, follow your theme so they stay legible. Sub-conclusions keep their outlined shape rather than gaining a background, since that outline is what tells them apart from everything else in the diagram
+    - **Your view survives a save:** Zoom in on one corner of a large model, save the file, and the preview stays where you were looking instead of jumping back to the whole picture. It re-fits only when you move to a different diagram, and it holds its place across a trip to the diagnostic view and back
+    - **An overview map for large models:** Once you are zoomed in, a small map of the whole diagram appears in the corner showing which part you are looking at; drag the box on it to jump somewhere else. It stays out of the way whenever the whole diagram already fits on screen
+    - **The preview follows your cursor:** With highlighting turned on, putting the cursor on an element that has scrolled out of sight now brings it into view, instead of dimming everything around something you cannot see
+    - **No more flicker:** Re-rendering no longer blanks the panel — the diagram stays on screen while the compiler runs, and a model that fails to compile leaves the last good picture up rather than replacing it
+    - The Download menu is hidden in the diagnostic view, where there is no diagram to export
+  - Bug Fixes:
+    - Moving the cursor outside a diagram block no longer raises a background error on every keystroke
+  - Maintenance:
+    - The preview's interactive code moved into its own type-checked bundle, with the view geometry covered by unit tests, and the panel now runs under a content security policy (development-only; nothing you do in the editor should behave differently)
+
 ### v1.4.0 (2026-08-07)
 - Leader: Sébastien Mosser
   - Features:

@@ -1,0 +1,19 @@
+{
+    // The preview webview runs in a browser, not in the extension host, so it needs the DOM
+    // lib. It is a separate project rather than a wider `lib` on the main one so that the
+    // extension and language-server code stays honestly DOM-free.
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "rootDir": ".",
+        "lib": [
+            "ES2021",
+            "DOM",
+            "DOM.Iterable"
+        ]
+    },
+    "include": [
+        "src/webview/**/*.ts",
+        "src/shared/**/*.ts"
+    ]
+}
