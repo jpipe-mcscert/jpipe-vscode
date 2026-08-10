@@ -13,7 +13,7 @@
 import { describe, expect, test } from 'vitest';
 import { EmptyFileSystem } from 'langium';
 import { CodeActionKind } from 'vscode-languageserver';
-import { JPIPE_REFACTORINGS, createJpipeServices, providedCodeActionKinds } from 'jpipe-language';
+import { JPIPE_REFACTORINGS, ORGANIZE_LOADS_KIND, createJpipeServices, providedCodeActionKinds } from 'jpipe-language';
 
 /** The capabilities the server would return from `initialize`. */
 async function capabilities() {
@@ -40,8 +40,18 @@ describe('the code action capability', () => {
     });
 
     // The one `Source Action…` needs to see.
-    test('claims the organize-imports source kind', async () => {
-        expect(providedCodeActionKinds()).toContain('source.organizeImports');
+    test('claims the organize-loads source kind', async () => {
+        expect(providedCodeActionKinds()).toContain(ORGANIZE_LOADS_KIND);
+    });
+
+    // Kinds match by prefix, and a great many people carry a global
+    // `source.organizeImports` on-save setting for other languages. Taking that name would let it
+    // rewrite the top of every `.jd` file they save without their ever asking for it here.
+    test('claims nothing inside the well-known organize-imports subtree', async () => {
+        for (const kind of providedCodeActionKinds()) {
+            expect(kind === 'source.organizeImports' || kind.startsWith('source.organizeImports.'),
+                `'${kind}' would be swept up by a global organize-imports-on-save setting`).toBe(false);
+        }
     });
 
     test('claims every kind the registered refactorings use', async () => {

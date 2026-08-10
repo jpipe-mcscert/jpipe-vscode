@@ -8,7 +8,7 @@
  */
 import { describe, expect, test } from 'vitest';
 import { CodeActionKind } from 'vscode-languageserver';
-import { JpipeIssue, issueCodeOf } from 'jpipe-language';
+import { JpipeIssue, ORGANIZE_LOADS_KIND, issueCodeOf } from 'jpipe-language';
 import { CURSOR, actionTitles, applyCodeAction, expectFixResolves, listCodeActions, listWithRegistry, parseValidated } from './code-action-helper.js';
 
 /**
@@ -98,7 +98,7 @@ describe('the code action dispatcher', () => {
     test('respects the kinds the client asked for', async () => {
         const source = `${TEMPLATE}\njustification J implements T { strategy T:a is "A" evidence T:b is "B" }`;
         expect(await actionTitles(source)).not.toEqual([]);
-        expect(await actionTitles(source, 'source.organizeImports')).toEqual([]);
+        expect(await actionTitles(source, ORGANIZE_LOADS_KIND)).toEqual([]);
     });
 });
 

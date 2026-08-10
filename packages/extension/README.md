@@ -53,19 +53,13 @@ Three more are offered for wherever your cursor is, under **Refactor** (`⌃⇧R
     that implements it.
 
 **Organize loads** — sort and de-duplicate the `load` statements at the top of a file — lives
-under **Source Action…** rather than the lightbulb, as organizing imports does in other
-languages. It is also in the command palette as *jPipe: Organize Loads*.
+under **Source Action…**, and in the command palette as *jPipe: Organize Loads*. It runs only
+when you ask for it: reordering your source is a decision you make, not one that happens while
+you save. It is deliberately not registered as `source.organizeImports`, so a global
+organize-on-save setting kept for another language will not reach your `.jd` files.
 
-To organize loads every time you save, add this to your settings:
-
-```jsonc
-"[jpipe]": {
-    "editor.codeActionsOnSave": { "source.organizeImports": "explicit" }
-}
-```
-
-It is off by default, and it never removes a `load` whose path does not resolve — a half-typed
-path is exactly the state a file is in while you are writing one.
+When you do run it, it never removes a `load` whose path does not resolve — a half-typed path is
+exactly the state a file is in while you are writing one.
 
 #### Tutorials
 

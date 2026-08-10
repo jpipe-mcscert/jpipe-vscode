@@ -7,6 +7,7 @@ import { PreviewProvider } from './image-generation/preview-provider.js';
 import { ReleaseManager, JpipeRelease } from './image-generation/release-manager.js';
 import { ExclusionManager, ExclusionDecorationProvider, ExclusionCodeLensProvider } from './exclusions.js';
 import { JpipeLogger } from './logger.js';
+import { ORGANIZE_LOADS_KIND } from 'jpipe-language';
 
 let client: LanguageClient;
 
@@ -204,7 +205,7 @@ export function activate(context: vscode.ExtensionContext): void {
         // palette shortcut to it, the way other languages offer one for organizing imports.
         vscode.commands.registerCommand('jpipe.organizeLoads', async () => {
             await vscode.commands.executeCommand('editor.action.sourceAction', {
-                kind: 'source.organizeImports',
+                kind: ORGANIZE_LOADS_KIND,
                 apply: 'first'
             });
         }),

@@ -65,7 +65,7 @@ export interface QuickFixDefinition<C extends JpipeIssueCode = JpipeIssueCode> {
  */
 export interface RefactoringDefinition {
     readonly id: string;
-    /** Advertised kind, e.g. `CodeActionKind.RefactorRewrite` or `'source.organizeImports'`. */
+    /** Advertised kind, e.g. `CodeActionKind.RefactorRewrite` or a `source.*` kind. */
     readonly actionKind: string;
     create(context: JpipeActionContext): MaybePromise<CodeAction[]>;
 }

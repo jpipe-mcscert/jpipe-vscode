@@ -9,9 +9,10 @@
 import { describe, expect, test } from 'vitest';
 import { CodeActionKind } from 'vscode-languageserver';
 import { Diagnostic, DiagnosticSeverity } from 'vscode-languageserver-types';
+import { ORGANIZE_LOADS_KIND } from 'jpipe-language';
 import { CURSOR, actionTitles, applyCodeAction, parseValidated } from './code-action-helper.js';
 
-const ORGANIZE = 'source.organizeImports';
+const ORGANIZE = ORGANIZE_LOADS_KIND;
 
 describe('organize-loads', () => {
 

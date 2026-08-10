@@ -5,6 +5,7 @@ export * from './jpipe-diagnostic-codes.js';
 export * from './jpipe-code-action-provider.js';
 export * from './jpipe-language-server.js';
 export { JPIPE_QUICK_FIXES, JPIPE_REFACTORINGS } from './code-actions/index.js';
+export { ORGANIZE_LOADS_KIND } from './code-actions/organize-loads.js';
 export * from './jpipe-logger.js';
 export * from './jpipe-exclusions.js';
 export * from './generated/ast.js';
