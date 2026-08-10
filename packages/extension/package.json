@@ -478,6 +478,9 @@
             }
         ]
     },
+    "activationEvents": [
+        "workspaceContains:**/*.jd"
+    ],
     "main": "./out/extension/main.cjs",
     "scripts": {
         "clean": "shx rm -fr *.tsbuildinfo out syntaxes",
