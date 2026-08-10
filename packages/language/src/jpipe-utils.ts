@@ -1,4 +1,4 @@
-import { type AstNode, type CstNode, URI } from 'langium';
+import { type AstNode, type CstNode, GrammarUtils, URI } from 'langium';
 import { DefaultNameProvider } from 'langium';
 import {
     isAbstractSupport,
@@ -34,11 +34,23 @@ export class JpipeNameProvider extends DefaultNameProvider {
         const id = n['id'];
         if (typeof id === 'string') return id;
         if (id && typeof id === 'object' && Array.isArray((id as QualifiedId).parts)) {
-            return qualifiedIdText(id as QualifiedId);
+            // An element being typed has an id node with no parts yet. Naming it `''` would put
+            // an entry under the empty string into the index; it has no name until it has one.
+            return qualifiedIdText(id as QualifiedId) || undefined;
         }
         return super.getName(node);
     }
 
+    /**
+     * Returns the CST node spanning the declaration's identifier.
+     *
+     * Both branches are load-bearing, because `DefaultNameProvider.getNameNode` looks up a
+     * property literally called `name` — which in this grammar is the element's *label*, never
+     * its identifier. Falling through to it returns the wrong node for an element and no node at
+     * all for a model, and returning no node is the more damaging of the two: `getSelfReferences`
+     * silently skips any declaration whose name node is undefined, so a rename would rewrite
+     * every usage and leave the declaration behind.
+     */
     override getNameNode(node: AstNode): CstNode | undefined {
         const id = (node as unknown as Record<string, unknown>)['id'];
         // For QualifiedId nodes (Evidence, Strategy, etc.), the id is an AST node
@@ -47,18 +59,28 @@ export class JpipeNameProvider extends DefaultNameProvider {
             const cst = (id as { $cstNode?: CstNode }).$cstNode;
             if (cst) return cst;
         }
+        // Justification and Template carry a plain `id` token instead.
+        if (typeof id === 'string') {
+            return GrammarUtils.findNodeForProperty(node.$cstNode, 'id');
+        }
         return super.getNameNode(node);
     }
 }
 
-/** Returns the colon-joined string form of a QualifiedId, e.g. ['t','abs'] → 't:abs'. */
-export function qualifiedIdText(id: QualifiedId): string {
-    return id.parts.join(':');
+/**
+ * Returns the colon-joined string form of a QualifiedId, e.g. ['t','abs'] → 't:abs'.
+ *
+ * Tolerates a missing id and returns `''`. `evidence ` with nothing after it parses to an element
+ * whose `id` is absent, and that state exists for as long as it takes to type a name — so every
+ * caller here is one a user passes through on the way to a valid model, not an edge case.
+ */
+export function qualifiedIdText(id: QualifiedId | undefined): string {
+    return id?.parts?.join(':') ?? '';
 }
 
 /** Returns the last segment of a QualifiedId — the local name ('t:abs' → 'abs', 'e1' → 'e1'). */
-export function localName(id: QualifiedId): string {
-    return id.parts.at(-1) ?? '';
+export function localName(id: QualifiedId | undefined): string {
+    return id?.parts?.at(-1) ?? '';
 }
 
 /**
@@ -70,8 +92,10 @@ export function localName(id: QualifiedId): string {
 export function getRelationCandidates(node: Justification | Template): JustificationElement[] {
     const local = getLocalElements(node);
     const abstractSupports: JustificationElement[] = [];
+    const seen = new Set<Justification | Template>([node]);
     let parent = node.parent?.ref;
-    while (parent) {
+    while (parent && !seen.has(parent)) {
+        seen.add(parent);
         for (const el of getLocalElements(parent)) {
             if (isAbstractSupport(el)) abstractSupports.push(el);
         }
@@ -84,12 +108,22 @@ export function getRelationCandidates(node: Justification | Template): Justifica
  * Recursively collects all elements from a justification or template, including those
  * inherited from parent templates. Elements are returned in order: local first, then
  * inherited (most specific to least specific).
+ *
+ * A template may `implements` its way back to itself — the compiler reports that as
+ * `cyclic-implements` — and the model is still in that state while the editor is looking at it.
+ * Walking such a chain without the `seen` set exhausts the stack and takes the whole validation
+ * pass down with it, so every element is visited at most once.
  */
-export function getAllElements(node: Justification | Template): JustificationElement[] {
+export function getAllElements(
+    node: Justification | Template,
+    seen: Set<Justification | Template> = new Set()
+): JustificationElement[] {
+    if (seen.has(node)) return [];
+    seen.add(node);
     const local = getLocalElements(node);
     const parentRef = node.parent?.ref;
     if (parentRef) {
-        return [...local, ...getAllElements(parentRef)];
+        return [...local, ...getAllElements(parentRef, seen)];
     }
     return local;
 }

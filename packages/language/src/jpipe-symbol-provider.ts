@@ -19,6 +19,7 @@ import {
     type Unit,
 } from './generated/ast.js';
 import { getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { getDocumentAndUnit } from './jpipe-ast-context.js';
 
 const ZERO_RANGE: Range = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
 
@@ -33,6 +34,19 @@ function elementKind(e: JustificationElement): SymbolKind {
 
 function syntheticSymbol(name: string, kind: SymbolKind, range: Range): DocumentSymbol {
     return { name, kind, range, selectionRange: range };
+}
+
+/**
+ * A symbol for something that has a name yet, or `undefined`.
+ *
+ * A declaration is nameless for as long as it takes to type a name — `justification ` and
+ * `evidence ` are both states every model passes through. The LSP client rejects a symbol whose
+ * name is empty with "name must not be falsy" and throws away the *whole* response, so one
+ * half-typed line would empty the outline and raise a notification on every keystroke. Something
+ * without a name is simply not a symbol yet.
+ */
+function namedSymbol(name: string | undefined, kind: SymbolKind, range: Range): DocumentSymbol | undefined {
+    return name ? syntheticSymbol(name, kind, range) : undefined;
 }
 
 export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
@@ -59,7 +73,8 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         for (const body of unit.body) {
             if (!isJustification(body) && !isTemplate(body)) continue;
             if (!body.$cstNode) continue;
-            defaultChildren.push(this.buildModelSymbol(body));
+            const symbol = this.buildModelSymbol(body);
+            if (symbol) defaultChildren.push(symbol);
         }
 
         for (const load of unnamedLoads) {
@@ -99,11 +114,13 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         for (const body of importedUnit.body) {
             if (!isJustification(body) && !isTemplate(body)) continue;
             const kind = isJustification(body) ? SymbolKind.Class : SymbolKind.Interface;
-            const elementChildren = getLocalElements(body).map(e =>
-                syntheticSymbol(qualifiedIdText(e.id), elementKind(e), loadRange)
-            );
+            const model = namedSymbol(body.id, kind, loadRange);
+            if (!model) continue;
+            const elementChildren = getLocalElements(body)
+                .map(e => namedSymbol(qualifiedIdText(e.id), elementKind(e), loadRange))
+                .filter((symbol): symbol is DocumentSymbol => symbol !== undefined);
             results.push({
-                ...syntheticSymbol(body.id, kind, loadRange),
+                ...model,
                 children: elementChildren.length > 0 ? elementChildren : undefined,
             });
         }
@@ -126,23 +143,24 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         };
     }
 
-    private buildModelSymbol(owner: Justification | Template): DocumentSymbol {
+    private buildModelSymbol(owner: Justification | Template): DocumentSymbol | undefined {
+        if (!owner.id) return undefined;
         const kind = isJustification(owner) ? SymbolKind.Class : SymbolKind.Interface;
         const ownerRange = owner.$cstNode!.range;
 
         // Local elements.
-        const local = getLocalElements(owner).map(e => {
-            const range = e.$cstNode?.range ?? ownerRange;
-            return syntheticSymbol(qualifiedIdText(e.id), elementKind(e), range);
-        });
+        const local = getLocalElements(owner)
+            .map(e => namedSymbol(qualifiedIdText(e.id), elementKind(e), e.$cstNode?.range ?? ownerRange))
+            .filter((symbol): symbol is DocumentSymbol => symbol !== undefined);
 
         // Inherited elements from parent templates (transitively).
         // localKey = templateId:elementQualifiedId, omitting any namespace prefix.
-        const { document: doc, unit } = this.getDocumentAndUnit(owner);
+        const { document: doc, unit } = getDocumentAndUnit(owner);
         const inherited = doc && unit
-            ? this.importService.getInheritedElementsWithKeys(owner, unit, doc).map(({ element, localKey }) =>
-                syntheticSymbol(`(inherited) ${localKey}`, elementKind(element), ownerRange)
-            )
+            ? this.importService.getInheritedElementsWithKeys(owner, unit, doc)
+                .filter(({ localKey }) => localKey.length > 0)
+                .map(({ element, localKey }) =>
+                    syntheticSymbol(`(inherited) ${localKey}`, elementKind(element), ownerRange))
             : [];
 
         const children = [...local, ...inherited];
@@ -156,19 +174,4 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
         };
     }
 
-    private getDocumentAndUnit(node: Justification | Template): {
-        document: LangiumDocument | undefined;
-        unit: Unit | undefined;
-    } {
-        let document = (node as unknown as Record<string, unknown>).$document as LangiumDocument | undefined;
-        if (!document) {
-            let current: unknown = node;
-            while (current && !document) {
-                document = (current as Record<string, unknown>).$document as LangiumDocument | undefined;
-                current = (current as Record<string, unknown>).$container;
-            }
-        }
-        const unit = document?.parseResult?.value as Unit | undefined;
-        return { document, unit };
-    }
 }

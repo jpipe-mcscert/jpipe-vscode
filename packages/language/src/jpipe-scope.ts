@@ -1,4 +1,4 @@
-import { DefaultScopeProvider, AstUtils, type AstNodeDescription, type Scope, type ReferenceInfo, type LangiumDocument } from 'langium';
+import { DefaultScopeProvider, AstUtils, type AstNodeDescription, type Scope, type ReferenceInfo } from 'langium';
 import { type JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import {
@@ -6,10 +6,12 @@ import {
     isTemplate,
     type Composition,
     type Justification,
+    type JustificationElement,
     type Template,
     type Unit
 } from './generated/ast.js';
 import { getAllElements, getLocalElements, localName, qualifiedIdText } from './jpipe-utils.js';
+import { getDocumentAndUnit } from './jpipe-ast-context.js';
 
 
 export class JpipeScopeProvider extends DefaultScopeProvider {
@@ -45,7 +47,7 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
     }
 
     private parentScope(owner: Justification | Template): Scope | undefined {
-        const { document, unit } = this.getDocumentAndUnit(owner);
+        const { document, unit } = getDocumentAndUnit(owner);
         if (!document || !unit) return undefined;
         const localEntries = this.getLocalTemplates(unit).map(t => ({ template: t, ns: undefined as string | undefined }));
         const importedEntries = this.importService.getTemplatesWithNamespace(unit, document);
@@ -55,7 +57,7 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
     private refsScope(context: ReferenceInfo): Scope | undefined {
         const composition = context.container.$container as Composition;
         const owner = composition.$container as Justification | Template;
-        const { document, unit } = this.getDocumentAndUnit(owner);
+        const { document, unit } = getDocumentAndUnit(owner);
         if (!document || !unit) return undefined;
         const local = unit.body.filter((b): b is Justification | Template => isJustification(b) || isTemplate(b));
         const imported = this.importService.getJustificationsAndTemplatesWithNamespace(unit, document);
@@ -77,7 +79,7 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
         // Relation-type filtering (e.g. evidence→strategy only) is done in the completion
         // provider, which runs after linking is complete.
 
-        const { document, unit } = this.getDocumentAndUnit(owner);
+        const { document, unit } = getDocumentAndUnit(owner);
         const localElements = getLocalElements(owner);
 
         // Local element keys take priority; inherited entries with the same key are
@@ -105,42 +107,36 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
 
         const desc: AstNodeDescription[] = [];
 
+        /**
+         * Naming a description `''` is not merely useless, it throws: Langium refuses to describe a
+         * node with no name, and the throw surfaces per reference as "An error occurred while
+         * resolving reference to 'x'". An element being typed has no id yet, so every relation in
+         * the model would fail to link while the author writes one — the same fault the outline
+         * had, in a different provider.
+         */
+        const named = (element: JustificationElement) => qualifiedIdText(element.id) !== '';
+
         // Primary entries: full qualified keys.
-        for (const e of localElements) {
+        for (const e of localElements.filter(named)) {
             desc.push(this.descriptions.createDescription(e, qualifiedIdText(e.id)));
         }
         for (const { element, key } of inheritedEntries) {
-            desc.push(this.descriptions.createDescription(element, key));
+            if (key !== '') desc.push(this.descriptions.createDescription(element, key));
         }
 
         // Short-name aliases: only when unambiguous (two-pass resolution per ADR 0012).
-        for (const e of localElements) {
+        for (const e of localElements.filter(named)) {
             const s = localName(e.id);
             if ((shortNameCount.get(s) ?? 0) === 1)
                 desc.push(this.descriptions.createDescription(e, s));
         }
-        for (const { element } of inheritedEntries) {
+        for (const { element } of inheritedEntries.filter(entry => named(entry.element))) {
             const s = localName(element.id);
             if ((shortNameCount.get(s) ?? 0) === 1)
                 desc.push(this.descriptions.createDescription(element, s));
         }
 
         return this.createScope(desc);
-    }
-
-    private getDocumentAndUnit(node: any): { document: LangiumDocument | undefined, unit: Unit | undefined } {
-        let document = node.$document as LangiumDocument | undefined;
-
-        if (!document) {
-            let current: any = node;
-            while (current && !document) {
-                document = current.$document;
-                current = current.$container;
-            }
-        }
-
-        const unit = document?.parseResult?.value as Unit | undefined;
-        return { document, unit };
     }
 
     private createScopeFromTemplates(entries: Array<{ template: Template; ns: string | undefined }>) {

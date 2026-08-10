@@ -55,9 +55,9 @@ describe('the shell provides what the page looks up', () => {
 
 describe('toolbar order', () => {
     /**
-     * The mode switch is the only control belonging to the panel rather than to what the panel
-     * is showing. Everything else appears and disappears with the mode, so if the switch is not
-     * last it moves under the user as they use it.
+     * The mode switch is the only control on the right belonging to the panel rather than to what
+     * the panel is showing. Everything else there appears and disappears with the mode, so if the
+     * switch is not last it moves under the user as they use it.
      */
     test('the mode switch is the last control on the right', () => {
         const toolbar = shell.slice(shell.indexOf('id="toolbar-right"'), shell.indexOf('unsaved-banner'));
@@ -70,6 +70,22 @@ describe('toolbar order', () => {
         // there is no way back.
         const group = shell.slice(shell.indexOf('id="mode-group"') - 200, shell.indexOf('id="mode-toggle"'));
         expect(group).not.toContain('diagram-only');
+    });
+
+    // Settings belong to the extension, not to the diagram or the report, so the gear sits with
+    // the brand rather than among the controls that change with the mode.
+    test('the settings gear sits in the brand, beside the jpipe.org link', () => {
+        const brand = shell.slice(shell.indexOf('id="brand"'), shell.indexOf('id="toolbar-right"'));
+        expect(brand).toContain('id="open-settings"');
+        expect(brand.indexOf('id="jpipe-link"')).toBeLessThan(brand.indexOf('id="open-settings"'));
+    });
+
+    // A gear is a rim with teeth on it; a ring of detached strokes around a dot is a sun.
+    test('the gear is drawn as a rim with teeth, not as rays', () => {
+        const button = shell.slice(shell.indexOf('id="open-settings"'), shell.indexOf('</button>', shell.indexOf('id="open-settings"')));
+        expect(button).toContain('<circle');
+        // Teeth are struck thicker than the rim so they read as part of it.
+        expect(button).toMatch(/stroke-width="2(\.\d+)?"/);
     });
 });
 
@@ -86,5 +102,21 @@ describe('the diagnostic layer is laid out as a column', () => {
 
     test('the panel is the part that scrolls', () => {
         expect(css).toMatch(/#diag-panel\s*\{[^}]*overflow:\s*auto/);
+    });
+
+    /**
+     * Copy / Report / Text / JSON sit at the right of the header, and have to stay there when the
+     * tabs beside them are not on screen.
+     *
+     * Two states hide the tabs: any face but Report, and a report from a compiler too old to
+     * produce a structured one. In both, this row is the header's only child — and `space-between`
+     * places a lone flex child at the *start*, which slid the whole group to the left edge. So the
+     * position cannot be left to the header's distribution; the row has to push itself over.
+     */
+    test('the report controls hold the right edge without the tabs beside them', () => {
+        expect(css, 'raw faces hide the tabs, so the header can be left with one child')
+            .toMatch(/body\.diag-raw\s+#diag-tabs[^{]*\{[^}]*display:\s*none/);
+        expect(css, '#diag-summary-actions must not depend on a sibling for its position')
+            .toMatch(/#diag-summary-actions\s*\{[^}]*margin-left:\s*auto/);
     });
 });

@@ -11,7 +11,6 @@ import type {
     AbstractSupport,
     Template,
     Justification,
-    JustificationElement,
     Load
 } from './generated/ast.js';
 import {
@@ -20,13 +19,17 @@ import {
     isAbstractSupport,
     isEvidence,
     isStrategy,
-    isConclusion,
     isSubConclusion
 } from './generated/ast.js';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import type { JpipeImportService } from './jpipe-import.js';
+import type { JpipeUnificationService } from './jpipe-unification.js';
+import { UNIFY_BY_KEY } from './jpipe-operators.js';
 import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { allowedConfigKeys, isKnownOperator, knownOperatorNames, operatorSpec, requiredConfigKeys } from './jpipe-operators.js';
+import { JpipeIssue, issue } from './jpipe-diagnostic-codes.js';
+import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 
 export function registerValidationChecks(services: JpipeServices) {
     const registry = services.validation.ValidationRegistry;
@@ -34,9 +37,9 @@ export function registerValidationChecks(services: JpipeServices) {
     const checks: ValidationChecks<JpipeAstType> = {
         Unit:           validator.checkUnitNotEmpty,
         Load:           validator.checkLoadResolves,
-        Composition:    [validator.checkOperatorName, validator.checkConfigKeys],
-        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport],
-        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride],
+        Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys, validator.checkUnificationMethod],
+        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds],
+        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds],
         Evidence:       validator.checkLabelNotEmpty,
         Strategy:       [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
         Conclusion:     [validator.checkLabelNotEmpty, validator.checkConclusionIncomingFromStrategy],
@@ -49,22 +52,12 @@ export function registerValidationChecks(services: JpipeServices) {
 export class JpipeValidator {
     private readonly logger: JpipeServerLogger;
     private readonly importService: JpipeImportService;
-
-    private static readonly KNOWN_OPERATORS = new Set(['assemble', 'refine']);
-
-    private static readonly OPERATOR_ALLOWED_KEYS: Record<string, Set<string>> = {
-        assemble: new Set(['conclusionLabel', 'strategyLabel']),
-        refine:   new Set(['hook'])
-    };
-
-    private static readonly OPERATOR_REQUIRED_KEYS: Record<string, Set<string>> = {
-        assemble: new Set(['conclusionLabel', 'strategyLabel']),
-        refine:   new Set(['hook'])
-    };
+    private readonly unification: JpipeUnificationService;
 
     constructor(services: JpipeServices) {
         this.logger = services.logger;
         this.importService = services.references.JpipeImportService;
+        this.unification = services.unification;
     }
 
     /**
@@ -83,7 +76,8 @@ export class JpipeValidator {
             if (!resolved) {
                 accept('error',
                     `Cannot resolve load path '${load.path}': no such file.`,
-                    { node: load, property: 'path' });
+                    { node: load, property: 'path',
+                      ...issue(JpipeIssue.LoadUnresolved, { path: load.path }) });
             } else {
                 this.checkNotSelfLoad([resolved], load, document, accept);
             }
@@ -98,13 +92,16 @@ export class JpipeValidator {
             const message = error instanceof GlobExpansionError
                 ? error.describe(load.path)
                 : `Cannot expand load pattern '${load.path}': ${error instanceof Error ? error.message : String(error)}`;
-            accept('error', message, { node: load, property: 'path' });
+            accept('error', message,
+                { node: load, property: 'path',
+                  ...issue(JpipeIssue.LoadMalformedPattern, { path: load.path }) });
             return;
         }
         if (matches.length === 0) {
             accept('error',
                 `No file matches load pattern '${load.path}'`,
-                { node: load, property: 'path' });
+                { node: load, property: 'path',
+                  ...issue(JpipeIssue.LoadNoMatch, { path: load.path }) });
             return;
         }
 
@@ -126,37 +123,105 @@ export class JpipeValidator {
     ): void {
         const self = resolvedPaths.find(candidate => this.importService.isSameFile(candidate, document));
         if (self) {
-            accept('error', `Circular load detected: ${self}`, { node: load, property: 'path' });
+            accept('error', `Circular load detected: ${self}`,
+                { node: load, property: 'path',
+                  ...issue(JpipeIssue.LoadCircular, { path: load.path, resolved: self }) });
         }
     }
 
     checkOperatorName(composition: Composition, accept: ValidationAcceptor): void {
-        if (!JpipeValidator.KNOWN_OPERATORS.has(composition.operator)) {
+        if (!isKnownOperator(composition.operator)) {
             accept('error',
-                `Unknown operator '${composition.operator}'. Expected: ${[...JpipeValidator.KNOWN_OPERATORS].join(', ')}.`,
-                { node: composition, property: 'operator' });
+                `Unknown operator '${composition.operator}'. Expected: ${knownOperatorNames().join(', ')}.`,
+                { node: composition, property: 'operator',
+                  ...issue(JpipeIssue.UnknownOperator,
+                           { actual: composition.operator, known: knownOperatorNames() }) });
         }
     }
 
+    /**
+     * Checks how many source models a composition passes its operator.
+     *
+     * Nothing checked this before, so `refine(a)` reached the compiler and failed there —
+     * `RefineOperator` throws on anything but two sources, and the grammar allows none at all.
+     */
+    checkOperatorArity(composition: Composition, accept: ValidationAcceptor): void {
+        const spec = operatorSpec(composition.operator);
+        if (!spec) return;
+
+        const actual = composition.params?.refs.length ?? 0;
+        const { min, max } = spec.arity;
+        if (actual >= min && (max === undefined || actual <= max)) return;
+
+        const expected = max === min
+            ? `exactly ${min}`
+            : max === undefined
+                ? `at least ${min}`
+                : `between ${min} and ${max}`;
+        // The noun agrees with the number that immediately precedes it.
+        const count = max === undefined ? min : max;
+        accept('error',
+            `${composition.operator} requires ${expected} source ${count === 1 ? 'model' : 'models'}, got ${actual}.`,
+            { node: composition, property: 'operator',
+              ...issue(JpipeIssue.OperatorArity, { operator: composition.operator, actual, min, ...(max !== undefined ? { max } : {}) }) });
+    }
+
+    /**
+     * Checks a composition's config block against the operator's key table.
+     *
+     * A missing required key is an error: the compiler refuses to run without it. An unknown key
+     * is only a warning, because the compiler ignores keys it does not recognise — flagging one
+     * as an error would claim a build failure that will not happen.
+     */
     checkConfigKeys(composition: Composition, accept: ValidationAcceptor): void {
         const op = composition.operator;
-        if (!JpipeValidator.KNOWN_OPERATORS.has(op)) return;
-        const allowed = JpipeValidator.OPERATOR_ALLOWED_KEYS[op] ?? new Set<string>();
-        const required = JpipeValidator.OPERATOR_REQUIRED_KEYS[op] ?? new Set<string>();
+        if (!isKnownOperator(op)) return;
+        const allowed = allowedConfigKeys(op);
         const present = new Set(composition.config?.entries.map(e => e.key) ?? []);
         for (const entry of composition.config?.entries ?? []) {
-            if (!allowed.has(entry.key)) {
-                accept('error',
-                    `Unknown config key '${entry.key}' for operator '${op}'. Allowed: ${[...allowed].join(', ')}.`,
-                    { node: entry, property: 'key' });
+            if (!allowed.includes(entry.key)) {
+                accept('warning',
+                    `Unknown config key '${entry.key}' for operator '${op}'. Allowed: ${allowed.join(', ')}.`,
+                    { node: entry, property: 'key',
+                      ...issue(JpipeIssue.UnknownConfigKey,
+                               { actual: entry.key, operator: op, allowed }) });
             }
         }
-        for (const key of required) {
-            if (!present.has(key)) {
-                accept('error',
-                    `Missing required config key '${key}' for operator '${op}'.`,
-                    { node: composition, property: 'operator' });
-            }
+        const allMissing = requiredConfigKeys(op).filter(key => !present.has(key));
+        for (const key of allMissing) {
+            accept('error',
+                `Missing required config key '${key}' for operator '${op}'.`,
+                { node: composition, property: 'operator',
+                  ...issue(JpipeIssue.MissingConfigKey, {
+                      missingKey: key,
+                      operator: op,
+                      allMissing,
+                      hasConfigBlock: composition.config !== undefined
+                  }) });
+        }
+    }
+
+    /**
+     * Flags a `unifyBy` naming a relation this workspace does not recognise.
+     *
+     * A warning, not an error. The compiler's registry is populated at startup, so a build may
+     * carry relations shipped with neither jPipe core nor this extension — a project with its own
+     * is not doing anything wrong, and calling its models broken would be simply wrong. What is
+     * reported is the limit of what the editor knows, which the settings can widen.
+     *
+     * Staying silent is not the alternative: a typo'd relation name fails the build with nothing
+     * having warned, and the value is a plain string that nothing else checks.
+     */
+    checkUnificationMethod(composition: Composition, accept: ValidationAcceptor): void {
+        for (const entry of composition.config?.entries ?? []) {
+            if (entry.key !== UNIFY_BY_KEY) continue;
+            const actual = entry.value;
+            if (!actual || this.unification.isKnown(actual)) continue;
+            const known = this.unification.known();
+            accept('warning',
+                `Unknown unification method '${actual}'; registered: ${known.join(', ')}.`,
+                { node: entry, property: 'value',
+                  ...issue(JpipeIssue.UnknownUnificationMethod, { actual, known }) });
         }
     }
 
@@ -164,14 +229,14 @@ export class JpipeValidator {
                         accept: ValidationAcceptor): void {
         if (element.name?.length === 0) {
             accept('warning', 'Element label should not be empty',
-                   { node: element, property: 'name' });
+                   { node: element, property: 'name', ...issue(JpipeIssue.EmptyLabel) });
         }
     }
 
     checkUnitNotEmpty(unit: Unit, accept: ValidationAcceptor): void {
         if (unit.body?.length === 0) {
             accept('warning', 'Justification File should not be empty',
-                   { node: unit, property: 'body' });
+                   { node: unit, property: 'body', ...issue(JpipeIssue.EmptyUnit) });
         }
     }
 
@@ -186,7 +251,8 @@ export class JpipeValidator {
 
         if (duplicates.length > 1) {
             accept('error', `Duplicate template name '${template.id}'`,
-                   { node: template, property: 'id' });
+                   { node: template, property: 'id',
+                     ...issue(JpipeIssue.DuplicateModelName, { id: template.id }) });
         }
     }
 
@@ -197,7 +263,8 @@ export class JpipeValidator {
         if (!hasSupport) {
             accept('warning',
                 `Template '${template.id}' has no @support elements. Justifications implementing this template are not required to override any elements.`,
-                { node: template, property: 'id' });
+                { node: template, property: 'id',
+                  ...issue(JpipeIssue.TemplateWithoutSupport, { id: template.id }) });
         }
     }
 
@@ -212,7 +279,35 @@ export class JpipeValidator {
 
         if (duplicates.length > 1) {
             accept('error', `Duplicate justification name '${justification.id}'`,
-                   { node: justification, property: 'id' });
+                   { node: justification, property: 'id',
+                     ...issue(JpipeIssue.DuplicateModelName, { id: justification.id }) });
+        }
+    }
+
+    /**
+     * Flags two elements in one model sharing an id.
+     *
+     * The compiler rejects this as `no-duplicate-ids`, and it is worth catching in the editor
+     * because the model still *parses*: relations naming the id resolve to whichever of the two
+     * the scope happened to register, so the argument silently means something other than what
+     * it reads as.
+     *
+     * Reported on every occurrence after the first, so the original declaration is left unmarked
+     * and the squiggles land on the copies.
+     */
+    checkDuplicateElementIds(model: Justification | Template, accept: ValidationAcceptor): void {
+        const seen = new Set<string>();
+        for (const element of getLocalElements(model)) {
+            const id = qualifiedIdText(element.id);
+            // An element being typed has no id yet; it is not a duplicate of every other one.
+            if (!id) continue;
+            if (seen.has(id)) {
+                accept('error',
+                    `Duplicate element id '${id}' in model '${model.id}'`,
+                    { node: element, property: 'id',
+                      ...issue(JpipeIssue.DuplicateElementId, { id, modelId: model.id }) });
+            }
+            seen.add(id);
         }
     }
 
@@ -220,20 +315,26 @@ export class JpipeValidator {
         const body = strategy.$container;
         if (!body?.rels) return;
 
-        const incoming = body.rels.filter(r => r.to.ref === strategy);
+        // `to` is absent while `e supports ` is still being typed, which is most of the time.
+        const incoming = body.rels.filter(r => r.to?.ref === strategy);
         if (incoming.length === 0) {
             accept('warning',
                 `Strategy '${qualifiedIdText(strategy.id)}' is not supported by any evidence, sub-conclusion, or @support.`,
-                { node: strategy, property: 'id' });
+                { node: strategy, property: 'id',
+                  ...issue(JpipeIssue.StrategyUnsupported, { targetId: qualifiedIdText(strategy.id) }) });
             return;
         }
         for (const rel of incoming) {
-            const fromElem = rel.from.ref;
+            const fromElem = rel.from?.ref;
             if (!fromElem) continue;
             if (!isEvidence(fromElem) && !isSubConclusion(fromElem) && !isAbstractSupport(fromElem)) {
                 accept('error',
-                    `Strategy '${qualifiedIdText(strategy.id)}' may only be supported by evidence, sub-conclusion, or @support (not ${this.elementKindLabel(fromElem)}).`,
-                    { node: rel, property: 'from' });
+                    `Strategy '${qualifiedIdText(strategy.id)}' may only be supported by evidence, sub-conclusion, or @support (not ${keywordFor(fromElem)}).`,
+                    { node: rel, property: 'from',
+                      ...issue(JpipeIssue.StrategyBadSupporter, {
+                          targetId: qualifiedIdText(strategy.id),
+                          supporterKind: keywordFor(fromElem)
+                      }) });
             }
         }
     }
@@ -242,18 +343,20 @@ export class JpipeValidator {
         const body = conclusion.$container;
         if (!body?.rels) return;
 
-        const incoming = body.rels.filter(r => r.to.ref === conclusion);
+        const incoming = body.rels.filter(r => r.to?.ref === conclusion);
         if (incoming.length === 0) {
             accept('warning',
                 `Conclusion '${qualifiedIdText(conclusion.id)}' is not supported by any strategy.`,
-                { node: conclusion, property: 'id' });
+                { node: conclusion, property: 'id',
+                  ...issue(JpipeIssue.ConclusionUnsupported, { targetId: qualifiedIdText(conclusion.id) }) });
             return;
         }
-        const hasStrategy = incoming.some(rel => isStrategy(rel.from.ref));
+        const hasStrategy = incoming.some(rel => isStrategy(rel.from?.ref));
         if (!hasStrategy) {
             accept('error',
                 `Conclusion '${qualifiedIdText(conclusion.id)}' must be supported by at least one strategy.`,
-                { node: conclusion, property: 'id' });
+                { node: conclusion, property: 'id',
+                  ...issue(JpipeIssue.ConclusionNoStrategy, { targetId: qualifiedIdText(conclusion.id) }) });
         }
     }
 
@@ -266,27 +369,55 @@ export class JpipeValidator {
         const localElements = getLocalElements(justification);
         const localById = new Map(localElements.map(e => [qualifiedIdText(e.id), e]));
 
-        for (const req of this.getRequiredOverrides(template, parentRefText)) {
+        const required = this.getRequiredOverrides(template, parentRefText);
+        // Every gap is listed on each diagnostic, so a single action can close them all at once.
+        const allMissing = required
+            .filter(req => !localById.has(req.expectedKey))
+            .map(req => ({ expectedKey: req.expectedKey, supportLabel: req.support.name }));
+
+        for (const req of required) {
             const override = localById.get(req.expectedKey);
             if (!override) {
                 accept('error',
                     `Justification '${justification.id}' must override '@support ${qualifiedIdText(req.support.id)}' from template '${req.sourceTemplateId}'. Expected element with id '${req.expectedKey}'.`,
-                    { node: justification, property: 'id' });
+                    { node: justification, property: 'id',
+                      ...issue(JpipeIssue.MissingSupportOverride, {
+                          expectedKey: req.expectedKey,
+                          supportLabel: req.support.name,
+                          supportId: qualifiedIdText(req.support.id),
+                          sourceTemplateId: req.sourceTemplateId,
+                          allMissing
+                      }) });
                 continue;
             }
-            const elemType = this.getElementType(override);
+            const elemType = concreteKeywordFor(override);
             if (elemType && elemType !== 'evidence' && elemType !== 'sub-conclusion') {
                 accept('error',
                     `Cannot override '@support ${qualifiedIdText(req.support.id)}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
-                    { node: override, property: 'id' });
+                    { node: override, property: 'id',
+                      ...issue(JpipeIssue.BadSupportOverrideType, {
+                          actualKeyword: elemType,
+                          allowedKeywords: ['evidence', 'sub-conclusion']
+                      }) });
             }
         }
     }
 
+    /**
+     * The `@support` elements a justification implementing `template` must override.
+     *
+     * `seen` guards the `implements` walk: a template may point back at itself, which the
+     * compiler reports as `cyclic-implements`, and the model sits in that state while it is being
+     * edited. Recursing through such a chain would exhaust the stack and abort validation for the
+     * whole document.
+     */
     private getRequiredOverrides(
         template: Template,
-        refText: string
+        refText: string,
+        seen: Set<Template> = new Set()
     ): Array<{ support: AbstractSupport; expectedKey: string; sourceTemplateId: string }> {
+        if (seen.has(template)) return [];
+        seen.add(template);
         const local = template.contents?.body ?? [];
         // Keys of non-abstract elements defined directly in this template (these override parent abstracts)
         const localOverrideKeys = new Set(
@@ -308,7 +439,7 @@ export class JpipeValidator {
         // Propagate unresolved abstract supports from the parent chain
         if (template.parent?.ref) {
             const parentRefText = template.parent.$refText ?? template.parent.ref.id;
-            for (const req of this.getRequiredOverrides(template.parent.ref, parentRefText)) {
+            for (const req of this.getRequiredOverrides(template.parent.ref, parentRefText, seen)) {
                 // Skip if this template already provides a non-abstract override for it
                 if (!localOverrideKeys.has(req.expectedKey)) {
                     result.push(req);
@@ -319,20 +450,5 @@ export class JpipeValidator {
         return result;
     }
 
-    private elementKindLabel(elem: JustificationElement): string {
-        if (isEvidence(elem)) return 'evidence';
-        if (isStrategy(elem)) return 'strategy';
-        if (isConclusion(elem)) return 'conclusion';
-        if (isSubConclusion(elem)) return 'sub-conclusion';
-        if (isAbstractSupport(elem)) return '@support';
-        return 'element';
-    }
 
-    private getElementType(elem: JustificationElement): string | null {
-        if (isEvidence(elem)) return 'evidence';
-        if (isStrategy(elem)) return 'strategy';
-        if (isConclusion(elem)) return 'conclusion';
-        if (isSubConclusion(elem)) return 'sub-conclusion';
-        return null;
-    }
 }

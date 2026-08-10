@@ -7,6 +7,7 @@ import { EmptyFileSystem, type LangiumDocument } from 'langium';
 import { clearDocuments, expectCompletion, parseHelper } from 'langium/test';
 import type { Unit } from 'jpipe-language';
 import { createJpipeServices, isUnit, isJustification, isTemplate } from 'jpipe-language';
+import { InsertTextFormat } from 'vscode-languageserver';
 import { getRelationCandidates, qualifiedIdText } from '../src/jpipe-utils.js';
 
 let services: ReturnType<typeof createJpipeServices>;
@@ -314,6 +315,27 @@ describe('Operator completion', () => {
             }
         });
     });
+
+    // The Unifier reads these from every composition's config, so they belong to no single
+    // operator — and were offered by neither before the operator tables were unified.
+    test('suggests the unification keys for every operator', async () => {
+        for (const text of [
+            `justification A { conclusion c is "C" }
+             justification Composed is assemble(A) { <|>`,
+            `template T { conclusion c is "C" }
+             justification Composed is refine(T) { <|>`
+        ]) {
+            await checkCompletion({
+                text,
+                index: 0,
+                assert: (completions) => {
+                    const labels = completions.items.map(i => i.label);
+                    expect(labels).toContain('unifyBy');
+                    expect(labels).toContain('unifyExclude');
+                }
+            });
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -512,6 +534,326 @@ describe('Load path completion', () => {
             assert: (completions) => {
                 const labels = completions.items.map(i => i.label);
                 expect(labels.every(l => !l.endsWith('.jd'))).toBe(true);
+            }
+        });
+    });
+});
+
+describe('Operator invocation completion', () => {
+
+    // The operator's name alone leaves three things still to look up: how many source models it
+    // takes and in what order, which config keys it cannot run without, and that an empty `{}`
+    // does not parse. Completing the whole invocation answers all three at once.
+    test('writes the whole invocation, not just the name', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification B is <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const refine = completions.items.find(i => i.label === 'refine');
+                expect(refine?.insertTextFormat).toBe(InsertTextFormat.Snippet);
+                expect(refine?.insertText).toContain('refine(${1:base}, ${2:refinement})');
+                expect(refine?.insertText).toContain('hook: "${3}"');
+            }
+        });
+    });
+
+    // `refine(a, b)` reads very differently from `refine(base, refinement)`, and the order is not
+    // interchangeable, so the placeholders are named rather than numbered.
+    test('names the source models in order', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification B is <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const assemble = completions.items.find(i => i.label === 'assemble');
+                expect(assemble?.insertText).toContain('assemble(${1:model})');
+                expect(assemble?.insertText).toContain('conclusionLabel');
+                expect(assemble?.insertText).toContain('strategyLabel');
+            }
+        });
+    });
+
+    test('shows what will be inserted before it is accepted', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification B is <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const refine = completions.items.find(i => i.label === 'refine');
+                const documentation = refine?.documentation as { value?: string } | undefined;
+                expect(documentation?.value).toContain('refine(base, refinement)');
+                expect(documentation?.value).toContain('hook: ""');
+            }
+        });
+    });
+
+    // An invocation written into an indented model has to line up with it.
+    test('follows the indentation of the line it is written on', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                    justification B is <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const refine = completions.items.find(i => i.label === 'refine');
+                // The fixture indents by twenty spaces, plus four more for the model itself.
+                expect(refine?.insertText).toContain('\n                        hook:');
+            }
+        });
+    });
+});
+
+describe('Composition source completion', () => {
+
+    const MODELS = `justification alpha { conclusion c is "C" }
+justification beta { conclusion c is "C" }
+justification gamma { conclusion c is "C" }`;
+
+    // Composing `x` out of `x` is circular, and `x` is the one name guaranteed to be on the tip
+    // of the author's fingers — so without this it sits near the top of the list.
+    test('does not offer the model being defined', async () => {
+        await checkCompletion({
+            text: `${MODELS}\njustification composed is assemble(<|>)`,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).not.toContain('composed');
+                expect(labels).toContain('alpha');
+            }
+        });
+    });
+
+    test('does not offer a model already named in the same call', async () => {
+        await checkCompletion({
+            text: `${MODELS}\njustification composed is assemble(alpha, <|>)`,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).not.toContain('alpha');
+                expect(labels).toContain('beta');
+                expect(labels).toContain('gamma');
+            }
+        });
+    });
+
+    test('drops every model already used, not just the last', async () => {
+        await checkCompletion({
+            text: `${MODELS}\njustification composed is assemble(alpha, beta, <|>)`,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).not.toContain('alpha');
+                expect(labels).not.toContain('beta');
+                expect(labels).toContain('gamma');
+            }
+        });
+    });
+
+    // The slot being completed holds partial text of its own; treating that as "already used"
+    // would remove the very candidate being typed towards.
+    test('still offers a model matching what is being typed in this slot', async () => {
+        await checkCompletion({
+            text: `${MODELS}\njustification composed is assemble(al<|>)`,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).toContain('alpha');
+            }
+        });
+    });
+
+    test('a template is still offered as a source', async () => {
+        await checkCompletion({
+            text: `template t { @support a is "A" conclusion c is "C" a supports c }\njustification composed is assemble(<|>)`,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).toContain('t');
+            }
+        });
+    });
+});
+
+describe('Hook value completion', () => {
+
+    // `hook` is a plain string in the grammar: nothing links it, nothing validates it, and until
+    // now nothing offered it, so the only way to find a legal value was to read the model.
+    // `refine` replaces the hooked element with a sub-conclusion carrying the refinement's whole
+    // argument. That makes sense done to a leaf and not to anything else, so only evidence is
+    // offered — the compiler resolves the hook by id and does not check its type, so this narrows
+    // the suggestion rather than the rule.
+    test('offers the evidence of the first source model, and nothing else', async () => {
+        await checkCompletion({
+            text: `
+                justification Base {
+                    conclusion c is "C"
+                    strategy s is "S"
+                    evidence e is "E"
+                    sub-conclusion sc is "SC"
+                    e supports s
+                    s supports c
+                }
+                justification Ref { conclusion rc is "RC" }
+                justification Composed is refine(Base, Ref) { hook: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).toContain('e');
+                expect(labels).not.toContain('c');
+                expect(labels).not.toContain('s');
+                expect(labels).not.toContain('sc');
+                // The hook names an element of the first source, not the second.
+                expect(labels).not.toContain('rc');
+            }
+        });
+    });
+
+    // An id like `e` says nothing on its own; the label is what tells them apart.
+    test('shows each candidate label beside its id', async () => {
+        await checkCompletion({
+            text: `
+                justification Base {
+                    conclusion c is "C"
+                    strategy s is "S"
+                    evidence tests is "The suite is green"
+                    tests supports s
+                    s supports c
+                }
+                justification Ref { conclusion rc is "RC" }
+                justification Composed is refine(Base, Ref) { hook: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                const item = completions.items.find(i => i.label === 'tests');
+                expect(item).toBeDefined();
+                expect(item?.labelDetails?.detail).toContain('The suite is green');
+                // The id is still what gets inserted.
+                expect((item?.textEdit as { newText?: string })?.newText).toBe('tests');
+            }
+        });
+    });
+
+    // The scan between `{` and the key must not stop at an earlier quoted value, or a key written
+    // after any other key is never completed.
+    test('still offers hooks when another config key comes first', async () => {
+        await checkCompletion({
+            text: `
+                justification Base {
+                    conclusion c is "C"
+                    strategy s is "S"
+                    evidence e is "E"
+                    e supports s
+                    s supports c
+                }
+                justification Ref { conclusion rc is "RC" }
+                justification Composed is refine(Base, Ref) { unifyBy: "sameLabel" hook: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).toContain('e');
+            }
+        });
+    });
+
+    test('offers nothing for assemble, which has no hook', async () => {
+        await checkCompletion({
+            text: `
+                justification Base { conclusion c is "C" }
+                justification Composed is assemble(Base) { conclusionLabel: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).not.toContain('c');
+            }
+        });
+    });
+});
+
+describe('Unification method completion', () => {
+
+    const composed = (partial: string) => `
+        justification A { conclusion c is "C" }
+        justification B { conclusion c is "C" }
+        justification Composed is refine(A, B) { hook: "c" unifyBy: "${partial}<|>" }
+    `;
+
+    test('offers what jPipe ships, marked as core', async () => {
+        await checkCompletion({
+            text: composed(''),
+            index: 0,
+            assert: (completions) => {
+                const item = completions.items.find(i => i.label === 'sameLabel');
+                expect(item).toBeDefined();
+                expect(item?.detail).toBe('jPipe core');
+            }
+        });
+    });
+
+    // The two halves mean different things: one is what jPipe ships, the other is what this
+    // workspace has been told its build registers.
+    test('offers declared relations, marked as declared', async () => {
+        services.Jpipe.unification.setAdditionalMethods(['similarLabel']);
+        try {
+            await checkCompletion({
+                text: composed(''),
+                index: 0,
+                assert: (completions) => {
+                    const item = completions.items.find(i => i.label === 'similarLabel');
+                    expect(item).toBeDefined();
+                    expect(item?.detail).toBe('declared in settings');
+                }
+            });
+        } finally {
+            services.Jpipe.unification.setAdditionalMethods([]);
+        }
+    });
+
+    test('puts the core relations first', async () => {
+        services.Jpipe.unification.setAdditionalMethods(['aaaCustom']);
+        try {
+            await checkCompletion({
+                text: composed(''),
+                index: 0,
+                assert: (completions) => {
+                    const sorted = [...completions.items]
+                        .sort((a, b) => String(a.sortText).localeCompare(String(b.sortText)))
+                        .map(i => i.label);
+                    expect(sorted[0]).toBe('sameLabel');
+                }
+            });
+        } finally {
+            services.Jpipe.unification.setAdditionalMethods([]);
+        }
+    });
+
+    test('says which one applies when unifyBy is left out', async () => {
+        await checkCompletion({
+            text: composed(''),
+            index: 0,
+            assert: (completions) => {
+                const item = completions.items.find(i => i.label === 'sameLabel');
+                expect(String(item?.documentation)).toContain('sets no unifyBy');
+            }
+        });
+    });
+
+    test('is not offered for another config value', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification B { conclusion c is "C" }
+                justification Composed is refine(A, B) { hook: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).not.toContain('sameLabel');
             }
         });
     });

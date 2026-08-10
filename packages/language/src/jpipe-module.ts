@@ -1,5 +1,5 @@
 import { type Module, inject } from 'langium';
-import { createDefaultModule, createDefaultSharedModule, type DefaultSharedModuleContext, type LangiumServices, type LangiumSharedServices, type PartialLangiumServices } from 'langium/lsp';
+import { createDefaultModule, createDefaultSharedModule, type DefaultSharedModuleContext, type LangiumServices, type LangiumSharedServices, type PartialLangiumServices, type PartialLangiumSharedServices } from 'langium/lsp';
 import { JpipeGeneratedModule, JpipeGeneratedSharedModule } from './generated/module.js';
 import { JpipeValidator, registerValidationChecks } from './jpipe-validator.js';
 import { JpipeScopeProvider } from './jpipe-scope.js';
@@ -10,9 +10,14 @@ import { JpipeDocumentSymbolProvider } from './jpipe-symbol-provider.js';
 import { JpipeNameProvider } from './jpipe-utils.js';
 import { JpipeHoverProvider } from './jpipe-hover-provider.js';
 import { JpipeSemanticTokenProvider } from './jpipe-semantic-token-provider.js';
+import { JpipeRenameProvider } from './jpipe-rename-provider.js';
+import { JpipeCodeActionProvider } from './jpipe-code-action-provider.js';
+import { JpipeLanguageServer } from './jpipe-language-server.js';
 import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 import { JpipeDocumentValidator } from './jpipe-document-validator.js';
 import { JpipeExclusionService } from './jpipe-exclusions.js';
+import { JpipeUnificationService } from './jpipe-unification.js';
+import { JpipeParserErrorMessageProvider } from './jpipe-parser-errors.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -25,7 +30,8 @@ export type JpipeAddedServices = {
         JpipeImportService: JpipeImportService
     },
     logger: JpipeServerLogger,
-    exclusions: JpipeExclusionService
+    exclusions: JpipeExclusionService,
+    unification: JpipeUnificationService
 }
 
 /**
@@ -34,8 +40,27 @@ export type JpipeAddedServices = {
  */
 export type JpipeServices = LangiumServices & JpipeAddedServices
 
-function buildJpipeModule(logger: JpipeServerLogger, exclusions: JpipeExclusionService): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
+/**
+ * Shared-service overrides.
+ *
+ * Only the language server itself, so that the code-action capability arrives with its kinds
+ * attached rather than as a bare boolean.
+ */
+const JpipeSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServices> = {
+    lsp: {
+        LanguageServer: (services) => new JpipeLanguageServer(services)
+    }
+};
+
+function buildJpipeModule(
+    logger: JpipeServerLogger,
+    exclusions: JpipeExclusionService,
+    unification: JpipeUnificationService
+): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
     return {
+        parser: {
+            ParserErrorMessageProvider: () => new JpipeParserErrorMessageProvider()
+        },
         validation: {
             JpipeValidator: (services) => new JpipeValidator(services),
             DocumentValidator: (services) => new JpipeDocumentValidator(services, exclusions, logger)
@@ -50,10 +75,15 @@ function buildJpipeModule(logger: JpipeServerLogger, exclusions: JpipeExclusionS
             DocumentSymbolProvider: (services) => new JpipeDocumentSymbolProvider(services),
             CompletionProvider:     (services) => new JpipeCompletionProvider(services),
             HoverProvider:          (services) => new JpipeHoverProvider(services),
-            SemanticTokenProvider:  (services) => new JpipeSemanticTokenProvider(services)
+            SemanticTokenProvider:  (services) => new JpipeSemanticTokenProvider(services),
+            RenameProvider:         (services) => new JpipeRenameProvider(services),
+            // Binding this is all it takes: `startLanguageServer` advertises
+            // `codeActionProvider` from the presence of the service.
+            CodeActionProvider:     (services) => new JpipeCodeActionProvider(services)
         },
         logger: () => logger,
-        exclusions: () => exclusions
+        exclusions: () => exclusions,
+        unification: () => unification
     };
 }
 
@@ -79,14 +109,16 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
 } {
     const logger = new JpipeServerLogger(logLevel);
     const exclusions = new JpipeExclusionService(logger);
+    const unification = new JpipeUnificationService();
     const shared = inject(
         createDefaultSharedModule(context),
-        JpipeGeneratedSharedModule
+        JpipeGeneratedSharedModule,
+        JpipeSharedModule
     );
     const Jpipe = inject(
         createDefaultModule({ shared }),
         JpipeGeneratedModule,
-        buildJpipeModule(logger, exclusions)
+        buildJpipeModule(logger, exclusions, unification)
     );
     shared.ServiceRegistry.register(Jpipe);
     registerValidationChecks(Jpipe);

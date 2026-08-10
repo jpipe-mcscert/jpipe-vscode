@@ -185,6 +185,36 @@
                 "command": "jpipe.includeResource",
                 "title": "Include in jPipe Validation",
                 "category": "jPipe"
+            },
+            {
+                "command": "jpipe.organizeLoads",
+                "title": "Organize Loads",
+                "category": "jPipe",
+                "icon": "$(list-ordered)"
+            },
+            {
+                "command": "jpipe.autoIndent",
+                "title": "Auto-indent and Align",
+                "category": "jPipe",
+                "icon": "$(list-flat)"
+            },
+            {
+                "command": "jpipe.convertModelKind",
+                "title": "Convert Justification to Template (or back)",
+                "category": "jPipe",
+                "icon": "$(replace)"
+            },
+            {
+                "command": "jpipe.sortElements",
+                "title": "Sort Elements in Reading Order",
+                "category": "jPipe",
+                "icon": "$(sort-precedence)"
+            },
+            {
+                "command": "jpipe.extractTemplate",
+                "title": "Extract Template from Justification",
+                "category": "jPipe",
+                "icon": "$(symbol-interface)"
             }
         ],
         "submenus": [
@@ -417,6 +447,13 @@
                 "title": "jPipe: Validation",
                 "order": 5,
                 "properties": {
+                    "jpipe.additionalUnificationMethods": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "default": [],
+                        "order": 8,
+                        "markdownDescription": "Extra equivalence relations that `unifyBy` may name, beyond the `sameLabel` that ships with jPipe. Add the names your build registers, and the editor will stop warning about them."
+                    },
                     "jpipe.excludedPaths": {
                         "order": 1,
                         "type": "array",

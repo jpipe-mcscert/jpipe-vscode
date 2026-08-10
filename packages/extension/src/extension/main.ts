@@ -7,11 +7,26 @@ import { PreviewProvider } from './image-generation/preview-provider.js';
 import { ReleaseManager, JpipeRelease } from './image-generation/release-manager.js';
 import { ExclusionManager, ExclusionDecorationProvider, ExclusionCodeLensProvider } from './exclusions.js';
 import { JpipeLogger } from './logger.js';
+import {
+    CONVERT_MODEL_KIND,
+    EXTRACT_TEMPLATE_KIND,
+    ORGANIZE_LOADS_KIND, AUTO_INDENT_KIND,
+    SORT_ELEMENTS_KIND
+} from 'jpipe-language';
 
 let client: LanguageClient;
 
 /** Notification understood by the language server (see packages/extension/src/language/main.ts). */
 const SET_EXCLUDED_PATHS = 'jpipe/setExcludedPaths';
+
+/** Notification understood by the language server: extra `unifyBy` relations this build knows. */
+const SET_UNIFICATION_METHODS = 'jpipe/setUnificationMethods';
+
+/** The relation names the user has declared beyond the one jPipe ships. */
+function additionalUnificationMethods(): string[] {
+    return vscode.workspace.getConfiguration('jpipe')
+        .get<string[]>('additionalUnificationMethods', []);
+}
 
 // This function is called when the extension is activated.
 export function activate(context: vscode.ExtensionContext): void {
@@ -65,6 +80,17 @@ export function activate(context: vscode.ExtensionContext): void {
         exclusions.onDidChange(() => {
             publishExcludedPaths();
             void pushExclusionsToServer();
+        }),
+        // Declaring a relation your build registers should silence the warning at once, without
+        // a reload — the same contract the exclusion setting has.
+        vscode.workspace.onDidChangeConfiguration(async event => {
+            if (!event.affectsConfiguration('jpipe.additionalUnificationMethods')) return;
+            try {
+                await client.start();
+                await client.sendNotification(SET_UNIFICATION_METHODS, additionalUnificationMethods());
+            } catch (err: unknown) {
+                logger.error(`Could not send unification methods to the language server: ${err instanceof Error ? err.message : String(err)}`);
+            }
         })
     );
 
@@ -200,6 +226,26 @@ export function activate(context: vscode.ExtensionContext): void {
             await excludeResource(uris[0]);
         }),
         vscode.commands.registerCommand('jpipe.excludeResource', (uri?: vscode.Uri) => excludeResource(uri)),
+        // Source Action… is where this belongs and where it now appears; the command is the
+        // palette shortcut to it, the way other languages offer one for organizing imports.
+        ...[
+            ['jpipe.organizeLoads', ORGANIZE_LOADS_KIND],
+            ['jpipe.autoIndent', AUTO_INDENT_KIND]
+        ].map(([command, kind]) =>
+            vscode.commands.registerCommand(command, async () => {
+                await vscode.commands.executeCommand('editor.action.sourceAction', { kind, apply: 'first' });
+            })),
+        // The refactorings are already in the lightbulb and under Refactor…, but both ask you to
+        // know they are there. A named command is the one route that answers "what can jPipe do
+        // here?" without a shortcut, so each gets one.
+        ...[
+            ['jpipe.convertModelKind', CONVERT_MODEL_KIND],
+            ['jpipe.sortElements', SORT_ELEMENTS_KIND],
+            ['jpipe.extractTemplate', EXTRACT_TEMPLATE_KIND]
+        ].map(([command, kind]) =>
+            vscode.commands.registerCommand(command, async () => {
+                await vscode.commands.executeCommand('editor.action.refactor', { kind, apply: 'first' });
+            })),
         vscode.commands.registerCommand('jpipe.includeResource', async (uri?: vscode.Uri) => {
             const target = resolveExclusionTarget(uri);
             if (!target) return;
@@ -291,7 +337,10 @@ function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogg
         // Sent with `initialize` so excluded files are never validated, not even once at startup.
         // A function, not a literal: it is re-evaluated on every initialize, so a server restart
         // picks up the current exclusions instead of replaying the ones from activation time.
-        initializationOptions: () => ({ excludedPaths: exclusions.getResolvedUris() })
+        initializationOptions: () => ({
+            excludedPaths: exclusions.getResolvedUris(),
+            additionalUnificationMethods: additionalUnificationMethods()
+        })
     };
 
     const client = new LanguageClient(

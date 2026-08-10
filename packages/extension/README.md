@@ -35,6 +35,41 @@ You can provide the compiler in three ways, selected via the `jpipe.executionMod
 
 Simply open a file using the `.jd` extension.
 
+#### Quick fixes and refactorings
+
+Where the editor reports a problem it can repair, the lightbulb (`⌘.` / `Ctrl+.`) offers to do
+it: write the declaration a template's `@support` demands, correct a mistyped operator or
+config key, add the missing `load` for a model you referenced, or wire up a conclusion that
+nothing supports yet.
+
+Three more are offered for wherever your cursor is. Reach them from the lightbulb, from
+**Refactor…** in the right-click menu (or `⌃⇧R` / `Ctrl+Shift+R`), or by name in the command
+palette — *jPipe: Convert Justification to Template*, *Sort Elements*, *Extract Template*:
+
+  - **Convert to template / justification** — switch what a model is. Converting a template says
+    up front how many `@support` elements it would drop.
+  - **Sort elements** — put a model's declarations in the order its argument reads: the
+    conclusion first, then down through what supports it, one branch at a time, with a blank
+    line opening each sub-argument.
+  - **Extract template** — turn a justification into a reusable template plus a justification
+    that implements it.
+
+**Organize loads** — sort and de-duplicate the `load` statements at the top of a file — lives
+under **Source Action…**, and in the command palette as *jPipe: Organize Loads*. It runs only
+when you ask for it: reordering your source is a decision you make, not one that happens while
+you save. It is deliberately not registered as `source.organizeImports`, so a global
+organize-on-save setting kept for another language will not reach your `.jd` files.
+
+When you do run it, it never removes a `load` whose path does not resolve — a half-typed path is
+exactly the state a file is in while you are writing one.
+
+#### Your own unification relations
+
+jPipe ships one equivalence relation for `unifyBy`: `sameLabel`. If your build registers others,
+list their names under **jPipe: Compiler → Additional Unification Methods** and the editor will
+accept them. Until you do, an unfamiliar name is flagged as a *warning* — never an error, since
+the editor cannot know what your compiler has registered, only what it has been told.
+
 #### Tutorials
 
 Please visit [https://www.jpipe.org/tutorials/](https://www.jpipe.org/tutorials/) for examples and guidance o how to develop justificiation models using jPipe.

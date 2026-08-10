@@ -7,12 +7,17 @@ import {
     type CompletionValueItem,
     type NextFeature
 } from 'langium/lsp';
-import { Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, CompletionParams, InsertTextFormat } from 'vscode-languageserver';
+import { MarkupKind, Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, CompletionParams, InsertTextFormat } from 'vscode-languageserver';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
+import { JPIPE_OPERATORS, UNIVERSAL_CONFIG_KEYS, allowedConfigKeys, renderInvocation } from './jpipe-operators.js';
+import { BUILT_IN_UNIFICATION_METHODS, DEFAULT_UNIFICATION_METHOD } from './jpipe-unification.js';
+import { createLoadEdit, normalizeLoadPath, relativeLoadPath, wordReplaceEdit } from './jpipe-edits.js';
+import { concreteKeywordFor, overrideKeywordFor, renderElement } from './jpipe-render.js';
 import {
+    isComposition,
     isJustification,
     isTemplate,
     isJustificationBody,
@@ -30,7 +35,7 @@ import {
     type JustificationElement,
     type AbstractSupport
 } from './generated/ast.js';
-import { fsPathOf, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { fsPathOf, getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
 
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private readonly services: JpipeServices;
@@ -154,10 +159,12 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                     ...inheritedEntries
                 ];
 
-                if (refInfo.property === 'to' && relation.from?.ref) {
-                    withKeys = withKeys.filter(({ element }) => this.filterRelationTargets(relation.from.ref!, [element]).length > 0);
-                } else if (refInfo.property === 'from' && relation.to?.ref) {
-                    withKeys = withKeys.filter(({ element }) => this.filterRelationSources(relation.to.ref!, [element]).length > 0);
+                const fromRef = relation.from?.ref;
+                const toRef = relation.to?.ref;
+                if (refInfo.property === 'to' && fromRef) {
+                    withKeys = withKeys.filter(({ element }) => this.filterRelationTargets(fromRef, [element]).length > 0);
+                } else if (refInfo.property === 'from' && toRef) {
+                    withKeys = withKeys.filter(({ element }) => this.filterRelationSources(toRef, [element]).length > 0);
                 }
 
                 return stream(withKeys.flatMap(({ element, key }) => {
@@ -171,8 +178,42 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             }
         }
 
-        // For 'refs' and other cross-refs: delegate to the scope provider via super.
+        if (refInfo.property === 'refs') {
+            return super.getReferenceCandidates(refInfo, context)
+                .filter(candidate => this.isUsefulCompositionSource(refInfo, candidate));
+        }
+
+        // For other cross-refs: delegate to the scope provider via super.
         return super.getReferenceCandidates(refInfo, context);
+    }
+
+    /**
+     * Whether a model is worth offering as a source of the composition being written.
+     *
+     * Two are not. The model being defined: `justification x is assemble(…)` composing `x` out of
+     * `x` is circular, and it is the one name guaranteed to be on the tip of the author's fingers,
+     * so it would sit at the top of the list. And a model already named in this same call:
+     * composing something with a second copy of an input it already has cannot say anything the
+     * first copy did not.
+     *
+     * Both remain *resolvable* — this narrows what is suggested, not what the grammar accepts, so
+     * a model written by hand still links and is reported by the rules that judge it rather than
+     * vanishing into an unresolved reference.
+     */
+    private isUsefulCompositionSource(refInfo: ReferenceInfo, candidate: AstNodeDescription): boolean {
+        const composition = AstUtils.getContainerOfType(refInfo.container, isComposition);
+        if (!composition) return true;
+
+        const owner = composition.$container;
+        if ((isJustification(owner) || isTemplate(owner)) && owner.id === candidate.name) return false;
+
+        // Every other slot in this call — not the one being typed, whose partial text is the
+        // very thing being completed.
+        const elsewhere = (composition.params?.refs ?? [])
+            .filter((_ref, index) => index !== refInfo.index)
+            .map(ref => ref.$refText)
+            .filter(text => text.length > 0);
+        return !elsewhere.includes(candidate.name);
     }
 
     private filterRelationTargets(from: JustificationElement, candidates: JustificationElement[]): JustificationElement[] {
@@ -213,17 +254,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         return out;
     }
 
-    private getRelativePath(sourcePath: string, targetPath: string): string {
-        const relative = path.relative(path.dirname(sourcePath), targetPath).replaceAll('\\', '/');
-        return relative.startsWith('../') ? relative : `./${relative}`;
-    }
 
-    private normalizePathForComparison(filePath: string): string {
-        return filePath
-            .replaceAll(/^["']|["']$/g, '')
-            .replaceAll(/^\.\//g, '')
-            .replaceAll('\\', '/');
-    }
 
     private basenameFromDescription(desc: AstNodeDescription): string | undefined {
         const uri = desc.documentUri;
@@ -271,7 +302,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         if (elementInfo && !elementInfo.isImported && elementInfo.sourceFile) {
             return {
                 ...withLabel,
-                additionalTextEdits: this.createLoadEdit(context.document, elementInfo.sourceFile)
+                additionalTextEdits: createLoadEdit(context.document as LangiumDocument<Unit>, elementInfo.sourceFile)
             };
         }
 
@@ -315,7 +346,8 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         const operatorMatch = /(?:justification|template)\s+\w+\s+is\s+(\w*)$/.exec(linePfx);
         if (operatorMatch) {
-            const operatorItems = this.getOperatorCompletions(operatorMatch[1]);
+            const indent = /^[ \t]*/.exec(linePfx)?.[0] ?? '';
+            const operatorItems = this.getOperatorCompletions(operatorMatch[1], indent);
             if (operatorItems.length > 0) {
                 items = [...operatorItems, ...items.filter(i => !operatorItems.some(o => o.label === i.label))];
             }
@@ -333,6 +365,16 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             }
         }
 
+        const hookItems = this.getHookValueCompletions(document, params);
+        if (hookItems.length > 0) {
+            return { ...result, items: hookItems };
+        }
+
+        const unifyItems = this.getUnificationMethodCompletions(document, params);
+        if (unifyItems.length > 0) {
+            return { ...result, items: unifyItems };
+        }
+
         const contexts = Array.from(this.buildContexts(document, params.position));
         if (contexts.length > 0) {
             const templateCompletions = this.getTemplateElementCompletions(contexts[0]);
@@ -345,36 +387,161 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         return { ...result, items };
     }
 
-    private static readonly KNOWN_OPERATORS = ['assemble', 'refine'] as const;
+    /**
+     * Completes the value of `refine`'s `hook`, which names an element of the *first* source
+     * model.
+     *
+     * `hook` is a plain string in the grammar, so nothing links it, nothing validates it, and
+     * nothing has ever offered it — the only way to learn what may go there has been to read the
+     * model being refined. Offered as ids because that is what the compiler resolves against,
+     * showing each element's label alongside, since an id like `e` says nothing on its own.
+     *
+     * Only evidence is offered. `refine` replaces the hooked element with a sub-conclusion
+     * carrying the refinement's whole argument, which is a sensible thing to do to a leaf and not
+     * to anything else — hooking a strategy or a conclusion would graft an argument into the
+     * middle of one. The compiler resolves the hook by id and does not check its type, so this
+     * narrows what is suggested rather than what is permitted.
+     */
+    private getHookValueCompletions(document: LangiumDocument, params: CompletionParams): CompletionItem[] {
+        const textToCursor = document.textDocument.getText({
+            start: Position.create(0, 0),
+            end: params.position
+        });
 
-    private static readonly OPERATOR_CONFIG_KEYS: Record<string, string[]> = {
-        assemble: ['conclusionLabel', 'strategyLabel'],
-        refine: ['hook']
-    };
+        // Inside an unterminated `hook: "` of a composition, with the partial value so far.
+        const inHookValue = /is\s+(\w+)\s*\(([^)]*)\)\s*\{[^}]*\bhook\s*:\s*"([^"\n]*)$/.exec(textToCursor);
+        if (!inHookValue) return [];
+        const [, operator, paramList, partial] = inHookValue;
+        if (operator !== 'refine') return [];
 
-    private getOperatorCompletions(partial: string): CompletionItem[] {
-        return JpipeCompletionProvider.KNOWN_OPERATORS
-            .filter(op => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, op))
-            .map(op => ({
-                label: op,
-                kind: CompletionItemKind.Keyword,
-                detail: 'composition operator',
-                sortText: `0_op_${op}`
-            }));
+        const firstParam = paramList.split(',')[0]?.trim();
+        if (!firstParam) return [];
+
+        const unit = document.parseResult.value as Unit | undefined;
+        if (!unit) return [];
+        const base = this.findModelByRefText(unit, document, firstParam);
+        if (!base) return [];
+
+        const start = document.textDocument.positionAt(
+            document.textDocument.offsetAt(params.position) - partial.length
+        );
+
+        return getAllElements(base)
+            .filter(element => isEvidence(element))
+            .filter(element => qualifiedIdText(element.id).length > 0)
+            .filter(element => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, qualifiedIdText(element.id)))
+            .map(element => {
+                const id = qualifiedIdText(element.id);
+                return {
+                    label: id,
+                    kind: CompletionItemKind.Value,
+                    // The id is what gets inserted; the label is what makes it recognisable.
+                    labelDetails: { detail: `  "${element.name}"` },
+                    detail: `evidence in ${firstParam}`,
+                    documentation: element.name,
+                    sortText: `0_hook_${id}`,
+                    // Replaces what has been typed so far inside the quotes, and nothing else.
+                    textEdit: { range: { start, end: params.position }, newText: id }
+                };
+            });
+    }
+
+    /**
+     * Completes the value of `unifyBy`, which names an equivalence relation.
+     *
+     * The relations live in a registry the compiler fills at startup, so the list has two halves
+     * and the difference matters: one is what jPipe ships, the other is what this workspace has
+     * been *told* its build registers. Each is labelled, so accepting a name makes clear whether
+     * the editor knows it exists or has merely been assured of it.
+     */
+    private getUnificationMethodCompletions(document: LangiumDocument, params: CompletionParams): CompletionItem[] {
+        const textToCursor = document.textDocument.getText({
+            start: Position.create(0, 0),
+            end: params.position
+        });
+
+        // Inside an unterminated `unifyBy: "` of a composition's config block.
+        const inValue = /is\s+\w+\s*\([^)]*\)\s*\{[^}]*\bunifyBy\s*:\s*"([^"\n]*)$/.exec(textToCursor);
+        if (!inValue) return [];
+        const partial = inValue[1];
+
+        const start = document.textDocument.positionAt(
+            document.textDocument.offsetAt(params.position) - partial.length
+        );
+
+        return this.services.unification.known()
+            .filter(name => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, name))
+            .map(name => {
+                const isCore = BUILT_IN_UNIFICATION_METHODS.includes(name);
+                return {
+                    label: name,
+                    kind: CompletionItemKind.EnumMember,
+                    detail: isCore ? 'jPipe core' : 'declared in settings',
+                    documentation: name === DEFAULT_UNIFICATION_METHOD
+                        ? 'Used when a composition sets no unifyBy.'
+                        : undefined,
+                    // Core relations first: they are the ones certain to exist.
+                    sortText: `${isCore ? '0' : '1'}_unify_${name}`,
+                    textEdit: { range: { start, end: params.position }, newText: name }
+                };
+            });
+    }
+
+    /** Resolves a composition parameter's text to a local or loaded model. */
+    private findModelByRefText(unit: Unit, document: LangiumDocument, refText: string): Justification | Template | undefined {
+        const local = unit.body.find(model => model.id === refText);
+        if (local) return local;
+        const imported = this.importService.getJustificationsAndTemplatesWithNamespace(unit, document);
+        return imported.find(({ node, ns }) => (ns ? `${ns}:${node.id}` : node.id) === refText)?.node;
+    }
+
+    /**
+     * Completes a composition operator with its whole invocation, not just its name.
+     *
+     * The name alone leaves three things still to look up: how many source models the operator
+     * takes and in what order, which config keys it cannot run without, and the fact that an
+     * empty `{}` does not parse. Writing the shape answers all three, and the documentation shows
+     * what will be inserted before it is accepted.
+     */
+    private getOperatorCompletions(partial: string, indent: string): CompletionItem[] {
+        return JPIPE_OPERATORS
+            .filter(spec => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, spec.name))
+            .map(spec => {
+                // Tab stops for the editor; the same shape with the names left in for the preview.
+                const snippet = renderInvocation(spec, indent, (i, text) => text ? `\${${i}:${text}}` : `\${${i}}`);
+                const preview = renderInvocation(spec, '', (_i, text) => text);
+                return {
+                    label: spec.name,
+                    kind: CompletionItemKind.Snippet,
+                    detail: `composition operator — ${spec.summary}`,
+                    documentation: {
+                        kind: MarkupKind.Markdown,
+                        value: `${spec.summary}\n\n\`\`\`jpipe\n${preview}\n\`\`\``
+                    },
+                    insertText: snippet,
+                    insertTextFormat: InsertTextFormat.Snippet,
+                    sortText: `0_op_${spec.name}`
+                };
+            });
     }
 
     private getConfigKeyCompletions(operator: string, partial: string): CompletionItem[] {
-        const keys = JpipeCompletionProvider.OPERATOR_CONFIG_KEYS[operator] ?? [];
+        const keys = allowedConfigKeys(operator);
         return keys
             .filter((k: string) => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, k))
-            .map((k: string) => ({
-                label: k,
-                kind: CompletionItemKind.Property,
-                detail: `${operator} argument`,
-                sortText: `0_cfg_${k}`,
-                insertText: `${k}: "$0"`,
-                insertTextFormat: InsertTextFormat.Snippet
-            }));
+            .map((k: string) => {
+                // The unification keys read the same on every operator, so naming one would
+                // misdescribe them; they also sort below the operator's own arguments.
+                const universal = (UNIVERSAL_CONFIG_KEYS as readonly string[]).includes(k);
+                return {
+                    label: k,
+                    kind: CompletionItemKind.Property,
+                    detail: universal ? 'unification argument' : `${operator} argument`,
+                    sortText: universal ? `1_cfg_${k}` : `0_cfg_${k}`,
+                    insertText: `${k}: "$0"`,
+                    insertTextFormat: InsertTextFormat.Snippet
+                };
+            });
     }
 
     private async getLoadPathCompletions(document: LangiumDocument, params: CompletionParams): Promise<CompletionItem[]> {
@@ -398,7 +565,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         const currentUnit = document.parseResult.value as Unit | undefined;
         const alreadyLoaded = new Set(currentUnit?.imports.map(l => {
-            const p = this.normalizePathForComparison(l.path);
+            const p = normalizeLoadPath(l.path);
             return p.startsWith('../') ? p : `./${p}`;
         }) ?? []);
 
@@ -567,24 +734,13 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         idText: string,
         context: CompletionContext
     ): CompletionItem | undefined {
-        let keyword: string;
-        let snippet: string;
-
-        if (isAbstractSupport(element) || isEvidence(element)) {
-            keyword = 'evidence';
-            snippet = `evidence ${idText} is "${element.name}"`;
-        } else if (isStrategy(element)) {
-            keyword = 'strategy';
-            snippet = `strategy ${idText} is "${element.name}"`;
-        } else if (isConclusion(element)) {
-            keyword = 'conclusion';
-            snippet = `conclusion ${idText} is "${element.name}"`;
-        } else if (isSubConclusion(element)) {
-            keyword = 'sub-conclusion';
-            snippet = `sub-conclusion ${idText} is "${element.name}"`;
-        } else {
-            return undefined;
-        }
+        // An @support is offered as the declaration that would override it, not as itself —
+        // `@support` is not legal in a justification body.
+        const keyword = isAbstractSupport(element)
+            ? overrideKeywordFor(element)
+            : concreteKeywordFor(element);
+        if (!keyword) return undefined;
+        const snippet = renderElement(keyword, idText, element.name);
 
         const isRequired = isAbstractSupport(element);
         const defFile = this.basenameFromAstNode(element);
@@ -596,7 +752,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             ? `Required @support element from template${fileSuffix}. Inserts: ${snippet}`
             : `Element from template${fileSuffix}. Inserts: ${snippet}`;
 
-        const textEdit = this.buildWordReplaceEdit(context, snippet + '\n');
+        const textEdit = wordReplaceEdit(context.document, context.position, snippet + '\n');
 
         return {
             label: `${keyword} ${idText}`,
@@ -625,77 +781,15 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         if (currentPath === targetPath) return undefined;
 
-        const relativePath = this.getRelativePath(currentPath, targetPath);
-        const normalizedRelativePath = this.normalizePathForComparison(relativePath);
+        const relativePath = relativeLoadPath(currentPath, targetPath);
+        const normalizedRelativePath = normalizeLoadPath(relativePath);
         const isImported = currentUnit.imports.some(
-            load => this.normalizePathForComparison(load.path) === normalizedRelativePath
+            load => normalizeLoadPath(load.path) === normalizedRelativePath
         );
 
         return { sourceFile: relativePath, isImported };
     }
 
-    private buildWordReplaceEdit(context: CompletionContext, newText: string): TextEdit {
-        const position = context.position;
-        const lines = context.document.textDocument.getText().split('\n');
-        const line = lines[position.line] ?? '';
 
-        let startCol = position.character;
-        while (startCol > 0 && /\w/.test(line[startCol - 1])) startCol--;
 
-        let endCol = position.character;
-        while (endCol < line.length && /\w/.test(line[endCol])) endCol++;
-
-        return {
-            range: {
-                start: { line: position.line, character: startCol },
-                end: { line: position.line, character: endCol }
-            },
-            newText
-        };
-    }
-
-    private findLoadInsertPosition(lines: string[]): { insertLine: number; hasExistingLoads: boolean } {
-        let insertLine = 0;
-        let lastLoadLine = -1;
-        let hasExistingLoads = false;
-
-        for (let i = 0; i < lines.length; i++) {
-            const trimmed = lines[i].trim();
-            if (trimmed.startsWith('load ')) {
-                hasExistingLoads = true;
-                lastLoadLine = i;
-                insertLine = i + 1;
-            } else if (trimmed && !trimmed.startsWith('//')) {
-                if (lastLoadLine >= 0) break;
-                insertLine = i;
-                break;
-            }
-        }
-
-        return { insertLine, hasExistingLoads };
-    }
-
-    private createLoadEdit(document: LangiumDocument, relativePath: string): TextEdit[] | undefined {
-        const currentUnit = document.parseResult.value as Unit | undefined;
-        if (!currentUnit) return undefined;
-
-        const normalizedRelativePath = this.normalizePathForComparison(relativePath);
-        const alreadyImported = currentUnit.imports.some(
-            load => this.normalizePathForComparison(load.path) === normalizedRelativePath
-        );
-        if (alreadyImported) return undefined;
-
-        const lines = document.textDocument.getText().split('\n');
-        const { insertLine, hasExistingLoads } = this.findLoadInsertPosition(lines);
-
-        const finalPath = relativePath.startsWith('../')
-            ? relativePath
-            : `./${normalizedRelativePath}`;
-        const newlineSuffix = hasExistingLoads ? '\n' : '\n\n';
-
-        return [{
-            range: { start: Position.create(insertLine, 0), end: Position.create(insertLine, 0) },
-            newText: `load "${finalPath}"${newlineSuffix}`
-        }];
-    }
 }
