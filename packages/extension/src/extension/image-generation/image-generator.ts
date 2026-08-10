@@ -11,7 +11,10 @@ import {
     buildPathEnv,
     findDiagramName as findDiagramNameIn,
     isUnknownOptionFailure,
+    MIN_JSON_DIAGNOSTIC_VERSION,
+    parseCompilerVersion,
     resolveExecCommand as resolveExecCommandFrom,
+    supportsJsonDiagnostic,
     type CompilerSettings
 } from './compiler-invocation.js';
 import { isRenderableReport } from '../../shared/diagnostic-model.js';
@@ -238,35 +241,63 @@ export class ImageGenerator {
             return { raw: e.message, report: null, exitCode: undefined };
         }
 
-        // Keyed by executable, since that is what the answer is actually about: switching
-        // `cliPath` to a different build must not inherit the previous one's verdict.
-        const execKey = [resolved.file, ...resolved.args].join(' ');
-        const wantsJson = this.jsonDiagnosticSupport.get(execKey) !== false;
-
+        const wantsJson = await this.compilerSupportsJsonDiagnostic(resolved, config);
         const run = await this.runDiagnostic(resolved, inputFile, config, wantsJson);
 
         if (wantsJson && run.unknownOption) {
-            // Asked for JSON, told the flag does not exist. Remember it, and ask again the old
-            // way — once. Every later save for this executable skips straight to the text run.
-            this.jsonDiagnosticSupport.set(execKey, false);
-            this.logger.debug(`Compiler at '${execKey}' has no 'diagnostic -f json'; using the text report`);
+            // The version said the flag exists and it did not — a pre-feature snapshot, or a
+            // patched build. Rather than show picocli's usage dump as though it were a report,
+            // fetch the text one. Not detection: when the version is right this never runs.
+            this.logger.warn(
+                `Compiler reports a version with 'diagnostic -f json' but rejected the option; using the text report`);
             const textRun = await this.runDiagnostic(resolved, inputFile, config, false);
             return { raw: textRun.raw, report: null, exitCode: textRun.exitCode };
         }
 
         if (!wantsJson) return { raw: run.raw, report: null, exitCode: run.exitCode };
-
-        this.jsonDiagnosticSupport.set(execKey, true);
         return { raw: run.raw, report: this.parseReport(run.stdout), exitCode: run.exitCode };
     }
 
     /**
-     * Whether a given executable understands `diagnostic -f json`.
+     * Whether this compiler is new enough to report diagnostics as JSON.
      *
-     * Absent means "not asked yet". Held on the instance rather than globally so that a settings
-     * change, which rebuilds the generator, starts the question over.
+     * Asked once per executable and cached: the answer is a property of the build, and running
+     * `--version` before every save would be a second process for a fact that cannot change.
+     * Keyed by the resolved command, so pointing `cliPath` or `jarFile` at a different build asks
+     * again rather than inheriting the previous one's answer.
      */
     private readonly jsonDiagnosticSupport = new Map<string, boolean>();
+
+    private async compilerSupportsJsonDiagnostic(
+        resolved: { file: string; args: string[] },
+        config: vscode.WorkspaceConfiguration
+    ): Promise<boolean> {
+        const execKey = [resolved.file, ...resolved.args].join(' ');
+        const cached = this.jsonDiagnosticSupport.get(execKey);
+        if (cached !== undefined) return cached;
+
+        let supported = false;
+        try {
+            const { stdout, stderr } = await runCompiler(
+                resolved.file,
+                [...resolved.args, '--headless', '--version'],
+                { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES }
+            );
+            const version = parseCompilerVersion(`${stdout}\n${stderr}`);
+            supported = supportsJsonDiagnostic(version);
+            this.logger.debug(
+                `Compiler at '${execKey}' reports ${version ? version.nums.join('.') + (version.pre ? `-${version.pre}` : '') : 'no readable version'}; `
+                + `structured diagnostics ${supported ? 'available' : `need ${MIN_JSON_DIAGNOSTIC_VERSION.join('.')}`}`);
+        } catch (e: any) {
+            // A build that cannot even be asked its version gets the text report, which every
+            // release can produce. Not fatal: the diagnostic run itself will report the real
+            // problem if there is one.
+            this.logger.debug(`Could not read the compiler version from '${execKey}': ${e?.message ?? e}`);
+        }
+
+        this.jsonDiagnosticSupport.set(execKey, supported);
+        return supported;
+    }
 
     /** One invocation, with the pieces the caller has to tell apart kept separate. */
     private async runDiagnostic(
