@@ -90,8 +90,17 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
         either can be up, and when the compiler fails on a file with unsaved edits both are.
     -->
     <div id="banners">
-        <div class="banner" id="unsaved-banner">⚠ Unsaved changes — showing last saved version</div>
-        <div class="banner" id="error-banner">
+        <!--
+            Each banner opens with its own glyph, and they are different *shapes* rather than one
+            shape in two colours: amber and red are the pair a red-green colour deficiency is
+            least able to separate, and these two banners can be on screen together.
+        -->
+        <div class="banner" id="unsaved-banner" role="status" aria-live="polite">
+            <span class="banner-glyph" aria-hidden="true">⚠</span>
+            <span>Unsaved changes — showing last saved version</span>
+        </div>
+        <div class="banner" id="error-banner" role="status" aria-live="polite">
+            <span class="banner-glyph" aria-hidden="true">✖</span>
             <span id="error-banner-text"></span>
             <button id="error-banner-action" type="button">Open the diagnostic view</button>
         </div>

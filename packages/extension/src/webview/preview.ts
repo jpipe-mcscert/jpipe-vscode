@@ -364,7 +364,6 @@ function setRenderFailure(error: RenderMessage['error']): void {
     const notice = renderFailureNotice(error);
     errorBannerText.textContent = notice ?? '';
     errorBanner.classList.toggle('visible', notice !== null);
-    document.body.classList.toggle('jpipe-render-error', notice !== null);
     measureBanners();
 }
 

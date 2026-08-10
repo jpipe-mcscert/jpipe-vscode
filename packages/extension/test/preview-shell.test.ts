@@ -57,6 +57,45 @@ describe('the shell provides what the page looks up', () => {
         expect(css).not.toContain('has-unsaved-banner');
     });
 
+    /**
+     * The two banners can be up together, and amber against red is the pair a red-green colour
+     * deficiency is least able to separate — so they must not be the same banner in two colours.
+     */
+    test('the banners differ by glyph, not only by hue', () => {
+        const glyphs = [...shell.matchAll(/class="banner-glyph"[^>]*>([^<]+)</g)].map(m => m[1]);
+        expect(glyphs).toHaveLength(2);
+        expect(new Set(glyphs).size, `both banners open with '${glyphs[0]}'`).toBe(2);
+    });
+
+    /**
+     * Setting a banner's text in the same colour its background is tinted with is what put every
+     * one of these under the WCAG AA threshold — the unsaved banner reached 2.4:1 on a light
+     * theme. The words take the editor's foreground; the hue stays on the background, the rule
+     * beneath and the glyph, none of which carries meaning the words do not.
+     */
+    test('banner text is set in the editor foreground, not in the hue', () => {
+        const rule = css.slice(css.indexOf('.banner {'), css.indexOf('.banner.visible'));
+        expect(rule).toContain('color: var(--vscode-editor-foreground)');
+        for (const id of ['#unsaved-banner {', '#error-banner {']) {
+            const block = css.slice(css.indexOf(id), css.indexOf('}', css.indexOf(id)));
+            expect(block, `${id} should not colour its text with its own hue`).not.toMatch(/[^-]color:/);
+        }
+    });
+
+    // A banner appearing is the whole signal; a screen reader that never hears about it is left
+    // with a diagram and no reason to doubt it.
+    test('each banner announces itself', () => {
+        const stack = shell.slice(shell.indexOf('id="banners"'), shell.indexOf('class="layer"'));
+        expect([...stack.matchAll(/role="status"/g)]).toHaveLength(2);
+        expect([...stack.matchAll(/aria-live="polite"/g)]).toHaveLength(2);
+    });
+
+    // The banner says it in words now. A wash over the whole diagram said only that *something*
+    // had happened, and cost the diagram's own readability to say it.
+    test('a failed compile no longer tints the diagram', () => {
+        expect(css).not.toContain('jpipe-render-error');
+    });
+
     test('the diagnostic layer carries both of its faces', () => {
         // The structured view and the raw text live in the same layer; losing either turns one
         // of the two supported outcomes into a blank panel.
