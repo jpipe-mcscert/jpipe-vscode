@@ -3,7 +3,7 @@
 ### v1.6.0 (Unreleased)
 - Leader: Sébastien Mosser
   - Features:
-    - **An actual-size button:** A new `1:1` control in the preview toolbar — or the `1` key — jumps straight to 100%, the size the compiler laid the diagram out for. Useful on a large model, where the preview opens zoomed out to fit and you want to get to a readable size in one click. The fit button still returns you to that opening view
+    - **Jump to actual size:** Clicking the zoom percentage in the preview toolbar — or pressing `1` — shows the diagram at 100%, the size the compiler laid it out for. Useful on a large model, where the preview opens zoomed out to fit and you want a readable size in one click. The fit button, and `0`, still return you to that opening view
     - **Your trackpad behaves like a trackpad:** Two-finger scrolling now pans the diagram and pinching zooms it, which is what those gestures do everywhere else. A mouse wheel still zooms, as before. Previously every scroll gesture zoomed, which was fine with a wheel and unpleasant on a laptop
     - **Zoom sensitivity is adjustable:** A new preview setting controls how far each scroll step zooms, for pointing devices that feel too fast or too slow
 
