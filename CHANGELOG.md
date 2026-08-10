@@ -1,6 +1,6 @@
 ## Changelog
 
-### v1.6.0 (Unreleased)
+### v1.6.0 (2026-08-10)
 - Leader: Sébastien Mosser
   - Features:
     - **Jump to actual size:** Clicking the zoom percentage in the preview toolbar — or pressing `1` — shows the diagram at 100%, the size the compiler laid it out for. Useful on a large model, where the preview opens zoomed out to fit and you want a readable size in one click. The fit button, and `0`, still return you to that opening view
