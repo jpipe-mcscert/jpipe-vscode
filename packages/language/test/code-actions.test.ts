@@ -35,14 +35,14 @@ const TEMPLATE = `template T {
 
 describe('the code action dispatcher', () => {
 
-    test('offers nothing on a model with no problems', async () => {
+    test('offers no quick fix on a model with no problems', async () => {
         expect(await actionTitles(`justification J {
     conclusion c is "A claim"
     strategy s is "A strategy"
     evidence e is "Some evidence"
     e supports s
     s supports c
-}`)).toEqual([]);
+}`, CodeActionKind.QuickFix)).toEqual([]);
     });
 
     test('marks a quick fix as such, and links it to the diagnostic it repairs', async () => {
@@ -360,11 +360,12 @@ describe('add-supporter', () => {
     const lonelyStrategy = 'justification J {\n    conclusion c is "A claim"\n    strategy s is "A strategy"\n    s supports c\n}';
 
     test('a conclusion may only be offered a strategy', async () => {
-        expect(await actionTitles(lonelyConclusion)).toEqual(["Add a strategy supporting 'c'"]);
+        expect(await actionTitles(lonelyConclusion, CodeActionKind.QuickFix))
+            .toEqual(["Add a strategy supporting 'c'"]);
     });
 
     test('a strategy is offered evidence or a sub-conclusion', async () => {
-        expect(await actionTitles(lonelyStrategy)).toEqual([
+        expect(await actionTitles(lonelyStrategy, CodeActionKind.QuickFix)).toEqual([
             "Add some evidence supporting 's'",
             "Add a sub-conclusion supporting 's'"
         ]);
@@ -412,7 +413,8 @@ describe('add-supporter', () => {
 
     test('is not offered to an element that is already supported', async () => {
         expect(await actionTitles(
-            'justification J {\n    conclusion c is "C"\n    strategy s is "S"\n    evidence e is "E"\n    e supports s\n    s supports c\n}'
+            'justification J {\n    conclusion c is "C"\n    strategy s is "S"\n    evidence e is "E"\n    e supports s\n    s supports c\n}',
+            CodeActionKind.QuickFix
         )).toEqual([]);
     });
 });
