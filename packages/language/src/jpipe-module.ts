@@ -17,6 +17,7 @@ import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 import { JpipeDocumentValidator } from './jpipe-document-validator.js';
 import { JpipeExclusionService } from './jpipe-exclusions.js';
 import { JpipeUnificationService } from './jpipe-unification.js';
+import { JpipeParserErrorMessageProvider } from './jpipe-parser-errors.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -57,6 +58,9 @@ function buildJpipeModule(
     unification: JpipeUnificationService
 ): Module<JpipeServices, PartialLangiumServices & JpipeAddedServices> {
     return {
+        parser: {
+            ParserErrorMessageProvider: () => new JpipeParserErrorMessageProvider()
+        },
         validation: {
             JpipeValidator: (services) => new JpipeValidator(services),
             DocumentValidator: (services) => new JpipeDocumentValidator(services, exclusions, logger)
