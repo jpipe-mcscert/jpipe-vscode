@@ -39,6 +39,24 @@ describe('the shell provides what the page looks up', () => {
         }
     });
 
+    /**
+     * Two banners, and either may be up — a compile failure on a file with unsaved edits raises
+     * both. The layers below are offset by the stack's *measured* height, so the stack has to be
+     * one element with both banners inside it; a banner outside it would overlap the diagram.
+     */
+    test('both banners are inside the one stack the layers are offset by', () => {
+        const stack = shell.slice(shell.indexOf('id="banners"'), shell.indexOf('class="layer"'));
+        expect(stack).toContain('id="unsaved-banner"');
+        expect(stack).toContain('id="error-banner"');
+        expect(css).toMatch(/\.layer\s*\{[^}]*top:\s*calc\(44px \+ var\(--banners-height/);
+    });
+
+    // A constant offset was right for one banner and wrong for none, both, or either wrapping on
+    // a narrow panel — so nothing may depend on a banner being a known height.
+    test('no rule assumes how tall the banners are', () => {
+        expect(css).not.toContain('has-unsaved-banner');
+    });
+
     test('the diagnostic layer carries both of its faces', () => {
         // The structured view and the raw text live in the same layer; losing either turns one
         // of the two supported outcomes into a blank panel.
@@ -60,7 +78,8 @@ describe('toolbar order', () => {
      * switch is not last it moves under the user as they use it.
      */
     test('the mode switch is the last control on the right', () => {
-        const toolbar = shell.slice(shell.indexOf('id="toolbar-right"'), shell.indexOf('unsaved-banner'));
+        // Bounded by the banner stack, which is the first thing after the toolbar.
+        const toolbar = shell.slice(shell.indexOf('id="toolbar-right"'), shell.indexOf('id="banners"'));
         const buttons = [...toolbar.matchAll(/id="([a-z-]+)"/g)].map(m => m[1]);
         expect(buttons.at(-1)).toBe('mode-toggle');
     });

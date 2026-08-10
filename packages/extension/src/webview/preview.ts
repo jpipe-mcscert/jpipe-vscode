@@ -1,4 +1,5 @@
 import type { HostToWebview, RenderMessage, ViewMode, WebviewToHost } from '../shared/preview-protocol.js';
+import { renderFailureNotice } from '../shared/render-failure.js';
 import { DiagnosticView, type DiagnosticViewState } from './diagnostic-view.js';
 import { adaptToDarkTheme, applyDimming, findElement, stripCaptions } from './highlight.js';
 import { Minimap } from './minimap.js';
@@ -73,7 +74,11 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 const container = document.getElementById('container') as HTMLElement;
 const wrapper = document.getElementById('svg-wrapper') as HTMLElement;
+const banners = document.getElementById('banners') as HTMLElement;
 const banner = document.getElementById('unsaved-banner') as HTMLElement;
+const errorBanner = document.getElementById('error-banner') as HTMLElement;
+const errorBannerText = document.getElementById('error-banner-text') as HTMLElement;
+const errorBannerAction = document.getElementById('error-banner-action') as HTMLElement;
 const diagOutput = document.getElementById('diag-output') as HTMLElement;
 const zoomValue = document.getElementById('zoom-value') as HTMLElement;
 const highlightToggle = document.getElementById('highlight-toggle') as HTMLElement;
@@ -344,7 +349,33 @@ function setMode(mode: ViewMode): void {
  */
 function setUnsaved(value: boolean): void {
     banner.classList.toggle('visible', value);
-    document.body.classList.toggle('has-unsaved-banner', value);
+    measureBanners();
+}
+
+/**
+ * Say that the compiler failed, and offer the one place the reasons are.
+ *
+ * A render only arrives carrying an error when the compiler produced usable SVG anyway, so there
+ * is always a plausible-looking diagram underneath this — which is exactly why the tint alone was
+ * not enough. It said something had happened without saying that what was on screen could no
+ * longer be trusted.
+ */
+function setRenderFailure(error: RenderMessage['error']): void {
+    const notice = renderFailureNotice(error);
+    errorBannerText.textContent = notice ?? '';
+    errorBanner.classList.toggle('visible', notice !== null);
+    document.body.classList.toggle('jpipe-render-error', notice !== null);
+    measureBanners();
+}
+
+/**
+ * Push the banner stack's height down to the layers.
+ *
+ * Measured rather than assumed: either banner may be up and on a narrow panel either may wrap, so
+ * a constant would be wrong in three of the cases it has to cover.
+ */
+function measureBanners(): void {
+    document.body.style.setProperty('--banners-height', `${banners.offsetHeight}px`);
 }
 
 function setBusy(busy: boolean): void {
@@ -403,7 +434,7 @@ function applyRender(msg: RenderMessage): void {
     installDiagram();
 
     setMode('diagram');
-    document.body.classList.toggle('jpipe-render-error', msg.error !== null);
+    setRenderFailure(msg.error);
     setUnsaved(msg.unsaved);
     setBusy(false);
 
@@ -609,6 +640,7 @@ highlightToggle.addEventListener('click', () => {
 });
 
 modeToggle.addEventListener('click', () => vscode.postMessage({ type: 'toggleMode' }));
+errorBannerAction.addEventListener('click', () => vscode.postMessage({ type: 'toggleMode' }));
 
 document.getElementById('jpipe-link')?.addEventListener('click', event => {
     event.preventDefault();

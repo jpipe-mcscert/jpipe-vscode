@@ -85,7 +85,17 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
             </div>
         </div>
     </div>
-    <div id="unsaved-banner">⚠ Unsaved changes — showing last saved version</div>
+    <!--
+        Both banners live in one stack so the layers below can be offset by its measured height:
+        either can be up, and when the compiler fails on a file with unsaved edits both are.
+    -->
+    <div id="banners">
+        <div class="banner" id="unsaved-banner">⚠ Unsaved changes — showing last saved version</div>
+        <div class="banner" id="error-banner">
+            <span id="error-banner-text"></span>
+            <button id="error-banner-action" type="button">Open the diagnostic view</button>
+        </div>
+    </div>
     <div class="layer" id="container" tabindex="0" role="application" aria-label="Diagram canvas. Arrow keys pan, plus and minus zoom, 0 fits to window, 1 shows actual size">
         <div id="svg-wrapper"></div>
     </div>

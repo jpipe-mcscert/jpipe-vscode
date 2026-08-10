@@ -185,33 +185,64 @@ body:not([data-mode="diagram"]) .diagram-only { display: none; }
 
 /* ----------------------------------------------------------------- banner */
 
-#unsaved-banner {
+#banners {
     position: fixed;
     top: 44px;
     left: 0;
     right: 0;
     z-index: 999;
+}
+
+.banner {
+    display: none;
+    align-items: baseline;
+    gap: 10px;
     padding: 5px 12px;
     font-size: 12px;
+}
+
+.banner.visible { display: flex; }
+
+#unsaved-banner {
     background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 15%, var(--vscode-editorWidget-background));
     border-bottom: 1px solid var(--vscode-editorWarning-foreground);
     color: var(--vscode-editorWarning-foreground);
-    display: none;
 }
 
-#unsaved-banner.visible { display: block; }
+/*
+ * The reasons are in the diagnostic view, and a banner that names it without going there leaves
+ * the reader to find the toggle in a toolbar they were not looking at.
+ */
+#error-banner {
+    background: color-mix(in srgb, var(--vscode-editorError-foreground) 15%, var(--vscode-editorWidget-background));
+    border-bottom: 1px solid var(--vscode-editorError-foreground);
+    color: var(--vscode-editorError-foreground);
+}
+
+#error-banner-action {
+    flex-shrink: 0;
+    margin-left: auto;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+
+#error-banner-action:hover { background: var(--vscode-toolbar-hoverBackground); }
 
 /* ------------------------------------------------------------ the layers */
 
 .layer {
     position: fixed;
-    top: 44px;
+    top: calc(44px + var(--banners-height, 0px));
     left: 0;
     right: 0;
     bottom: 0;
 }
-
-body.has-unsaved-banner .layer { top: 72px; }
 
 body[data-mode="diagram"] #container,
 body[data-mode="empty"] #empty-overlay { display: block; }
@@ -240,7 +271,7 @@ body[data-mode="diagnostic"] #diagnostic-overlay { display: flex; }
 }
 
 body.jpipe-render-error #container {
-    background: color-mix(in srgb, var(--vscode-errorForeground) 18%, var(--vscode-editor-background));
+    background: color-mix(in srgb, var(--vscode-errorForeground) 7%, var(--vscode-editor-background));
 }
 
 #container.pannable { cursor: grab; }
