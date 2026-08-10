@@ -1,5 +1,20 @@
 ## Changelog
 
+### v1.7.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Features:
+    - **The lightbulb now fixes what it reports:** Where the editor flags a problem it knows how to repair, `⌘.` offers to do it. Write the declaration a template's `@support` demands — with the right qualified id and the label it refines, which is the fiddly part — or write all of them at once. Correct an override declared with the wrong keyword, a mistyped operator, or a config key the operator does not understand. Fill in a required config key, including on a composition that has no config block yet. Wire up a conclusion or strategy that nothing supports. Point a broken `load` at the file it most likely meant, or remove it
+    - **Add the `load` you forgot:** Reference a template that lives in another file and the editor offers to import it, naming the file it found. Writing `implements Base` before loading the file that defines it is the ordinary way round to work, and until now the completion popup was the only thing that would add the `load` for you — a name typed by hand never got the offer
+    - **Organize loads:** Sort, de-duplicate and tidy the `load` statements at the top of a file, from the palette, the jPipe menu, or on save if you turn it on. It never removes a `load` whose path does not resolve: a half-typed path is exactly the state a file is in while you are writing one
+    - **Reshape a model:** Convert a justification to a template and back — a conversion that would drop `@support` elements says how many before you accept it. Sort a model's declarations into reading order, evidence through to conclusion. Or extract a template out of a justification, turning its evidence into the slots an implementer fills
+    - **Help with `refine`:** The `hook` value now completes with the elements of the model being refined, showing each one's label. It was previously a plain string with nothing to suggest it, so the only way to find a legal value was to open the other model and read it
+    - **Compositions are checked before you build:** Passing the wrong number of models to an operator is now reported in the editor. `refine` needs exactly two; previously `refine(a)` looked fine until the compiler rejected it
+  - Bug Fixes:
+    - **`unifyBy` and `unifyExclude` are no longer flagged as errors.** Both are read by the compiler on every composition, but the editor accepted them nowhere — so a model that builds cleanly carried a red squiggle. They are now offered by completion as well
+    - **Renaming no longer breaks the model.** Renaming a justification or template renamed every use of it and silently left the declaration behind, producing a file whose `implements` pointed at something that no longer existed. Renaming an element whose id carries a qualifier is not yet supported and is now refused outright rather than performed incorrectly
+    - **A config key the compiler ignores is now a warning, not an error.** It no longer claims a build will fail when it will not
+    - **A `load` added for you lands in the right place.** On a file opening with a `/* … */` header — as the jPipe examples do — it was inserted above the header rather than below it
+
 ### v1.6.0 (2026-08-10)
 - Leader: Sébastien Mosser
   - Features:
