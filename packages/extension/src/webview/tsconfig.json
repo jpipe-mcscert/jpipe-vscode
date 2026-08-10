@@ -1,0 +1,25 @@
+{
+    // The preview webview runs in a browser, not in the extension host, so it needs the DOM
+    // lib. It is a separate project rather than a wider `lib` on the package's main one so that
+    // the extension and language-server code stays honestly DOM-free.
+    //
+    // This lives here, named `tsconfig.json`, because that is the only name editors look for:
+    // the TypeScript server walks up from the file you opened and stops at the first
+    // `tsconfig.json` it finds. Held at the package root under any other name, it would be
+    // invisible to the editor, and these files would be checked against the extension-host
+    // project — which does not include them and has no DOM types.
+    "extends": "../../../../tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "rootDir": "..",
+        "lib": [
+            "ES2021",
+            "DOM",
+            "DOM.Iterable"
+        ]
+    },
+    "include": [
+        "./**/*.ts",
+        "../shared/**/*.ts"
+    ]
+}

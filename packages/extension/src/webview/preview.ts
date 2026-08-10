@@ -5,12 +5,15 @@ import {
     type Box,
     type Frame,
     type Size,
+    type ViewOrigin,
+    type WheelGesture,
     centerOn,
-    clamp,
     clampTranslation,
     clientToUser,
     formatViewBox,
+    fitToWindowBox,
     initialBox,
+    viewOnResize,
     isPannable,
     naturalScale,
     needsPan,
@@ -18,7 +21,12 @@ import {
     panBy,
     parseLength,
     parseViewBox,
+    naturalBox,
     stepZoom,
+    gestureIntent,
+    NO_WHEEL_GESTURE,
+    wheelPixels,
+    wheelZoomFactor,
     zoomAt,
     zoomPercent
 } from './viewbox.js';
@@ -96,14 +104,17 @@ let lastSvg: string | null = null;
 let lastDocumentPath: string | null = null;
 
 /**
- * True while the view is still exactly what the diagram opened at.
+ * How the current view came about, which is what a panel resize needs to know.
  *
- * It decides what a panel resize does. Preserving how much of the diagram is on screen is the
- * right answer once someone has chosen a zoom, but applying it to an untouched view drifts off
- * the default: the panel settling to its final size just after the first render was enough to
- * turn a clean 100% into 109%.
+ * `initial` — untouched since the diagram loaded, so a resize re-derives the opening view.
+ *   Preserving on-screen area instead would drift it: the panel settling to its final size just
+ *   after the first render was enough to turn a clean 100% into 109%.
+ * `fitted` — the user asked to fill the panel, so a resize fills the new panel.
+ * `custom` — the user framed it themselves; a resize keeps how much of the diagram is showing.
  */
-let pristine = true;
+let viewOrigin: ViewOrigin = 'initial';
+/** Multiplier on the wheel zoom step, from the user's settings. */
+let zoomSensitivity = 1;
 let unsaved = false;
 let highlightEnabled = false;
 let highlightName: string | null = null;
@@ -111,6 +122,8 @@ let lastMatched: SVGGraphicsElement | null = null;
 
 let animation = 0;
 let drag: { pointerId: number; x: number; y: number } | null = null;
+/** Which way the in-flight wheel gesture was going, so it cannot change its mind halfway. */
+let wheelGesture: WheelGesture = NO_WHEEL_GESTURE;
 
 const minimap = new Minimap(document.getElementById('minimap') as HTMLElement, onMinimapNavigate);
 
@@ -141,17 +154,32 @@ function setViewBox(next: Box): void {
     persist();
 }
 
-/** Back to the view the diagram opened at: intrinsic size, or shrunk if it does not fit. */
+/** Jump to exactly 100%: the diagram at the size the compiler laid it out for. */
+function actualSize(): void {
+    const f = frame();
+    if (!f) return;
+    adjusted();
+    setViewBox(clampTranslation(naturalBox(f), f.content));
+}
+
+/**
+ * Fill the panel with the whole diagram, enlarging a small one to do it.
+ *
+ * Deliberately not the same as the opening view, which caps at intrinsic size. The difference
+ * is who asked: opening is automatic and should not inflate a four-node model to fill a wide
+ * panel, whereas clicking "fit to window" is a request to do exactly that.
+ */
 function fit(): void {
     const f = frame();
     if (!f) return;
-    setViewBox(initialBox(f));
-    pristine = true;
+    cancelAnimation();
+    setViewBox(fitToWindowBox(f));
+    viewOrigin = 'fitted';
 }
 
-/** Record that the view is now the user's rather than the default. */
+/** Record that the view is now the user's rather than one we chose. */
 function adjusted(): void {
-    pristine = false;
+    viewOrigin = 'custom';
     cancelAnimation();
 }
 
@@ -349,7 +377,7 @@ function applyRender(msg: RenderMessage): void {
         const f = { content, viewport: panelSize(), baseScale };
         const keep = sameDiagram && previous !== null;
         setViewBox(keep ? clampTranslation(normalizeAspect(previous, f.viewport), content) : initialBox(f));
-        if (!keep) pristine = true;
+        if (!keep) viewOrigin = 'initial';
     } else {
         minimap.release();
         minimap.hide();
@@ -411,15 +439,13 @@ function revealElement(el: SVGGraphicsElement): void {
     };
 
     if (!needsPan(target, vb)) return;
-    // The view is no longer the default framing, so a later resize must preserve it rather
-    // than snap back and undo the reveal.
-    pristine = false;
+    // The view is no longer one we chose, so a later resize must preserve it rather than snap
+    // back and undo the reveal.
+    viewOrigin = 'custom';
     animateTo(centerOn(vb, target, content));
 }
 
 /* ------------------------------------------------------------------ input */
-
-const PX_PER_LINE = 16;
 
 container.addEventListener('wheel', event => {
     const f = frame();
@@ -429,21 +455,22 @@ container.addEventListener('wheel', event => {
     event.preventDefault();
     adjusted();
 
-    const unit = event.deltaMode === 1 ? PX_PER_LINE : event.deltaMode === 2 ? container.clientHeight : 1;
-    const dx = event.deltaX * unit;
-    const dy = event.deltaY * unit;
+    // Each axis converts against its own viewport extent: a page of horizontal scrolling is a
+    // viewport width, not a height.
+    const dx = event.deltaX * wheelPixels(event.deltaMode, container.clientWidth);
+    const dy = event.deltaY * wheelPixels(event.deltaMode, container.clientHeight);
 
-    // Shift is the escape hatch for panning by wheel; everything else zooms, including the
-    // ctrl+wheel a trackpad pinch arrives as.
-    if (event.shiftKey) {
+    // A mouse wheel zooms and a trackpad's two-finger scroll pans, each keeping the gesture the
+    // hardware is used for elsewhere. A pinch arrives as ctrl+wheel and always zooms. Decided
+    // once per gesture rather than per event, so an accelerating swipe cannot switch mid-flight.
+    const decision = gestureIntent(event, performance.now(), wheelGesture);
+    wheelGesture = decision.state;
+    if (decision.intent === 'pan') {
         setViewBox(panBy(vb, -dx, -dy, svgRect(), f.content));
         return;
     }
-    // Exponential, so equal and opposite gestures cancel exactly and the step feels the same
-    // at every zoom level. Clamped per event so one flick of a trackpad cannot bottom out.
-    const factor = clamp(Math.exp(dy * 0.0015), 1 / 1.5, 1.5);
     const anchor = clientToUser(event.clientX, event.clientY, svgRect(), vb);
-    setViewBox(zoomAt(vb, anchor, factor, f));
+    setViewBox(zoomAt(vb, anchor, wheelZoomFactor(dy, zoomSensitivity), f));
 }, { passive: false });
 
 container.addEventListener('pointerdown', event => {
@@ -488,6 +515,9 @@ document.addEventListener('keydown', event => {
     } else if (event.key === '0') {
         event.preventDefault();
         fit();
+    } else if (event.key === '1') {
+        event.preventDefault();
+        actualSize();
     } else if (PAN_KEYS[event.key]) {
         // Panning without a pointer. The minimap is a mouse convenience; the canvas itself has
         // to be navigable from the keyboard, and arrow keys are what people try first.
@@ -518,7 +548,9 @@ function zoomStep(direction: 'in' | 'out'): void {
 document.getElementById('zoom-in')?.addEventListener('click', () => zoomStep('in'));
 document.getElementById('zoom-out')?.addEventListener('click', () => zoomStep('out'));
 document.getElementById('zoom-fit')?.addEventListener('click', fit);
-zoomValue.addEventListener('click', fit);
+// Clicking a zoom percentage resets it to 100% in most image editors, and it would otherwise
+// just be a second fit button sitting three controls along from the first.
+zoomValue.addEventListener('click', actualSize);
 
 highlightToggle.addEventListener('click', () => {
     highlightEnabled = !highlightEnabled;
@@ -571,7 +603,7 @@ function onMinimapNavigate(left: number, top: number, mm: Size): void {
 new ResizeObserver(() => {
     const f = frame();
     if (!vb || !f || !navigable) return;
-    setViewBox(pristine ? initialBox(f) : clampTranslation(normalizeAspect(vb, f.viewport), f.content));
+    setViewBox(viewOnResize(viewOrigin, vb, f));
 }).observe(container);
 
 /**
@@ -620,6 +652,9 @@ window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
         case 'busy':
             setBusy(msg.busy);
             break;
+        case 'config':
+            zoomSensitivity = msg.zoomSensitivity;
+            break;
     }
 });
 
@@ -635,10 +670,10 @@ if (restored) {
     vb = restored.vb ?? null;
     lastDocumentUri = restored.documentUri ?? null;
     lastDiagramName = restored.diagramName ?? null;
-    // A restored view is someone's deliberate framing, not the default one. Leaving it marked
-    // pristine would let the first resize after the replay — which the empty-to-diagram layer
+    // A restored view is someone's deliberate framing, not one we chose. Leaving it marked
+    // `initial` would let the first resize after the replay — which the empty-to-diagram layer
     // switch is enough to trigger — throw it away and snap back to the opening view.
-    if (vb) pristine = false;
+    if (vb) viewOrigin = 'custom';
 }
 
 // The extension replays its last render in response, so a reloaded webview comes back with the

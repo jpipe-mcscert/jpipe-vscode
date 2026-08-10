@@ -68,13 +68,13 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
             <div class="toolbar-group diagram-only">
                 <button class="toolbar-btn" id="zoom-fit" aria-label="Fit to window" data-tooltip="Fit to window"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2.5h3.5M14 6V2.5h-3.5M2 10v3.5h3.5M14 10v3.5h-3.5"/></svg></button>
                 <button class="toolbar-btn zoom" id="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
-                <button id="zoom-value" aria-label="Current zoom. Activate to fit the diagram to the window" title="Fit to window">100%</button>
+                <button id="zoom-value" aria-label="Current zoom. Activate for actual size" title="Actual size (100%)">100%</button>
                 <button class="toolbar-btn zoom" id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
             </div>
         </div>
     </div>
     <div id="unsaved-banner">⚠ Unsaved changes — showing last saved version</div>
-    <div class="layer" id="container" tabindex="0" role="application" aria-label="Diagram canvas. Arrow keys pan, plus and minus zoom, 0 fits to window">
+    <div class="layer" id="container" tabindex="0" role="application" aria-label="Diagram canvas. Arrow keys pan, plus and minus zoom, 0 fits to window, 1 shows actual size">
         <div id="svg-wrapper"></div>
     </div>
     <div class="layer" id="diagnostic-overlay"><pre id="diag-output" tabindex="0"></pre></div>

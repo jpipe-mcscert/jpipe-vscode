@@ -39,7 +39,9 @@ export type HostToWebview =
     | { type: 'setUnsaved'; unsaved: boolean }
     | { type: 'view'; mode: ViewMode }
     | { type: 'diagnostic'; output: string }
-    | { type: 'busy'; busy: boolean };
+    | { type: 'busy'; busy: boolean }
+    /** Settings the page needs. Sent on `ready` and again whenever they change. */
+    | { type: 'config'; zoomSensitivity: number };
 
 export type WebviewToHost =
     /**

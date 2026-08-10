@@ -4,10 +4,13 @@ import {
     type Frame,
     type Rect,
     type Size,
+    type WheelIntent,
     centerOn,
     clampTranslation,
     clientToUser,
+    boxAtScale,
     fitBox,
+    fitToWindowBox,
     initialBox,
     isPannable,
     kMax,
@@ -24,6 +27,13 @@ import {
     scaleOf,
     shouldShowMinimap,
     stepZoom,
+    viewOnResize,
+    gestureIntent,
+    NO_WHEEL_GESTURE,
+    WHEEL_GESTURE_GAP_MS,
+    wheelIntent,
+    wheelPixels,
+    wheelZoomFactor,
     zoomAt,
     zoomPercent
 } from '../src/webview/viewbox.js';
@@ -341,6 +351,112 @@ describe('initialBox', () => {
     });
 });
 
+describe('fitToWindowBox', () => {
+    /**
+     * The fit control and the opening view diverge on purpose: opening is automatic and caps at
+     * intrinsic size so a four-node model does not fill a wide panel, while clicking "fit to
+     * window" is a request to fill it.
+     */
+    test('enlarges a small diagram to fill the panel, unlike the opening view', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 100, h: 80 });
+        expect(zoomPercent(initialBox(frame), frame)).toBe(100);
+        expect(zoomPercent(fitToWindowBox(frame), frame)).toBeGreaterThan(100);
+    });
+
+    test('agrees with the opening view when the diagram is too big to fit', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 4000, h: 3000 });
+        expect(fitToWindowBox(frame)).toEqual(initialBox(frame));
+    });
+
+    test('shows the whole diagram either way', () => {
+        for (const content of [{ x: 0, y: 0, w: 100, h: 80 }, { x: 0, y: 0, w: 4000, h: 3000 }]) {
+            const box = fitToWindowBox(frameOf(content));
+            expect(box.x).toBeLessThanOrEqual(content.x);
+            expect(box.y).toBeLessThanOrEqual(content.y);
+            expect(box.x + box.w).toBeGreaterThanOrEqual(content.x + content.w);
+            expect(box.y + box.h).toBeGreaterThanOrEqual(content.y + content.h);
+        }
+    });
+
+    test('keeps the aspect invariant', () => {
+        expect(aspect(fitToWindowBox(frameOf({ x: 0, y: 0, w: 100, h: 80 })))).toBeCloseTo(aspect(VIEWPORT), 9);
+    });
+
+    test('will not exceed the zoom ceiling the other controls respect', () => {
+        // A tiny diagram would otherwise fit at a magnification the wheel refuses to reach.
+        const frame = frameOf({ x: 0, y: 0, w: 8, h: 6 });
+        expect(scaleOf(fitToWindowBox(frame), VIEWPORT)).toBeCloseTo(kMax(frame), 6);
+        expect(zoomPercent(fitToWindowBox(frame), frame)).toBe(400);
+    });
+
+    test('stays centred on the diagram when the ceiling binds', () => {
+        const content: Box = { x: 100, y: 200, w: 8, h: 6 };
+        const box = fitToWindowBox(frameOf(content));
+        expect(box.x + box.w / 2).toBeCloseTo(content.x + content.w / 2, 9);
+        expect(box.y + box.h / 2).toBeCloseTo(content.y + content.h / 2, 9);
+    });
+});
+
+describe('viewOnResize', () => {
+    /**
+     * A resize has to honour why the view looks the way it does. This lives here rather than in
+     * the ResizeObserver callback precisely so it can be checked: observer delivery is tied to
+     * the frame loop, which the browser harness cannot drive.
+     */
+    const small = frameOf({ x: 0, y: 0, w: 100, h: 80 });
+    const taller: Size = { width: 800, height: 1000 };
+
+    test('an untouched view is re-derived, not adjusted', () => {
+        const grown = { ...small, viewport: taller };
+        expect(viewOnResize('initial', initialBox(small), grown)).toEqual(initialBox(grown));
+    });
+
+    test('an untouched small diagram still reads 100% after a resize', () => {
+        const grown = { ...small, viewport: taller };
+        expect(zoomPercent(viewOnResize('initial', initialBox(small), grown), grown)).toBe(100);
+    });
+
+    test('a fitted view re-fits the new panel', () => {
+        const grown = { ...small, viewport: taller };
+        expect(viewOnResize('fitted', fitToWindowBox(small), grown)).toEqual(fitToWindowBox(grown));
+    });
+
+    test('a fitted view still shows the whole diagram after a resize', () => {
+        const grown = { ...small, viewport: taller };
+        const box = viewOnResize('fitted', fitToWindowBox(small), grown);
+        expect(box.x).toBeLessThanOrEqual(small.content.x);
+        expect(box.x + box.w).toBeGreaterThanOrEqual(small.content.x + small.content.w);
+    });
+
+    test('a view the user framed keeps how much of the diagram is showing', () => {
+        const frame = frameOf({ x: 0, y: 0, w: 4000, h: 3000 });
+        const chosen: Box = { x: 1000, y: 800, w: 400, h: 300 };
+        const out = viewOnResize('custom', chosen, { ...frame, viewport: taller });
+        expect(out.w * out.h).toBeCloseTo(chosen.w * chosen.h, 6);
+        expect(out.x + out.w / 2).toBeCloseTo(chosen.x + chosen.w / 2, 6);
+    });
+
+    test('every origin comes back matching the new panel aspect', () => {
+        const grown = { ...small, viewport: taller };
+        for (const origin of ['initial', 'fitted', 'custom'] as const) {
+            expect(aspect(viewOnResize(origin, initialBox(small), grown))).toBeCloseTo(aspect(taller), 9);
+        }
+    });
+});
+
+describe('boxAtScale', () => {
+    test('produces exactly the scale asked for', () => {
+        const frame = frameOf();
+        for (const k of [0.5, 1, BASE, 3]) {
+            expect(scaleOf(boxAtScale(frame, k), VIEWPORT)).toBeCloseTo(k, 9);
+        }
+    });
+
+    test('naturalBox is the intrinsic-scale case', () => {
+        expect(boxAtScale(frameOf(), BASE)).toEqual(naturalBox(frameOf()));
+    });
+});
+
 describe('stepZoom and zoomPercent', () => {
     test('reads 100% at intrinsic size', () => {
         expect(zoomPercent(naturalBox(frameOf()), frameOf())).toBe(100);
@@ -373,6 +489,188 @@ describe('stepZoom and zoomPercent', () => {
         const inTwo = stepZoom(inOne, 'in', frameOf());
         const percents = [fit, inOne, inTwo].map(v => zoomPercent(v, frameOf()));
         expect(percents).toEqual([...percents].sort((a, b) => a - b));
+    });
+});
+
+describe('wheelIntent', () => {
+    /**
+     * A mouse wheel and a trackpad both arrive as `wheel` events with nothing to tell them
+     * apart, so this is a heuristic — and a wrong answer means a gesture does the opposite of
+     * what the platform trained the user to expect. The samples below are what the two devices
+     * actually emit.
+     */
+    const sample = (over: Partial<import('../src/webview/viewbox.js').WheelSample> = {}) => ({
+        deltaMode: 0, deltaX: 0, deltaY: 0, ctrlKey: false, metaKey: false, shiftKey: false, ...over
+    });
+
+    test.each([
+        ['a standard wheel notch', { deltaY: 120 }],
+        ['a notch scrolling the other way', { deltaY: -120 }],
+        ['the smaller notch some mice send', { deltaY: 100 }],
+        ['a notch at the classification threshold', { deltaY: 40 }],
+        ['line-mode deltas', { deltaMode: 1, deltaY: 3 }],
+        ['page-mode deltas', { deltaMode: 2, deltaY: 1 }]
+    ])('zooms on %s', (_label, over) => {
+        expect(wheelIntent(sample(over))).toBe('zoom');
+    });
+
+    test.each([
+        ['a fine trackpad delta', { deltaY: 4 }],
+        ['a fractional delta', { deltaY: 12.5 }],
+        ['a delta with a horizontal component', { deltaY: 60, deltaX: 3 }],
+        ['a purely horizontal swipe', { deltaX: 40, deltaY: 0 }],
+        ['a momentum tail', { deltaY: 0.5 }]
+    ])('pans on %s', (_label, over) => {
+        expect(wheelIntent(sample(over))).toBe('pan');
+    });
+
+    test('ctrl and cmd always zoom — that is how a pinch arrives', () => {
+        expect(wheelIntent(sample({ deltaY: 2, ctrlKey: true }))).toBe('zoom');
+        expect(wheelIntent(sample({ deltaY: 2, metaKey: true }))).toBe('zoom');
+    });
+
+    test('shift always pans, even on a wheel', () => {
+        expect(wheelIntent(sample({ deltaY: 120, shiftKey: true }))).toBe('pan');
+    });
+
+    test('ctrl wins over shift, so a pinch is never misread', () => {
+        expect(wheelIntent(sample({ deltaY: 2, ctrlKey: true, shiftKey: true }))).toBe('zoom');
+    });
+});
+
+describe('gestureIntent', () => {
+    /**
+     * A swipe is a stream whose shape drifts as it accelerates: early samples are small and
+     * fractional, later ones can be large, whole and purely vertical — the exact shape of a
+     * wheel notch. Classifying each sample on its own therefore lets one gesture pan briefly
+     * and then start zooming, which these cases exist to prevent.
+     */
+    const sample = (over: Partial<import('../src/webview/viewbox.js').WheelSample> = {}) => ({
+        deltaMode: 0, deltaX: 0, deltaY: 0, ctrlKey: false, metaKey: false, shiftKey: false, ...over
+    });
+
+    /** Feed a stream of (event, time) pairs and collect what each one decided. */
+    function run(stream: Array<[ReturnType<typeof sample>, number]>): WheelIntent[] {
+        let state = NO_WHEEL_GESTURE;
+        return stream.map(([event, now]) => {
+            const result = gestureIntent(event, now, state);
+            state = result.state;
+            return result.intent;
+        });
+    }
+
+    test('an accelerating trackpad swipe keeps panning once it starts', () => {
+        const intents = run([
+            [sample({ deltaY: 3.5, deltaX: 0.5 }), 0],
+            [sample({ deltaY: 18 }), 16],
+            [sample({ deltaY: 64 }), 32],      // now indistinguishable from a wheel notch
+            [sample({ deltaY: 120 }), 48],
+            [sample({ deltaY: 90 }), 64]
+        ]);
+        expect(intents).toEqual(['pan', 'pan', 'pan', 'pan', 'pan']);
+    });
+
+    test('a decelerating wheel stream keeps zooming as its deltas shrink', () => {
+        const intents = run([
+            [sample({ deltaY: 120 }), 0],
+            [sample({ deltaY: 120 }), 40],
+            [sample({ deltaY: 12 }), 80]
+        ]);
+        expect(intents).toEqual(['zoom', 'zoom', 'zoom']);
+    });
+
+    test('a new gesture after a pause is classified afresh', () => {
+        const intents = run([
+            [sample({ deltaY: 4, deltaX: 1 }), 0],
+            [sample({ deltaY: 120 }), WHEEL_GESTURE_GAP_MS + 1]
+        ]);
+        expect(intents).toEqual(['pan', 'zoom']);
+    });
+
+    test('a gap exactly at the threshold still counts as the same gesture', () => {
+        const intents = run([
+            [sample({ deltaY: 4, deltaX: 1 }), 0],
+            [sample({ deltaY: 120 }), WHEEL_GESTURE_GAP_MS]
+        ]);
+        expect(intents).toEqual(['pan', 'pan']);
+    });
+
+    test('the very first event is classified on its own merits', () => {
+        expect(run([[sample({ deltaY: 120 }), 0]])).toEqual(['zoom']);
+        expect(run([[sample({ deltaY: 4 }), 0]])).toEqual(['pan']);
+    });
+
+    test('a modifier takes effect immediately, mid-gesture', () => {
+        const intents = run([
+            [sample({ deltaY: 4 }), 0],
+            [sample({ deltaY: 4, ctrlKey: true }), 16],
+            [sample({ deltaY: 120, shiftKey: true }), 32]
+        ]);
+        expect(intents).toEqual(['pan', 'zoom', 'pan']);
+    });
+
+    test('a pinch keeps zooming through the momentum after ctrl is released', () => {
+        const intents = run([
+            [sample({ deltaY: -3, ctrlKey: true }), 0],
+            [sample({ deltaY: -2 }), 16],
+            [sample({ deltaY: -1 }), 32]
+        ]);
+        expect(intents).toEqual(['zoom', 'zoom', 'zoom']);
+    });
+
+    test('does not mutate the state handed to it', () => {
+        const before = { ...NO_WHEEL_GESTURE };
+        gestureIntent(sample({ deltaY: 120 }), 5, NO_WHEEL_GESTURE);
+        expect(NO_WHEEL_GESTURE).toEqual(before);
+    });
+});
+
+describe('wheelZoomFactor', () => {
+    test('a notch is a modest step, not a leap', () => {
+        const factor = wheelZoomFactor(-120);
+        expect(1 / factor).toBeGreaterThan(1.1);
+        expect(1 / factor).toBeLessThan(1.3);
+    });
+
+    test('is symmetric, so equal and opposite gestures cancel', () => {
+        expect(wheelZoomFactor(120) * wheelZoomFactor(-120)).toBeCloseTo(1, 9);
+    });
+
+    test('sensitivity scales the step', () => {
+        expect(wheelZoomFactor(-120, 2)).toBeLessThan(wheelZoomFactor(-120, 1));
+        expect(wheelZoomFactor(-120, 0.5)).toBeGreaterThan(wheelZoomFactor(-120, 1));
+        expect(wheelZoomFactor(-120, 1)).toBeCloseTo(wheelZoomFactor(-60, 2), 9);
+    });
+
+    test('a violent flick is capped, so one gesture cannot cross the whole range', () => {
+        expect(wheelZoomFactor(-100000)).toBeCloseTo(1 / 1.5, 9);
+        expect(wheelZoomFactor(100000)).toBeCloseTo(1.5, 9);
+    });
+
+    test('zero delta is the identity', () => {
+        expect(wheelZoomFactor(0)).toBe(1);
+    });
+});
+
+describe('wheelPixels', () => {
+    test.each([
+        ['pixel mode is already pixels', 0, 1],
+        ['line mode is a line height', 1, 16],
+        ['page mode is a viewport', 2, 800]
+    ])('%s', (_label, mode, expected) => {
+        expect(wheelPixels(mode as number, 800)).toBe(expected);
+    });
+
+    test('page mode converts against the axis it is given, not always the height', () => {
+        // A page of horizontal scrolling is a viewport width; using the height would mis-scale
+        // horizontal panning on any panel that is not square.
+        expect(wheelPixels(2, 1200)).toBe(1200);
+        expect(wheelPixels(2, 600)).toBe(600);
+    });
+
+    test('the other modes ignore the viewport entirely', () => {
+        expect(wheelPixels(0, 1200)).toBe(wheelPixels(0, 600));
+        expect(wheelPixels(1, 1200)).toBe(wheelPixels(1, 600));
     });
 });
 
