@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { formatEntry, isSameOrInside, parseEntry, shouldShowExclusionBanner, stripTrailingSlash } from './exclusion-paths.js';
+import { findExcludingPath, formatEntry, isSameOrInside, parseEntry, shouldShowExclusionBanner, stripTrailingSlash } from './exclusion-paths.js';
 
 const SETTING = 'excludedPaths';
 /** Pre-1.4 name, still honoured so existing settings keep working. Never written to. */
@@ -169,60 +169,54 @@ export class ExclusionManager implements vscode.Disposable {
 }
 
 /**
- * Says, in the editor, that this file is not being validated.
+ * Says, in the editor, that this file is not being validated — and offers to undo it.
  *
  * The Explorer badge answers the question only if you happen to be looking at the Explorer. Open
  * a counter-example directly — from a search result, from `Go to File`, from a `load` — and the
  * absence of squiggles is indistinguishable from a model that is simply correct. This is the one
  * place the file itself can say otherwise.
  *
- * Drawn as a decoration on the first line rather than a notification: the file's state is
- * permanent while it stays excluded, and a notification that has to be dismissed would be wrong
- * for something that is not an event. `display: block` is what lifts the text onto its own line
- * above the code instead of indenting line 1 to the right.
+ * A code lens rather than a decoration. A `before` decoration can be made to look like a banner
+ * by forcing `display: block`, but the editor still reserves a single line's height for it and
+ * recycles line boxes as you scroll, so the text ends up drawn over the code. A lens is a surface
+ * the editor lays out and scrolls itself, and it is clickable, which lets the banner offer the
+ * one action anybody reading it wants.
  */
-export class ExclusionBanner implements vscode.Disposable {
-    private readonly decoration = vscode.window.createTextEditorDecorationType({
-        isWholeLine: true,
-        before: {
-            contentText: '⊘  jPipe is not validating this file — it is excluded from validation.',
-            color: new vscode.ThemeColor('editorWarning.foreground'),
-            fontStyle: 'italic',
-            margin: '0 0 0.4rem 0',
-            textDecoration: 'none; display: block;'
-        }
-    });
-    private readonly disposables: vscode.Disposable[] = [];
+export class ExclusionCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposable {
+    private readonly changeEmitter = new vscode.EventEmitter<void>();
+    private readonly subscription: vscode.Disposable;
+
+    readonly onDidChangeCodeLenses = this.changeEmitter.event;
 
     constructor(private readonly manager: ExclusionManager) {
-        this.disposables.push(
-            vscode.window.onDidChangeVisibleTextEditors(() => this.refresh()),
-            // A document's language id is not final at open; it settles a tick later, and until
-            // then the banner would be withheld from a file that does qualify.
-            vscode.workspace.onDidOpenTextDocument(() => this.refresh()),
-            manager.onDidChange(() => this.refresh())
-        );
-        this.refresh();
+        this.subscription = manager.onDidChange(() => this.changeEmitter.fire());
     }
 
-    /** Re-evaluates every visible editor. Cheap: a handful of editors, a handful of entries. */
-    refresh(): void {
+    provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
+        const uri = document.uri.toString();
         const excluded = this.manager.getResolvedUris();
-        for (const editor of vscode.window.visibleTextEditors) {
-            const show = shouldShowExclusionBanner(
-                editor.document.languageId,
-                editor.document.uri.toString(),
-                excluded
-            );
-            // Anchored at the very start; `isWholeLine` gives it the width of the line.
-            editor.setDecorations(this.decoration, show ? [new vscode.Range(0, 0, 0, 0)] : []);
-        }
+        if (!shouldShowExclusionBanner(document.languageId, uri, excluded)) return [];
+
+        const source = findExcludingPath(uri, excluded);
+        if (!source) return [];
+
+        const isFileItself = stripTrailingSlash(source) === stripTrailingSlash(uri);
+        const label = isFileItself
+            ? 'this file'
+            : `the folder ${vscode.workspace.asRelativePath(vscode.Uri.parse(source), false)}`;
+
+        return [new vscode.CodeLens(new vscode.Range(0, 0, 0, 0), {
+            title: `⊘ jPipe is not validating this file — click to stop excluding ${label}`,
+            // Undoes the entry actually responsible. Removing anything else would leave the file
+            // excluded and the lens still showing, which reads as the click having failed.
+            command: 'jpipe.includeResource',
+            arguments: [vscode.Uri.parse(source)]
+        })];
     }
 
     dispose(): void {
-        this.disposables.forEach(d => d.dispose());
-        // Disposing the type removes the banner from every editor showing it.
-        this.decoration.dispose();
+        this.subscription.dispose();
+        this.changeEmitter.dispose();
     }
 }
 

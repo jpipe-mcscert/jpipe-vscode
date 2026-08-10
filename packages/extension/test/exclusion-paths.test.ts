@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { formatEntry, isSameOrInside, parseEntry, shouldShowExclusionBanner, stripTrailingSlash } from '../src/extension/exclusion-paths.js';
+import { findExcludingPath, formatEntry, isSameOrInside, parseEntry, shouldShowExclusionBanner, stripTrailingSlash } from '../src/extension/exclusion-paths.js';
 
 /**
  * The stored spelling of an exclusion and what counts as "inside" it. Both decide whether a file
@@ -134,5 +134,40 @@ describe('shouldShowExclusionBanner', () => {
     // without the rule needing to know about schemes.
     test('an unsaved buffer does not', () => {
         expect(shouldShowExclusionBanner('jpipe', 'untitled:Untitled-1', excluded)).toBe(false);
+    });
+});
+
+describe('findExcludingPath', () => {
+
+    test('names the folder a file sits inside', () => {
+        expect(findExcludingPath('file:///ws/counter-examples/bad.jd', ['file:///ws/counter-examples']))
+            .toBe('file:///ws/counter-examples');
+    });
+
+    test('names the file when the file itself is the entry', () => {
+        expect(findExcludingPath('file:///ws/src/broken.jd', ['file:///ws/src/broken.jd']))
+            .toBe('file:///ws/src/broken.jd');
+    });
+
+    // Undoing the folder would leave the file excluded by its own entry, and the banner still up
+    // — which reads as the click having done nothing.
+    test('prefers the file over a folder that also covers it', () => {
+        expect(findExcludingPath('file:///ws/ce/bad.jd', ['file:///ws/ce', 'file:///ws/ce/bad.jd']))
+            .toBe('file:///ws/ce/bad.jd');
+    });
+
+    test('prefers the innermost of two nested folders', () => {
+        expect(findExcludingPath('file:///ws/a/b/bad.jd', ['file:///ws/a', 'file:///ws/a/b']))
+            .toBe('file:///ws/a/b');
+    });
+
+    test('is undefined for a file nothing excludes', () => {
+        expect(findExcludingPath('file:///ws/src/model.jd', ['file:///ws/counter-examples']))
+            .toBeUndefined();
+        expect(findExcludingPath('file:///ws/src/model.jd', [])).toBeUndefined();
+    });
+
+    test('a sibling sharing a name prefix does not count as covering', () => {
+        expect(findExcludingPath('file:///ws/ce-old/bad.jd', ['file:///ws/ce'])).toBeUndefined();
     });
 });

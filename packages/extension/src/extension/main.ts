@@ -5,7 +5,7 @@ import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vsc
 import { ImageGenerator, ImageFormat } from './image-generation/image-generator.js';
 import { PreviewProvider } from './image-generation/preview-provider.js';
 import { ReleaseManager, JpipeRelease } from './image-generation/release-manager.js';
-import { ExclusionManager, ExclusionDecorationProvider, ExclusionBanner } from './exclusions.js';
+import { ExclusionManager, ExclusionDecorationProvider, ExclusionCodeLensProvider } from './exclusions.js';
 import { JpipeLogger } from './logger.js';
 
 let client: LanguageClient;
@@ -20,11 +20,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const exclusions = new ExclusionManager();
     const decorations = new ExclusionDecorationProvider(exclusions);
+    const exclusionLens = new ExclusionCodeLensProvider(exclusions);
     context.subscriptions.push(
         exclusions,
         decorations,
         vscode.window.registerFileDecorationProvider(decorations),
-        new ExclusionBanner(exclusions)
+        exclusionLens,
+        vscode.languages.registerCodeLensProvider({ language: 'jpipe' }, exclusionLens)
     );
     // The Explorer has usually painted by the time this extension is activated, so the tree it is
     // showing was built without asking this provider anything. Nudge it to ask now.
