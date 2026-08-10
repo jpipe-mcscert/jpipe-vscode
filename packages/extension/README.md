@@ -48,8 +48,8 @@ palette — *jPipe: Convert Justification to Template*, *Sort Elements*, *Extrac
 
   - **Convert to template / justification** — switch what a model is. Converting a template says
     up front how many `@support` elements it would drop.
-  - **Sort elements** — put a model's declarations in reading order: evidence, then strategies,
-    then the conclusion.
+  - **Sort elements** — put a model's declarations in the order its argument reads: the
+    conclusion first, then down through what supports it, one branch at a time.
   - **Extract template** — turn a justification into a reusable template plus a justification
     that implements it.
 

@@ -1,28 +1,24 @@
 /**
- * "Sort elements" — putting a model's declarations into reading order.
+ * "Sort elements" — putting a model's declarations into the order its argument is read in.
  *
- * Evidence, then strategies, then sub-conclusions, then the conclusion: the order the argument is
- * read in, from what is known towards what is claimed. Order within a group is left alone, since
- * the author's sequence there usually means something.
+ * The conclusion first, then a depth-first walk down through what supports it: each strategy
+ * beneath the claim it serves, each piece of evidence beneath the strategy it feeds. That is how
+ * the language's own examples are written, and it means reading the declarations top to bottom
+ * follows one branch of the argument to its ground before starting the next.
  *
- * Relations are untouched. They name their endpoints, so their position carries no meaning and
- * moving them would be churn.
+ * Grouping by kind instead — every evidence, then every strategy — puts each element next to
+ * others it has nothing to do with, and scatters a single line of reasoning across the model.
+ *
+ * Anything the walk cannot reach keeps its relative order at the end: an element supporting
+ * nothing is usually one being written, and moving it while it is half-typed would be unhelpful.
+ *
+ * Relations are untouched. They name their endpoints, so their position carries no meaning.
  */
 import { CodeActionKind, type CodeAction } from 'vscode-languageserver';
-import type { Justification, JustificationElement, Template } from '../generated/ast.js';
+import { isConclusion, type Justification, type JustificationElement, type Relation, type Template } from '../generated/ast.js';
 import { indentationOf } from '../jpipe-edits.js';
-import { keywordFor, type AnyElementKeyword } from '../jpipe-render.js';
 import { getLocalElements } from '../jpipe-utils.js';
 import { refactoring, type JpipeActionContext } from './types.js';
-
-/** Reading order: the grounds first, the claim last. */
-const ORDER: readonly AnyElementKeyword[] = [
-    'evidence',
-    '@support',
-    'strategy',
-    'sub-conclusion',
-    'conclusion'
-];
 
 /** This action's own kind, so a command can ask for it by name. See `convert-model-kind`. */
 export const SORT_ELEMENTS_KIND = `${CodeActionKind.RefactorRewrite}.jpipe.sortElements`;
@@ -43,7 +39,7 @@ export const sortElements = refactoring({
         // a block; a comment among them belongs to the line it sits above.
         if (!isContiguous(context, elements)) return [];
 
-        const sorted = [...elements].sort((a, b) => rank(a) - rank(b));
+        const sorted = argumentOrder(elements, model.contents?.rels ?? []);
         if (sorted.every((element, index) => element === elements[index])) return [];
 
         const start = elements[0].$cstNode!.range.start;
@@ -65,9 +61,54 @@ export const sortElements = refactoring({
     }
 });
 
-function rank(element: JustificationElement): number {
-    const index = ORDER.indexOf(keywordFor(element));
-    return index < 0 ? ORDER.length : index;
+
+/**
+ * The elements in argument order: each conclusion, then everything that supports it, depth first.
+ *
+ * Supporters are visited in the order they are currently declared, so a model already in a
+ * sensible order is not churned into a different one. The `seen` set is doing real work — a
+ * support cycle is invalid but entirely writable, and a model in that state is one somebody is
+ * still editing.
+ */
+function argumentOrder(
+    elements: readonly JustificationElement[],
+    relations: readonly Relation[]
+): JustificationElement[] {
+    const local = new Set(elements);
+    const position = new Map(elements.map((element, index) => [element, index]));
+
+    // Resolved endpoints rather than their written text: a relation may name an element by a
+    // short alias, and `$refText` would not match the declaration's qualified id.
+    const supporters = new Map<JustificationElement, JustificationElement[]>();
+    for (const relation of relations) {
+        const to = relation.to?.ref;
+        const from = relation.from?.ref;
+        if (!to || !from || !local.has(to) || !local.has(from)) continue;
+        const existing = supporters.get(to);
+        if (existing) existing.push(from);
+        else supporters.set(to, [from]);
+    }
+
+    const seen = new Set<JustificationElement>();
+    const ordered: JustificationElement[] = [];
+    const visit = (element: JustificationElement): void => {
+        if (seen.has(element)) return;
+        seen.add(element);
+        ordered.push(element);
+        const beneath = [...(supporters.get(element) ?? [])]
+            .sort((a, b) => (position.get(a) ?? 0) - (position.get(b) ?? 0));
+        for (const supporter of beneath) visit(supporter);
+    };
+
+    // Every conclusion is a root. There should be one, but a model with two is writable and
+    // parses, and sorting should not be the thing that objects to it.
+    for (const element of elements) {
+        if (isConclusion(element)) visit(element);
+    }
+    for (const element of elements) {
+        if (!seen.has(element)) ordered.push(element);
+    }
+    return ordered;
 }
 
 function isContiguous(context: JpipeActionContext, elements: readonly JustificationElement[]): boolean {

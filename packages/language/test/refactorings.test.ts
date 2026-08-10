@@ -97,10 +97,11 @@ describe('organize-loads', () => {
 // specific kind. All three have to reach these actions or the only way in is a shortcut.
 describe('every route to a refactoring', () => {
 
+    // Declared out of argument order on purpose, so `Sort elements` has something to offer.
     const MODEL = `justification ${CURSOR}J {
-    conclusion c is "C"
-    strategy s is "S"
     evidence e is "E"
+    strategy s is "S"
+    conclusion c is "C"
     e supports s
     s supports c
 }`;
@@ -173,26 +174,51 @@ describe('convert-model-kind', () => {
 
 describe('sort-elements', () => {
 
-    test('puts the grounds first and the claim last', async () => {
+    test('leads with the conclusion and walks down what supports it', async () => {
         const after = await applyCodeAction(
-            `justification ${CURSOR}J {\n    conclusion c is "C"\n    evidence e is "E"\n    strategy s is "S"\n    e supports s\n    s supports c\n}`,
+            `justification ${CURSOR}J {\n    evidence e is "E"\n    strategy s is "S"\n    conclusion c is "C"\n    e supports s\n    s supports c\n}`,
             { title: 'Sort elements' }
         );
-        expect(after).toBe('justification J {\n    evidence e is "E"\n    strategy s is "S"\n    conclusion c is "C"\n    e supports s\n    s supports c\n}');
+        expect(after).toBe('justification J {\n    conclusion c is "C"\n    strategy s is "S"\n    evidence e is "E"\n    e supports s\n    s supports c\n}');
+    });
+
+    // Grouping by kind puts each element next to others it has nothing to do with; a depth-first
+    // walk keeps one line of reasoning together, from the claim down to its ground.
+    test('follows one branch to its ground before starting the next', async () => {
+        const after = await applyCodeAction(
+            `justification ${CURSOR}J {
+    evidence e2 is "Second ground"
+    strategy s1 is "First strategy"
+    conclusion c is "The claim"
+    evidence e1 is "First ground"
+    strategy s2 is "Second strategy"
+    sub-conclusion mid is "An intermediate claim"
+    e1 supports s1
+    s1 supports mid
+    mid supports s2
+    e2 supports s2
+    s2 supports c
+}`,
+            { title: 'Sort elements' }
+        );
+        const declared = after.split('\n')
+            .map(line => /^\s*(?:conclusion|strategy|sub-conclusion|evidence|@support)\s+(\S+)/.exec(line)?.[1])
+            .filter((id): id is string => id !== undefined);
+        expect(declared).toEqual(['c', 's2', 'e2', 'mid', 's1', 'e1']);
     });
 
     test('leaves the relations where they are', async () => {
         const after = await applyCodeAction(
-            `justification ${CURSOR}J {\n    conclusion c is "C"\n    evidence e is "E"\n    strategy s is "S"\n    e supports s\n    s supports c\n}`,
+            `justification ${CURSOR}J {\n    evidence e is "E"\n    strategy s is "S"\n    conclusion c is "C"\n    e supports s\n    s supports c\n}`,
             { title: 'Sort elements' }
         );
         const lines = after.split('\n').map(l => l.trim());
         expect(lines.slice(-3, -1)).toEqual(['e supports s', 's supports c']);
     });
 
-    test('is not offered when the declarations are already in order', async () => {
+    test('is not offered when the argument already reads in order', async () => {
         expect(await actionTitles(
-            `justification ${CURSOR}J {\n    evidence e is "E"\n    strategy s is "S"\n    conclusion c is "C"\n    e supports s\n    s supports c\n}`,
+            `justification ${CURSOR}J {\n    conclusion c is "C"\n    strategy s is "S"\n    evidence e is "E"\n    e supports s\n    s supports c\n}`,
             CodeActionKind.Refactor
         )).not.toContain('Sort elements');
     });
@@ -204,14 +230,26 @@ describe('sort-elements', () => {
         )).not.toContain('Sort elements');
     });
 
-    test('keeps the order the author chose within a group', async () => {
+    // An element supporting nothing is usually one being written; moving it while it is
+    // half-finished would be unhelpful.
+    test('leaves an unattached element at the end, in the order it was written', async () => {
         const after = await applyCodeAction(
-            `justification ${CURSOR}J {\n    conclusion c is "C"\n    evidence second is "Second"\n    evidence first is "First"\n    strategy s is "S"\n    second supports s\n    s supports c\n}`,
+            `justification ${CURSOR}J {\n    evidence orphan2 is "B"\n    conclusion c is "C"\n    strategy s is "S"\n    evidence orphan1 is "A"\n    s supports c\n}`,
             { title: 'Sort elements' }
         );
-        const lines = after.split('\n').map(l => l.trim());
-        expect(lines.indexOf('evidence second is "Second"'))
-            .toBeLessThan(lines.indexOf('evidence first is "First"'));
+        const declared = after.split('\n')
+            .map(line => /^\s*(?:conclusion|strategy|evidence)\s+(\S+)/.exec(line)?.[1])
+            .filter((id): id is string => id !== undefined);
+        expect(declared).toEqual(['c', 's', 'orphan2', 'orphan1']);
+    });
+
+    // Invalid, but entirely writable, and sorting should not be what falls over on it.
+    test('survives a support cycle', async () => {
+        const titles = await actionTitles(
+            `justification ${CURSOR}J {\n    evidence e is "E"\n    conclusion c is "C"\n    strategy s is "S"\n    e supports s\n    s supports c\n    c supports e\n}`,
+            CodeActionKind.Refactor
+        );
+        expect(Array.isArray(titles)).toBe(true);
     });
 });
 
