@@ -430,11 +430,35 @@ describe('the symbols tab', () => {
         expect(heading.textContent).toContain('missing_support_for_conclusion');
     });
 
-    test('marks synthesized elements, which have no location to show', () => {
+    test('marks synthesized elements', () => {
         view.show(unifyAliases, '');
         const synthesized = rows().find(r => r.textContent?.includes('assembleConclusion'))!;
         expect(synthesized.textContent).toContain('synthesized');
-        expect(synthesized.querySelector('.diag-loc')?.textContent).toBe('');
+    });
+
+    test('a synthesized element goes to the composition that produced it', () => {
+        // It has no position of its own — nobody wrote it — but the model whose declaration
+        // applied the operator does, and that is the definition worth landing on.
+        view.show(unifyAliases, '');
+        const synthesized = rows().find(r => r.textContent?.includes('assembleConclusion'))!;
+        click(synthesized);
+        expect(host.revealLocation).toHaveBeenCalledWith(unifyAliases.source, 32, 14);
+    });
+
+    test('a borrowed position is shown as borrowed', () => {
+        view.show(unifyAliases, '');
+        const synthesized = rows().find(r => r.textContent?.includes('assembleConclusion'))!;
+        const cell = synthesized.querySelector('.diag-loc');
+        expect(cell?.classList.contains('derived')).toBe(true);
+        expect(cell?.textContent).toBe('32:14');
+        expect(synthesized.getAttribute('title')).toContain('assembled_2');
+    });
+
+    test('an element with its own position does not borrow one', () => {
+        view.show(unifyAliases, '');
+        const declared = rows().find(r => r.querySelector('.diag-id')?.textContent === 'unified_0')!;
+        expect(declared.querySelector('.diag-loc')?.classList.contains('derived')).toBe(false);
+        expect(declared.hasAttribute('title')).toBe(false);
     });
 
     test('renders alias rewrites as their own rows, set apart from declarations', () => {

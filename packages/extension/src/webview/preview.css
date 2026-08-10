@@ -485,6 +485,9 @@ body:not(.diag-raw) #diag-output { display: none; }
     text-align: right;
 }
 
+/* Borrowed from the model, because the element itself has no position of its own. */
+.diag-loc.derived { opacity: 0.6; }
+
 .diag-id { font-family: var(--vscode-editor-font-family, monospace); }
 
 .diag-badge {

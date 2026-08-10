@@ -691,7 +691,7 @@ export class DiagnosticView {
             body.append(this.groupRow(4, model.name, model.kind));
 
             for (const symbol of symbols) {
-                const row = this.symbolRow(symbol, report);
+                const row = this.symbolRow(symbol, model, report);
                 if (this.cursorSymbol !== null
                     && symbol.id === this.cursorSymbol.id
                     && model.name === this.cursorSymbol.model) {
@@ -726,14 +726,29 @@ export class DiagnosticView {
         cursorRow?.scrollIntoView({ block: 'nearest' });
     }
 
-    private symbolRow(symbol: SymbolEntry, report: DiagnosticReport): HTMLElement {
+    private symbolRow(symbol: SymbolEntry, model: ModelSummary, report: DiagnosticReport): HTMLElement {
         const row = el('tr', 'diag-row');
         row.append(el('td', 'diag-id', symbol.id), el('td', 'diag-kind', symbol.kind));
 
         const marker = el('td');
-        // `synthesized` guarantees the absence of a location, so one field decides both cells.
         if (symbol.synthesized) marker.append(el('span', 'diag-badge synthesized', 'synthesized'));
-        row.append(marker, this.locationCell(symbol.location, row, report));
+
+        /*
+         * A synthesized element has no position of its own — the schema guarantees it, because
+         * nobody wrote it. But something did produce it: the composition applied in its model's
+         * declaration. That is the definition worth going to, so the row falls back to the
+         * model's location rather than being dead.
+         *
+         * The cell is marked `derived` so it is visibly not the element's own position, and the
+         * `synthesized` badge beside it says why.
+         */
+        const location = symbol.location ?? (symbol.synthesized ? model.location : undefined);
+        const cell = this.locationCell(location, row, report);
+        if (symbol.location === undefined && location !== undefined) {
+            cell.classList.add('derived');
+            row.title = `Synthesized while building ${model.name}; goes to its declaration`;
+        }
+        row.append(marker, cell);
         return row;
     }
 
