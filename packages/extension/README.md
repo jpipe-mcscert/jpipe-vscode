@@ -42,16 +42,19 @@ it: write the declaration a template's `@support` demands, correct a mistyped op
 config key, add the missing `load` for a model you referenced, or wire up a conclusion that
 nothing supports yet.
 
-Three more actions are offered for wherever your cursor is, under **Refactor** (`⌃⇧R` /
+Three more are offered for wherever your cursor is, under **Refactor** (`⌃⇧R` /
 `Ctrl+Shift+R`):
 
-  - **Organize loads** — sort, de-duplicate and tidy the `load` statements at the top of a file.
   - **Convert to template / justification** — switch what a model is. Converting a template says
     up front how many `@support` elements it would drop.
   - **Sort elements** — put a model's declarations in reading order: evidence, then strategies,
     then the conclusion.
   - **Extract template** — turn a justification into a reusable template plus a justification
     that implements it.
+
+**Organize loads** — sort and de-duplicate the `load` statements at the top of a file — lives
+under **Source Action…** rather than the lightbulb, as organizing imports does in other
+languages. It is also in the command palette as *jPipe: Organize Loads*.
 
 To organize loads every time you save, add this to your settings:
 

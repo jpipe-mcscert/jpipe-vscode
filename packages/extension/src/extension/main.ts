@@ -200,9 +200,8 @@ export function activate(context: vscode.ExtensionContext): void {
             await excludeResource(uris[0]);
         }),
         vscode.commands.registerCommand('jpipe.excludeResource', (uri?: vscode.Uri) => excludeResource(uri)),
-        // The language server offers this as a `source.organizeImports` action, which the editor
-        // surfaces only under Source Action… — a command gives it a home in the palette and the
-        // jPipe submenu, where someone would think to look for it.
+        // Source Action… is where this belongs and where it now appears; the command is the
+        // palette shortcut to it, the way other languages offer one for organizing imports.
         vscode.commands.registerCommand('jpipe.organizeLoads', async () => {
             await vscode.commands.executeCommand('editor.action.sourceAction', {
                 kind: 'source.organizeImports',
