@@ -35,6 +35,35 @@ You can provide the compiler in three ways, selected via the `jpipe.executionMod
 
 Simply open a file using the `.jd` extension.
 
+#### Quick fixes and refactorings
+
+Where the editor reports a problem it can repair, the lightbulb (`⌘.` / `Ctrl+.`) offers to do
+it: write the declaration a template's `@support` demands, correct a mistyped operator or
+config key, add the missing `load` for a model you referenced, or wire up a conclusion that
+nothing supports yet.
+
+Three more actions are offered for wherever your cursor is, under **Refactor** (`⌃⇧R` /
+`Ctrl+Shift+R`):
+
+  - **Organize loads** — sort, de-duplicate and tidy the `load` statements at the top of a file.
+  - **Convert to template / justification** — switch what a model is. Converting a template says
+    up front how many `@support` elements it would drop.
+  - **Sort elements** — put a model's declarations in reading order: evidence, then strategies,
+    then the conclusion.
+  - **Extract template** — turn a justification into a reusable template plus a justification
+    that implements it.
+
+To organize loads every time you save, add this to your settings:
+
+```jsonc
+"[jpipe]": {
+    "editor.codeActionsOnSave": { "source.organizeImports": "explicit" }
+}
+```
+
+It is off by default, and it never removes a `load` whose path does not resolve — a half-typed
+path is exactly the state a file is in while you are writing one.
+
 #### Tutorials
 
 Please visit [https://www.jpipe.org/tutorials/](https://www.jpipe.org/tutorials/) for examples and guidance o how to develop justificiation models using jPipe.

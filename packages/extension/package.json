@@ -185,6 +185,12 @@
                 "command": "jpipe.includeResource",
                 "title": "Include in jPipe Validation",
                 "category": "jPipe"
+            },
+            {
+                "command": "jpipe.organizeLoads",
+                "title": "Organize Loads",
+                "category": "jPipe",
+                "icon": "$(list-ordered)"
             }
         ],
         "submenus": [
@@ -272,6 +278,10 @@
                     "command": "jpipe.includeResource",
                     "when": "resourcePath in jpipe.excludedResourcePaths",
                     "group": "3_validation@1"
+                },
+                {
+                    "command": "jpipe.organizeLoads",
+                    "group": "4_refactor@1"
                 }
             ]
         },
