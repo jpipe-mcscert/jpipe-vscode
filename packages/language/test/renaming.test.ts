@@ -10,11 +10,17 @@
  *
  * The qualified-element cases assert a refusal. Those renames are not supported yet, and the
  * distinction that matters is between refusing and doing them wrongly.
+ *
+ * Renaming a *model* is asserted a third way, by applying the edits and validating the result.
+ * A model's name reaches further than its references — an override says `T:abs` and no
+ * cross-reference records that it means template `T` — so the failure to catch is not a missing
+ * edit but a file that still parses and no longer means anything.
  */
 import { beforeAll, describe, expect, test } from 'vitest';
 import { EmptyFileSystem } from 'langium';
 import { parseHelper } from 'langium/test';
-import type { TextEdit } from 'vscode-languageserver';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import { Diagnostic, type TextEdit } from 'vscode-languageserver';
 import type { Unit } from 'jpipe-language';
 import { createJpipeServices } from 'jpipe-language';
 
@@ -57,8 +63,36 @@ function replaced(source: string, edits: TextEdit[]): string[] {
     return edits.map(e => lines[e.range.start.line].slice(e.range.start.character, e.range.end.character));
 }
 
+/** The file as it stands once the rename is accepted. */
+async function renamed(source: string, needle: string, column = 0, newName = 'NEW'): Promise<string> {
+    const edits = await renameEdits(source, needle, column, newName);
+    return TextDocument.applyEdits(TextDocument.create('mem://x.jd', 'jpipe', 0, source), edits);
+}
+
+/** Validation errors in a model, as messages — the check that a rename left it meaning something. */
+async function errorsIn(source: string): Promise<string[]> {
+    const document = await parse(source, { validation: true });
+    return (document.diagnostics ?? [])
+        .filter(d => d.severity === 1)
+        .map(d => Diagnostic.getMessageString(d));
+}
+
 const TEMPLATE_AND_USER = `template T { @support a is "A" }
 justification J implements T { evidence T:a is "A" }`;
+
+/** A template, an implementation that overrides through it, and a composition naming both. */
+const TEMPLATE_IN_USE = `template T {
+ @support a is "A"
+ strategy s is "S"
+ conclusion c is "C"
+ a supports s
+ s supports c
+}
+justification J implements T {
+ evidence T:a is "Signed off"
+ T:a supports T:s
+}
+justification K is assemble(J, T) { conclusionLabel: "All of it" strategyLabel: "Together" }`;
 
 const LOCAL_ELEMENTS = `justification J { conclusion c is "C" strategy s is "S" evidence e is "E"
  e supports s
@@ -73,8 +107,8 @@ describe('Rename', () => {
         // untouched, so accepting the rename produced a justification implementing nothing.
         test('renaming from a reference also rewrites the declaration', async () => {
             const edits = await renameEdits(TEMPLATE_AND_USER, 'implements T', 'implements '.length);
-            expect(edits).toHaveLength(2);
-            expect(replaced(TEMPLATE_AND_USER, edits)).toEqual(['T', 'T']);
+            // The declaration, the `implements` reference, and the override's qualifier.
+            expect(replaced(TEMPLATE_AND_USER, edits)).toEqual(['T', 'T', 'T']);
             // Line 0 is `template T` — the declaration.
             expect(edits.some(e => e.range.start.line === 0)).toBe(true);
             expect(edits.every(e => e.newText === 'NEW')).toBe(true);
@@ -82,9 +116,63 @@ describe('Rename', () => {
 
         test('renaming from the declaration also rewrites the reference', async () => {
             const edits = await renameEdits(TEMPLATE_AND_USER, 'template T', 'template '.length);
-            expect(edits).toHaveLength(2);
             expect(edits.some(e => e.range.start.line === 0)).toBe(true);
             expect(edits.some(e => e.range.start.line === 1)).toBe(true);
+        });
+    });
+
+    /**
+     * The reported bug. A template's name is written into every override that refines it and every
+     * relation that names one, and none of those is a cross-reference to the template — so a
+     * rename that follows references alone renames the declaration out from under them.
+     */
+    describe('a template name used as a qualifier', () => {
+
+        test('the fixture is a model with nothing wrong with it', async () => {
+            expect(await errorsIn(TEMPLATE_IN_USE)).toEqual([]);
+        });
+
+        test('overrides, relations and composition parameters all follow the template', async () => {
+            const after = await renamed(TEMPLATE_IN_USE, 'template T', 'template '.length, 'Signoff');
+            expect(after).toContain('template Signoff {');
+            expect(after).toContain('justification J implements Signoff {');
+            expect(after).toContain('evidence Signoff:a is "Signed off"');
+            expect(after).toContain('Signoff:a supports Signoff:s');
+            expect(after).toContain('assemble(J, Signoff)');
+            expect(after, 'no occurrence of the old name survives').not.toMatch(/\bT\b/);
+        });
+
+        // The assertion the others exist for: renaming is only correct if what comes out still
+        // means what went in, and every check above could pass on a model that no longer links.
+        test('the renamed model still validates', async () => {
+            expect(await errorsIn(await renamed(TEMPLATE_IN_USE, 'template T', 'template '.length, 'Signoff'))).toEqual([]);
+        });
+
+        test('renaming from the `implements` reference reaches just as far', async () => {
+            const fromReference = await renamed(TEMPLATE_IN_USE, 'implements T', 'implements '.length, 'Signoff');
+            const fromDeclaration = await renamed(TEMPLATE_IN_USE, 'template T', 'template '.length, 'Signoff');
+            expect(fromReference).toBe(fromDeclaration);
+        });
+
+        // The mirror of the case above, on the other side of the rule. `T:a` in a position that
+        // takes a *model* names no model at all, so the rename leaves the broken reference broken
+        // instead of rewriting half of it into something that looks repaired.
+        test('a model reference with a segment too many is left alone', async () => {
+            const source = `template T { @support a is "A" }
+justification K is assemble(T:a) { conclusionLabel: "X" strategyLabel: "Y" }`;
+            const after = await renamed(source, 'template T', 'template '.length);
+            expect(after).toContain('template NEW {');
+            expect(after).toContain('assemble(T:a)');
+        });
+
+        // The qualifier rewrite keys on the name introducing *something else*. An element called
+        // `T` is its own name, not a use of the template's.
+        test('an element that merely shares the template name is left alone', async () => {
+            const source = `template T { @support a is "A" }
+justification J implements T { evidence T:a is "A" strategy T is "S" }`;
+            const after = await renamed(source, 'template T', 'template '.length);
+            expect(after).toContain('evidence NEW:a is "A"');
+            expect(after).toContain('strategy T is "S"');
         });
     });
 
