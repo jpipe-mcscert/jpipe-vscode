@@ -530,7 +530,9 @@ document.getElementById('zoom-in')?.addEventListener('click', () => zoomStep('in
 document.getElementById('zoom-out')?.addEventListener('click', () => zoomStep('out'));
 document.getElementById('zoom-fit')?.addEventListener('click', fit);
 document.getElementById('zoom-actual')?.addEventListener('click', actualSize);
-zoomValue.addEventListener('click', fit);
+// Clicking a zoom percentage resets it to 100% in most image editors, and it would otherwise
+// just be a second fit button sitting three controls along from the first.
+zoomValue.addEventListener('click', actualSize);
 
 highlightToggle.addEventListener('click', () => {
     highlightEnabled = !highlightEnabled;
