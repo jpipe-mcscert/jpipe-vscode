@@ -1,4 +1,4 @@
-import { type AstNode, type CstNode, URI } from 'langium';
+import { type AstNode, type CstNode, GrammarUtils, URI } from 'langium';
 import { DefaultNameProvider } from 'langium';
 import {
     isAbstractSupport,
@@ -39,6 +39,16 @@ export class JpipeNameProvider extends DefaultNameProvider {
         return super.getName(node);
     }
 
+    /**
+     * Returns the CST node spanning the declaration's identifier.
+     *
+     * Both branches are load-bearing, because `DefaultNameProvider.getNameNode` looks up a
+     * property literally called `name` — which in this grammar is the element's *label*, never
+     * its identifier. Falling through to it returns the wrong node for an element and no node at
+     * all for a model, and returning no node is the more damaging of the two: `getSelfReferences`
+     * silently skips any declaration whose name node is undefined, so a rename would rewrite
+     * every usage and leave the declaration behind.
+     */
     override getNameNode(node: AstNode): CstNode | undefined {
         const id = (node as unknown as Record<string, unknown>)['id'];
         // For QualifiedId nodes (Evidence, Strategy, etc.), the id is an AST node
@@ -46,6 +56,10 @@ export class JpipeNameProvider extends DefaultNameProvider {
         if (id && typeof id === 'object' && !Array.isArray(id)) {
             const cst = (id as { $cstNode?: CstNode }).$cstNode;
             if (cst) return cst;
+        }
+        // Justification and Template carry a plain `id` token instead.
+        if (typeof id === 'string') {
+            return GrammarUtils.findNodeForProperty(node.$cstNode, 'id');
         }
         return super.getNameNode(node);
     }
