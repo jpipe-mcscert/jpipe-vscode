@@ -54,6 +54,9 @@ const TABS: DiagnosticTab[] = ['diagnostics', 'models', 'symbols', 'actions'];
  */
 export type DiagnosticFace = 'report' | 'text' | 'json';
 
+/** How long scrolling has to settle before the reader's position is written down. */
+const PERSIST_DEBOUNCE_MS = 250;
+
 const FACE_LABELS: ReadonlyArray<{ face: DiagnosticFace; label: string; title: string }> = [
     { face: 'report', label: 'Report', title: 'The structured report' },
     { face: 'text', label: 'Text', title: "The compiler's own text report" },
@@ -189,9 +192,25 @@ export class DiagnosticView {
 
         // Remembering where the user was reading is the whole point of keeping state across a
         // save; the panel is re-rendered on every run and would otherwise snap back to the top.
+        //
+        // Recording it is not enough — it has to reach the host, or a reload restores a position
+        // from whenever something else last persisted. Debounced, because a scroll fires far too
+        // often to write state on every event.
         this.elements.panel.addEventListener('scroll', () => {
             this.scroll.set(this.tab, this.elements.panel.scrollTop);
+            this.schedulePersist();
         });
+    }
+
+    /** Pending debounced `persist`, if any. */
+    private persistTimer: ReturnType<typeof setTimeout> | undefined;
+
+    private schedulePersist(): void {
+        if (this.persistTimer !== undefined) clearTimeout(this.persistTimer);
+        this.persistTimer = setTimeout(() => {
+            this.persistTimer = undefined;
+            this.host.persist();
+        }, PERSIST_DEBOUNCE_MS);
     }
 
     /* ------------------------------------------------------------------ incoming */
@@ -783,7 +802,7 @@ export class DiagnosticView {
         const { total, macros } = report.stats.commands;
         const line = el('div', 'diag-stats-note');
         line.append(el('span', undefined, `${total} commands`));
-        if (macros > 0) line.append(el('span', undefined, `${macros} macro`));
+        if (macros > 0) line.append(el('span', undefined, `${macros} ${macros === 1 ? 'macro' : 'macros'}`));
         line.append(el('span', undefined, `${report.actions.length} steps`));
         // Deferrals mean forward references had to be retried — a hint when something did not
         // resolve, and noise at zero.

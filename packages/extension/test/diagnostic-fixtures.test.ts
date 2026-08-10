@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import ajvModule, { type ValidateFunction } from 'ajv/dist/2020.js';
 import { beforeAll, describe, expect, test } from 'vitest';
 
@@ -28,8 +29,14 @@ type Ajv2020Ctor = new (opts: { strict: boolean; allErrors: boolean }) => {
 };
 const Ajv2020 = ((ajvModule as { default?: unknown }).default ?? ajvModule) as Ajv2020Ctor;
 
-const SCHEMA_PATH = join(__dirname, '..', 'schema', 'diagnostic-report.v1.schema.json');
-const FIXTURE_DIR = join(__dirname, 'fixtures', 'diagnostic');
+/**
+ * This package is `"type": "module"`, so there is no `__dirname`. Vitest happens to shim one,
+ * but relying on the runner to supply a CommonJS global is not the same as being correct.
+ */
+const here = dirname(fileURLToPath(import.meta.url));
+
+const SCHEMA_PATH = join(here, '..', 'schema', 'diagnostic-report.v1.schema.json');
+const FIXTURE_DIR = join(here, 'fixtures', 'diagnostic');
 
 const fixtureNames = readdirSync(FIXTURE_DIR).filter(f => f.endsWith('.json')).sort();
 

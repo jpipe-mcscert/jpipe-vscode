@@ -258,6 +258,13 @@ describe('the action statistics', () => {
         expect(elements.panel.querySelector('.diag-stats-note')?.textContent).not.toContain('macro');
     });
 
+    test('more than one macro reads as macros', () => {
+        // `010_assemble.jd` reports two, so "2 macro" is reachable, not hypothetical.
+        view.show({ ...loadCrossFile, stats: { commands: { total: 9, macros: 2 }, deferrals: 0 } }, '');
+        click(tab('actions'));
+        expect(elements.panel.querySelector('.diag-stats-note')?.textContent).toContain('2 macros');
+    });
+
     test('deferrals are mentioned only when there were some', () => {
         // Non-zero deferrals mean forward references had to be retried — a hint, and noise at 0.
         view.show(cleanTemplate, '');
@@ -663,6 +670,37 @@ describe('what survives a re-run', () => {
         fresh.restoreState(savedState(null));
         fresh.show(cleanTemplate, '');
         expect(tab('symbols').getAttribute('aria-selected')).toBe('true');
+    });
+
+    test('scrolling is written down, once it settles', async () => {
+        // Recording the offset locally is not enough: without reaching the host, a reload
+        // restores whatever position something *else* last persisted.
+        vi.useFakeTimers();
+        try {
+            view.show(unifyAliases, '');
+            click(tab('actions'));
+            host.persist.mockClear();
+
+            elements.panel.dispatchEvent(new Event('scroll'));
+            expect(host.persist).not.toHaveBeenCalled();
+            vi.advanceTimersByTime(300);
+            expect(host.persist).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    test('a burst of scroll events collapses into one write', () => {
+        vi.useFakeTimers();
+        try {
+            view.show(unifyAliases, '');
+            host.persist.mockClear();
+            for (let i = 0; i < 20; i++) elements.panel.dispatchEvent(new Event('scroll'));
+            vi.advanceTimersByTime(300);
+            expect(host.persist).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     test('changing anything worth remembering asks the page to persist', () => {

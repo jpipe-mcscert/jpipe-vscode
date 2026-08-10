@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 /**
@@ -14,7 +15,10 @@ import { describe, expect, test } from 'vitest';
  * typo by looking at the panel.
  */
 
-const read = (...parts: string[]) => readFileSync(join(__dirname, '..', ...parts), 'utf8');
+/** No `__dirname` in an ESM package; see the note in `diagnostic-fixtures.test.ts`. */
+const here = dirname(fileURLToPath(import.meta.url));
+
+const read = (...parts: string[]) => readFileSync(join(here, '..', ...parts), 'utf8');
 
 const shell = read('src', 'extension', 'image-generation', 'preview-shell.ts');
 const preview = read('src', 'webview', 'preview.ts');
