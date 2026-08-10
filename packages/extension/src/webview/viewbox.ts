@@ -193,6 +193,75 @@ export function zoomPercent(vb: Box, frame: Frame): number {
     return Math.round(scaleOf(vb, frame.viewport) / frame.baseScale * 100);
 }
 
+/* -------------------------------------------------------------------------- */
+/* Wheel input                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** The parts of a `WheelEvent` the classification depends on. */
+export interface WheelSample {
+    deltaMode: number;
+    deltaX: number;
+    deltaY: number;
+    ctrlKey: boolean;
+    metaKey: boolean;
+    shiftKey: boolean;
+}
+
+export type WheelIntent = 'zoom' | 'pan';
+
+/**
+ * A wheel notch is coarse, discrete and purely vertical. A trackpad emits a fast stream of
+ * small, often fractional deltas, usually with some horizontal component.
+ *
+ * The browser reports both as `wheel` events with no flag saying which device produced them,
+ * so this is a heuristic — but the two streams are different enough in practice to separate,
+ * and getting it right is what lets each device keep its native gesture.
+ */
+export function isWheelNotch(e: WheelSample): boolean {
+    // Line- and page-mode deltas only ever come from a real wheel.
+    if (e.deltaMode !== 0) return true;
+    if (e.deltaX !== 0) return false;
+    if (!Number.isInteger(e.deltaY)) return false;
+    return Math.abs(e.deltaY) >= WHEEL_NOTCH_MIN;
+}
+
+/** Smallest pixel delta a real wheel notch produces; trackpads routinely emit far less. */
+const WHEEL_NOTCH_MIN = 40;
+
+/**
+ * What a wheel gesture should do.
+ *
+ * Zoom on a mouse wheel, because that is what was asked for and what the hardware suits; pan on
+ * a trackpad's two-finger scroll, because that is what every other application does with it.
+ * Ctrl/Cmd always zooms — that is how a pinch arrives — and Shift always pans, so either
+ * mapping can be overridden from the keyboard.
+ */
+export function wheelIntent(e: WheelSample): WheelIntent {
+    if (e.ctrlKey || e.metaKey) return 'zoom';
+    if (e.shiftKey) return 'pan';
+    return isWheelNotch(e) ? 'zoom' : 'pan';
+}
+
+/** Per-event zoom clamp, so one violent flick cannot cross the whole range at once. */
+const MAX_WHEEL_STEP = 1.5;
+/** Chosen so one 120-unit wheel notch is about 1.2x at the default sensitivity. */
+const WHEEL_ZOOM_RATE = 0.0015;
+
+/**
+ * Turn a wheel delta into a viewBox scale factor.
+ *
+ * Exponential in the delta, which makes it symmetric — equal and opposite gestures cancel
+ * exactly — and scale-invariant, so a notch feels the same at every zoom level.
+ */
+export function wheelZoomFactor(deltaY: number, sensitivity = 1): number {
+    return clamp(Math.exp(deltaY * WHEEL_ZOOM_RATE * sensitivity), 1 / MAX_WHEEL_STEP, MAX_WHEEL_STEP);
+}
+
+/** Pixels per unit for the delta modes: 0 is already pixels, 1 is lines, 2 is pages. */
+export function wheelPixels(deltaMode: number, viewportHeight: number): number {
+    return deltaMode === 1 ? 16 : deltaMode === 2 ? viewportHeight : 1;
+}
+
 /** Pan by a drag delta in client pixels. Dragging right moves the content right, so the viewBox moves left. */
 export function panBy(vb: Box, dxClient: number, dyClient: number, rect: Rect, content: Box): Box {
     return clampTranslation({

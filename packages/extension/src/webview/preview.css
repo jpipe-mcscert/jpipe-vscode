@@ -84,6 +84,16 @@ body {
 .toolbar-btn svg { width: 18px; height: 18px; }
 .toolbar-btn.zoom { width: 28px; }
 
+/* Text rather than an icon: "1:1" says actual size more plainly than any glyph would. */
+.toolbar-btn.ratio {
+    width: auto;
+    padding: 0 7px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
 .toolbar-btn.active {
     background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.3));
     color: var(--vscode-focusBorder);

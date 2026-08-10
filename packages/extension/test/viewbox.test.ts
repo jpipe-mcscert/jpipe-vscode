@@ -24,6 +24,9 @@ import {
     scaleOf,
     shouldShowMinimap,
     stepZoom,
+    wheelIntent,
+    wheelPixels,
+    wheelZoomFactor,
     zoomAt,
     zoomPercent
 } from '../src/webview/viewbox.js';
@@ -373,6 +376,89 @@ describe('stepZoom and zoomPercent', () => {
         const inTwo = stepZoom(inOne, 'in', frameOf());
         const percents = [fit, inOne, inTwo].map(v => zoomPercent(v, frameOf()));
         expect(percents).toEqual([...percents].sort((a, b) => a - b));
+    });
+});
+
+describe('wheelIntent', () => {
+    /**
+     * A mouse wheel and a trackpad both arrive as `wheel` events with nothing to tell them
+     * apart, so this is a heuristic — and a wrong answer means a gesture does the opposite of
+     * what the platform trained the user to expect. The samples below are what the two devices
+     * actually emit.
+     */
+    const sample = (over: Partial<import('../src/webview/viewbox.js').WheelSample> = {}) => ({
+        deltaMode: 0, deltaX: 0, deltaY: 0, ctrlKey: false, metaKey: false, shiftKey: false, ...over
+    });
+
+    test.each([
+        ['a standard wheel notch', { deltaY: 120 }],
+        ['a notch scrolling the other way', { deltaY: -120 }],
+        ['the smaller notch some mice send', { deltaY: 100 }],
+        ['a notch at the classification threshold', { deltaY: 40 }],
+        ['line-mode deltas', { deltaMode: 1, deltaY: 3 }],
+        ['page-mode deltas', { deltaMode: 2, deltaY: 1 }]
+    ])('zooms on %s', (_label, over) => {
+        expect(wheelIntent(sample(over))).toBe('zoom');
+    });
+
+    test.each([
+        ['a fine trackpad delta', { deltaY: 4 }],
+        ['a fractional delta', { deltaY: 12.5 }],
+        ['a delta with a horizontal component', { deltaY: 60, deltaX: 3 }],
+        ['a purely horizontal swipe', { deltaX: 40, deltaY: 0 }],
+        ['a momentum tail', { deltaY: 0.5 }]
+    ])('pans on %s', (_label, over) => {
+        expect(wheelIntent(sample(over))).toBe('pan');
+    });
+
+    test('ctrl and cmd always zoom — that is how a pinch arrives', () => {
+        expect(wheelIntent(sample({ deltaY: 2, ctrlKey: true }))).toBe('zoom');
+        expect(wheelIntent(sample({ deltaY: 2, metaKey: true }))).toBe('zoom');
+    });
+
+    test('shift always pans, even on a wheel', () => {
+        expect(wheelIntent(sample({ deltaY: 120, shiftKey: true }))).toBe('pan');
+    });
+
+    test('ctrl wins over shift, so a pinch is never misread', () => {
+        expect(wheelIntent(sample({ deltaY: 2, ctrlKey: true, shiftKey: true }))).toBe('zoom');
+    });
+});
+
+describe('wheelZoomFactor', () => {
+    test('a notch is a modest step, not a leap', () => {
+        const factor = wheelZoomFactor(-120);
+        expect(1 / factor).toBeGreaterThan(1.1);
+        expect(1 / factor).toBeLessThan(1.3);
+    });
+
+    test('is symmetric, so equal and opposite gestures cancel', () => {
+        expect(wheelZoomFactor(120) * wheelZoomFactor(-120)).toBeCloseTo(1, 9);
+    });
+
+    test('sensitivity scales the step', () => {
+        expect(wheelZoomFactor(-120, 2)).toBeLessThan(wheelZoomFactor(-120, 1));
+        expect(wheelZoomFactor(-120, 0.5)).toBeGreaterThan(wheelZoomFactor(-120, 1));
+        expect(wheelZoomFactor(-120, 1)).toBeCloseTo(wheelZoomFactor(-60, 2), 9);
+    });
+
+    test('a violent flick is capped, so one gesture cannot cross the whole range', () => {
+        expect(wheelZoomFactor(-100000)).toBeCloseTo(1 / 1.5, 9);
+        expect(wheelZoomFactor(100000)).toBeCloseTo(1.5, 9);
+    });
+
+    test('zero delta is the identity', () => {
+        expect(wheelZoomFactor(0)).toBe(1);
+    });
+});
+
+describe('wheelPixels', () => {
+    test.each([
+        ['pixel mode is already pixels', 0, 1],
+        ['line mode is a line height', 1, 16],
+        ['page mode is a viewport', 2, 800]
+    ])('%s', (_label, mode, expected) => {
+        expect(wheelPixels(mode as number, 800)).toBe(expected);
     });
 });
 

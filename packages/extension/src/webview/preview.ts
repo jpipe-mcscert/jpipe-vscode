@@ -6,7 +6,6 @@ import {
     type Frame,
     type Size,
     centerOn,
-    clamp,
     clampTranslation,
     clientToUser,
     formatViewBox,
@@ -18,7 +17,11 @@ import {
     panBy,
     parseLength,
     parseViewBox,
+    naturalBox,
     stepZoom,
+    wheelIntent,
+    wheelPixels,
+    wheelZoomFactor,
     zoomAt,
     zoomPercent
 } from './viewbox.js';
@@ -104,6 +107,8 @@ let lastDocumentPath: string | null = null;
  * turn a clean 100% into 109%.
  */
 let pristine = true;
+/** Multiplier on the wheel zoom step, from the user's settings. */
+let zoomSensitivity = 1;
 let unsaved = false;
 let highlightEnabled = false;
 let highlightName: string | null = null;
@@ -139,6 +144,14 @@ function setViewBox(next: Box): void {
     container.classList.toggle('pannable', isPannable(next, f.content));
     minimap.update(next, f.content, f.viewport);
     persist();
+}
+
+/** Jump to exactly 100%: the diagram at the size the compiler laid it out for. */
+function actualSize(): void {
+    const f = frame();
+    if (!f) return;
+    adjusted();
+    setViewBox(clampTranslation(naturalBox(f), f.content));
 }
 
 /** Back to the view the diagram opened at: intrinsic size, or shrunk if it does not fit. */
@@ -419,8 +432,6 @@ function revealElement(el: SVGGraphicsElement): void {
 
 /* ------------------------------------------------------------------ input */
 
-const PX_PER_LINE = 16;
-
 container.addEventListener('wheel', event => {
     const f = frame();
     if (!navigable || !vb || !f || isChrome(event.target)) return;
@@ -429,21 +440,18 @@ container.addEventListener('wheel', event => {
     event.preventDefault();
     adjusted();
 
-    const unit = event.deltaMode === 1 ? PX_PER_LINE : event.deltaMode === 2 ? container.clientHeight : 1;
+    const unit = wheelPixels(event.deltaMode, container.clientHeight);
     const dx = event.deltaX * unit;
     const dy = event.deltaY * unit;
 
-    // Shift is the escape hatch for panning by wheel; everything else zooms, including the
-    // ctrl+wheel a trackpad pinch arrives as.
-    if (event.shiftKey) {
+    // A mouse wheel zooms and a trackpad's two-finger scroll pans, each keeping the gesture the
+    // hardware is used for elsewhere. A pinch arrives as ctrl+wheel and always zooms.
+    if (wheelIntent(event) === 'pan') {
         setViewBox(panBy(vb, -dx, -dy, svgRect(), f.content));
         return;
     }
-    // Exponential, so equal and opposite gestures cancel exactly and the step feels the same
-    // at every zoom level. Clamped per event so one flick of a trackpad cannot bottom out.
-    const factor = clamp(Math.exp(dy * 0.0015), 1 / 1.5, 1.5);
     const anchor = clientToUser(event.clientX, event.clientY, svgRect(), vb);
-    setViewBox(zoomAt(vb, anchor, factor, f));
+    setViewBox(zoomAt(vb, anchor, wheelZoomFactor(dy, zoomSensitivity), f));
 }, { passive: false });
 
 container.addEventListener('pointerdown', event => {
@@ -488,6 +496,9 @@ document.addEventListener('keydown', event => {
     } else if (event.key === '0') {
         event.preventDefault();
         fit();
+    } else if (event.key === '1') {
+        event.preventDefault();
+        actualSize();
     } else if (PAN_KEYS[event.key]) {
         // Panning without a pointer. The minimap is a mouse convenience; the canvas itself has
         // to be navigable from the keyboard, and arrow keys are what people try first.
@@ -518,6 +529,7 @@ function zoomStep(direction: 'in' | 'out'): void {
 document.getElementById('zoom-in')?.addEventListener('click', () => zoomStep('in'));
 document.getElementById('zoom-out')?.addEventListener('click', () => zoomStep('out'));
 document.getElementById('zoom-fit')?.addEventListener('click', fit);
+document.getElementById('zoom-actual')?.addEventListener('click', actualSize);
 zoomValue.addEventListener('click', fit);
 
 highlightToggle.addEventListener('click', () => {
@@ -619,6 +631,9 @@ window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
             break;
         case 'busy':
             setBusy(msg.busy);
+            break;
+        case 'config':
+            zoomSensitivity = msg.zoomSensitivity;
             break;
     }
 });

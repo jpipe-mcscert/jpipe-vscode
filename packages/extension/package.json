@@ -400,8 +400,22 @@
                 }
             },
             {
-                "title": "jPipe: Validation",
+                "title": "jPipe: Preview",
                 "order": 4,
+                "properties": {
+                    "jpipe.previewZoomSensitivity": {
+                        "order": 1,
+                        "type": "number",
+                        "default": 1,
+                        "minimum": 0.25,
+                        "maximum": 4,
+                        "markdownDescription": "How far each scroll step zooms the diagram preview. Lower is slower and finer, higher is faster.\n\nOnly affects zooming with a mouse wheel or a trackpad pinch — dragging, the toolbar buttons and the keyboard shortcuts are unchanged."
+                    }
+                }
+            },
+            {
+                "title": "jPipe: Validation",
+                "order": 5,
                 "properties": {
                     "jpipe.excludedPaths": {
                         "order": 1,
@@ -426,7 +440,7 @@
             },
             {
                 "title": "jPipe: Logging",
-                "order": 5,
+                "order": 6,
                 "properties": {
                     "jpipe.logLevel": {
                         "order": 1,

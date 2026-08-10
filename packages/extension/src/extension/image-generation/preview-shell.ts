@@ -67,6 +67,7 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
             </div>
             <div class="toolbar-group diagram-only">
                 <button class="toolbar-btn" id="zoom-fit" aria-label="Fit to window" data-tooltip="Fit to window"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2.5h3.5M14 6V2.5h-3.5M2 10v3.5h3.5M14 10v3.5h-3.5"/></svg></button>
+                <button class="toolbar-btn ratio" id="zoom-actual" aria-label="Actual size" data-tooltip="Actual size (100%)">1:1</button>
                 <button class="toolbar-btn zoom" id="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
                 <button id="zoom-value" aria-label="Current zoom. Activate to fit the diagram to the window" title="Fit to window">100%</button>
                 <button class="toolbar-btn zoom" id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>

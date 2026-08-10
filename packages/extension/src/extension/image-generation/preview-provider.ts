@@ -156,8 +156,14 @@ export class PreviewProvider {
                 this.unsaved = false;
             }
         });
-        
-        this.subscriptions.push(saveListener, changeListener, cursorListener, openListener);
+
+        // The page is built once, so it cannot read settings itself — it has to be told when
+        // they change.
+        const configListener = vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('jpipe.previewZoomSensitivity')) this.postConfig();
+        });
+
+        this.subscriptions.push(saveListener, changeListener, cursorListener, openListener, configListener);
         context.subscriptions.push(...this.subscriptions);
     }
     
@@ -173,6 +179,15 @@ export class PreviewProvider {
     /** Send a message to the panel, if there still is one. */
     private post(message: HostToWebview): void {
         PreviewProvider.webviewPanel?.webview.postMessage(message);
+    }
+
+    /** Hand the page the settings it needs. Sent on `ready` and whenever they change. */
+    private postConfig(): void {
+        const sensitivity = vscode.workspace.getConfiguration('jpipe').get<number>('previewZoomSensitivity', 1);
+        // Guard the range here as well as in the schema: a hand-edited settings.json can hold
+        // anything, and a zero or negative multiplier would break zooming outright.
+        const clamped = Number.isFinite(sensitivity) ? Math.min(4, Math.max(0.25, sensitivity)) : 1;
+        this.post({ type: 'config', zoomSensitivity: clamped });
     }
 
     private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
@@ -396,6 +411,7 @@ export class PreviewProvider {
             if (msg.type === 'ready') {
                 // The page is listening. Give it back whatever it was showing, so a webview
                 // content reload does not cost a recompile — or a blank panel.
+                this.postConfig();
                 if (this.lastRender) {
                     panel.webview.postMessage(this.lastRender);
                 } else {
