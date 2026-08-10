@@ -11,6 +11,11 @@ import * as vscode from 'vscode';
  *
  * The four layers are all present from the start and selected by `body[data-mode]`; the busy
  * indicator sits over whichever is showing.
+ *
+ * The diagnostic layer carries both of its faces: the structured view (`#diag-panel` and the
+ * chrome above it) and the raw `<pre>`. The raw one is not a leftover — it is the whole of the
+ * layer when the compiler produced no structured report, which is what every build without
+ * `diagnostic -f json` does, and it stays reachable behind the Raw toggle otherwise.
  */
 export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     const nonce = randomBytes(16).toString('base64');
@@ -62,14 +67,20 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
                     <svg class="eye-closed" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/><line x1="2" y1="2" x2="14" y2="14"/></svg>
                 </button>
             </div>
-            <div class="toolbar-group">
-                <button class="toolbar-btn" id="mode-toggle" aria-label="Diagnostic view" aria-pressed="false" data-tooltip="Diagnostic view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><rect x="5.75" y="1" width="4.5" height="2.6" rx="0.8"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11.5" x2="10" y2="11.5"/></svg></button>
-            </div>
             <div class="toolbar-group diagram-only">
                 <button class="toolbar-btn" id="zoom-fit" aria-label="Fit to window" data-tooltip="Fit to window"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2.5h3.5M14 6V2.5h-3.5M2 10v3.5h3.5M14 10v3.5h-3.5"/></svg></button>
                 <button class="toolbar-btn zoom" id="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
                 <button id="zoom-value" aria-label="Current zoom. Activate for actual size" title="Actual size (100%)">100%</button>
                 <button class="toolbar-btn zoom" id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+            </div>
+            <!--
+                The mode switch is last, and stays last. It is the only control that belongs to
+                the panel rather than to whatever the panel is currently showing, so every
+                mode-specific group appearing and disappearing to its left leaves it in the same
+                place — which is what makes it findable.
+            -->
+            <div class="toolbar-group" id="mode-group">
+                <button class="toolbar-btn" id="mode-toggle" aria-label="Diagnostic view" aria-pressed="false" data-tooltip="Diagnostic view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><rect x="5.75" y="1" width="4.5" height="2.6" rx="0.8"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11.5" x2="10" y2="11.5"/></svg></button>
             </div>
         </div>
     </div>
@@ -77,7 +88,33 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
     <div class="layer" id="container" tabindex="0" role="application" aria-label="Diagram canvas. Arrow keys pan, plus and minus zoom, 0 fits to window, 1 shows actual size">
         <div id="svg-wrapper"></div>
     </div>
-    <div class="layer" id="diagnostic-overlay"><pre id="diag-output" tabindex="0"></pre></div>
+    <div class="layer" id="diagnostic-overlay">
+        <!--
+            One header row, not two. A summary line above the tabs repeated what the tab counts
+            already say — the same problem, model and element counts twice — so the counts live
+            on the tabs and the row carries only what has nowhere else to be.
+        -->
+        <div id="diag-header">
+            <div id="diag-tabs" role="tablist" aria-label="Diagnostic report sections">
+                <button role="tab" id="diag-tab-diagnostics" data-tab="diagnostics" aria-controls="diag-panel" aria-selected="true">Problems</button>
+                <button role="tab" id="diag-tab-models" data-tab="models" aria-controls="diag-panel" aria-selected="false">Models</button>
+                <button role="tab" id="diag-tab-symbols" data-tab="symbols" aria-controls="diag-panel" aria-selected="false">Symbols</button>
+                <button role="tab" id="diag-tab-actions" data-tab="actions" aria-controls="diag-panel" aria-selected="false">Actions</button>
+            </div>
+            <div id="diag-summary-actions">
+                <button class="diag-chip-btn" id="diag-copy">Copy</button>
+                <!-- Report / Text / JSON. Populated by the view, and empty when there is no
+                     structured report to switch away from. -->
+                <div id="diag-faces" role="group" aria-label="How to show the report"></div>
+            </div>
+        </div>
+        <div id="diag-controls">
+            <input type="search" id="diag-filter" placeholder="Filter…" aria-label="Filter the current section">
+            <div id="diag-controls-extra"></div>
+        </div>
+        <div id="diag-panel" role="tabpanel" tabindex="0"></div>
+        <pre id="diag-output" tabindex="0"></pre>
+    </div>
     <div class="layer" id="empty-overlay">
         <div class="message">Move the cursor into a diagram block to preview it.</div>
     </div>

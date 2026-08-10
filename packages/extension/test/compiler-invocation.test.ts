@@ -4,7 +4,10 @@ import {
     buildPathEnv,
     expandTilde,
     findDiagramName,
+    isUnknownOptionFailure,
+    parseCompilerVersion,
     resolveExecCommand,
+    supportsJsonDiagnostic,
     type CompilerContext,
     type CompilerSettings
 } from '../src/extension/image-generation/compiler-invocation.js';
@@ -220,5 +223,126 @@ describe('findDiagramName', () => {
 
     test('a declaration below the cursor is not selected', () => {
         expect(() => findDiagramName(model, 0)).toThrow(/No diagram name found/);
+    });
+});
+
+describe('isUnknownOptionFailure', () => {
+    /**
+     * This decides whether the panel quietly downgrades to the text report. Reading it too
+     * eagerly would hide real compiler failures behind a "your compiler is old" fallback, so the
+     * negative cases below matter as much as the positive ones.
+     */
+
+    /**
+     * Captured verbatim from `jpipe --headless diagnostic -f json -i m.jd` on 2.3.1, the last
+     * release without the flag. Note the plural: picocli reports `-f` and its value together, so
+     * a matcher anchored on the singular "Unknown option:" would miss the one case that actually
+     * happens in the field.
+     */
+    const USAGE = [
+        "Unknown options: '-f', 'json'",
+        'Usage: jpipe diagnostic [-hV] [-i=<input>] [-o=<output>]',
+        'Parse and report diagnostics without exporting.',
+        '  -h, --help              Show this help message and exit.',
+        '  -i, --input=<input>     Input .jd source file (default: stdin).'
+    ].join('\n');
+
+    test('recognises the refusal a released compiler actually prints', () => {
+        expect(isUnknownOptionFailure(2, USAGE)).toBe(true);
+    });
+
+    test('recognises the singular form too', () => {
+        expect(isUnknownOptionFailure(2, "Unknown option: '-f'")).toBe(true);
+    });
+
+    test('recognises an unmatched argument', () => {
+        expect(isUnknownOptionFailure(2, "Unmatched argument at index 2: 'json'")).toBe(true);
+    });
+
+    test('a model with errors is not an old compiler', () => {
+        // Exit 1 is the compiler doing its job. Downgrading here would drop the structured
+        // report for every file that has a mistake in it — that is, exactly when it is wanted.
+        expect(isUnknownOptionFailure(1, '[ERROR] m.jd:9:15: [conclusion-supported] ...')).toBe(false);
+    });
+
+    test('a compiler crash is not an old compiler', () => {
+        expect(isUnknownOptionFailure(42, 'java.lang.NullPointerException')).toBe(false);
+    });
+
+    test('exit 2 without the diagnostic line is not enough', () => {
+        // Both halves are required: some other tool exiting 2 must not be read as a refusal.
+        expect(isUnknownOptionFailure(2, 'Segmentation fault')).toBe(false);
+        expect(isUnknownOptionFailure(2, '')).toBe(false);
+    });
+
+    test('the message alone is not enough either', () => {
+        expect(isUnknownOptionFailure(0, USAGE)).toBe(false);
+        expect(isUnknownOptionFailure(undefined, USAGE)).toBe(false);
+        expect(isUnknownOptionFailure(null, USAGE)).toBe(false);
+    });
+
+    test('finds the line wherever in stderr it lands', () => {
+        // Log lines can precede it, and picocli may or may not indent.
+        expect(isUnknownOptionFailure(2, `12:00:00 INFO starting\n  Unknown option: '-f'`)).toBe(true);
+    });
+});
+
+describe('parseCompilerVersion', () => {
+    test('reads what the CLI actually prints', () => {
+        // `jpipe --version` on 2.3.1, verbatim — one line, with or without `--headless`.
+        expect(parseCompilerVersion('jPipe 2.3.1')).toEqual({ nums: [2, 3, 1], pre: undefined });
+    });
+
+    test('reads a development build', () => {
+        expect(parseCompilerVersion('jPipe 2.4.0-SNAPSHOT'))
+            .toEqual({ nums: [2, 4, 0], pre: 'SNAPSHOT' });
+    });
+
+    test('survives extra output around the version', () => {
+        // A future build might add a JVM line or a commit hash; the version is still in there.
+        expect(parseCompilerVersion('jPipe 2.4.0 (build a1b2c3)\nJVM: 22')?.nums).toEqual([2, 4, 0]);
+        expect(parseCompilerVersion('  jPipe 2.4.0  \n')?.nums).toEqual([2, 4, 0]);
+    });
+
+    test('declines anything that is not a version', () => {
+        expect(parseCompilerVersion('')).toBeUndefined();
+        expect(parseCompilerVersion('command not found: jpipe')).toBeUndefined();
+        expect(parseCompilerVersion('jPipe 2.4')).toBeUndefined();
+    });
+});
+
+describe('supportsJsonDiagnostic', () => {
+    const at = (v: string) => supportsJsonDiagnostic(parseCompilerVersion(v));
+
+    test('2.4.0 and later can report as JSON', () => {
+        expect(at('jPipe 2.4.0')).toBe(true);
+        expect(at('jPipe 2.4.1')).toBe(true);
+        expect(at('jPipe 2.5.0')).toBe(true);
+        expect(at('jPipe 3.0.0')).toBe(true);
+    });
+
+    test('everything before it cannot', () => {
+        expect(at('jPipe 2.3.1')).toBe(false);
+        expect(at('jPipe 2.3.99')).toBe(false);
+        expect(at('jPipe 1.9.9')).toBe(false);
+    });
+
+    test('a prerelease of 2.4.0 counts as 2.4.0', () => {
+        // The subtlety worth pinning. Semver orders `2.4.0-SNAPSHOT` *below* `2.4.0`, which is
+        // correct when asking which release is newer — and wrong here: a snapshot of 2.4.0 is a
+        // build of 2.4.0 and has its features. Ordering it below would refuse structured
+        // diagnostics on every development build of the release that introduces them.
+        expect(at('jPipe 2.4.0-SNAPSHOT')).toBe(true);
+        expect(at('jPipe 2.4.0-rc1')).toBe(true);
+    });
+
+    test('a prerelease of an older release is still older', () => {
+        expect(at('jPipe 2.3.0-SNAPSHOT')).toBe(false);
+    });
+
+    test('an unreadable version is treated as too old', () => {
+        // The text report is the thing every release can produce, so it is the safe assumption.
+        expect(supportsJsonDiagnostic(undefined)).toBe(false);
+        expect(at('command not found')).toBe(false);
     });
 });

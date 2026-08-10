@@ -214,8 +214,15 @@ body:not([data-mode="diagram"]) .diagram-only { display: none; }
 body.has-unsaved-banner .layer { top: 72px; }
 
 body[data-mode="diagram"] #container,
-body[data-mode="diagnostic"] #diagnostic-overlay,
 body[data-mode="empty"] #empty-overlay { display: block; }
+
+/*
+ * The diagnostic layer is a flex column, and it has to be said *here*, in the rule that selects
+ * it. A bare `#diagnostic-overlay { display: flex }` further down loses to this selector on
+ * specificity, which leaves the layer `display: block` — and then the panel inside it has no
+ * flex context, so it grows past the fixed layer instead of scrolling within it.
+ */
+body[data-mode="diagnostic"] #diagnostic-overlay { display: flex; }
 
 #container, #diagnostic-overlay, #empty-overlay { display: none; }
 
@@ -298,16 +305,353 @@ body.jpipe-render-error #container {
 
 /* -------------------------------------------------------- other layers */
 
+/* ------------------------------------------------------- the diagnostic view */
+
+/*
+ * A column: summary, tabs and filter hold their height, and only the panel beneath them scrolls.
+ * Each section is a long table, and a single scroller shared by all of them would put the error
+ * count out of sight exactly when it matters.
+ */
+/* `display` is set by the layer-selection rule above, which outranks this one. */
 #diagnostic-overlay {
-    overflow: auto;
-    padding: 12px;
+    flex-direction: column;
+    overflow: hidden;
 }
 
+/* The raw text is a layer within a layer: either the structured view or this, never both. */
+body.diag-raw #diag-tabs,
+body.diag-raw #diag-controls,
+body.diag-raw #diag-panel { display: none; }
+body:not(.diag-raw) #diag-output { display: none; }
+
+/* With no structured report there is nothing to toggle back to, so the control goes away. */
+/* The face buttons are built by the view, which renders none when there is no report to leave. */
+
+/* One header row: the tabs, and the controls that act on the whole report. */
+#diag-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-right: 12px;
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
+}
+
+#diag-summary-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+#diag-faces { display: flex; gap: 2px; }
+
+.diag-chip-btn {
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+
+.diag-chip-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+.diag-chip-btn[aria-pressed="true"] {
+    background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.3));
+    border-color: var(--vscode-focusBorder);
+}
+
+#diag-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 0 8px;
+    min-width: 0;
+    overflow-x: auto;
+}
+
+#diag-tabs button {
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+#diag-tabs button:hover { color: var(--vscode-foreground); }
+
+#diag-tabs button[aria-selected="true"] {
+    color: var(--vscode-foreground);
+    border-bottom-color: var(--vscode-focusBorder);
+}
+
+#diag-tabs button .diag-tab-count {
+    margin-left: 5px;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}
+
+/* An empty section is greyed rather than removed: "Problems 0" is an answer, and a strip that
+   changes width while you edit is harder to aim at than one that does not. */
+#diag-tabs button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+#diag-tabs button:disabled:hover { color: var(--vscode-descriptionForeground); }
+
+/* The only count worth emphasising, now that the summary line above has gone. */
+#diag-tabs button .diag-tab-count.has-problems {
+    opacity: 1;
+    color: var(--vscode-editorError-foreground, #f14c4c);
+    font-weight: 600;
+}
+
+/* The report's action statistics, which have no tab of their own. */
+.diag-stats-note {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.diag-stats-note .deferrals { color: var(--vscode-editorWarning-foreground); }
+
+#diag-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.18));
+}
+
+#diag-filter {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: inherit;
+    font-size: 12px;
+}
+
+#diag-filter:focus { outline: 1px solid var(--vscode-focusBorder); }
+
+#diag-controls-extra { display: flex; gap: 4px; flex-shrink: 0; }
+
+/* The only thing that scrolls. */
+#diag-panel {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 8px 12px 16px;
+}
+
+.diag-empty {
+    padding: 24px 0;
+    color: var(--vscode-descriptionForeground);
+    font-size: 13px;
+}
+
+/* ------------------------------------------------------------ rows and tables */
+
+.diag-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+.diag-table td {
+    padding: 4px 8px 4px 0;
+    vertical-align: top;
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.12));
+}
+
+/* The message and the relations are what should absorb the spare width. */
+.diag-message, .diag-relations { width: 100%; }
+.diag-census, .diag-problems, .diag-relations { white-space: nowrap; }
+
+.diag-row-link { cursor: pointer; }
+.diag-row-link:hover { background: var(--vscode-list-hoverBackground); }
+
+/* What the editor cursor is currently sitting on. */
+.diag-row.current {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.diag-loc {
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* Borrowed from the model, because the element itself has no position of its own. */
+.diag-loc.derived { opacity: 0.6; }
+
+.diag-id { font-family: var(--vscode-editor-font-family, monospace); }
+
+.diag-badge {
+    display: inline-block;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+}
+
+.diag-badge.severity-error,
+.diag-badge.severity-fatal {
+    background: color-mix(in srgb, var(--vscode-editorError-foreground, #f14c4c) 22%, transparent);
+    color: var(--vscode-editorError-foreground, #f14c4c);
+}
+
+.diag-badge.synthesized { background: transparent; color: var(--vscode-descriptionForeground); }
+
+.diag-kind { color: var(--vscode-descriptionForeground); white-space: nowrap; }
+
+/*
+ * An alias is not a declaration — it is an id the composition rewrote — so it is set in italic
+ * to be told apart from the elements it sits among.
+ */
+.diag-alias { font-style: italic; }
+
+/*
+ * Rows sit slightly in from their model name, so the name reads as a heading over them rather
+ * than as another row among them. Light on purpose: enough to group, not enough to look like a
+ * tree.
+ */
+.diag-grouped .diag-row td:first-child { padding-left: 14px; }
+
+/* A filter toggle, not decoration — hence a button. */
+.diag-code {
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-textPreformat-foreground, var(--vscode-foreground));
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    padding: 0 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.diag-code:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+.diag-code[aria-pressed="true"] {
+    background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.3));
+    border-color: var(--vscode-focusBorder);
+}
+
+/*
+ * A heading is a row inside the one table, not a element between several. Separate tables size
+ * their columns independently, which put the same column at a different width under every model.
+ */
+.diag-group-cell {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--vscode-editor-background);
+    padding: 12px 0 4px;
+    font-size: 12px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+}
+
+.diag-group-row:first-child .diag-group-cell { padding-top: 2px; }
+.diag-group-cell .diag-kind { font-weight: 400; margin-left: 8px; }
+
+/* ------------------------------------------------------------------- models */
+
+/* Every relationship in a model row is a link to somewhere else in the report. */
+.diag-link {
+    border: none;
+    background: transparent;
+    padding: 0 2px;
+    color: var(--vscode-textLink-foreground);
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.diag-link:hover { text-decoration: underline; }
+
+.diag-count-chip {
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+    border-radius: 10px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 8px;
+    margin-right: 4px;
+    cursor: pointer;
+}
+
+.diag-count-chip:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+.diag-error-badge {
+    border: none;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--vscode-editorError-foreground, #f14c4c) 18%, transparent);
+    color: var(--vscode-editorError-foreground, #f14c4c);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ actions */
+
+.diag-tree { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
+
+.diag-action {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 1px 0;
+    line-height: 1.6;
+}
+
+.diag-action:hover { background: var(--vscode-list-hoverBackground); }
+
+.diag-action-index {
+    color: var(--vscode-descriptionForeground);
+    text-align: right;
+    min-width: 3.5em;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* A disclosure control where there is something to disclose, a spacer where there is not. */
+.diag-twisty {
+    border: none;
+    background: transparent;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    padding: 0;
+    width: 1.2em;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.diag-twisty.leaf { cursor: default; opacity: 0; }
+.diag-action-macro { color: var(--vscode-charts-purple, var(--vscode-textLink-foreground)); }
+.diag-hidden-count { color: var(--vscode-descriptionForeground); font-size: 11px; }
+.diag-children { border-left: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25)); }
+
+/* -------------------------------------------------------------- the raw text */
+
 #diag-output {
+    flex: 1 1 auto;
+    overflow: auto;
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 13px;
     white-space: pre;
     margin: 0;
+    padding: 12px;
     color: var(--vscode-editor-foreground);
     line-height: 1.5;
 }

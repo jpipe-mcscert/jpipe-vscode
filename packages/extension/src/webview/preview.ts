@@ -1,4 +1,5 @@
 import type { HostToWebview, RenderMessage, ViewMode, WebviewToHost } from '../shared/preview-protocol.js';
+import { DiagnosticView, type DiagnosticViewState } from './diagnostic-view.js';
 import { adaptToDarkTheme, applyDimming, findElement, stripCaptions } from './highlight.js';
 import { Minimap } from './minimap.js';
 import {
@@ -53,6 +54,12 @@ interface PersistedState {
     documentUri?: string | null;
     diagramName?: string | null;
     highlightEnabled?: boolean;
+    /**
+     * Where the reader was in the diagnostic view: which tab, what they had filtered, which
+     * macros they had opened, how far down they had scrolled. The report is rebuilt on every
+     * save, so without this every save would return them to the top of the first tab.
+     */
+    diag?: DiagnosticViewState;
 }
 
 declare function acquireVsCodeApi(): {
@@ -73,6 +80,28 @@ const highlightToggle = document.getElementById('highlight-toggle') as HTMLEleme
 const modeToggle = document.getElementById('mode-toggle') as HTMLElement;
 const drawer = document.getElementById('download-drawer') as HTMLElement;
 
+const diagnosticView = new DiagnosticView(
+    {
+        overlay: document.getElementById('diagnostic-overlay') as HTMLElement,
+        tabs: document.getElementById('diag-tabs') as HTMLElement,
+        filter: document.getElementById('diag-filter') as HTMLInputElement,
+        controlsExtra: document.getElementById('diag-controls-extra') as HTMLElement,
+        panel: document.getElementById('diag-panel') as HTMLElement,
+        output: diagOutput,
+        faces: document.getElementById('diag-faces') as HTMLElement,
+        copyButton: document.getElementById('diag-copy') as HTMLElement
+    },
+    {
+        revealLocation: (source, line, column) =>
+            vscode.postMessage({ type: 'revealLocation', source, line, column }),
+        requestTextReport: () => vscode.postMessage({ type: 'requestTextReport' }),
+        // `navigator.clipboard` is available in the webview and needs no extra permission; the
+        // host is not involved.
+        copy: text => void navigator.clipboard?.writeText(text),
+        persist: () => persist()
+    }
+);
+
 /* --------------------------------------------------------------- page state */
 
 /** The current SVG, or null while nothing has rendered. */
@@ -92,6 +121,8 @@ let vb: Box | null = null;
 let navigable = false;
 
 let lastRevision = -1;
+/** The diagnostic path is just as async as the render one, and drops stale results the same way. */
+let lastDiagnosticRevision = -1;
 let lastDocumentUri: string | null = null;
 let lastDiagramName: string | null = null;
 let diagramName: string | null = null;
@@ -115,9 +146,10 @@ let lastDocumentPath: string | null = null;
 let viewOrigin: ViewOrigin = 'initial';
 /** Multiplier on the wheel zoom step, from the user's settings. */
 let zoomSensitivity = 1;
-let unsaved = false;
 let highlightEnabled = false;
 let highlightName: string | null = null;
+/** The model `highlightName` belongs to; an element id alone does not identify a row. */
+let highlightModel: string | null = null;
 let lastMatched: SVGGraphicsElement | null = null;
 
 let animation = 0;
@@ -188,7 +220,8 @@ function persist(): void {
         vb: vb ?? undefined,
         documentUri: lastDocumentUri,
         diagramName: lastDiagramName,
-        highlightEnabled
+        highlightEnabled,
+        diag: diagnosticView.getState()
     });
 }
 
@@ -305,8 +338,11 @@ function setMode(mode: ViewMode): void {
         : '⚠ Unsaved changes — showing last saved version';
 }
 
+/**
+ * Both the render and the diagnostic message carry their own `unsaved`, so this no longer keeps
+ * a copy: the page has nowhere to read one that the next message would not immediately correct.
+ */
 function setUnsaved(value: boolean): void {
-    unsaved = value;
     banner.classList.toggle('visible', value);
     document.body.classList.toggle('has-unsaved-banner', value);
 }
@@ -385,13 +421,24 @@ function applyRender(msg: RenderMessage): void {
 
     lastDocumentUri = msg.documentUri;
     lastDiagramName = msg.diagramName;
-    applyHighlight(msg.highlight);
+    applyHighlight(msg.highlight, msg.diagramName);
 }
 
 /* -------------------------------------------------------------- highlight */
 
-function applyHighlight(name: string | null): void {
+/**
+ * `model` is the model the element is declared in. The diagram only ever shows one model, so it
+ * ignores it; the symbol table shows them all, and an element id is unique only within its model.
+ */
+function applyHighlight(name: string | null, model: string | null): void {
     highlightName = name;
+    highlightModel = model;
+    // The same signal drives both views, but not on the same terms. Dimming a diagram is
+    // intrusive enough to be opt-in; marking a row in a table is not, and the control that opts
+    // in lives in the diagram toolbar — which the diagnostic view does not show. Gating the
+    // symbol table on it would mean leaving the diagnostic view, enabling highlighting, and
+    // coming back, to get behaviour the other panel has no say in.
+    diagnosticView.setCursorSymbol(name, model);
     if (!svgEl) return;
 
     if (!highlightEnabled || !name) {
@@ -557,7 +604,7 @@ highlightToggle.addEventListener('click', () => {
     highlightToggle.classList.toggle('active', highlightEnabled);
     highlightToggle.setAttribute('aria-pressed', String(highlightEnabled));
     lastMatched = null;
-    applyHighlight(highlightName);
+    applyHighlight(highlightName, highlightModel);
     persist();
 });
 
@@ -621,7 +668,7 @@ new MutationObserver(() => {
     const keep = vb;
     installDiagram();
     if (keep && content) setViewBox(clampTranslation(normalizeAspect(keep, panelSize()), content));
-    applyHighlight(highlightName);
+    applyHighlight(highlightName, highlightModel);
 }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
 /* --------------------------------------------------------------- messages */
@@ -633,7 +680,7 @@ window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
             applyRender(msg);
             break;
         case 'highlight':
-            applyHighlight(msg.name);
+            applyHighlight(msg.name, msg.model);
             break;
         case 'setUnsaved':
             setUnsaved(msg.unsaved);
@@ -643,11 +690,16 @@ window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
             setBusy(false);
             break;
         case 'diagnostic':
-            // textContent, so compiler output can never be interpreted as markup.
-            diagOutput.textContent = msg.output;
+            if (msg.revision < lastDiagnosticRevision) break;
+            lastDiagnosticRevision = msg.revision;
+            diagnosticView.show(msg.report, msg.raw);
             setMode('diagnostic');
-            setUnsaved(unsaved);
+            setUnsaved(msg.unsaved);
             setBusy(false);
+            break;
+        case 'diagnosticText':
+            // A reply about a run the panel has already moved past describes the previous save.
+            if (msg.revision === lastDiagnosticRevision) diagnosticView.showTextReport(msg.text);
             break;
         case 'busy':
             setBusy(msg.busy);
@@ -674,6 +726,8 @@ if (restored) {
     // `initial` would let the first resize after the replay — which the empty-to-diagram layer
     // switch is enough to trigger — throw it away and snap back to the opening view.
     if (vb) viewOrigin = 'custom';
+    // Recorded now, applied when the replayed report arrives.
+    diagnosticView.restoreState(restored.diag);
 }
 
 // The extension replays its last render in response, so a reloaded webview comes back with the

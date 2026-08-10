@@ -1,0 +1,26 @@
+{
+    // The tests are the one place that reaches across both of this package's projects: a test
+    // may import extension-host code (`tsconfig.json`) or webview code (`src/webview`), and
+    // neither project includes the other's files. So they are checked here instead, against a
+    // program wide enough to hold both — which is also what lets the diagnostic fixtures be
+    // declared as `DiagnosticReport` and actually verified rather than merely asserted.
+    //
+    // `lib` carries DOM because the webview modules under test need it; that is contained to
+    // this project, so the extension host stays honestly DOM-free.
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "rootDir": ".",
+        "lib": [
+            "ES2021",
+            "DOM",
+            "DOM.Iterable"
+        ],
+        // The fixtures are imported as data and typed on arrival.
+        "resolveJsonModule": true
+    },
+    "include": [
+        "test/**/*.ts",
+        "src/**/*.ts"
+    ]
+}

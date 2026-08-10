@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "source": "/work/examples/004_template.jd",
+  "status": "ok",
+  "diagnostics": [],
+  "stats": {
+    "commands": { "total": 6, "macros": 0 },
+    "deferrals": 0
+  },
+  "models": [
+    {
+      "name": "t",
+      "kind": "template",
+      "location": { "line": 8, "column": 9 },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 0,
+        "strategy": 1,
+        "evidence": 0,
+        "abstractSupport": 1
+      },
+      "usedBy": [],
+      "symbols": [
+        { "id": "c", "kind": "conclusion", "synthesized": false, "location": { "line": 9, "column": 15 } },
+        { "id": "s", "kind": "strategy", "synthesized": false, "location": { "line": 10, "column": 13 } },
+        { "id": "abs", "kind": "abstract-support", "synthesized": false, "location": { "line": 11, "column": 13 } }
+      ],
+      "aliases": []
+    }
+  ],
+  "actions": [
+    { "index": 1, "depth": 0, "macro": false, "description": "create_template('t')." },
+    { "index": 2, "depth": 0, "macro": false, "description": "create_conclusion('t', 'c', 'A conclusion')." },
+    { "index": 3, "depth": 0, "macro": false, "description": "create_strategy('t', 's', 'A strategy')." },
+    { "index": 4, "depth": 0, "macro": false, "description": "create_abstract_support('t', 'abs', 'An abstract support')." },
+    { "index": 5, "depth": 0, "macro": false, "description": "support('t', 'c', 's')." },
+    { "index": 6, "depth": 0, "macro": false, "description": "support('t', 's', 'abs')." }
+  ]
+}

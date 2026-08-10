@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "source": "/work/examples/invalid/002_unsupported_elements.jd",
+  "status": "errors",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "conclusion-supported",
+      "source": "/work/examples/invalid/002_unsupported_elements.jd",
+      "line": 9,
+      "column": 15,
+      "message": "Conclusion 'c' in model 'missing_support_for_conclusion' has no supporting strategy"
+    },
+    {
+      "severity": "error",
+      "code": "strategy-supported",
+      "source": "/work/examples/invalid/002_unsupported_elements.jd",
+      "line": 15,
+      "column": 15,
+      "message": "Strategy 's' in model 'missing_support_for_strategy' has no supporting element"
+    },
+    {
+      "severity": "error",
+      "code": "sub-conclusion-supported",
+      "source": "/work/examples/invalid/002_unsupported_elements.jd",
+      "line": 23,
+      "column": 19,
+      "message": "Sub-conclusion 'sc' in model 'missing_support_for_sub_conclusion' has no supporting strategy"
+    }
+  ],
+  "stats": {
+    "commands": { "total": 12, "macros": 0 },
+    "deferrals": 0
+  },
+  "models": [
+    {
+      "name": "missing_support_for_conclusion",
+      "kind": "justification",
+      "location": { "line": 8, "column": 14 },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 0,
+        "strategy": 0,
+        "evidence": 0,
+        "abstractSupport": 0
+      },
+      "usedBy": [],
+      "symbols": [
+        { "id": "c", "kind": "conclusion", "synthesized": false, "location": { "line": 9, "column": 15 } }
+      ],
+      "aliases": []
+    },
+    {
+      "name": "missing_support_for_strategy",
+      "kind": "justification",
+      "location": { "line": 13, "column": 14 },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 0,
+        "strategy": 1,
+        "evidence": 0,
+        "abstractSupport": 0
+      },
+      "usedBy": [],
+      "symbols": [
+        { "id": "c", "kind": "conclusion", "synthesized": false, "location": { "line": 14, "column": 15 } },
+        { "id": "s", "kind": "strategy", "synthesized": false, "location": { "line": 15, "column": 15 } }
+      ],
+      "aliases": []
+    },
+    {
+      "name": "missing_support_for_sub_conclusion",
+      "kind": "justification",
+      "location": { "line": 20, "column": 14 },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 1,
+        "strategy": 1,
+        "evidence": 0,
+        "abstractSupport": 0
+      },
+      "usedBy": [],
+      "symbols": [
+        { "id": "c", "kind": "conclusion", "synthesized": false, "location": { "line": 21, "column": 19 } },
+        { "id": "sc", "kind": "sub-conclusion", "synthesized": false, "location": { "line": 23, "column": 19 } },
+        { "id": "s", "kind": "strategy", "synthesized": false, "location": { "line": 22, "column": 19 } }
+      ],
+      "aliases": []
+    }
+  ],
+  "actions": [
+    { "index": 1, "depth": 0, "macro": false, "description": "create_justification('missing_support_for_conclusion')." },
+    { "index": 2, "depth": 0, "macro": false, "description": "create_conclusion('missing_support_for_conclusion', 'c', 'A conclusion')." },
+    { "index": 3, "depth": 0, "macro": false, "description": "create_justification('missing_support_for_strategy')." },
+    { "index": 4, "depth": 0, "macro": false, "description": "create_conclusion('missing_support_for_strategy', 'c', 'A conclusion')." },
+    { "index": 5, "depth": 0, "macro": false, "description": "create_strategy('missing_support_for_strategy', 's', 'A strategy')." },
+    { "index": 6, "depth": 0, "macro": false, "description": "support('missing_support_for_strategy', 'c', 's')." },
+    { "index": 7, "depth": 0, "macro": false, "description": "create_justification('missing_support_for_sub_conclusion')." },
+    { "index": 8, "depth": 0, "macro": false, "description": "create_conclusion('missing_support_for_sub_conclusion', 'c', 'A conclusion')." },
+    { "index": 9, "depth": 0, "macro": false, "description": "create_strategy('missing_support_for_sub_conclusion', 's', 'A strategy')." },
+    { "index": 10, "depth": 0, "macro": false, "description": "create_sub_conclusion('missing_support_for_sub_conclusion', 'sc', 'A sub-conclusion')." },
+    { "index": 11, "depth": 0, "macro": false, "description": "support('missing_support_for_sub_conclusion', 'c', 's')." },
+    { "index": 12, "depth": 0, "macro": false, "description": "support('missing_support_for_sub_conclusion', 's', 'sc')." }
+  ]
+}

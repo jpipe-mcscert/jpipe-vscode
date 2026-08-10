@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "source": "/work/examples/007_load_user.jd",
+  "status": "ok",
+  "diagnostics": [],
+  "stats": {
+    "commands": { "total": 9, "macros": 1 },
+    "deferrals": 0
+  },
+  "models": [
+    {
+      "name": "base:t",
+      "kind": "template",
+      "location": { "source": "/work/examples/004_template.jd", "line": 8, "column": 9 },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 0,
+        "strategy": 1,
+        "evidence": 0,
+        "abstractSupport": 1
+      },
+      "usedBy": [
+        { "name": "my_justification", "location": { "line": 13, "column": 14 } }
+      ],
+      "symbols": [
+        {
+          "id": "c",
+          "kind": "conclusion",
+          "synthesized": false,
+          "location": { "source": "/work/examples/004_template.jd", "line": 9, "column": 15 }
+        },
+        {
+          "id": "s",
+          "kind": "strategy",
+          "synthesized": false,
+          "location": { "source": "/work/examples/004_template.jd", "line": 10, "column": 13 }
+        },
+        {
+          "id": "abs",
+          "kind": "abstract-support",
+          "synthesized": false,
+          "location": { "source": "/work/examples/004_template.jd", "line": 11, "column": 13 }
+        }
+      ],
+      "aliases": []
+    },
+    {
+      "name": "my_justification",
+      "kind": "justification",
+      "implements": "base:t",
+      "location": { "line": 13, "column": 14 },
+      "elements": {
+        "conclusion": 1,
+        "subConclusion": 0,
+        "strategy": 1,
+        "evidence": 1,
+        "abstractSupport": 0
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "id": "base:t:c",
+          "kind": "conclusion",
+          "synthesized": false,
+          "location": { "source": "/work/examples/004_template.jd", "line": 9, "column": 15 }
+        },
+        {
+          "id": "base:t:s",
+          "kind": "strategy",
+          "synthesized": false,
+          "location": { "source": "/work/examples/004_template.jd", "line": 10, "column": 13 }
+        },
+        {
+          "id": "base:t:abs",
+          "kind": "evidence",
+          "synthesized": false,
+          "location": { "line": 14, "column": 13 }
+        }
+      ],
+      "aliases": []
+    }
+  ],
+  "actions": [
+    { "index": 1, "depth": 0, "macro": false, "description": "create_template('base:t')." },
+    { "index": 2, "depth": 0, "macro": false, "description": "create_conclusion('base:t', 'c', 'A conclusion')." },
+    { "index": 3, "depth": 0, "macro": false, "description": "create_strategy('base:t', 's', 'A strategy')." },
+    { "index": 4, "depth": 0, "macro": false, "description": "create_abstract_support('base:t', 'abs', 'An abstract support')." },
+    { "index": 5, "depth": 0, "macro": false, "description": "support('base:t', 'c', 's')." },
+    { "index": 6, "depth": 0, "macro": false, "description": "support('base:t', 's', 'abs')." },
+    { "index": 7, "depth": 0, "macro": false, "description": "create_justification('my_justification')." },
+    { "index": 8, "depth": 0, "macro": false, "description": "implements('my_justification', 'base:t')." },
+    { "index": 9, "depth": 0, "macro": true, "description": "override('my_justification', 'base:t:abs', evidence, 'A concrete evidence overriding the abstract support')" },
+    { "index": 10, "depth": 1, "macro": false, "description": "remove('my_justification', 'base:t:abs')" },
+    { "index": 11, "depth": 1, "macro": false, "description": "add('my_justification', Evidence[id=base:t:abs, label=A concrete evidence overriding the abstract support])" },
+    { "index": 12, "depth": 1, "macro": false, "description": "rewire('my_justification', 'base:t:s', 'base:t:abs'[AbstractSupport] -> 'base:t:abs'[Evidence])" }
+  ]
+}
