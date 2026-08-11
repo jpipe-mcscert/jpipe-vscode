@@ -70,6 +70,12 @@ describe('asProcessFailure', () => {
         expect(asProcessFailure(err).exitCode).toBe(42);
     });
 
+    test('keeps a zero exit code, which is falsy but meaningful', () => {
+        // The fallback from exitCode to code uses `??`, not `||`: with `||` a zero here would
+        // fall through to `code` and report the wrong status.
+        expect(asProcessFailure({ exitCode: 0, code: 1 }).exitCode).toBe(0);
+    });
+
     test('ignores a non-numeric code, which is a spawn failure not an exit status', () => {
         // ENOENT means the compiler was never started; reporting it as an exit code would say
         // the model failed to compile, which is a different and wrong thing to tell a user.

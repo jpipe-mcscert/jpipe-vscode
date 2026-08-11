@@ -65,6 +65,11 @@ function stringOf(value: unknown): string | undefined {
     return typeof value === 'string' ? value : undefined;
 }
 
+/** `value` if it is a number, otherwise undefined. */
+function numberOf(value: unknown): number | undefined {
+    return typeof value === 'number' ? value : undefined;
+}
+
 /**
  * View a thrown value as a failed process.
  *
@@ -80,14 +85,12 @@ export function asProcessFailure(err: unknown): ProcessFailure {
     const source: Record<string, unknown> =
         typeof err === 'object' && err !== null ? (err as Record<string, unknown>) : {};
 
-    const exitCode = typeof source.exitCode === 'number'
-        ? source.exitCode
-        : typeof source.code === 'number' ? source.code : undefined;
-
     return {
         stdout: stringOf(source.stdout),
         stderr: stringOf(source.stderr),
-        exitCode,
+        // `??` rather than a conditional chain: `numberOf` has already turned "wrong type" into
+        // undefined, so the fallback from exitCode to code is just the absence of the first.
+        exitCode: numberOf(source.exitCode) ?? numberOf(source.code),
         cancelled: source.cancelled === true
     };
 }
