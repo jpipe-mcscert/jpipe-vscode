@@ -13,6 +13,7 @@ import {
     type Unit
 } from './generated/ast.js';
 import { fsPathOf, getAllElements, qualifiedIdText } from './jpipe-utils.js';
+import { byCodeUnit } from './jpipe-text.js';
 import {
     anchorGlob,
     globToRegExp,
@@ -136,12 +137,9 @@ export class JpipeImportService {
                 matches.push(file);
             }
         }
-        // Ordered by UTF-16 code unit, stated explicitly rather than left to `sort()`'s default.
-        // It must NOT be `localeCompare`: that orders by the runtime's locale, so the same model
-        // could load its files in a different order on a different machine, and the compiler
-        // (which sorts Java strings, i.e. by code unit) would disagree with the IDE. Fidelity to
-        // it is the whole point of this module — see jpipe-vscode ADR-VSC-0007.
-        matches.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+        // Code-unit order, to agree with the compiler about the order a model's files load in.
+        // See `byCodeUnit` for why it is not `localeCompare`.
+        matches.sort(byCodeUnit);
         this.globCache.set(cacheKey, matches);
         this.logger.debug(`Glob '${filePath}' matched ${matches.length} file(s) under ${root}`);
         return matches;

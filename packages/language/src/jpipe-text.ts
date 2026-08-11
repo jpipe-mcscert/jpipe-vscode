@@ -1,6 +1,25 @@
 /**
- * String comparison used to rank suggestions.
+ * String comparison used to rank suggestions, and to order results deterministically.
  */
+
+/**
+ * Orders strings by UTF-16 code unit — what `Array.prototype.sort()` does by default, said out
+ * loud so that it is a decision rather than an accident.
+ *
+ * Deliberately not `localeCompare`. That orders by the runtime's locale, which would make the
+ * result depend on the machine it ran on; where this matters most is glob expansion, which has
+ * to agree with the compiler's `LoadResolver` about the order a model's files load in, and the
+ * compiler sorts Java strings — by code unit. See jpipe-vscode ADR-VSC-0007.
+ *
+ * (`nearestTo` below does use `localeCompare`, correctly: it only breaks ties between equally
+ * near suggestions for display, where locale order is the friendlier one and nothing downstream
+ * depends on it.)
+ */
+export function byCodeUnit(a: string, b: string): number {
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+}
 
 /**
  * Levenshtein distance between two strings.

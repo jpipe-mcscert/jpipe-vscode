@@ -753,6 +753,21 @@ const HOST_MESSAGE_TYPES: ReadonlySet<string> = new Set<HostToWebview['type']>([
 ]);
 
 /**
+ * Whether an arriving payload is one of ours.
+ *
+ * This is the only place `HostToWebview` is asserted, and it is asserted about a value typed
+ * `unknown` — the listener below deliberately does not annotate `MessageEvent<HostToWebview>`.
+ * That annotation would be a claim the runtime does not make: `postMessage` carries whatever the
+ * sender put in it, so declaring the payload well-typed on arrival makes every field look safe
+ * to reach for and lets a later edit skip the check without the compiler objecting.
+ */
+function isHostMessage(value: unknown): value is HostToWebview {
+    return typeof value === 'object'
+        && value !== null
+        && HOST_MESSAGE_TYPES.has((value as { type?: unknown }).type as string);
+}
+
+/**
  * The panel's inbox.
  *
  * The extension host is the only party that can post here — the panel is an isolated webview
@@ -763,9 +778,9 @@ const HOST_MESSAGE_TYPES: ReadonlySet<string> = new Set<HostToWebview['type']>([
  * panel offline. What is checked instead is that the message belongs to the protocol at all,
  * which is the part that would actually matter if something else ever did get to post here.
  */
-window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
+window.addEventListener('message', (event: MessageEvent<unknown>) => {
+    if (!isHostMessage(event.data)) return;
     const msg = event.data;
-    if (typeof msg?.type !== 'string' || !HOST_MESSAGE_TYPES.has(msg.type)) return;
     switch (msg.type) {
         case 'render':
             applyRender(msg);
