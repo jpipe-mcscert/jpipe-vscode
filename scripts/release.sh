@@ -52,7 +52,8 @@ Verbs:
                              the CHANGELOG section, reconcile package-lock.json,
                              build, test and commit.
   preflight X.Y.Z            Check that everything release.yml validates would pass,
-                             before the tag exists. Read-only.
+                             plus the SonarCloud gate on main, before the tag
+                             exists. Read-only.
 
 Options:
   --dry-run                  Show what would change without writing anything
@@ -249,6 +250,66 @@ check_vsce() {
   fi
 }
 
+# Read from sonar-project.properties rather than repeated here, so the key has one home.
+#
+# This must not be able to fail. It is called as `key=$(sonar_project_key)`, and a plain
+# assignment from a command substitution carries that command's exit status — so under `set -e`
+# a missing or unreadable file would abort preflight outright, before check_quality_gate could
+# report it. Every path here yields a string (possibly empty) and returns 0; judging the empty
+# case is the caller's job. `head -n 1` because a properties file with two projectKey lines is
+# malformed, and one key is what the caller can act on.
+sonar_project_key() {
+  [ -r sonar-project.properties ] || return 0
+  sed -n 's/^sonar\.projectKey=\(.*\)$/\1/p' sonar-project.properties 2>/dev/null | head -n 1 || true
+}
+
+# The quality gate blocks merges to main, so a release cut from a main whose gate is red ships
+# code the project has already declined to accept. release.yml does not check this — the gate
+# runs against main, not against the tag — which is exactly the sort of gap preflight exists to
+# close. See docs/adr/vsc-0009-sonarcloud-as-mandatory-quality-gate.md.
+#
+# Unreachable SonarCloud is a warning, not a failure, on the same reasoning as check_in_sync's
+# missing upstream: a release must not be blocked by somebody else's outage. The project is
+# public, so no token is involved.
+check_quality_gate() {
+  local key url payload status
+  key=$(sonar_project_key)
+  if [ -z "$key" ]; then
+    warn "could not read sonar.projectKey from sonar-project.properties — quality gate not verified"
+    return
+  fi
+
+  url="https://sonarcloud.io/api/qualitygates/project_status?projectKey=$key&branch=main"
+  if ! payload=$(curl -sS --fail --max-time 15 "$url" 2>/dev/null); then
+    warn "could not reach SonarCloud — quality gate not verified"
+    return
+  fi
+
+  # `|| true` for the same reason as sonar_project_key: with `set -o pipefail`, a body that is
+  # not the JSON we expect — SonarCloud answering 200 with an error page, say — would fail the
+  # pipeline and take preflight down with it, instead of falling through to the warning below.
+  status=$(printf '%s' "$payload" \
+    | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).projectStatus.status' 2>/dev/null \
+    || true)
+
+  case "$status" in
+    OK)
+      pass "SonarCloud quality gate is green on main"
+      ;;
+    NONE)
+      # No analysis yet — true for a fresh project, and not something to block a release on.
+      warn "SonarCloud has no gate result for main yet"
+      ;;
+    ERROR|WARN)
+      fail "SonarCloud quality gate is $status on main"
+      note "https://sonarcloud.io/dashboard?id=$key&branch=main"
+      ;;
+    *)
+      warn "could not read the SonarCloud gate status — quality gate not verified"
+      ;;
+  esac
+}
+
 # The sequence release.yml runs, in the same order, so a failure surfaces here
 # rather than on a tag that is already public.
 check_build() {
@@ -298,6 +359,7 @@ print_manual_checklist() {
   [ ] The version number matches what the section actually contains
       (new capability -> minor, fixes/docs only -> patch)
   [ ] Compiler compatibility: any feature needing a newer jpipe compiler says so
+  [ ] Any SonarCloud issue accepted rather than fixed was accepted deliberately
   [ ] Smoke-test the VSIX in a real editor — CI never launches VS Code
 EOF
 }
@@ -399,6 +461,7 @@ cmd_preflight() {
   check_versions_match "$version"
   check_changelog_closed "$version"
   check_tag_absent "$version"
+  check_quality_gate
   check_build
   check_package
   print_manual_checklist
