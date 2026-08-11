@@ -12,6 +12,18 @@ on:
 env:
   NODEJS_VERSION: '22.22.2'
 
+# This job builds, tests and packages. It reads the tree and uploads an artefact; it needs
+# nothing else, and stating so keeps a compromised dependency from being able to write here.
+permissions:
+  contents: read
+
+# A branch pushed to twice in quick succession only needs its newest commit built. Cancelling
+# the superseded run matters more here than it looks: this workflow and sonar.yml both run a
+# full clean build on every push, so an active branch would otherwise queue four.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
 
   build:

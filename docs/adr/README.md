@@ -42,3 +42,6 @@ The compiler's records are at
 | [VSC-0006](vsc-0006-generated-langium-code-is-not-committed.md) | Generated Langium code is not committed | 2026-08-10 | Accepted |
 | [VSC-0007](vsc-0007-java-nio-glob-fidelity.md) | `load` globs follow Java NIO, for fidelity with the compiler | 2026-08-10 | Accepted |
 | [VSC-0008](vsc-0008-four-place-version-and-scripted-release.md) | A four-place version, moved only by the release script | 2026-08-10 | Accepted |
+| [VSC-0009](vsc-0009-sonarcloud-as-mandatory-quality-gate.md) | SonarQube Cloud as a mandatory quality gate | 2026-08-10 | Accepted |
+| [VSC-0010](vsc-0010-coverage-measurement-and-honest-exclusions.md) | Coverage measurement, and honest exclusions | 2026-08-10 | Accepted |
+| [VSC-0011](vsc-0011-github-actions-pinning-policy.md) | GitHub Actions are pinned by major tag | 2026-08-10 | Accepted |
