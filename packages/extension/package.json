@@ -523,15 +523,15 @@
     },
     "dependencies": {
         "jpipe-language": "1.7.0",
-        "vscode-languageclient": "~10.0.1",
-        "vscode-languageserver": "~10.0.1"
+        "vscode-languageclient": "~10.1.0",
+        "vscode-languageserver": "~10.1.0"
     },
     "devDependencies": {
         "@types/vscode": "~1.91.0",
         "@vitest/coverage-v8": "~4.1.10",
         "ajv": "~8.20.0",
         "concurrently": "~10.0.4",
-        "esbuild": "~0.28.1",
+        "esbuild": "~0.28.2",
         "happy-dom": "~20.11.2",
         "vitest": "~4.1.10"
     },
