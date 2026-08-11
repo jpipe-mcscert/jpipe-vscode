@@ -165,8 +165,14 @@ mosser@azrael jpipe-vscode % ./scripts/release.sh preflight 1.4.0
 
 `preflight` is read-only. It re-runs everything `.github/workflows/release.yml` validates —
 the four-way version comparison, the tag being on `main` — plus a full clean build, both
-test suites and a real `vsce package`. The point is that the workflow's checks otherwise
-only fail *after* the tag is public, which is the awkward thing to undo.
+test suites, a real `vsce package`, and the SonarCloud quality gate on `main`. The point is
+that the workflow's checks otherwise only fail *after* the tag is public, which is the
+awkward thing to undo.
+
+The gate is checked here because `release.yml` cannot: it runs against the tag, while the
+gate runs against `main`, so a release cut from a red `main` would otherwise ship code the
+project has already declined to merge. An unreachable SonarCloud is a warning rather than a
+failure — a release should not be blocked by somebody else's outage.
 
 #### 3. Tag
 
