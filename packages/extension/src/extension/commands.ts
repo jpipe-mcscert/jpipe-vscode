@@ -80,9 +80,16 @@ const CODE_ACTION_COMMANDS: ReadonlyArray<readonly [command: string, kind: strin
 export function registerCommands(deps: CommandDeps): void {
     const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager } = deps;
 
+    /**
+     * Run an export, and stay pending until it has finished.
+     *
+     * The `await` matters even though `generateAndSave` handles its own failures: a command
+     * whose promise resolves early tells VS Code the work is done while the compiler is still
+     * running, which is what the editor uses to decide whether a command is still in flight.
+     */
     const exportIn = async (format: ImageFormat): Promise<void> => {
         const { doc, diagramName } = await previewProvider.resolveExportContext();
-        imageGenerator.generateAndSave(format, doc, diagramName);
+        await imageGenerator.generateAndSave(format, doc, diagramName);
     };
 
     context.subscriptions.push(
