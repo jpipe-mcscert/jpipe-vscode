@@ -512,13 +512,14 @@
     ],
     "main": "./out/extension/main.cjs",
     "scripts": {
-        "clean": "shx rm -fr *.tsbuildinfo out syntaxes",
+        "clean": "shx rm -fr *.tsbuildinfo out syntaxes coverage",
         "vscode:prepublish": "npm run build",
         "build:prepare": "shx mkdir -p ./syntaxes/ && shx cp -f ../language/syntaxes/jpipe.tmLanguage.json ./syntaxes/jpipe.tmLanguage.json",
         "build": "npm run build:prepare && tsc -b tsconfig.json src/webview && node esbuild.mjs",
         "build:clean": "npm run clean && npm run build",
         "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json src/webview --watch\" \"node esbuild.mjs --watch\"",
-        "test": "vitest run"
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
         "jpipe-language": "1.7.0",
@@ -527,6 +528,7 @@
     },
     "devDependencies": {
         "@types/vscode": "~1.91.0",
+        "@vitest/coverage-v8": "~4.1.10",
         "ajv": "~8.20.0",
         "concurrently": "~10.0.4",
         "esbuild": "~0.28.1",
