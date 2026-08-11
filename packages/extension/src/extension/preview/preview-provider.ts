@@ -100,7 +100,7 @@ export class PreviewProvider {
         }
 
         // Already open and focused — skip the reopen rather than round-trip for the same file.
-        if (active && active.uri.toString() === target.uri) {
+        if (active?.uri.toString() === target.uri) {
             await this.imageGenerator.generateAndSave(format, active, target.diagramName);
             return;
         }

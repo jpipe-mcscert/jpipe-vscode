@@ -400,8 +400,11 @@ export class ImageGenerator {
         // compiler runs and stack two save dialogs on top of each other, and the second dialog
         // defaults to the same filename as the first. Declined rather than queued: a queue would
         // still show the second dialog, just later, which is the confusing part.
+        // `debug`, not `warn`: declining the second of a double-click is the guard working, not
+        // a fault, and the default log level would have put it in the channel every time. It is
+        // still worth recording — it is the only explanation for an export that did nothing.
         if (this.exportInFlight) {
-            this.logger.warn(`Export already in progress; ignoring the request for ${format}`);
+            this.logger.debug(`Export already in progress; ignoring the request for ${format}`);
             return;
         }
         this.exportInFlight = true;
