@@ -2,7 +2,16 @@
     "extends": "../../tsconfig.json",
     "compilerOptions": {
         "noEmit": true,
-        "rootDir": "."
+        "rootDir": ".",
+        // Named rather than left to automatic discovery. TypeScript otherwise pulls in every
+        // `@types/*` it can reach, and how far it reaches has changed between versions: the
+        // compiler VS Code bundles (6.x) finds none of them here, so `setTimeout`, `process` and
+        // `Buffer` were reported as undefined in an editor while `tsc` compiled the same files
+        // cleanly. Listing them makes the program the same whichever compiler opens it.
+        //
+        // `node` for the host's runtime globals and `node:*` imports; `vscode` because the
+        // editor API is an ambient module declaration, not a package with its own types.
+        "types": ["node", "vscode"]
     },
     "references": [
         {
