@@ -136,7 +136,12 @@ export class JpipeImportService {
                 matches.push(file);
             }
         }
-        matches.sort();
+        // Ordered by UTF-16 code unit, stated explicitly rather than left to `sort()`'s default.
+        // It must NOT be `localeCompare`: that orders by the runtime's locale, so the same model
+        // could load its files in a different order on a different machine, and the compiler
+        // (which sorts Java strings, i.e. by code unit) would disagree with the IDE. Fidelity to
+        // it is the whole point of this module — see jpipe-vscode ADR-VSC-0007.
+        matches.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
         this.globCache.set(cacheKey, matches);
         this.logger.debug(`Glob '${filePath}' matched ${matches.length} file(s) under ${root}`);
         return matches;

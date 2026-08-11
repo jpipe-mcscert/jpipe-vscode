@@ -20,7 +20,9 @@ export function providedCodeActionKinds(): string[] {
     const kinds = new Set<string>();
     if (JPIPE_QUICK_FIXES.length > 0) kinds.add(CodeActionKind.QuickFix);
     for (const refactoring of JPIPE_REFACTORINGS) kinds.add(refactoring.actionKind);
-    return [...kinds].sort();
+    // Ordered by UTF-16 code unit. These are fixed ASCII identifiers, so the point is only that
+    // the order is stated and stable across runtimes, not locale-dependent.
+    return [...kinds].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 export class JpipeLanguageServer extends DefaultLanguageServer {
