@@ -1,6 +1,6 @@
 ## Changelog
 
-### v1.7.0 (Unreleased)
+### v1.7.0 (2026-08-10)
 - Leader: Sébastien Mosser
   - Features:
     - **The lightbulb now fixes what it reports:** Where the editor flags a problem it knows how to repair, `⌘.` offers to do it. Write the declaration a template's `@support` demands — with the right qualified id and the label it refines, which is the fiddly part — or write all of them at once. Correct an override declared with the wrong keyword, a mistyped operator, or a config key the operator does not understand. Fill in a required config key, including on a composition that has no config block yet. Wire up a conclusion or strategy that nothing supports. Point a broken `load` at the file it most likely meant, or remove it
