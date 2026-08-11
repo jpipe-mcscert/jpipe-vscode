@@ -67,5 +67,9 @@ export function releaseQuickPickItems(
  */
 export function accessMethodHeader(mode: string, installed: InstalledCompilerTag | undefined): string {
     if (mode !== 'managed') return `Access method: ${mode}`;
-    return `Access method: managed (GitHub Release${installed ? ` ${installed.tag}` : ' — none installed'})`;
+    // Lifted out rather than interpolated inline: a template literal nested inside another is
+    // hard to read at exactly the point where the reader is working out which branch produces
+    // which text.
+    const which = installed ? ` ${installed.tag}` : ' — none installed';
+    return `Access method: managed (GitHub Release${which})`;
 }
