@@ -52,8 +52,12 @@ mocked anywhere in the suite.
   the current runner. Ten modules import `vscode` or are environment entry points:
   `extension/main.ts`, `extension/logger.ts`, `extension/exclusions.ts`,
   `image-generation/{image-generator, preview-provider, release-manager, preview-shell}.ts`,
-  `language/main.ts`, `webview/preview.ts` and `webview/minimap.ts`. This is the honest cost, and
-  it is what jpipe-vscode ADR-VSC-0010 turns into a coverage-exclusion list.
+  `language/main.ts`, `webview/preview.ts` and `webview/minimap.ts`. This is the honest cost.
+- It follows that any coverage measurement introduced here must exclude those modules, or the
+  figure it reports is meaningless. The rule for that list is **uncoverable by construction, never
+  merely untested** — a module belongs on it because it cannot be loaded without a VS Code host or
+  a browser, not because covering it is inconvenient. That list will get its own record when
+  coverage is actually wired up.
 - The editor surface — decorations, menu `when`-clauses, command registration, the preview panel
   — is verified by hand in the Extension Development Host before a release. `scripts/release.sh`
   prints this as a manual checklist item precisely because CI never launches VS Code.
