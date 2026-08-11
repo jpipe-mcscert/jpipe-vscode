@@ -54,7 +54,8 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
           compiler/             ← obtaining and running the jPipe compiler (ADR-VSC-0016)
             image-generator.ts  ← calls the external jpipe CLI/JAR for SVG/PNG/JSON
             compiler-invocation.ts ← argv construction, vscode-free (tested)
-            release-manager.ts  ← downloads a compiler from GitHub Releases
+            release-manager.ts  ← settings/globalState adapter for managed installs
+            release-download.ts ← HTTPS, allowlist, download and placement, vscode-free (tested)
             release-selection.ts ← semver precedence + host allowlist, vscode-free (tested)
           preview/              ← the diagram panel (ADR-VSC-0016)
             preview-provider.ts ← webview panel lifecycle, compile orchestration
