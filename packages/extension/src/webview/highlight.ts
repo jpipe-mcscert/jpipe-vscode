@@ -56,6 +56,8 @@ export function adaptToDarkTheme(svg: SVGSVGElement): void {
         }
     }
 
+    thinClusterBackdrops(svg);
+
     svg.querySelectorAll('g.edge [stroke="black"], g.edge [fill="black"]').forEach(el => {
         if (el.getAttribute('stroke') === 'black') el.setAttribute('stroke', 'currentColor');
         if (el.getAttribute('fill') === 'black') el.setAttribute('fill', 'currentColor');
@@ -73,6 +75,51 @@ export function adaptToDarkTheme(svg: SVGSVGElement): void {
         const node = text.closest('g.node');
         if (node && isFilled(node)) return;
         text.setAttribute('fill', 'currentColor');
+    });
+
+    // An outline is black for the same reason a label is, and answers to the same rule. On a
+    // filled node the outline traces the edge of something light and reads against it, so it
+    // stays. On an unfilled one it lies directly on the editor background, which cost an
+    // `@support` everything it has: a dotted rectangle and nothing else, drawn in black on black.
+    //
+    // Only *black* is redirected. A sub-conclusion is outlined in the compiler's own blue, which
+    // it chose as a colour rather than as a default, and which reads on either ground.
+    svg.querySelectorAll('g.node').forEach(node => {
+        if (isFilled(node)) return;
+        node.querySelectorAll('[stroke="black"]').forEach(shape => {
+            shape.setAttribute('stroke', 'currentColor');
+        });
+    });
+}
+
+/**
+ * How much of a cluster's own colour survives on a dark ground. Enough to read as a tinted
+ * region, little enough that light text and arrowheads keep their contrast against it.
+ */
+const CLUSTER_WASH = 0.1;
+
+/**
+ * Turn the pale panel behind an inherited region into a wash.
+ *
+ * A model that implements a template is drawn with the inherited part inside a Graphviz cluster,
+ * which `dot` fills `lightyellow` — a colour chosen for a white page. Everything else here assumes
+ * the opposite: edges and arrowheads have just been re-pointed at the editor foreground, and the
+ * label of any unfilled node is about to be. On a dark theme all of that is light, and all of it
+ * is drawn *over* this panel, so the region ended up as light-on-pale-yellow — the sub-conclusions
+ * inside a template being the case anyone notices first, since an unfilled box is exactly what
+ * they are.
+ *
+ * Made translucent rather than repainted, so the tint stays the compiler's own colour and
+ * composites onto whatever ground the theme provides instead of a value invented here. The stroke
+ * and the cluster's caption are left alone: both read once the panel behind them is dark.
+ */
+function thinClusterBackdrops(svg: SVGSVGElement): void {
+    svg.querySelectorAll('g.cluster').forEach(cluster => {
+        cluster.querySelectorAll(FILLABLE).forEach(shape => {
+            const fill = shape.getAttribute('fill');
+            if (fill === null || fill === 'none') return;
+            shape.setAttribute('fill-opacity', String(CLUSTER_WASH));
+        });
     });
 }
 

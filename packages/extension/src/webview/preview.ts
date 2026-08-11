@@ -1,4 +1,5 @@
 import type { HostToWebview, RenderMessage, ViewMode, WebviewToHost } from '../shared/preview-protocol.js';
+import { renderFailureNotice, showsFailureNotice } from '../shared/render-failure.js';
 import { DiagnosticView, type DiagnosticViewState } from './diagnostic-view.js';
 import { adaptToDarkTheme, applyDimming, findElement, stripCaptions } from './highlight.js';
 import { Minimap } from './minimap.js';
@@ -73,7 +74,15 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 const container = document.getElementById('container') as HTMLElement;
 const wrapper = document.getElementById('svg-wrapper') as HTMLElement;
+const banners = document.getElementById('banners') as HTMLElement;
 const banner = document.getElementById('unsaved-banner') as HTMLElement;
+const bannerText = document.getElementById('unsaved-banner-text') as HTMLElement;
+const errorBanner = document.getElementById('error-banner') as HTMLElement;
+const errorBannerText = document.getElementById('error-banner-text') as HTMLElement;
+const errorBannerAction = document.getElementById('error-banner-action') as HTMLElement;
+
+/** The current failure notice, or null. Kept because it outlives the mode it is shown in. */
+let renderFailure: string | null = null;
 const diagOutput = document.getElementById('diag-output') as HTMLElement;
 const zoomValue = document.getElementById('zoom-value') as HTMLElement;
 const highlightToggle = document.getElementById('highlight-toggle') as HTMLElement;
@@ -332,10 +341,14 @@ function setMode(mode: ViewMode): void {
     modeToggle.setAttribute('aria-label', modeLabel);
     if (mode !== 'diagram') minimap.hide();
     else if (vb && content) minimap.update(vb, content, panelSize());
-    // The banner says what is stale, which depends on what is being shown.
-    banner.textContent = mode === 'diagnostic'
-        ? '⚠ Unsaved changes — diagnostic reflects last saved version'
-        : '⚠ Unsaved changes — showing last saved version';
+    // The banner says what is stale, which depends on what is being shown. Written into the text
+    // span rather than over the banner: the banner also holds the glyph that tells it apart from
+    // the failure banner, and `textContent` on the parent would take that with it.
+    bannerText.textContent = mode === 'diagnostic'
+        ? 'Unsaved changes — diagnostic reflects last saved version'
+        : 'Unsaved changes — showing last saved version';
+    // The failure banner speaks about a diagram, and there is not one in every mode.
+    applyRenderFailure();
 }
 
 /**
@@ -344,7 +357,47 @@ function setMode(mode: ViewMode): void {
  */
 function setUnsaved(value: boolean): void {
     banner.classList.toggle('visible', value);
-    document.body.classList.toggle('has-unsaved-banner', value);
+    measureBanners();
+}
+
+/**
+ * Say that the compiler failed, and offer the one place the reasons are.
+ *
+ * A render only arrives carrying an error when the compiler produced usable SVG anyway, so there
+ * is always a plausible-looking diagram underneath this — which is exactly why the tint alone was
+ * not enough. It said something had happened without saying that what was on screen could no
+ * longer be trusted.
+ */
+function setRenderFailure(error: RenderMessage['error']): void {
+    renderFailure = renderFailureNotice(error);
+    applyRenderFailure();
+}
+
+/**
+ * Show the failure banner only where it is true.
+ *
+ * Its wording is about the diagram below it, and its one control offers the diagnostic view — so
+ * in the diagnostic view it describes a layer that is not there and points at where the reader
+ * already is. The notice is kept rather than dropped, because the diagram it describes is still
+ * what comes back when the mode is switched again.
+ */
+function applyRenderFailure(): void {
+    const showing = showsFailureNotice(renderFailure, document.body.dataset.mode as ViewMode);
+    errorBannerText.textContent = renderFailure ?? '';
+    errorBanner.classList.toggle('visible', showing);
+    measureBanners();
+}
+
+/**
+ * Push the banner stack's height down to the layers.
+ *
+ * Measured rather than assumed: either banner may be up and on a narrow panel either may wrap, so
+ * a constant would be wrong in three of the cases it has to cover. Observed as well as called,
+ * since wrapping happens on a resize — no message arrives to prompt a re-measure, and a stale
+ * height leaves the layers over the banner they were supposed to clear.
+ */
+function measureBanners(): void {
+    document.body.style.setProperty('--banners-height', `${banners.offsetHeight}px`);
 }
 
 function setBusy(busy: boolean): void {
@@ -403,7 +456,7 @@ function applyRender(msg: RenderMessage): void {
     installDiagram();
 
     setMode('diagram');
-    document.body.classList.toggle('jpipe-render-error', msg.error !== null);
+    setRenderFailure(msg.error);
     setUnsaved(msg.unsaved);
     setBusy(false);
 
@@ -609,6 +662,7 @@ highlightToggle.addEventListener('click', () => {
 });
 
 modeToggle.addEventListener('click', () => vscode.postMessage({ type: 'toggleMode' }));
+errorBannerAction.addEventListener('click', () => vscode.postMessage({ type: 'toggleMode' }));
 
 document.getElementById('jpipe-link')?.addEventListener('click', event => {
     event.preventDefault();
@@ -656,6 +710,12 @@ new ResizeObserver(() => {
     if (!vb || !f || !navigable) return;
     setViewBox(viewOnResize(viewOrigin, vb, f));
 }).observe(container);
+
+/**
+ * The banner stack changes height on its own when a banner wraps, which a narrow panel makes
+ * ordinary — and nothing sends a message when that happens.
+ */
+new ResizeObserver(() => measureBanners()).observe(banners);
 
 /**
  * Follow the editor's theme while the panel stays open.

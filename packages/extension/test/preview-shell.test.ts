@@ -39,6 +39,91 @@ describe('the shell provides what the page looks up', () => {
         }
     });
 
+    /**
+     * Two banners, and either may be up — a compile failure on a file with unsaved edits raises
+     * both. The layers below are offset by the stack's *measured* height, so the stack has to be
+     * one element with both banners inside it; a banner outside it would overlap the diagram.
+     */
+    test('both banners are inside the one stack the layers are offset by', () => {
+        const stack = shell.slice(shell.indexOf('id="banners"'), shell.indexOf('class="layer"'));
+        expect(stack).toContain('id="unsaved-banner"');
+        expect(stack).toContain('id="error-banner"');
+        expect(css).toMatch(/\.layer\s*\{[^}]*top:\s*calc\(44px \+ var\(--banners-height/);
+    });
+
+    // A constant offset was right for one banner and wrong for none, both, or either wrapping on
+    // a narrow panel — so nothing may depend on a banner being a known height.
+    test('no rule assumes how tall the banners are', () => {
+        expect(css).not.toContain('has-unsaved-banner');
+    });
+
+    /**
+     * The two banners can be up together, and amber against red is the pair a red-green colour
+     * deficiency is least able to separate — so they must not be the same banner in two colours.
+     */
+    test('the banners differ by glyph, not only by hue', () => {
+        const glyphs = [...shell.matchAll(/class="banner-glyph"[^>]*>([^<]+)</g)].map(m => m[1]);
+        expect(glyphs).toHaveLength(2);
+        expect(new Set(glyphs).size, `both banners open with '${glyphs[0]}'`).toBe(2);
+    });
+
+    /**
+     * Setting a banner's text in the same colour its background is tinted with is what put every
+     * one of these under the WCAG AA threshold — the unsaved banner reached 2.4:1 on a light
+     * theme. The words take the editor's foreground; the hue stays on the background, the rule
+     * beneath and the glyph, none of which carries meaning the words do not.
+     */
+    test('banner text is set in the editor foreground, not in the hue', () => {
+        const rule = css.slice(css.indexOf('.banner {'), css.indexOf('.banner.visible'));
+        expect(rule).toContain('color: var(--vscode-editor-foreground)');
+        for (const id of ['#unsaved-banner {', '#error-banner {']) {
+            const block = css.slice(css.indexOf(id), css.indexOf('}', css.indexOf(id)));
+            expect(block, `${id} should not colour its text with its own hue`).not.toMatch(/[^-]color:/);
+        }
+    });
+
+    // A banner appearing is the whole signal; a screen reader that never hears about it is left
+    // with a diagram and no reason to doubt it.
+    test('each banner announces itself', () => {
+        const stack = shell.slice(shell.indexOf('id="banners"'), shell.indexOf('class="layer"'));
+        expect([...stack.matchAll(/role="status"/g)]).toHaveLength(2);
+        expect([...stack.matchAll(/aria-live="polite"/g)]).toHaveLength(2);
+    });
+
+    // The banner says it in words now. A wash over the whole diagram said only that *something*
+    // had happened, and cost the diagram's own readability to say it.
+    test('a failed compile no longer tints the diagram', () => {
+        expect(css).not.toContain('jpipe-render-error');
+    });
+
+    /**
+     * The unsaved banner's wording changes with the mode, and it now holds a glyph beside its
+     * text — so writing over the banner's own `textContent` would take the glyph with it and
+     * leave the two banners telling apart by colour alone, which is what they must not do.
+     */
+    test('the banner text is rewritten in its own span, not over the banner', () => {
+        expect(shell).toContain('id="unsaved-banner-text"');
+        expect(preview).toContain('bannerText.textContent');
+        expect(preview, 'assigning to the banner itself would drop its glyph')
+            .not.toMatch(/\bbanner\.textContent\s*=/);
+    });
+
+    /**
+     * The stack's height feeds the layers' offset. A banner wrapping changes that height with no
+     * message to prompt a re-measure, which a narrow panel makes an ordinary event rather than an
+     * edge case — so the stack is watched, not only written to.
+     */
+    test('the banner stack is measured again when its own size changes', () => {
+        expect(preview).toMatch(/new ResizeObserver\([\s\S]{0,80}?measureBanners[\s\S]{0,40}?\.observe\(banners\)/);
+    });
+
+    // A control reachable only by keyboard, with no visible focus, is a control a keyboard user
+    // cannot find.
+    test('the banner action gets the same focus ring as every other control', () => {
+        const rule = css.slice(0, css.indexOf('focus-visible {') + 'focus-visible {'.length);
+        expect(rule).toContain('#error-banner-action:focus-visible');
+    });
+
     test('the diagnostic layer carries both of its faces', () => {
         // The structured view and the raw text live in the same layer; losing either turns one
         // of the two supported outcomes into a blank panel.
@@ -60,7 +145,8 @@ describe('toolbar order', () => {
      * switch is not last it moves under the user as they use it.
      */
     test('the mode switch is the last control on the right', () => {
-        const toolbar = shell.slice(shell.indexOf('id="toolbar-right"'), shell.indexOf('unsaved-banner'));
+        // Bounded by the banner stack, which is the first thing after the toolbar.
+        const toolbar = shell.slice(shell.indexOf('id="toolbar-right"'), shell.indexOf('id="banners"'));
         const buttons = [...toolbar.matchAll(/id="([a-z-]+)"/g)].map(m => m[1]);
         expect(buttons.at(-1)).toBe('mode-toggle');
     });

@@ -145,6 +145,7 @@ body:not([data-mode="diagram"]) .diagram-only { display: none; }
 #brand a:focus-visible,
 #container:focus-visible,
 #diag-output:focus-visible,
+#error-banner-action:focus-visible,
 #download-drawer button:focus-visible {
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: -1px;
@@ -185,33 +186,84 @@ body:not([data-mode="diagram"]) .diagram-only { display: none; }
 
 /* ----------------------------------------------------------------- banner */
 
-#unsaved-banner {
+#banners {
     position: fixed;
     top: 44px;
     left: 0;
     right: 0;
     z-index: 999;
-    padding: 5px 12px;
-    font-size: 12px;
-    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 15%, var(--vscode-editorWidget-background));
-    border-bottom: 1px solid var(--vscode-editorWarning-foreground);
-    color: var(--vscode-editorWarning-foreground);
-    display: none;
 }
 
-#unsaved-banner.visible { display: block; }
+/*
+ * A banner says which kind of problem it is three times over: in its words, in the glyph opening
+ * it, and in its hue. Only the first two survive a reader who cannot separate amber from red, so
+ * the two banners carry *different shapes* rather than the same shape in two colours.
+ *
+ * The words are set in the editor's own foreground rather than in the hue. Colouring text with
+ * the same colour its background is tinted with is what put every one of these banners under the
+ * WCAG AA threshold — the unsaved one reached 2.4:1 on a light theme. Against the editor
+ * foreground the worst case across the shipped themes is 7.3:1. The hue stays on the background,
+ * the rule beneath and the glyph, where it reinforces a meaning the words already carry.
+ */
+.banner {
+    display: none;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: var(--vscode-editor-foreground);
+}
+
+.banner.visible { display: flex; }
+
+.banner-glyph {
+    flex-shrink: 0;
+    font-size: 14px;
+    line-height: 1;
+}
+
+#unsaved-banner {
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 15%, var(--vscode-editorWidget-background));
+    border-bottom: 1px solid var(--vscode-editorWarning-foreground);
+}
+
+#unsaved-banner .banner-glyph { color: var(--vscode-editorWarning-foreground); }
+
+/*
+ * The reasons are in the diagnostic view, and a banner that names it without going there leaves
+ * the reader to find the toggle in a toolbar they were not looking at.
+ */
+#error-banner {
+    background: color-mix(in srgb, var(--vscode-editorError-foreground) 15%, var(--vscode-editorWidget-background));
+    border-bottom: 1px solid var(--vscode-editorError-foreground);
+}
+
+#error-banner .banner-glyph { color: var(--vscode-editorError-foreground); }
+
+#error-banner-action {
+    flex-shrink: 0;
+    margin-left: auto;
+    border: 1px solid var(--vscode-editorError-foreground);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+
+#error-banner-action:hover { background: var(--vscode-toolbar-hoverBackground); }
 
 /* ------------------------------------------------------------ the layers */
 
 .layer {
     position: fixed;
-    top: 44px;
+    top: calc(44px + var(--banners-height, 0px));
     left: 0;
     right: 0;
     bottom: 0;
 }
-
-body.has-unsaved-banner .layer { top: 72px; }
 
 body[data-mode="diagram"] #container,
 body[data-mode="empty"] #empty-overlay { display: block; }
@@ -237,10 +289,6 @@ body[data-mode="diagnostic"] #diagnostic-overlay { display: flex; }
     overflow: hidden;
     touch-action: none;
     user-select: none;
-}
-
-body.jpipe-render-error #container {
-    background: color-mix(in srgb, var(--vscode-errorForeground) 18%, var(--vscode-editor-background));
 }
 
 #container.pannable { cursor: grab; }

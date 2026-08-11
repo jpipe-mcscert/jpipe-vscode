@@ -85,7 +85,26 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
             </div>
         </div>
     </div>
-    <div id="unsaved-banner">⚠ Unsaved changes — showing last saved version</div>
+    <!--
+        Both banners live in one stack so the layers below can be offset by its measured height:
+        either can be up, and when the compiler fails on a file with unsaved edits both are.
+    -->
+    <div id="banners">
+        <!--
+            Each banner opens with its own glyph, and they are different *shapes* rather than one
+            shape in two colours: amber and red are the pair a red-green colour deficiency is
+            least able to separate, and these two banners can be on screen together.
+        -->
+        <div class="banner" id="unsaved-banner" role="status" aria-live="polite">
+            <span class="banner-glyph" aria-hidden="true">⚠</span>
+            <span id="unsaved-banner-text">Unsaved changes — showing last saved version</span>
+        </div>
+        <div class="banner" id="error-banner" role="status" aria-live="polite">
+            <span class="banner-glyph" aria-hidden="true">✖</span>
+            <span id="error-banner-text"></span>
+            <button id="error-banner-action" type="button">Open the diagnostic view</button>
+        </div>
+    </div>
     <div class="layer" id="container" tabindex="0" role="application" aria-label="Diagram canvas. Arrow keys pan, plus and minus zoom, 0 fits to window, 1 shows actual size">
         <div id="svg-wrapper"></div>
     </div>
