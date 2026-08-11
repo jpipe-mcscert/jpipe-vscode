@@ -8,10 +8,15 @@ import { describe, expect, test } from 'vitest';
  * Every `docs/adr/…` path written anywhere in the repository points at a file that exists.
  *
  * ADR filenames carry their title (`vsc-0013-dependency-freshness-policy.md`), which makes them
- * long enough that writing `docs/adr/vsc-0013` and moving on is the natural mistake. It has been
+ * long enough that writing just the number and moving on is the natural mistake. It has been
  * made three times, in three different files, and caught by a reviewer each time — a pointer
  * that does not resolve is exactly the kind of documentation defect that sends the next reader
  * (or the next agent) looking for something that is not there.
+ *
+ * Note for anyone editing this file: it is scanned by its own assertion, so it must never spell
+ * out a truncated path as an example. The first version of this comment did, and the test failed
+ * on itself — but only once it was committed, because `git ls-files` does not list an untracked
+ * file, so the check had not been scanning itself while it was being written.
  *
  * This lives in the extension's suite for want of a better home: the concern is repository-wide,
  * but this is the package whose tests already read files from disk, and it needs to run on every
