@@ -78,3 +78,18 @@ Neither changes which files a well-formed pattern in a real project resolves to.
   matches as clickable links instead.
 - The matcher is domain-free and currently lives in the language package. That placement is
   incidental rather than decided.
+
+## Amendment (2026-08-11): the complexity warnings on this file are expected
+
+SonarCloud reports cognitive complexity above threshold on `parseCharacterClass` (30) and
+`globToRegExp` (27) — the two highest in the language package.
+
+They stay. This record makes agreement with OpenJDK's `Globs.toUnixRegexPattern` the requirement,
+and the shape of that algorithm is the shape of the port. **Refactoring these for a complexity
+score would trade the one property they must have**, and would do it in the module where a
+divergence is hardest to notice, since the symptom is a model loading different files in the IDE
+than in the compiler.
+
+Excluded from the complexity remediation in jpipe-vscode ADR-VSC-0017's finding. If the warnings
+are unwanted they should be suppressed with this reason attached, not designed away.
+

@@ -2,19 +2,15 @@ import type { LanguageClientOptions, ServerOptions } from 'vscode-languageclient
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vscode-languageclient/node';
-import { ImageGenerator, ImageFormat } from './compiler/image-generator.js';
+import { ImageGenerator } from './compiler/image-generator.js';
 import { PreviewProvider } from './preview/preview-provider.js';
-import { ReleaseManager, type JpipeRelease } from './compiler/release-manager.js';
+import { ReleaseManager } from './compiler/release-manager.js';
+import { installFromRelease } from './compiler/managed-install.js';
 import { ExclusionManager, ExclusionDecorationProvider, ExclusionCodeLensProvider } from './exclusions.js';
+import { registerCommands } from './commands.js';
 import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 import { displayMessageOf, messageOf } from '../shared/errors.js';
 import { JpipeLogger } from './logger.js';
-import {
-    CONVERT_MODEL_KIND,
-    EXTRACT_TEMPLATE_KIND,
-    ORGANIZE_LOADS_KIND, AUTO_INDENT_KIND,
-    SORT_ELEMENTS_KIND
-} from 'jpipe-language';
 
 let client: LanguageClient;
 
@@ -95,199 +91,10 @@ export function activate(context: vscode.ExtensionContext): void {
     const imageGenerator = new ImageGenerator(logger, releaseManager);
     const previewProvider = new PreviewProvider(imageGenerator, client, context, logger);
 
-    /**
-     * Interactive flow: pick a release from GitHub, download its jar into hidden global
-     * storage, record it, and switch the extension into `managed` execution mode.
-     * `preselectTag` (from the update prompt) auto-selects that release when present.
-     */
-    async function installFromRelease(preselectTag?: string): Promise<void> {
-        let releases: JpipeRelease[];
-        try {
-            releases = await vscode.window.withProgress(
-                { location: vscode.ProgressLocation.Notification, title: 'jPipe: fetching available releases…' },
-                () => releaseManager.listReleases()
-            );
-        } catch (err: unknown) {
-            vscode.window.showErrorMessage(`jPipe: could not list releases. ${messageOf(err)}`);
-            return;
-        }
-        if (releases.length === 0) {
-            vscode.window.showWarningMessage('jPipe: no compatible releases (v2.0.0+) were found.');
-            return;
-        }
-
-        const installed = releaseManager.getInstalled();
-        let chosen = preselectTag ? releases.find(r => r.tag === preselectTag) : undefined;
-        if (!chosen) {
-            const picked = await vscode.window.showQuickPick(
-                releases.map((r, i) => ({
-                    label: r.tag,
-                    description: [
-                        formatReleaseDate(r.publishedAt),
-                        i === 0 ? '$(star-full) latest' : '',
-                        r.tag === installed?.tag ? '$(check) installed' : '',
-                    ].filter(Boolean).join('  ·  '),
-                    detail: r.name,
-                    release: r,
-                })),
-                { title: 'Select a jPipe compiler release to install', placeHolder: 'Downloaded and run internally — no manual path needed' }
-            );
-            if (!picked) return;
-            chosen = picked.release;
-        }
-
-        try {
-            const jarPath = await vscode.window.withProgress(
-                { location: vscode.ProgressLocation.Notification, title: `jPipe: downloading ${chosen.tag}…`, cancellable: false },
-                (progress) => {
-                    let last = 0;
-                    return releaseManager.download(chosen!, (fraction) => {
-                        const pct = Math.round(fraction * 100);
-                        progress.report({ increment: pct - last, message: `${pct}%` });
-                        last = pct;
-                    });
-                }
-            );
-            await releaseManager.setInstalled(chosen.tag, jarPath);
-            await vscode.workspace.getConfiguration('jpipe').update('executionMode', 'managed', vscode.ConfigurationTarget.Global);
-            vscode.window.showInformationMessage(`jPipe ${chosen.tag} installed and activated (managed mode).`);
-            logger.info(`Managed jPipe compiler set to ${chosen.tag} at ${jarPath}`);
-        } catch (err: unknown) {
-            vscode.window.showErrorMessage(`jPipe: download failed. ${messageOf(err)}`);
-        }
-    }
-
     // Opportunistic, throttled "newer version available" check (managed mode only).
-    void releaseManager.maybeNotifyUpdate(installFromRelease);
+    void releaseManager.maybeNotifyUpdate(tag => installFromRelease({ releaseManager, logger }, tag));
 
-    /**
-     * The resource a context-menu command acts on. The Explorer always passes it explicitly;
-     * from the editor menu we fall back to the open `.jd` document.
-     */
-    function resolveExclusionTarget(uri?: vscode.Uri): vscode.Uri | undefined {
-        if (uri) return uri;
-        const active = vscode.window.activeTextEditor?.document;
-        return active?.languageId === 'jpipe' ? active.uri : undefined;
-    }
-
-    /** Exclude a folder or `.jd` file from validation, reporting the two ways this can fail. */
-    async function excludeResource(uri?: vscode.Uri): Promise<void> {
-        const target = resolveExclusionTarget(uri);
-        if (!target) return;
-        const label = vscode.workspace.asRelativePath(target, false);
-        if (!await exclusions.addPath(target)) {
-            vscode.window.showWarningMessage('The selection must be inside the workspace.');
-            return;
-        }
-        // A bare relative entry can only be resolved against a single root; in a multi-root
-        // workspace the entry is stored as `rootName:path`, which needs that root to be present.
-        if (!exclusions.isExcludedRoot(target)) {
-            vscode.window.showWarningMessage(`jPipe could not resolve ${label} against a workspace folder.`);
-            return;
-        }
-        vscode.window.showInformationMessage(`jPipe no longer validates ${label}.`);
-    }
-
-    async function resolveExportContext(): Promise<{ doc: vscode.TextDocument | undefined; diagramName: string | undefined }> {
-        const active = vscode.window.activeTextEditor?.document;
-        if (active?.languageId === 'jpipe') return { doc: active, diagramName: undefined };
-        const lastUri = previewProvider.getLastRenderedDocumentUri();
-        const lastDiagramName = previewProvider.getLastRenderedDiagramName();
-        if (lastUri) {
-            try {
-                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(lastUri));
-                return { doc, diagramName: lastDiagramName };
-            } catch { /* fall through */ }
-        }
-        return { doc: undefined, diagramName: undefined };
-    }
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('jpipe.downloadPNG',    async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.PNG,    doc, diagramName); }),
-        vscode.commands.registerCommand('jpipe.downloadSVG',    async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.SVG,    doc, diagramName); }),
-        vscode.commands.registerCommand('jpipe.downloadJSON',   async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.JSON,   doc, diagramName); }),
-        vscode.commands.registerCommand('jpipe.downloadJPEG',   async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.JPEG,   doc, diagramName); }),
-        vscode.commands.registerCommand('jpipe.downloadDOT',    async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.DOT,    doc, diagramName); }),
-        vscode.commands.registerCommand('jpipe.downloadPython', async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.PYTHON, doc, diagramName); }),
-        vscode.commands.registerCommand('jpipe.downloadJPIPE',  async () => { const { doc, diagramName } = await resolveExportContext(); imageGenerator.generateAndSave(ImageFormat.JPIPE,  doc, diagramName); }),
-        vscode.commands.registerCommand('jpipe.vis.preview', () => previewProvider.openPreview()),
-        vscode.commands.registerCommand('jpipe.addExcludedDirectory', async () => {
-            const uris = await vscode.window.showOpenDialog({
-                canSelectFolders: true,
-                canSelectFiles: false,
-                canSelectMany: false,
-                openLabel: 'Exclude from Validation'
-            });
-            if (!uris || uris.length === 0) return;
-            await excludeResource(uris[0]);
-        }),
-        vscode.commands.registerCommand('jpipe.excludeResource', (uri?: vscode.Uri) => excludeResource(uri)),
-        // Source Action… is where this belongs and where it now appears; the command is the
-        // palette shortcut to it, the way other languages offer one for organizing imports.
-        ...[
-            ['jpipe.organizeLoads', ORGANIZE_LOADS_KIND],
-            ['jpipe.autoIndent', AUTO_INDENT_KIND]
-        ].map(([command, kind]) =>
-            vscode.commands.registerCommand(command, async () => {
-                await vscode.commands.executeCommand('editor.action.sourceAction', { kind, apply: 'first' });
-            })),
-        // The refactorings are already in the lightbulb and under Refactor…, but both ask you to
-        // know they are there. A named command is the one route that answers "what can jPipe do
-        // here?" without a shortcut, so each gets one.
-        ...[
-            ['jpipe.convertModelKind', CONVERT_MODEL_KIND],
-            ['jpipe.sortElements', SORT_ELEMENTS_KIND],
-            ['jpipe.extractTemplate', EXTRACT_TEMPLATE_KIND]
-        ].map(([command, kind]) =>
-            vscode.commands.registerCommand(command, async () => {
-                await vscode.commands.executeCommand('editor.action.refactor', { kind, apply: 'first' });
-            })),
-        vscode.commands.registerCommand('jpipe.includeResource', async (uri?: vscode.Uri) => {
-            const target = resolveExclusionTarget(uri);
-            if (!target) return;
-            if (await exclusions.removeResolved(target)) {
-                vscode.window.showInformationMessage(`jPipe now validates ${vscode.workspace.asRelativePath(target, false)}.`);
-            }
-        }),
-        vscode.commands.registerCommand('jpipe.removeExcludedPath', async () => {
-            const entries = exclusions.getEntries();
-            if (entries.length === 0) {
-                vscode.window.showInformationMessage('jPipe: nothing is excluded from validation.');
-                return;
-            }
-            const picked = await vscode.window.showQuickPick(entries, {
-                title: 'Remove a path from the jPipe validation exclusions',
-                placeHolder: 'Its .jd files will be validated again'
-            });
-            if (picked) await exclusions.removeEntry(picked);
-        }),
-        vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
-            const { ok, message } = await imageGenerator.check();
-            const mode = vscode.workspace.getConfiguration('jpipe').get<string>('executionMode', 'cli');
-            const installed = releaseManager.getInstalled();
-            let header: string;
-            if (mode === 'managed') {
-                header = `Access method: managed (GitHub Release${installed ? ` ${installed.tag}` : ' — none installed'})`;
-            } else if (mode === 'jar') {
-                header = 'Access method: jar';
-            } else {
-                header = 'Access method: cli';
-            }
-            const detail = `${header}\n\n${message}`;
-            if (ok) {
-                vscode.window.showInformationMessage('jPipe is accessible.', { modal: true, detail });
-            } else {
-                vscode.window.showErrorMessage('Cannot access jPipe.', { modal: true, detail });
-            }
-        }),
-        vscode.commands.registerCommand('jpipe.installFromRelease', () => installFromRelease()),
-        vscode.commands.registerCommand('jpipe.export', async () => {
-            const configured = vscode.workspace.getConfiguration('jpipe').get<string>('defaultExportFormat', 'SVG');
-            const format = (ImageFormat as Record<string, ImageFormat>)[configured] ?? ImageFormat.SVG;
-            const { doc, diagramName } = await resolveExportContext();
-            imageGenerator.generateAndSave(format, doc, diagramName);
-        })
-    );
+    registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager });
 }
 
 // This function is called when the extension is deactivated.
@@ -298,13 +105,6 @@ export function deactivate(): Thenable<void> | undefined {
     return undefined;
 }
 
-/** Format a release's ISO `published_at` as a short local date (e.g. "Jul 16, 2026"). */
-function formatReleaseDate(iso: string): string {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
 
 function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogger, exclusions: ExclusionManager): LanguageClient {
     const serverModule = context.asAbsolutePath(path.join('out', 'language', 'main.cjs'));

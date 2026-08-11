@@ -48,7 +48,9 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
       esbuild.mjs               ← two bundles: CJS host + IIFE webview (ADR-VSC-0005)
       src/
         extension/              ← extension host. The only place `vscode` may be imported.
-          main.ts               ← activate/deactivate, registers the 20 commands
+          main.ts               ← activate/deactivate: constructs and wires, nothing else
+          commands.ts           ← the 20 contributed commands, as a table (ADR-VSC-0017)
+          exclusion-commands.ts ← the exclusion flows and their failure messages
           exclusions.ts         ← excluded-path manager, decorations, code lenses
           process-launcher.ts   ← Windows command resolution + cmd.exe escaping (tested)
           compiler/             ← obtaining and running the jPipe compiler (ADR-VSC-0016)
