@@ -6,9 +6,15 @@
 ## Context
 
 `src/extension/image-generation/` had grown to seven modules and 1,884 lines. Three of them
-generated no image: `release-manager.ts` downloads a compiler from GitHub Releases and verifies
-its checksum, `preview-provider.ts` owns the webview panel's lifecycle, `preview-shell.ts` is the
+generated no image: `release-manager.ts` downloads a compiler from GitHub Releases and checks
+the payload, `preview-provider.ts` owns the webview panel's lifecycle, `preview-shell.ts` is the
 panel's HTML.
+
+(`release-manager.ts` checks the download's byte size against the size GitHub reports, and
+computes a SHA-256 that it records in the log. It does not compare that digest against an
+expected value — there is no published one to compare it to — so the integrity check here is a
+size check, and the transport's authenticity rests on HTTPS plus the host allowlist in
+`release-selection.ts`.)
 
 The architecture audit did not settle this by reading the names. It built the import graph with
 the TypeScript compiler and found two chains that barely touch:
