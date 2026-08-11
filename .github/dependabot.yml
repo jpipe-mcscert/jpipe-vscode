@@ -32,7 +32,8 @@ updates:
         exclude-patterns:
           - "@types/*"
     ignore:
-      # Pinned deliberately, not accidentally — see docs/adr/vsc-0013.
+      # Pinned deliberately, not accidentally — see
+      # docs/adr/vsc-0013-dependency-freshness-policy.md.
       #
       # `@types/vscode` states the *minimum* VS Code API this extension is built against, and
       # `engines.vscode` must not exceed it. Raising it drops support for older editors, which is
@@ -68,7 +69,8 @@ updates:
           - "*"
 
   # -------------------------------------------------------- github-actions
-  # Actions are pinned by major tag (docs/adr/vsc-0011). Dependabot therefore proposes tag moves
+  # Actions are pinned by major tag
+  # (docs/adr/vsc-0011-github-actions-pinning-policy.md). Dependabot therefore proposes tag moves
   # such as `@v5` → `@v6`, which are the ones worth a human look. It is also what would maintain
   # commit SHAs if this repository ever adopts them — see the amendment on ADR-VSC-0011.
 

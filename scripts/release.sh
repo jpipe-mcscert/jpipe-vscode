@@ -424,7 +424,7 @@ cmd_prepare() {
   # Only now that all four agree can the lockfile be reconciled.
   #
   # `install`, and it must stay `install`, even though CI now uses `npm ci` everywhere
-  # (docs/adr/vsc-0013). The two commands do opposite things: `ci` installs what the lockfile
+  # (docs/adr/vsc-0013-dependency-freshness-policy.md). The two commands do opposite things: `ci` installs what the lockfile
   # already says and fails if the manifests disagree with it, which is exactly the state three
   # lines above leave us in. Reconciling that is this line's whole job.
   run npm install --silent
