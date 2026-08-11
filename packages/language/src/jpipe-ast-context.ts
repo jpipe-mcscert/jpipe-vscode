@@ -44,18 +44,3 @@ export function nodeForDiagnostic(document: LangiumDocument, diagnostic: Diagnos
     return CstUtils.findLeafNodeAtOffset(root, offset)?.astNode;
 }
 
-/** Returns the innermost node of the given kind covering `offset`, if any. */
-export function nodeAtOffset<T extends AstNode>(
-    document: LangiumDocument,
-    offset: number,
-    is: (node: unknown) => node is T
-): T | undefined {
-    const root = document.parseResult.value.$cstNode;
-    if (!root) return undefined;
-    let current: AstNode | undefined = CstUtils.findLeafNodeAtOffset(root, offset)?.astNode;
-    while (current) {
-        if (is(current)) return current;
-        current = current.$container;
-    }
-    return undefined;
-}
