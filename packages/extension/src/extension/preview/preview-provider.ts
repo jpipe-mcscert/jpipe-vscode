@@ -4,6 +4,8 @@ import { ImageGenerator, ImageFormat, type DiagnosticRun } from '../compiler/ima
 import { getShellHtml } from './preview-shell.js';
 import { responseToCursorMove } from './preview-refresh.js';
 import { panelExportTarget } from './export-target.js';
+import { symbolAtPosition, type DocumentSymbol } from './document-symbols.js';
+import { dispositionOf, type ResultDisposition } from './staleness.js';
 import type {
     DiagnosticMessage,
     HostToWebview,
@@ -12,12 +14,6 @@ import type {
 } from '../../shared/preview-protocol.js';
 import type { JpipeLogger } from '../logger.js';
 import { asProcessFailure, displayMessageOf, messageOf } from '../../shared/errors.js';
-
-interface DocumentSymbol {
-    name: string;
-    range: { start: { line: number; character: number }; end: { line: number; character: number } };
-    children?: DocumentSymbol[];
-}
 
 export class PreviewProvider {
     private static webviewPanel: vscode.WebviewPanel | undefined;
@@ -342,44 +338,115 @@ export class PreviewProvider {
         this.post({ type: 'config', zoomSensitivity: clamped });
     }
 
-    private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
-        if (!PreviewProvider.webviewPanel) return;
+    /**
+     * Give the page back whatever it was showing, in answer to `ready`.
+     *
+     * A webview reloads its content whenever it is hidden and shown again, so this runs far more
+     * often than the panel is opened — and replaying costs nothing, where recompiling would cost
+     * a compiler run. Sending the diagram unconditionally, as this once did, meant a reload while
+     * reading the diagnostics silently switched the panel back to the diagram.
+     */
+    private replayCurrentView(panel: vscode.WebviewPanel): void {
+        this.postConfig();
+        if (this.viewMode === 'diagnostic' && this.lastDiagnostic) {
+            panel.webview.postMessage(this.lastDiagnostic);
+        } else if (this.lastRender) {
+            panel.webview.postMessage(this.lastRender);
+        } else {
+            panel.webview.postMessage({ type: 'view', mode: 'empty' } satisfies HostToWebview);
+        }
+    }
 
-        // Diagnostic mode bypasses diagram-name resolution
-        if (this.viewMode === 'diagnostic') {
-            const revision = ++this.revision;
-            this.post({ type: 'busy', busy: true });
-            let run: DiagnosticRun;
-            try {
-                run = await this.imageGenerator.generateDiagnostic(document);
-            } catch (error) {
-                const msg = messageOf(error);
-                this.logger.error(`Diagnostic failed in ${document.fileName}: ${msg}`);
-                run = { raw: `Failed to run diagnostic:\n\n${msg}`, report: null, exitCode: undefined };
-            }
-            if (this.viewMode !== 'diagnostic') return;
-            // Same guard the render path uses: a slow run landing after a faster one would
-            // otherwise replace newer content with older.
-            if (this.lastDiagnostic && revision < this.lastDiagnostic.revision) {
-                this.logger.debug(`Dropping stale diagnostic ${revision} (panel is showing ${this.lastDiagnostic.revision})`);
-                return;
-            }
-            const message: DiagnosticMessage = {
-                type: 'diagnostic',
-                revision,
-                raw: run.raw,
-                report: run.report,
-                unsaved: this.unsaved
-            };
-            this.lastDiagnostic = message;
-            // Recorded here as well as on the diagram path: the panel has to know which file it
-            // is showing a report for, or moving to another one looks like a report that has not
-            // changed.
-            this.lastRenderedDocumentUri = document.uri.toString();
-            this.post(message);
+    /**
+     * Switch between the diagram and the diagnostic report.
+     *
+     * The document is resolved *before* `viewMode` flips, so the panel can never land in a mode
+     * it has nothing to render in — which leaves the toggle looking frozen.
+     */
+    private async toggleViewMode(): Promise<void> {
+        const resolved = await this.resolveActiveJpipeDocument();
+        if (!resolved) {
+            this.logger.warn('Diagnostic toggle ignored: no jPipe document available to render');
             return;
         }
+        this.viewMode = this.viewMode === 'diagram' ? 'diagnostic' : 'diagram';
+        await this.updatePreview(resolved.document, resolved.editor);
+    }
 
+    /**
+     * Refresh whichever view the panel is showing.
+     *
+     * The two modes share the panel, the revision counter and nothing else — note that the
+     * diagnostic path has no use for `editor`, which is the clearest sign they are two jobs. So
+     * this dispatches and the halves stand alone.
+     */
+    private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
+        if (!PreviewProvider.webviewPanel) return;
+        if (this.viewMode === 'diagnostic') {
+            await this.updateDiagnostic(document);
+            return;
+        }
+        await this.updateDiagram(document, editor);
+    }
+
+    /** Run the compiler's diagnostic and hand the report to the page. */
+    private async updateDiagnostic(document: vscode.TextDocument): Promise<void> {
+        const revision = ++this.revision;
+        this.post({ type: 'busy', busy: true });
+        let run: DiagnosticRun;
+        try {
+            run = await this.imageGenerator.generateDiagnostic(document);
+        } catch (error) {
+            // A failure to *run* the diagnostic is itself the report: the panel shows the reason
+            // rather than going blank, so this is not an early return.
+            const msg = messageOf(error);
+            this.logger.error(`Diagnostic failed in ${document.fileName}: ${msg}`);
+            run = { raw: `Failed to run diagnostic:\n\n${msg}`, report: null, exitCode: undefined };
+        }
+
+        const disposition = dispositionOf({
+            startedIn: 'diagnostic',
+            currentMode: this.viewMode,
+            revision,
+            shownRevision: this.lastDiagnostic?.revision
+        });
+        if (disposition === 'superseded') {
+            this.logger.debug(`Dropping stale diagnostic ${revision} (panel is showing ${this.lastDiagnostic?.revision})`);
+        }
+        if (disposition !== 'deliver') return;
+
+        const message: DiagnosticMessage = {
+            type: 'diagnostic',
+            revision,
+            raw: run.raw,
+            report: run.report,
+            unsaved: this.unsaved
+        };
+        this.lastDiagnostic = message;
+        // Recorded here as well as on the diagram path: the panel has to know which file it
+        // is showing a report for, or moving to another one looks like a report that has not
+        // changed.
+        this.lastRenderedDocumentUri = document.uri.toString();
+        this.post(message);
+    }
+
+    /**
+     * The staleness question the diagram path asks after each of its two awaits.
+     *
+     * Asked twice rather than once because there are two awaits: the compile, then the symbol
+     * lookup for the highlight. The user has time to toggle or save during either.
+     */
+    private diagramDisposition(revision: number): ResultDisposition {
+        return dispositionOf({
+            startedIn: 'diagram',
+            currentMode: this.viewMode,
+            revision,
+            shownRevision: this.lastRender?.revision
+        });
+    }
+
+    /** Compile the diagram under the cursor to SVG and hand it to the page. */
+    private async updateDiagram(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         // Resolve diagram name using the caller's editor (correct cursor context).
         // If the cursor is outside any diagram block, bail out silently so the
         // current preview stays visible and no error notification is shown.
@@ -402,20 +469,20 @@ export class PreviewProvider {
             // it from activeTextEditor (which may have a different cursor position).
             const stdout = await this.imageGenerator.generate(false, ImageFormat.SVG, document, diagramName);
             this.logger.debug(`Preview updated: '${diagramName}' in ${document.fileName}`);
-            // The user may have switched to the diagnostic view while the compiler ran; a render
-            // sent now would yank them back to the diagram. Mirrors the same check the
-            // diagnostic branch makes above.
-            if (this.viewMode !== 'diagram') return;
-            this.sendRender(revision, this.extractSvgFromOutput(stdout), document, editor, diagramName, null);
+            // Checked here as well as inside sendRender, which asks again after its own await.
+            // This one is the cheap short-circuit: a result already known to be unwanted should
+            // not cost an LSP round trip for a highlight nobody will see.
+            if (this.diagramDisposition(revision) !== 'deliver') return;
+            await this.sendRender(revision, this.extractSvgFromOutput(stdout), document, editor, diagramName, null);
         } catch (error: unknown) {
             const { stdout = '', exitCode } = asProcessFailure(error);
             this.logRenderError(document.fileName, exitCode, error);
             this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
 
-            if (this.viewMode !== 'diagram') return;
+            if (this.diagramDisposition(revision) !== 'deliver') return;
             const svgFromError = this.extractSvgFromOutput(stdout);
             if (svgFromError.includes('<svg')) {
-                this.sendRender(revision, svgFromError, document, editor, diagramName, { exitCode });
+                await this.sendRender(revision, svgFromError, document, editor, diagramName, { exitCode });
             } else {
                 // Leave the last good diagram up rather than replacing it with an error screen.
                 // With a persistent document that costs nothing: not sending is already the
@@ -440,14 +507,20 @@ export class PreviewProvider {
         let highlight = await this.getSymbolNameAtCursor(document, editor);
         if (highlight === diagramName) highlight = null;
 
-        // The page drops out-of-order renders by revision, but the host has to as well.
-        // Otherwise a slow first compile landing after a fast second one would leave the panel
-        // showing the newer diagram while `lastRender` and the export target regressed to the
-        // older one — so a reload, or a download, would quietly act on the wrong diagram.
-        if (this.lastRender && revision < this.lastRender.revision) {
-            this.logger.debug(`Dropping stale render ${revision} (panel is showing ${this.lastRender.revision})`);
-            return;
+        // Asked again after the symbol lookup above, which is the second place the user has time
+        // to act. The page drops out-of-order renders by revision, but the host has to as well:
+        // a slow first compile landing after a fast second one would leave the panel showing the
+        // newer diagram while `lastRender` and the export target regressed to the older one — so
+        // a reload, or a download, would quietly act on the wrong diagram.
+        //
+        // The mode half of this check is new. Previously only the revision was tested here, so a
+        // toggle to the diagnostic view *during* the symbol lookup let the render through and
+        // pulled the user back to the diagram.
+        const disposition = this.diagramDisposition(revision);
+        if (disposition === 'superseded') {
+            this.logger.debug(`Dropping stale render ${revision} (panel is showing ${this.lastRender?.revision})`);
         }
+        if (disposition !== 'deliver') return;
 
         const message: RenderMessage = {
             type: 'render',
@@ -507,40 +580,13 @@ export class PreviewProvider {
                 { textDocument: { uri: document.uri.toString() } }
             );
             if (!symbols || !Array.isArray(symbols)) return null;
-            const found = this.findSymbolAtPosition(symbols, position.line, position.character);
+            const found = symbolAtPosition(symbols, position.line, position.character);
             return found?.name ?? null;
         } catch {
             return null;
         }
     }
-    
-    private findSymbolAtPosition(symbols: DocumentSymbol[], line: number, character: number): DocumentSymbol | null {
-        let best: DocumentSymbol | null = null;
-        for (const sym of symbols) {
-            if (!this.rangeContains(sym.range, line, character)) continue;
-            const child = sym.children?.length
-                ? this.findSymbolAtPosition(sym.children, line, character)
-                : null;
-            const chosen = child ?? sym;
-            if (!best || this.rangeSmaller(chosen.range, best.range)) best = chosen;
-        }
-        return best;
-    }
-    
-    private rangeContains(range: DocumentSymbol['range'], line: number, character: number): boolean {
-        const { start, end } = range;
-        if (line < start.line || line > end.line) return false;
-        if (line === start.line && character < start.character) return false;
-        if (line === end.line && character > end.character) return false;
-        return true;
-    }
-    
-    private rangeSmaller(a: DocumentSymbol['range'], b: DocumentSymbol['range']): boolean {
-        const spanA = (a.end.line - a.start.line) * 10000 + (a.end.character - a.start.character);
-        const spanB = (b.end.line - b.start.line) * 10000 + (b.end.character - b.start.character);
-        return spanA < spanB;
-    }
-    
+
     private createWebviewPanel(): vscode.WebviewPanel {
         const panel = vscode.window.createWebviewPanel(
             'jpipe.preview',
@@ -577,19 +623,7 @@ export class PreviewProvider {
         
         panel.webview.onDidReceiveMessage((msg: WebviewToHost) => {
             if (msg.type === 'ready') {
-                // The page is listening. Give it back whatever it was showing, so a webview
-                // content reload does not cost a recompile — or a blank panel.
-                this.postConfig();
-                // Replay whichever view was in front. Sending the diagram unconditionally, as
-                // this used to, meant a reload while reading the diagnostics silently switched
-                // the panel back to the diagram.
-                if (this.viewMode === 'diagnostic' && this.lastDiagnostic) {
-                    panel.webview.postMessage(this.lastDiagnostic);
-                } else if (this.lastRender) {
-                    panel.webview.postMessage(this.lastRender);
-                } else {
-                    panel.webview.postMessage({ type: 'view', mode: 'empty' } satisfies HostToWebview);
-                }
+                this.replayCurrentView(panel);
             }
             if (msg.type === 'download' && msg.format) {
                 const fmt = (ImageFormat as Record<string, ImageFormat>)[msg.format];
@@ -611,16 +645,7 @@ export class PreviewProvider {
                 void this.sendTextReport();
             }
             if (msg.type === 'toggleMode') {
-                // Resolve a document BEFORE flipping viewMode so we never end up in a
-                // mode we can't render (which leaves the toggle looking frozen).
-                this.resolveActiveJpipeDocument().then(resolved => {
-                    if (!resolved) {
-                        this.logger.warn('Diagnostic toggle ignored: no jPipe document available to render');
-                        return;
-                    }
-                    this.viewMode = this.viewMode === 'diagram' ? 'diagnostic' : 'diagram';
-                    this.updatePreview(resolved.document, resolved.editor);
-                });
+                void this.toggleViewMode();
             }
         });
         
