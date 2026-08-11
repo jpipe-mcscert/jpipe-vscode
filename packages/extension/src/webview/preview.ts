@@ -752,11 +752,16 @@ const HOST_MESSAGE_TYPES: ReadonlySet<string> = new Set<HostToWebview['type']>([
     'render', 'highlight', 'setUnsaved', 'view', 'diagnostic', 'diagnosticText', 'busy', 'config'
 ]);
 
-/** The `type` of an arriving payload, or null when it does not look like a message at all. */
-function messageType(value: unknown): string | null {
-    if (typeof value !== 'object' || value === null) return null;
-    const type = (value as { type?: unknown }).type;
-    return typeof type === 'string' ? type : null;
+/**
+ * Whether an arriving payload is one of ours.
+ *
+ * The single place `HostToWebview` is asserted, and it is asserted about an `unknown` — see the
+ * listener below for why the event is not typed as carrying one.
+ */
+function isHostMessage(value: unknown): value is HostToWebview {
+    return typeof value === 'object'
+        && value !== null
+        && HOST_MESSAGE_TYPES.has((value as { type?: unknown }).type as string);
 }
 
 /**
@@ -774,16 +779,15 @@ function messageType(value: unknown): string | null {
  * asserts something the runtime does not provide, since `postMessage` carries whatever the
  * sender put in it, and it would let a later edit reach for a field before validating it.
  *
- * Keep the validation *in this function*. It was briefly extracted into a
- * `isHostMessage(value): value is HostToWebview` predicate, which reads better — but Sonar's
- * S2819 only recognises a handler that inspects its input inline, so the analyser stopped
- * seeing any validation and reported the listener as unguarded. The narrowing below is
- * therefore written out here, and the cast is placed immediately after the check that earns it.
+ * Sonar reports S2819 here and it is marked a false positive on the project: the rule looks for
+ * an `event.origin` comparison, and a webview has no cross-origin sender to compare against.
+ * Two shapes of inline validation were tried before settling on that; the rule fires on whether
+ * it can see `event.data` inspected in this function, not on whether the payload is checked.
+ * The predicate above is the clearer arrangement, so it is the one kept.
  */
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
-    const type = messageType(event.data);
-    if (type === null || !HOST_MESSAGE_TYPES.has(type)) return;
-    const msg = event.data as HostToWebview;
+    if (!isHostMessage(event.data)) return;
+    const msg = event.data;
     switch (msg.type) {
         case 'render':
             applyRender(msg);
