@@ -110,7 +110,7 @@ requests from the gate, which is a larger hole than the one it closes.
 The expected steady state is one npm pull request and one actions pull request a week, both able
 to pass.
 
-## Amendment (2026-08-11): langium pins the LSP packages, and that is now written down
+## Amendment (2026-08-11): langium constrains the LSP packages, and that is now written down
 
 The first run under the corrected configuration produced one npm pull request with five safe
 updates and the lockfile included — the intended shape. It still failed to build, and the reason
@@ -133,11 +133,17 @@ not resolve it, and `npm dedupe` only reduces four nested entries to two. The bu
 until langium widens its own range.
 
 So the five `vscode-language*` packages join the ignore list, holding minors and majors and
-letting patches through — patches stay inside `~10.0.1` and dedupe normally.
+letting patches through — patches stay inside langium's ranges and dedupe normally.
+
+Four of them langium constrains directly: `vscode-languageserver`, `-protocol`, `-types` and
+`-textdocument` all appear in its dependencies. **`vscode-languageclient` does not**, and is held
+for a different reason: it and `vscode-languageserver` ship in lockstep and are used as a matched
+pair across the two workspaces, and it pins `-protocol` and `-textdocument` to exact versions.
+Moving the client while the server is held would put the pair out of step for no gain.
 
 Worth separating two lessons. The narrow one is a configuration fix. The broader one is that
 **the LSP dependency versions in this repository are not independently choosable**: they are
-whatever langium's range permits, and moving them is a langium upgrade wearing a different hat.
+whatever langium's ranges permit, and moving them is a langium upgrade wearing a different hat.
 That was true before Dependabot and will be true after it; the bot's only contribution was to
 surface it by trying.
 
