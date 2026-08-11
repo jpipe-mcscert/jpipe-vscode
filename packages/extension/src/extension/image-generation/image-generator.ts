@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { JpipeLogger } from '../logger.js';
+import { asProcessFailure, detailOf, messageOf } from '../../shared/errors.js';
 import { ReleaseManager } from './release-manager.js';
 import { planLaunchHere } from '../process-launcher.js';
 import {
@@ -155,8 +156,8 @@ export class ImageGenerator {
         let resolved: { file: string; args: string[] };
         try {
             resolved = this.resolveExecCommand(config);
-        } catch (e: any) {
-            vscode.window.showErrorMessage(e.message);
+        } catch (e: unknown) {
+            vscode.window.showErrorMessage(messageOf(e));
             throw e;
         }
 
@@ -186,14 +187,15 @@ export class ImageGenerator {
             const { stdout } = await runCompiler(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             this.logger.info(`Generated ${format} for '${diagramName}' (${path.basename(document.uri.fsPath)})`);
             return stdout;
-        } catch (error: any) {
+        } catch (error: unknown) {
             this.logGenerationError(diagramName, error);
             // Preserve stdout/stderr so the preview can still render a best-effort SVG (if any)
             // and show diagnostics inline instead of blanking the whole viewer.
-            const e = new Error(`Failed to generate ${format}: ${error.message}`) as Error & { stdout?: string; stderr?: string; exitCode?: number };
-            e.stdout = typeof error?.stdout === 'string' ? error.stdout : undefined;
-            e.stderr = typeof error?.stderr === 'string' ? error.stderr : undefined;
-            e.exitCode = typeof error?.code === 'number' ? error.code : undefined;
+            const failure = asProcessFailure(error);
+            const e = new Error(`Failed to generate ${format}: ${messageOf(error)}`) as Error & { stdout?: string; stderr?: string; exitCode?: number };
+            e.stdout = failure.stdout;
+            e.stderr = failure.stderr;
+            e.exitCode = failure.exitCode;
             throw e;
         }
     }
@@ -207,16 +209,16 @@ export class ImageGenerator {
         let resolved: { file: string; args: string[] };
         try {
             resolved = this.resolveExecCommand(config);
-        } catch (e: any) {
-            return { ok: false, message: e.message };
+        } catch (e: unknown) {
+            return { ok: false, message: messageOf(e) };
         }
 
         try {
             const { stdout, stderr } = await runCompiler(resolved.file, [...resolved.args, '--headless', 'doctor'], { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             const output = (stdout + stderr).trim();
             return { ok: true, message: output || 'jPipe is accessible.' };
-        } catch (error: any) {
-            const detail = (error?.stderr ?? error?.stdout ?? error?.message ?? String(error)).trim();
+        } catch (error: unknown) {
+            const detail = detailOf(error);
             return { ok: false, message: `Cannot access jPipe: ${detail}` };
         }
     }
@@ -235,10 +237,10 @@ export class ImageGenerator {
         let resolved: { file: string; args: string[] };
         try {
             resolved = this.resolveExecCommand(config);
-        } catch (e: any) {
+        } catch (e: unknown) {
             // A misconfigured executable is the one case with nothing to render at all, so it
             // stays a message in the raw pane rather than a silent empty panel.
-            return { raw: e.message, report: null, exitCode: undefined };
+            return { raw: messageOf(e), report: null, exitCode: undefined };
         }
 
         const wantsJson = await this.compilerSupportsJsonDiagnostic(resolved, config);
@@ -270,8 +272,8 @@ export class ImageGenerator {
         let resolved: { file: string; args: string[] };
         try {
             resolved = this.resolveExecCommand(config);
-        } catch (e: any) {
-            return e.message;
+        } catch (e: unknown) {
+            return messageOf(e);
         }
         const run = await this.runDiagnostic(resolved, inputFile, config, false);
         return run.raw;
@@ -307,11 +309,11 @@ export class ImageGenerator {
             this.logger.debug(
                 `Compiler at '${execKey}' reports ${version ? version.nums.join('.') + (version.pre ? `-${version.pre}` : '') : 'no readable version'}; `
                 + `structured diagnostics ${supported ? 'available' : `need ${MIN_JSON_DIAGNOSTIC_VERSION.join('.')}`}`);
-        } catch (e: any) {
+        } catch (e: unknown) {
             // A build that cannot even be asked its version gets the text report, which every
             // release can produce. Not fatal: the diagnostic run itself will report the real
             // problem if there is one.
-            this.logger.debug(`Could not read the compiler version from '${execKey}': ${e?.message ?? e}`);
+            this.logger.debug(`Could not read the compiler version from '${execKey}': ${messageOf(e)}`);
         }
 
         this.jsonDiagnosticSupport.set(execKey, supported);
@@ -347,12 +349,13 @@ export class ImageGenerator {
                 maxBuffer: MAX_OUTPUT_BYTES
             });
             return { raw: combine(stdout, stderr), stdout, exitCode: 0, unknownOption: false };
-        } catch (e: any) {
+        } catch (e: unknown) {
             // A model with errors exits non-zero and still produces a full report, so a failed
             // invocation is not the same as no output — the report is read either way.
-            const stdout: string = e.stdout ?? '';
-            const stderr: string = e.stderr ?? '';
-            const exitCode: number | undefined = typeof e.code === 'number' ? e.code : undefined;
+            const failure = asProcessFailure(e);
+            const stdout: string = failure.stdout ?? '';
+            const stderr: string = failure.stderr ?? '';
+            const exitCode: number | undefined = failure.exitCode;
             return {
                 raw: combine(stdout, stderr) === '(no output)' && exitCode !== undefined
                     ? `Exit code ${exitCode}`
@@ -396,18 +399,19 @@ export class ImageGenerator {
             if (openAfter && this.lastExportUri) {
                 void vscode.commands.executeCommand('vscode.open', this.lastExportUri);
             }
-        } catch (error: any) {
-            if (error?.cancelled === true || String(error?.message ?? '') === 'Save cancelled') {
+        } catch (error: unknown) {
+            if (asProcessFailure(error).cancelled || messageOf(error) === 'Save cancelled') {
                 return;
             }
-            this.logger.error(error.message);
+            this.logger.error(messageOf(error));
             this.logger.revealIfLogged('error');
         }
     }
     
-    private logGenerationError(diagramName: string, error: any): void {
-        const exitCode: number | undefined = typeof error?.code === 'number' ? error.code : undefined;
-        const stderr = typeof error?.stderr === 'string' ? error.stderr.trim() : '';
+    private logGenerationError(diagramName: string, error: unknown): void {
+        const failure = asProcessFailure(error);
+        const exitCode = failure.exitCode;
+        const stderr = failure.stderr?.trim() ?? '';
         if (exitCode === 1) {
             this.logger.warn(`Compiler exit 1 (model errors) for '${diagramName}'`);
             this.logger.revealIfLogged('warn');
@@ -415,7 +419,9 @@ export class ImageGenerator {
             this.logger.error(`Compiler exit 42 (crash) for '${diagramName}'`);
             this.logger.revealIfLogged('error');
         } else {
-            this.logger.error(`Generation failed for '${diagramName}': ${error instanceof Error ? error.message : String(exitCode ?? error)}`);
+            // `exitCode ?? error` in the fallback: a non-Error rejection is usually the exit
+            // status itself, which is more use in a log line than "[object Object]".
+            this.logger.error(`Generation failed for '${diagramName}': ${error instanceof Error ? messageOf(error) : String(exitCode ?? error)}`);
             this.logger.revealIfLogged('error');
         }
         if (stderr) {

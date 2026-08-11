@@ -10,6 +10,7 @@ import type {
     WebviewToHost
 } from '../../shared/preview-protocol.js';
 import type { JpipeLogger } from '../logger.js';
+import { asProcessFailure, displayMessageOf, messageOf } from '../../shared/errors.js';
 
 interface DocumentSymbol {
     name: string;
@@ -203,7 +204,7 @@ export class PreviewProvider {
             const text = await this.imageGenerator.generateTextDiagnostic(resolved.document);
             this.post({ type: 'diagnosticText', revision: showing.revision, text });
         } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
+            const msg = messageOf(error);
             this.logger.warn(`Could not produce the text diagnostic report: ${msg}`);
             this.post({
                 type: 'diagnosticText',
@@ -241,7 +242,7 @@ export class PreviewProvider {
             );
         } catch (error) {
             // A stale report can name a file that has since moved. Worth a log line, not a modal.
-            const msg = error instanceof Error ? error.message : String(error);
+            const msg = messageOf(error);
             this.logger.warn(`Could not reveal ${source}:${line}:${column} — ${msg}`);
         }
     }
@@ -280,7 +281,7 @@ export class PreviewProvider {
             try {
                 run = await this.imageGenerator.generateDiagnostic(document);
             } catch (error) {
-                const msg = error instanceof Error ? error.message : String(error);
+                const msg = messageOf(error);
                 this.logger.error(`Diagnostic failed in ${document.fileName}: ${msg}`);
                 run = { raw: `Failed to run diagnostic:\n\n${msg}`, report: null, exitCode: undefined };
             }
@@ -334,11 +335,8 @@ export class PreviewProvider {
             // diagnostic branch makes above.
             if (this.viewMode !== 'diagram') return;
             this.sendRender(revision, this.extractSvgFromOutput(stdout), document, editor, diagramName, null);
-        } catch (error: any) {
-            const stdout = typeof error?.stdout === 'string' ? error.stdout : '';
-            const exitCode = typeof error?.exitCode === 'number'
-                ? error.exitCode
-                : (typeof error?.code === 'number' ? error.code : undefined);
+        } catch (error: unknown) {
+            const { stdout = '', exitCode } = asProcessFailure(error);
             this.logRenderError(document.fileName, exitCode, error);
             this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
 
@@ -402,10 +400,7 @@ export class PreviewProvider {
         } else if (exitCode === 42) {
             this.logger.error(`Render: compiler crash (exit 42) in ${fileName}`);
         } else {
-            let msg: string;
-            if (error instanceof Error) { msg = error.message; }
-            else if (typeof error === 'string') { msg = error; }
-            else { msg = '[unknown error]'; }
+            const msg = displayMessageOf(error);
             this.logger.error(`Render failed in ${fileName}: ${msg}`);
         }
     }

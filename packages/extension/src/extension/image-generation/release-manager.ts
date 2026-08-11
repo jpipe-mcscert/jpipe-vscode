@@ -5,6 +5,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { JpipeLogger } from '../logger.js';
+import { messageOf } from '../../shared/errors.js';
 import {
     isAllowedHost,
     isStrictlyNewer,
@@ -143,7 +144,7 @@ export class ReleaseManager {
             );
             if (sel === 'Update') await runInstall(latest.tag);
         } catch (err) {
-            this.logger.debug(`Update check skipped: ${err instanceof Error ? err.message : String(err)}`);
+            this.logger.debug(`Update check skipped: ${messageOf(err)}`);
         }
     }
 

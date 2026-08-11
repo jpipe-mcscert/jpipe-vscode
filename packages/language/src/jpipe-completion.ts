@@ -36,6 +36,7 @@ import {
     type AbstractSupport
 } from './generated/ast.js';
 import { fsPathOf, getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { messageOf } from './jpipe-errors.js';
 
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private readonly services: JpipeServices;
@@ -724,7 +725,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             }
             return completions;
         } catch (error) {
-            this.logger.error(`getTemplateElementCompletions failed: ${error instanceof Error ? error.message : String(error)}`);
+            this.logger.error(`getTemplateElementCompletions failed: ${messageOf(error)}`);
             return [];
         }
     }
