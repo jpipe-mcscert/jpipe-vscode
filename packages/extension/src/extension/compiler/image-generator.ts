@@ -94,6 +94,9 @@ export class ImageGenerator {
     /** Destination of the most recent save-to-file generate(), so generateAndSave can open it. */
     private lastExportUri: vscode.Uri | undefined;
 
+    /** Whether an export is running. Guards `generateAndSave`; see the note there. */
+    private exportInFlight = false;
+
     constructor(
         private readonly logger: JpipeLogger,
         private readonly releaseManager: ReleaseManager
@@ -392,6 +395,16 @@ export class ImageGenerator {
     }
 
     public async generateAndSave(format: ImageFormat = ImageFormat.SVG, document?: vscode.TextDocument, forcedDiagramName?: string): Promise<void> {
+        // One export at a time, across every entry point — the palette, the menus and the
+        // preview's download button all arrive here. Without this, two quick clicks start two
+        // compiler runs and stack two save dialogs on top of each other, and the second dialog
+        // defaults to the same filename as the first. Declined rather than queued: a queue would
+        // still show the second dialog, just later, which is the confusing part.
+        if (this.exportInFlight) {
+            this.logger.warn(`Export already in progress; ignoring the request for ${format}`);
+            return;
+        }
+        this.exportInFlight = true;
         try {
             await this.generate(true, format, document, forcedDiagramName);
             vscode.window.showInformationMessage(`${format} saved successfully`);
@@ -405,9 +418,13 @@ export class ImageGenerator {
             }
             this.logger.error(messageOf(error));
             this.logger.revealIfLogged('error');
+        } finally {
+            // `finally`, not a line at the end of `try`: the cancelled branch above returns
+            // early, and a flag left set would refuse every later export for the session.
+            this.exportInFlight = false;
         }
     }
-    
+
     private logGenerationError(diagramName: string, error: unknown): void {
         const failure = asProcessFailure(error);
         const exitCode = failure.exitCode;

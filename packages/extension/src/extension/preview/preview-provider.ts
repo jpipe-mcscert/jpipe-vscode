@@ -3,6 +3,7 @@ import type { LanguageClient } from 'vscode-languageclient/node';
 import { ImageGenerator, ImageFormat, type DiagnosticRun } from '../compiler/image-generator.js';
 import { getShellHtml } from './preview-shell.js';
 import { responseToCursorMove } from './preview-refresh.js';
+import { panelExportTarget } from './export-target.js';
 import type {
     DiagnosticMessage,
     HostToWebview,
@@ -70,11 +71,61 @@ export class PreviewProvider {
         return { doc: undefined, diagramName: undefined };
     }
 
-    public getLastRenderedDocumentUri(): string | undefined {
+    /**
+     * Export what the panel is showing, for the download button inside it.
+     *
+     * Deliberately not `resolveExportContext` above, which it resembles. That serves the palette
+     * and menu commands, where the user is editing a `.jd` file and means "this one". A click in
+     * the panel means "what I am looking at" — and because a webview takes no text-editor focus,
+     * the active editor is often some other `.jd` file entirely. `panelExportTarget` holds the
+     * rule and its reasoning.
+     */
+    private async exportFromPanel(format: ImageFormat): Promise<void> {
+        const active = vscode.window.activeTextEditor?.document;
+        const target = panelExportTarget({
+            activeJpipeUri: active?.languageId === 'jpipe' ? active.uri.toString() : undefined,
+            renderedUri: this.lastRenderedDocumentUri,
+            renderedDiagram: this.lastRenderedDiagramName
+        });
+
+        if (target.kind === 'none') {
+            vscode.window.showWarningMessage('jPipe has nothing to export yet.');
+            return;
+        }
+        if (target.kind === 'activeEditor') {
+            // No document argument: with nothing rendered, the active editor is the target, and
+            // that is exactly what `generate` falls back to.
+            await this.imageGenerator.generateAndSave(format);
+            return;
+        }
+
+        // Already open and focused — skip the reopen rather than round-trip for the same file.
+        if (active && active.uri.toString() === target.uri) {
+            await this.imageGenerator.generateAndSave(format, active, target.diagramName);
+            return;
+        }
+
+        let document: vscode.TextDocument;
+        try {
+            document = await vscode.workspace.openTextDocument(vscode.Uri.parse(target.uri));
+        } catch (error: unknown) {
+            // Deliberately NOT falling back to the active editor, which is what this used to do.
+            // That editor may hold a different `.jd` file, so the fallback handed the user a
+            // correctly-named export of the wrong model, with nothing anywhere to say so.
+            this.logger.error(`Could not reopen ${target.uri} to export it: ${messageOf(error)}`);
+            this.logger.revealIfLogged('error');
+            vscode.window.showErrorMessage(
+                'jPipe could not reopen the previewed document, so nothing was exported.');
+            return;
+        }
+        await this.imageGenerator.generateAndSave(format, document, target.diagramName);
+    }
+
+    private getLastRenderedDocumentUri(): string | undefined {
         return this.lastRenderedDocumentUri;
     }
 
-    public getLastRenderedDiagramName(): string | undefined {
+    private getLastRenderedDiagramName(): string | undefined {
         return this.lastRenderedDiagramName;
     }
 
@@ -542,25 +593,7 @@ export class PreviewProvider {
             }
             if (msg.type === 'download' && msg.format) {
                 const fmt = (ImageFormat as Record<string, ImageFormat>)[msg.format];
-                if (fmt !== undefined) {
-                    const activeDoc = vscode.window.activeTextEditor?.document;
-                    if (activeDoc?.languageId === 'jpipe'
-                            && activeDoc.uri.toString() === this.lastRenderedDocumentUri) {
-                        this.imageGenerator.generateAndSave(fmt, activeDoc);
-                        return;
-                    }
-                    const lastUri = this.lastRenderedDocumentUri;
-                    const lastDiagramName = this.lastRenderedDiagramName;
-                    if (lastUri) {
-                        vscode.workspace.openTextDocument(vscode.Uri.parse(lastUri))
-                            .then(
-                                doc => this.imageGenerator.generateAndSave(fmt, doc, lastDiagramName),
-                                () => this.imageGenerator.generateAndSave(fmt)
-                            );
-                        return;
-                    }
-                    this.imageGenerator.generateAndSave(fmt);
-                }
+                if (fmt !== undefined) void this.exportFromPanel(fmt);
             }
             if (msg.type === 'openLink' && msg.url) {
                 vscode.env.openExternal(vscode.Uri.parse(msg.url));

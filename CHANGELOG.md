@@ -1,5 +1,11 @@
 ## Changelog
 
+### v1.7.1 (Unreleased)
+- Leader: Sébastien Mosser
+  - Bug Fixes:
+    - **The preview's download button saves the model you are looking at.** When the file behind the preview could not be reopened — renamed, moved or deleted since it was drawn — the download quietly fell back to whichever `.jd` file your cursor was in and saved that instead, under the filename and format you asked for. Nothing reported it, so the export looked like it had worked and the mistake surfaced only when someone opened the file. It now says it could not reopen the document, and saves nothing. Relatedly, when a file holds several diagrams the download saves the one on screen rather than the one under your cursor: the two drift apart while you have unsaved edits, because the preview deliberately holds still until you save (#60)
+    - **Exporting twice in a row no longer opens two save dialogs.** A second export starting while the first is still running is now ignored, instead of launching a second compiler run and stacking another dialog — offering the same default filename — on top of the one already waiting for an answer (#60)
+
 ### v1.7.0 (2026-08-10)
 - Leader: Sébastien Mosser
   - Features:
