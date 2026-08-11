@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { ImageGenerator, ImageFormat } from './image-generation/image-generator.js';
 import { PreviewProvider } from './image-generation/preview-provider.js';
-import { ReleaseManager, JpipeRelease } from './image-generation/release-manager.js';
+import { ReleaseManager, type JpipeRelease } from './image-generation/release-manager.js';
 import { ExclusionManager, ExclusionDecorationProvider, ExclusionCodeLensProvider } from './exclusions.js';
 import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 import { JpipeLogger } from './logger.js';

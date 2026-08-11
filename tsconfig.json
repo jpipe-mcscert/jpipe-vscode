@@ -11,6 +11,14 @@
     "noUnusedLocals": true,
     "noImplicitReturns": true,
     "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    // esbuild transpiles file by file, with no view of the whole program: it erases what *looks*
+    // like a type and keeps what looks like a value. These two make that judgement the
+    // compiler's rather than the bundler's — a type re-exported as though it were a value would
+    // otherwise become a runtime import of a binding that does not exist, and only in the
+    // bundle, never in `tsc`. See docs/adr/vsc-0014-typescript-strictness-ratchet.md.
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "declaration": true,

@@ -7,7 +7,7 @@ import {
     type CompletionValueItem,
     type NextFeature
 } from 'langium/lsp';
-import { MarkupKind, Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, CompletionParams, InsertTextFormat } from 'vscode-languageserver';
+import { MarkupKind, Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, type CompletionParams, InsertTextFormat } from 'vscode-languageserver';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { JpipeServices } from './jpipe-module.js';

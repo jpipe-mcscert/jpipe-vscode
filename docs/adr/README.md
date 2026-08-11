@@ -47,3 +47,4 @@ The compiler's records are at
 | [VSC-0011](vsc-0011-github-actions-pinning-policy.md) | GitHub Actions are pinned by major tag | 2026-08-10 | Accepted |
 | [VSC-0012](vsc-0012-single-branch-main-with-admin-bypass.md) | A single `main` branch, protected but bypassable by admins | 2026-08-11 | Accepted |
 | [VSC-0013](vsc-0013-dependency-freshness-policy.md) | Dependency freshness, and a lockfile CI actually honours | 2026-08-11 | Accepted |
+| [VSC-0014](vsc-0014-typescript-strictness-ratchet.md) | TypeScript strictness is a ratchet, and three notches were free | 2026-08-11 | Accepted |
