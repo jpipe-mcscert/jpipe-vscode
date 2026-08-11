@@ -16,15 +16,25 @@
 /**
  * `jpipe.excludedPaths` changed.
  *
- * Payload: the absolute paths currently excluded from validation. Initial state travels through
- * `initializationOptions` instead, because the server needs it before the first notification
- * could arrive.
+ * Payload: `string[]` of **URI strings** — `vscode.Uri.toString()` on the client
+ * (`ExclusionManager.getResolvedUris`), `URI.parse` on the server
+ * (`JpipeExclusionService.setExcludedPaths`). So `file:///Users/x/models`, not `/Users/x/models`.
+ *
+ * Worth stating precisely, because the extension holds the same set in three shapes and only
+ * this one crosses the wire: `getResolvedPaths()` gives `vscode.Uri`, `getResolvedUris()` gives
+ * the URI strings sent here, and `getExcludedResourcePaths()` gives bare `uri.path` for menu
+ * `when` clauses. Sending `fsPath` instead would look right on macOS and Linux and diverge on
+ * Windows, where the same folder is `c:\dir` as a path and `file:///c%3A/dir` as a URI.
+ *
+ * Initial state travels through `initializationOptions` instead, because the server needs it
+ * before the first notification could arrive.
  */
 export const SET_EXCLUDED_PATHS = 'jpipe/setExcludedPaths';
 
 /**
  * `jpipe.additionalUnificationMethods` changed.
  *
- * Payload: the relation names this build understands beyond the one jPipe ships.
+ * Payload: `string[]` — the `jpipe.additionalUnificationMethods` setting verbatim, naming the
+ * relations this build understands beyond the one jPipe ships.
  */
 export const SET_UNIFICATION_METHODS = 'jpipe/setUnificationMethods';
