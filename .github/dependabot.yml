@@ -46,16 +46,19 @@ updates:
 
     ignore:
       # Each of these is pinned to something outside npm's control, so a major is a piece of
-      # work rather than a bump. Minors and patches still flow.
+      # work rather than a bump. Minors and patches still flow — with one exception, noted on
+      # `@types/vscode` below, where every update is held.
       #
       # `@types/node` must track the Node the project actually runs. Volta pins 22.22.2 and
       # `engines` requires >=22.12.0; the first run proposed 26.2.0, which stopped `node:path`
       # resolving at all.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
-      # `@types/vscode` states the *minimum* VS Code API this extension builds against, and
-      # `engines.vscode` must not exceed it. Raising it drops support for older editors — a
-      # product decision, not a dependency update.
+      # `@types/vscode` is the exception: no `update-types`, so *every* update is ignored, not
+      # only majors. Its version states the minimum VS Code API this extension builds against
+      # and `engines.vscode` must not exceed it — and VS Code ships that baseline as a minor
+      # (1.91 → 1.92), so here a minor is exactly the update that would silently drop support
+      # for older editors. That is a product decision, not a dependency bump.
       - dependency-name: "@types/vscode"
       # TypeScript is the toolchain. The first run proposed 7.0.2 against a codebase on 5.8
       # targeting `lib: ES2021`, which failed on `Array.prototype.at` among other things.

@@ -73,7 +73,7 @@ Three pins are held deliberately and are listed in `ignore`:
 - Caching `setup-node` makes CI faster but adds a state that can be wrong. A build that fails only
   in CI and not locally is worth re-running once with the cache busted before being believed.
 
-## Amendment (2026-08-11): the first run showed three of these decisions were wrong
+## Amendment (2026-08-11): three of these decisions were wrong, and one interaction was missed
 
 Dependabot opened five pull requests. Four could not go green, and the reasons were structural
 rather than bad luck.
