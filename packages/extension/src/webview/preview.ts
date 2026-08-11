@@ -752,19 +752,11 @@ const HOST_MESSAGE_TYPES: ReadonlySet<string> = new Set<HostToWebview['type']>([
     'render', 'highlight', 'setUnsaved', 'view', 'diagnostic', 'diagnosticText', 'busy', 'config'
 ]);
 
-/**
- * Whether an arriving payload is one of ours.
- *
- * This is the only place `HostToWebview` is asserted, and it is asserted about a value typed
- * `unknown` — the listener below deliberately does not annotate `MessageEvent<HostToWebview>`.
- * That annotation would be a claim the runtime does not make: `postMessage` carries whatever the
- * sender put in it, so declaring the payload well-typed on arrival makes every field look safe
- * to reach for and lets a later edit skip the check without the compiler objecting.
- */
-function isHostMessage(value: unknown): value is HostToWebview {
-    return typeof value === 'object'
-        && value !== null
-        && HOST_MESSAGE_TYPES.has((value as { type?: unknown }).type as string);
+/** The `type` of an arriving payload, or null when it does not look like a message at all. */
+function messageType(value: unknown): string | null {
+    if (typeof value !== 'object' || value === null) return null;
+    const type = (value as { type?: unknown }).type;
+    return typeof type === 'string' ? type : null;
 }
 
 /**
@@ -777,10 +769,21 @@ function isHostMessage(value: unknown): value is HostToWebview {
  * so a comparison would either be vacuous or, if it were wrong, would silently take the whole
  * panel offline. What is checked instead is that the message belongs to the protocol at all,
  * which is the part that would actually matter if something else ever did get to post here.
+ *
+ * The event is typed `unknown` rather than `MessageEvent<HostToWebview>` on purpose: the latter
+ * asserts something the runtime does not provide, since `postMessage` carries whatever the
+ * sender put in it, and it would let a later edit reach for a field before validating it.
+ *
+ * Keep the validation *in this function*. It was briefly extracted into a
+ * `isHostMessage(value): value is HostToWebview` predicate, which reads better — but Sonar's
+ * S2819 only recognises a handler that inspects its input inline, so the analyser stopped
+ * seeing any validation and reported the listener as unguarded. The narrowing below is
+ * therefore written out here, and the cast is placed immediately after the check that earns it.
  */
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
-    if (!isHostMessage(event.data)) return;
-    const msg = event.data;
+    const type = messageType(event.data);
+    if (type === null || !HOST_MESSAGE_TYPES.has(type)) return;
+    const msg = event.data as HostToWebview;
     switch (msg.type) {
         case 'render':
             applyRender(msg);
