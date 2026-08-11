@@ -74,6 +74,25 @@ updates:
       # Must match `vitest` exactly or Vitest refuses to start, so it moves when vitest moves.
       - dependency-name: "@vitest/coverage-v8"
         update-types: ["version-update:semver-major"]
+      # The LSP packages are pinned by langium, not by us. langium 4.3.1 declares
+      # `vscode-languageserver: ~10.0.1`, so npm hoists 10.0.1 to the root and a workspace
+      # asking for 10.1.0 gets a second, nested copy instead. TypeScript then sees two
+      # structurally identical but nominally distinct `_Connection` types and refuses the
+      # assignment in language/main.ts — the build fails on a bump that looks entirely routine.
+      #
+      # Minors and majors are therefore held: they cannot succeed until langium widens its own
+      # range. Patches within 10.0.x still flow, since those stay inside it and dedupe normally.
+      # Revisit when langium moves; there is nothing to do here until it does.
+      - dependency-name: "vscode-languageserver"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "vscode-languageclient"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "vscode-languageserver-protocol"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "vscode-languageserver-types"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "vscode-languageserver-textdocument"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   # -------------------------------------------------------- github-actions
   # Pinned by major tag (docs/adr/vsc-0011-github-actions-pinning-policy.md), so what arrives
