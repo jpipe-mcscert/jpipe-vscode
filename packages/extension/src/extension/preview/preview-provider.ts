@@ -49,6 +49,27 @@ export class PreviewProvider {
      */
     private revision = 0;
 
+    /**
+     * The document an export command should act on.
+     *
+     * The active editor when it holds a `.jd` file; otherwise whatever the panel last rendered,
+     * so exporting still works when focus is in the preview itself — which is where it usually
+     * is when someone decides they want a PNG of what they are looking at.
+     */
+    public async resolveExportContext(): Promise<{ doc: vscode.TextDocument | undefined; diagramName: string | undefined }> {
+        const active = vscode.window.activeTextEditor?.document;
+        if (active?.languageId === 'jpipe') return { doc: active, diagramName: undefined };
+
+        const lastUri = this.getLastRenderedDocumentUri();
+        if (lastUri) {
+            try {
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(lastUri));
+                return { doc, diagramName: this.getLastRenderedDiagramName() };
+            } catch { /* the document has gone; fall through */ }
+        }
+        return { doc: undefined, diagramName: undefined };
+    }
+
     public getLastRenderedDocumentUri(): string | undefined {
         return this.lastRenderedDocumentUri;
     }

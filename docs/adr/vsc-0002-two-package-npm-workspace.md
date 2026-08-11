@@ -63,3 +63,18 @@ local package by symlink.
 - Anything genuinely shared *within* the extension (the webview protocol, the diagnostic report
   types) lives in `packages/extension/src/shared/`, which the language package cannot reach. That
   directory is shared between bundles, not between packages.
+
+## Amendment (2026-08-11): the suspected import cycle does not exist
+
+A structural cycle through `jpipe-module.ts` had been suspected — seventeen services imported by
+it, several importing back for the `JpipeServices` type.
+
+The architecture audit built the full graph with the TypeScript compiler over 68 files,
+separating value imports from type-only ones, and found **zero value-level cycles**. All ten
+imports of `jpipe-module.ts` are type-only and erase at compile time. The
+`jpipe-code-action-provider → code-actions/index → jpipe-language-server` triangle is not a cycle
+either: nothing imports back.
+
+Recorded so the question is not re-derived. The pre-injection `DocumentBuilder.onUpdate` wiring,
+whose comment cites a cycle risk, is defensible as written.
+
