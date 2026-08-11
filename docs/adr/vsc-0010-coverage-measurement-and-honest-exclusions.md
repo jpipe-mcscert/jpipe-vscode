@@ -98,3 +98,33 @@ they must not be anchored at the package root. `src/generated/**` does not match
   from its name. `preview-protocol.ts` qualifies — every export is a `type` or `interface`. Its
   neighbour `diagnostic-report.ts` does not: it exports a runtime `SUPPORTED_SCHEMA_VERSION`,
   and was briefly and wrongly excluded on this basis.
+
+## Amendment (2026-08-11): release-manager.ts is now excluded honestly
+
+This record's rule is *uncoverable by construction, never merely untested*. The architecture
+audit found `release-manager.ts` failing it: 300 lines behind **five** `vscode.*` references — a
+1.7% density — doing GitHub HTTPS, redirect handling, host validation and file placement, none of
+which needs an editor. It was on the exclusion list by **accretion**, which by this record's own
+terms made the exclusion dishonest.
+
+It has been split. `release-download.ts` holds the work and imports no `vscode`; `ReleaseManager`
+is now 131 lines of settings reads, `globalState` and one notification — things only an extension
+host can do.
+
+- **The exclusion list is unchanged.** `release-manager.ts` still cannot be loaded, so it stays
+  on it; `release-download.ts` was never added. What changed is that the exclusion is now true
+  rather than convenient.
+- **45 tests now cover logic that had none**, including the security boundary: HTTPS-only, the
+  host allowlist, and the redirect ceiling — checked on every hop, since a 302 to an
+  attacker-controlled host is the obvious way around a validated first URL.
+- **The transport is injectable** (`Transport`, defaulting to `httpsTransport`). Not for its own
+  sake: the allowlist refuses every host but GitHub's, so a local test server could not be
+  contacted even if one were started. Parameterising it is the only way the redirect, rate-limit
+  and malformed-body handling is reachable at all.
+- **Measured coverage of the extension package went down**, from 94.19% to 93.28% lines. It went
+  down because 96 lines that were previously invisible are now counted, 82 of them covered. A
+  figure that improves when code stops being measured is the failure mode this record exists to
+  prevent, and the same arithmetic works in reverse.
+
+`image-generator.ts` (6% density) is the same shape one step milder and has not been done.
+
