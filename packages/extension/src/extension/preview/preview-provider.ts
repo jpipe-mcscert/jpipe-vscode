@@ -337,6 +337,41 @@ export class PreviewProvider {
         this.post({ type: 'config', zoomSensitivity: clamped });
     }
 
+    /**
+     * Give the page back whatever it was showing, in answer to `ready`.
+     *
+     * A webview reloads its content whenever it is hidden and shown again, so this runs far more
+     * often than the panel is opened — and replaying costs nothing, where recompiling would cost
+     * a compiler run. Sending the diagram unconditionally, as this once did, meant a reload while
+     * reading the diagnostics silently switched the panel back to the diagram.
+     */
+    private replayCurrentView(panel: vscode.WebviewPanel): void {
+        this.postConfig();
+        if (this.viewMode === 'diagnostic' && this.lastDiagnostic) {
+            panel.webview.postMessage(this.lastDiagnostic);
+        } else if (this.lastRender) {
+            panel.webview.postMessage(this.lastRender);
+        } else {
+            panel.webview.postMessage({ type: 'view', mode: 'empty' } satisfies HostToWebview);
+        }
+    }
+
+    /**
+     * Switch between the diagram and the diagnostic report.
+     *
+     * The document is resolved *before* `viewMode` flips, so the panel can never land in a mode
+     * it has nothing to render in — which leaves the toggle looking frozen.
+     */
+    private async toggleViewMode(): Promise<void> {
+        const resolved = await this.resolveActiveJpipeDocument();
+        if (!resolved) {
+            this.logger.warn('Diagnostic toggle ignored: no jPipe document available to render');
+            return;
+        }
+        this.viewMode = this.viewMode === 'diagram' ? 'diagnostic' : 'diagram';
+        await this.updatePreview(resolved.document, resolved.editor);
+    }
+
     private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         if (!PreviewProvider.webviewPanel) return;
 
@@ -545,19 +580,7 @@ export class PreviewProvider {
         
         panel.webview.onDidReceiveMessage((msg: WebviewToHost) => {
             if (msg.type === 'ready') {
-                // The page is listening. Give it back whatever it was showing, so a webview
-                // content reload does not cost a recompile — or a blank panel.
-                this.postConfig();
-                // Replay whichever view was in front. Sending the diagram unconditionally, as
-                // this used to, meant a reload while reading the diagnostics silently switched
-                // the panel back to the diagram.
-                if (this.viewMode === 'diagnostic' && this.lastDiagnostic) {
-                    panel.webview.postMessage(this.lastDiagnostic);
-                } else if (this.lastRender) {
-                    panel.webview.postMessage(this.lastRender);
-                } else {
-                    panel.webview.postMessage({ type: 'view', mode: 'empty' } satisfies HostToWebview);
-                }
+                this.replayCurrentView(panel);
             }
             if (msg.type === 'download' && msg.format) {
                 const fmt = (ImageFormat as Record<string, ImageFormat>)[msg.format];
@@ -579,16 +602,7 @@ export class PreviewProvider {
                 void this.sendTextReport();
             }
             if (msg.type === 'toggleMode') {
-                // Resolve a document BEFORE flipping viewMode so we never end up in a
-                // mode we can't render (which leaves the toggle looking frozen).
-                this.resolveActiveJpipeDocument().then(resolved => {
-                    if (!resolved) {
-                        this.logger.warn('Diagnostic toggle ignored: no jPipe document available to render');
-                        return;
-                    }
-                    this.viewMode = this.viewMode === 'diagram' ? 'diagnostic' : 'diagram';
-                    this.updatePreview(resolved.document, resolved.editor);
-                });
+                void this.toggleViewMode();
             }
         });
         
