@@ -8,6 +8,46 @@ export default defineConfig({
         // Most of these run in plain Node. The diagnostic view is DOM code — it builds the
         // tables the panel shows — so it opts into a document with a per-file annotation
         // (`@vitest-environment happy-dom`) rather than everything paying for one.
-        environment: 'node'
+        environment: 'node',
+        coverage: {
+            provider: 'v8',
+            reporter: ['text-summary', 'lcov'],
+            reportsDirectory: './coverage',
+            // These tests import `../src/**` directly, so what v8 instruments is already the
+            // source and `include` behaves as it reads: a module no test reaches is reported
+            // as 0% rather than being absent, which is what stops new untested code from
+            // quietly improving the average.
+            //
+            // The language package deliberately does NOT set this — its tests go through the
+            // built `out/index.js`, and there the same line silently discards the coverage
+            // before it can be mapped back to source. See the comment in its vitest.config.ts.
+            include: ['src/**/*.ts'],
+            // Not coverable, by construction rather than by neglect. Each of these either
+            // imports `vscode` — which does not exist outside an extension host — or is an
+            // environment entry point with module-level side effects. Reporting them as 0%
+            // would drown the figure for the code that genuinely is under test.
+            //
+            // The rule for this list is *uncoverable by construction, never merely untested*:
+            // a module belongs here because it cannot be loaded, not because covering it is
+            // inconvenient. See jpipe-vscode ADR-VSC-0004.
+            exclude: [
+                'src/extension/main.ts',
+                'src/extension/logger.ts',
+                'src/extension/exclusions.ts',
+                'src/extension/image-generation/image-generator.ts',
+                'src/extension/image-generation/preview-provider.ts',
+                'src/extension/image-generation/release-manager.ts',
+                'src/extension/image-generation/preview-shell.ts',
+                'src/extension/image-generation/index.ts',
+                'src/language/main.ts',
+                'src/webview/preview.ts',
+                'src/webview/minimap.ts',
+                // Types only — every export is a `type` or `interface`, so it compiles to
+                // nothing and a coverage figure for it would be meaningless. Note that its
+                // neighbour `diagnostic-report.ts` is *not* in this position: it exports a
+                // runtime `SUPPORTED_SCHEMA_VERSION`, so it stays in the report.
+                'src/shared/preview-protocol.ts'
+            ]
+        }
     }
 });
