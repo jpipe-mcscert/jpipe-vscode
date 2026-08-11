@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # Full history. On a pull request Sonar works out what counts as "new code" from the
           # merge base, and blames every line it reports. A shallow clone gives it neither, and
@@ -51,7 +51,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '${{env.NODEJS_VERSION}}'
           cache: npm
@@ -70,7 +70,7 @@ jobs:
           npm run test:coverage
 
       - name: Cache SonarQube scanner
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
