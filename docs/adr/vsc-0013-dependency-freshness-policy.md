@@ -72,3 +72,41 @@ Three pins are held deliberately and are listed in `ignore`:
   every action at once or not at all.
 - Caching `setup-node` makes CI faster but adds a state that can be wrong. A build that fails only
   in CI and not locally is worth re-running once with the cache busted before being believed.
+
+## Amendment (2026-08-11): the first run showed three of these decisions were wrong
+
+Dependabot opened five pull requests. Four could not go green, and the reasons were structural
+rather than bad luck.
+
+**Per-workspace entries produce unmergeable pull requests.** This record set up one npm entry per
+manifest. But these are npm workspaces: every manifest resolves into a single root
+`package-lock.json`, which a workspace-scoped entry never touches. Against `npm ci` — adopted in
+the same change as this record — the result is
+`npm ci can only install packages when your package.json and package-lock.json are in sync`, on
+every run, forever. Two decisions taken together that contradicted each other.
+
+The root entry alone already edits all three manifests *and* the lockfile, which the first run
+demonstrated. There is now one npm entry.
+
+**A grouped major takes the group down with it.** The `dependencies` group bundled TypeScript
+5.8 → 7.0 with three `vscode-languageserver` minors that were perfectly fine. The major failed
+compilation and the whole pull request with it, so the good updates were unreachable except by
+hand. Groups now carry `update-types: [minor, patch]` only.
+
+**Ignoring `@types/vscode` alone was an arbitrary line.** The same argument applies to everything
+pinned to something outside npm's control, and the first run proved it: `@types/node` 22 → 26
+against a Volta-pinned Node 22 stopped `node:path` resolving. `typescript`, `@types/node`,
+`langium`, `langium-cli` and `@vitest/coverage-v8` now have their majors ignored, each with the
+reason in the file. Minors and patches still flow.
+
+**On automated pull requests and the quality gate.** Dependabot runs with Dependabot secrets, a
+store separate from Actions secrets. With that store empty, `Build and analyze` failed on every
+Dependabot pull request with `Not authorized`, regardless of content — and it is a required
+check, so none of them could ever merge. A `SONAR_TOKEN` has been added to the Dependabot secret
+store. That is a real widening of who holds the token, accepted knowingly: it is a
+project-analysis token on a public project, and the alternative was exempting automated pull
+requests from the gate, which is a larger hole than the one it closes.
+
+The expected steady state is one npm pull request and one actions pull request a week, both able
+to pass.
+

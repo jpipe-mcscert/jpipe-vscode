@@ -1,79 +1,80 @@
 # Dependency updates.
 #
-# Grouped rather than one pull request per package: every update here has to pass the same full
-# build, both suites and the quality gate, so ungrouped updates would mean a dozen runs of an
-# eight-minute pipeline a week to move patch versions of `@types/*`.
+# Three rules shape this file, each learned from the first run rather than guessed:
 #
-# See docs/adr/vsc-0013-dependency-freshness-policy.md.
+#   1. ONE npm entry, at the root. These are npm workspaces: every manifest resolves into a
+#      single root package-lock.json, and the root entry already edits all three package.json
+#      files plus the lockfile. Per-workspace entries edit a workspace manifest *without* the
+#      lockfile, which `npm ci` then rejects outright — so they produced pull requests that
+#      could never go green (docs/adr/vsc-0013-dependency-freshness-policy.md).
+#
+#   2. GROUPS CARRY MINOR AND PATCH ONLY. A grouped major takes the whole pull request down
+#      with it: the first run bundled TypeScript 5.8 → 7.0 with three harmless
+#      vscode-languageserver minors, and the group failed as one.
+#
+#   3. TOOLCHAIN MAJORS ARE NOT PROPOSED AT ALL. Where a package is pinned to something else —
+#      the Node runtime, the editor baseline, generated code — a major is a project, not an
+#      update, and a standing red pull request is not how to start it.
 
 version: 2
 
 updates:
 
   # ------------------------------------------------------------------ npm
-  # One entry per workspace plus the root: npm workspaces hoist to a single lockfile, but
-  # Dependabot still needs each manifest's directory to know which package.json to edit.
-
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+
     groups:
-      # Type definitions move constantly and cannot break anything the compiler will not catch.
+      # Type definitions: noisy, and nothing they break escapes the compiler.
       types:
+        applies-to: version-updates
+        update-types: [minor, patch]
         patterns:
           - "@types/*"
       # Everything else in one weekly pull request, so a red build names one week's changes.
       dependencies:
+        applies-to: version-updates
+        update-types: [minor, patch]
         patterns:
           - "*"
         exclude-patterns:
           - "@types/*"
+
     ignore:
-      # Pinned deliberately, not accidentally — see
-      # docs/adr/vsc-0013-dependency-freshness-policy.md.
+      # Each of these is pinned to something outside npm's control, so a major is a piece of
+      # work rather than a bump. Minors and patches still flow.
       #
-      # `@types/vscode` states the *minimum* VS Code API this extension is built against, and
-      # `engines.vscode` must not exceed it. Raising it drops support for older editors, which is
-      # a product decision rather than a dependency update.
+      # `@types/node` must track the Node the project actually runs. Volta pins 22.22.2 and
+      # `engines` requires >=22.12.0; the first run proposed 26.2.0, which stopped `node:path`
+      # resolving at all.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # `@types/vscode` states the *minimum* VS Code API this extension builds against, and
+      # `engines.vscode` must not exceed it. Raising it drops support for older editors — a
+      # product decision, not a dependency update.
       - dependency-name: "@types/vscode"
-      # Langium's generated output tracks the CLI, and a major would require regenerating and
-      # re-checking the AST. Minor and patch still flow.
+      # TypeScript is the toolchain. The first run proposed 7.0.2 against a codebase on 5.8
+      # targeting `lib: ES2021`, which failed on `Array.prototype.at` among other things.
+      # Moving it belongs with the strictness ratchet (ADR-VSC-0014), deliberately.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # Langium's generated output tracks the CLI, so a major means regenerating and
+      # re-checking the AST against it (ADR-VSC-0006).
       - dependency-name: "langium"
         update-types: ["version-update:semver-major"]
       - dependency-name: "langium-cli"
         update-types: ["version-update:semver-major"]
-
-  - package-ecosystem: npm
-    directory: /packages/language
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 3
-    groups:
-      language:
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /packages/extension
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 3
-    groups:
-      extension:
-        patterns:
-          - "*"
+      # Must match `vitest` exactly or Vitest refuses to start, so it moves when vitest moves.
+      - dependency-name: "@vitest/coverage-v8"
+        update-types: ["version-update:semver-major"]
 
   # -------------------------------------------------------- github-actions
-  # Actions are pinned by major tag
-  # (docs/adr/vsc-0011-github-actions-pinning-policy.md). Dependabot therefore proposes tag moves
-  # such as `@v5` → `@v6`, which are the ones worth a human look. It is also what would maintain
-  # commit SHAs if this repository ever adopts them — see the amendment on ADR-VSC-0011.
-
+  # Pinned by major tag (docs/adr/vsc-0011-github-actions-pinning-policy.md), so what arrives
+  # here is a tag move such as `@v5` → `@v6` — the kind worth a human look.
   - package-ecosystem: github-actions
     directory: /
     schedule:
