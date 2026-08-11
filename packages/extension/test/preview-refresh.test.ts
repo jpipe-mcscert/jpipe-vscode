@@ -11,7 +11,7 @@
  * run it when everything has.
  */
 import { describe, expect, test } from 'vitest';
-import { responseToCursorMove, type CursorContext } from '../src/extension/image-generation/preview-refresh.js';
+import { responseToCursorMove, type CursorContext } from '../src/extension/preview/preview-refresh.js';
 
 /** A cursor sitting where the panel is already looking, with nothing unsaved. */
 function settled(overrides: Partial<CursorContext> = {}): CursorContext {

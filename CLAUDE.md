@@ -51,13 +51,15 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
           main.ts               ← activate/deactivate, registers the 20 commands
           exclusions.ts         ← excluded-path manager, decorations, code lenses
           process-launcher.ts   ← Windows command resolution + cmd.exe escaping (tested)
-          image-generation/
+          compiler/             ← obtaining and running the jPipe compiler (ADR-VSC-0016)
             image-generator.ts  ← calls the external jpipe CLI/JAR for SVG/PNG/JSON
             compiler-invocation.ts ← argv construction, vscode-free (tested)
             release-manager.ts  ← downloads a compiler from GitHub Releases
             release-selection.ts ← semver precedence + host allowlist, vscode-free (tested)
+          preview/              ← the diagram panel (ADR-VSC-0016)
             preview-provider.ts ← webview panel lifecycle, compile orchestration
             preview-shell.ts    ← the panel's HTML shell
+            preview-refresh.ts  ← cursor-move response, vscode-free (tested)
         webview/                ← browser code. DOM only — no `vscode`, no node: (ADR-VSC-0003)
           preview.ts            ← preview controller (pan/zoom, message dispatch)
           diagnostic-view.ts    ← the diagnostics tables

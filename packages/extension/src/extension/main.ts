@@ -2,9 +2,9 @@ import type { LanguageClientOptions, ServerOptions } from 'vscode-languageclient
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vscode-languageclient/node';
-import { ImageGenerator, ImageFormat } from './image-generation/image-generator.js';
-import { PreviewProvider } from './image-generation/preview-provider.js';
-import { ReleaseManager, type JpipeRelease } from './image-generation/release-manager.js';
+import { ImageGenerator, ImageFormat } from './compiler/image-generator.js';
+import { PreviewProvider } from './preview/preview-provider.js';
+import { ReleaseManager, type JpipeRelease } from './compiler/release-manager.js';
 import { ExclusionManager, ExclusionDecorationProvider, ExclusionCodeLensProvider } from './exclusions.js';
 import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 import { displayMessageOf, messageOf } from '../shared/errors.js';

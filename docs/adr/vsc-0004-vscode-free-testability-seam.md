@@ -69,3 +69,13 @@ mocked anywhere in the suite.
 - One test works around the rule rather than within it: `preview-shell.test.ts` reads its target's
   *source text* and cross-checks element ids against `preview.ts` and `preview.css`, because the
   module itself cannot be imported. It is a deliberate compromise, not a pattern to copy.
+
+## Amendment (2026-08-11): the directory names in Consequences have changed
+
+`image-generation/` was split into `compiler/` and `preview/` by
+jpipe-vscode ADR-VSC-0016. The modules this record names are the same ones; their paths are now
+`compiler/{image-generator, release-manager}.ts` and
+`preview/{preview-provider, preview-shell}.ts`.
+
+Nothing about the decision changes — the set of modules that cannot be loaded without a VS Code
+host is unaffected by which folder they sit in.

@@ -10,7 +10,7 @@ import {
     supportsJsonDiagnostic,
     type CompilerContext,
     type CompilerSettings
-} from '../src/extension/image-generation/compiler-invocation.js';
+} from '../src/extension/compiler/compiler-invocation.js';
 
 const HOME = '/home/dev';
 
