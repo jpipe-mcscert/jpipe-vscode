@@ -7,7 +7,7 @@
  * on a picture that is not the whole truth.
  */
 import { describe, expect, test } from 'vitest';
-import { renderFailureNotice } from '../src/shared/render-failure.js';
+import { renderFailureNotice, showsFailureNotice } from '../src/shared/render-failure.js';
 
 describe('renderFailureNotice', () => {
 
@@ -48,6 +48,32 @@ describe('renderFailureNotice', () => {
         for (const error of [{ exitCode: 1 }, { exitCode: 42 }, { exitCode: 7 }, {}]) {
             expect(renderFailureNotice(error), `for ${JSON.stringify(error)}`)
                 .toMatch(/diagram below/);
+        }
+    });
+});
+
+/**
+ * A notice describes the diagram under it. The panel has modes where there is no diagram under
+ * it, and the banner has to know the difference — otherwise it says "the diagram below" over the
+ * diagnostic report, and offers a button to the view the reader is already looking at.
+ */
+describe('showsFailureNotice', () => {
+
+    const notice = renderFailureNotice({ exitCode: 1 });
+
+    test('shows over the diagram it describes', () => {
+        expect(showsFailureNotice(notice, 'diagram')).toBe(true);
+    });
+
+    // The reported case: switching modes left the banner up, describing a layer that is not there
+    // and pointing at where the reader had just arrived.
+    test.each(['diagnostic', 'empty'] as const)('stays out of %s mode', mode => {
+        expect(showsFailureNotice(notice, mode)).toBe(false);
+    });
+
+    test('nothing to show is nothing to show, in any mode', () => {
+        for (const mode of ['diagram', 'diagnostic', 'empty'] as const) {
+            expect(showsFailureNotice(null, mode)).toBe(false);
         }
     });
 });

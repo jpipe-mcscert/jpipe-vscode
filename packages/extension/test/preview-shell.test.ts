@@ -96,6 +96,34 @@ describe('the shell provides what the page looks up', () => {
         expect(css).not.toContain('jpipe-render-error');
     });
 
+    /**
+     * The unsaved banner's wording changes with the mode, and it now holds a glyph beside its
+     * text — so writing over the banner's own `textContent` would take the glyph with it and
+     * leave the two banners telling apart by colour alone, which is what they must not do.
+     */
+    test('the banner text is rewritten in its own span, not over the banner', () => {
+        expect(shell).toContain('id="unsaved-banner-text"');
+        expect(preview).toContain('bannerText.textContent');
+        expect(preview, 'assigning to the banner itself would drop its glyph')
+            .not.toMatch(/\bbanner\.textContent\s*=/);
+    });
+
+    /**
+     * The stack's height feeds the layers' offset. A banner wrapping changes that height with no
+     * message to prompt a re-measure, which a narrow panel makes an ordinary event rather than an
+     * edge case — so the stack is watched, not only written to.
+     */
+    test('the banner stack is measured again when its own size changes', () => {
+        expect(preview).toMatch(/new ResizeObserver\([\s\S]{0,80}?measureBanners[\s\S]{0,40}?\.observe\(banners\)/);
+    });
+
+    // A control reachable only by keyboard, with no visible focus, is a control a keyboard user
+    // cannot find.
+    test('the banner action gets the same focus ring as every other control', () => {
+        const rule = css.slice(0, css.indexOf('focus-visible {') + 'focus-visible {'.length);
+        expect(rule).toContain('#error-banner-action:focus-visible');
+    });
+
     test('the diagnostic layer carries both of its faces', () => {
         // The structured view and the raw text live in the same layer; losing either turns one
         // of the two supported outcomes into a blank panel.

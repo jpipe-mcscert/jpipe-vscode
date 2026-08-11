@@ -97,7 +97,7 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
         -->
         <div class="banner" id="unsaved-banner" role="status" aria-live="polite">
             <span class="banner-glyph" aria-hidden="true">⚠</span>
-            <span>Unsaved changes — showing last saved version</span>
+            <span id="unsaved-banner-text">Unsaved changes — showing last saved version</span>
         </div>
         <div class="banner" id="error-banner" role="status" aria-live="polite">
             <span class="banner-glyph" aria-hidden="true">✖</span>

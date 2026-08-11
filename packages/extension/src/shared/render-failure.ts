@@ -10,6 +10,8 @@
  * message here is worse than none, since it describes a diagram the user is about to act on.
  */
 
+import type { ViewMode } from './preview-protocol.js';
+
 /** Exit codes the compiler uses. Anything else is a failure we have no account of. */
 const MODEL_HAS_ERRORS = 1;
 const COMPILER_CRASHED = 42;
@@ -35,4 +37,16 @@ export function renderFailureNotice(error: RenderFailure | null | undefined): st
         default:
             return 'The compiler reported a problem — the diagram below may be incomplete.';
     }
+}
+
+/**
+ * Whether the notice belongs on screen in the mode the panel is currently in.
+ *
+ * Every wording above is about the diagram below the banner, and the banner's one control offers
+ * the diagnostic view — so in the diagnostic view it describes a layer that is not there and
+ * points at where the reader already is. The notice is *kept* while hidden rather than dropped:
+ * the diagram it describes is still what comes back when the mode is switched again.
+ */
+export function showsFailureNotice(notice: string | null, mode: ViewMode): boolean {
+    return notice !== null && mode === 'diagram';
 }

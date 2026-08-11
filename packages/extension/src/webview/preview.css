@@ -145,6 +145,7 @@ body:not([data-mode="diagram"]) .diagram-only { display: none; }
 #brand a:focus-visible,
 #container:focus-visible,
 #diag-output:focus-visible,
+#error-banner-action:focus-visible,
 #download-drawer button:focus-visible {
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: -1px;
