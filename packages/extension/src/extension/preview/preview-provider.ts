@@ -4,6 +4,7 @@ import { ImageGenerator, ImageFormat, type DiagnosticRun } from '../compiler/ima
 import { getShellHtml } from './preview-shell.js';
 import { responseToCursorMove } from './preview-refresh.js';
 import { panelExportTarget } from './export-target.js';
+import { symbolAtPosition, type DocumentSymbol } from './document-symbols.js';
 import type {
     DiagnosticMessage,
     HostToWebview,
@@ -12,12 +13,6 @@ import type {
 } from '../../shared/preview-protocol.js';
 import type { JpipeLogger } from '../logger.js';
 import { asProcessFailure, displayMessageOf, messageOf } from '../../shared/errors.js';
-
-interface DocumentSymbol {
-    name: string;
-    range: { start: { line: number; character: number }; end: { line: number; character: number } };
-    children?: DocumentSymbol[];
-}
 
 export class PreviewProvider {
     private static webviewPanel: vscode.WebviewPanel | undefined;
@@ -507,40 +502,13 @@ export class PreviewProvider {
                 { textDocument: { uri: document.uri.toString() } }
             );
             if (!symbols || !Array.isArray(symbols)) return null;
-            const found = this.findSymbolAtPosition(symbols, position.line, position.character);
+            const found = symbolAtPosition(symbols, position.line, position.character);
             return found?.name ?? null;
         } catch {
             return null;
         }
     }
-    
-    private findSymbolAtPosition(symbols: DocumentSymbol[], line: number, character: number): DocumentSymbol | null {
-        let best: DocumentSymbol | null = null;
-        for (const sym of symbols) {
-            if (!this.rangeContains(sym.range, line, character)) continue;
-            const child = sym.children?.length
-                ? this.findSymbolAtPosition(sym.children, line, character)
-                : null;
-            const chosen = child ?? sym;
-            if (!best || this.rangeSmaller(chosen.range, best.range)) best = chosen;
-        }
-        return best;
-    }
-    
-    private rangeContains(range: DocumentSymbol['range'], line: number, character: number): boolean {
-        const { start, end } = range;
-        if (line < start.line || line > end.line) return false;
-        if (line === start.line && character < start.character) return false;
-        if (line === end.line && character > end.character) return false;
-        return true;
-    }
-    
-    private rangeSmaller(a: DocumentSymbol['range'], b: DocumentSymbol['range']): boolean {
-        const spanA = (a.end.line - a.start.line) * 10000 + (a.end.character - a.start.character);
-        const spanB = (b.end.line - b.start.line) * 10000 + (b.end.character - b.start.character);
-        return spanA < spanB;
-    }
-    
+
     private createWebviewPanel(): vscode.WebviewPanel {
         const panel = vscode.window.createWebviewPanel(
             'jpipe.preview',
