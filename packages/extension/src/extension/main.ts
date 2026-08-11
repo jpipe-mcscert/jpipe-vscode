@@ -7,6 +7,7 @@ import { PreviewProvider } from './image-generation/preview-provider.js';
 import { ReleaseManager, type JpipeRelease } from './image-generation/release-manager.js';
 import { ExclusionManager, ExclusionDecorationProvider, ExclusionCodeLensProvider } from './exclusions.js';
 import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
+import { displayMessageOf, messageOf } from '../shared/errors.js';
 import { JpipeLogger } from './logger.js';
 import {
     CONVERT_MODEL_KIND,
@@ -67,7 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
             await client.sendNotification(SET_EXCLUDED_PATHS, paths);
         } catch (err: unknown) {
             // A failed start is already surfaced by startLanguageClient; don't double-report.
-            logger.error(`Could not send excluded paths to the language server: ${err instanceof Error ? err.message : String(err)}`);
+            logger.error(`Could not send excluded paths to the language server: ${messageOf(err)}`);
         }
     }
 
@@ -84,7 +85,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 await client.start();
                 await client.sendNotification(SET_UNIFICATION_METHODS, additionalUnificationMethods());
             } catch (err: unknown) {
-                logger.error(`Could not send unification methods to the language server: ${err instanceof Error ? err.message : String(err)}`);
+                logger.error(`Could not send unification methods to the language server: ${messageOf(err)}`);
             }
         })
     );
@@ -107,7 +108,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 () => releaseManager.listReleases()
             );
         } catch (err: unknown) {
-            vscode.window.showErrorMessage(`jPipe: could not list releases. ${err instanceof Error ? err.message : String(err)}`);
+            vscode.window.showErrorMessage(`jPipe: could not list releases. ${messageOf(err)}`);
             return;
         }
         if (releases.length === 0) {
@@ -152,7 +153,7 @@ export function activate(context: vscode.ExtensionContext): void {
             vscode.window.showInformationMessage(`jPipe ${chosen.tag} installed and activated (managed mode).`);
             logger.info(`Managed jPipe compiler set to ${chosen.tag} at ${jarPath}`);
         } catch (err: unknown) {
-            vscode.window.showErrorMessage(`jPipe: download failed. ${err instanceof Error ? err.message : String(err)}`);
+            vscode.window.showErrorMessage(`jPipe: download failed. ${messageOf(err)}`);
         }
     }
 
@@ -348,10 +349,7 @@ function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogg
     client.start().then(() => {
         logger.info(`Language server started (log level: ${logLevel})`);
     }).catch((error: unknown) => {
-        let msg: string;
-        if (error instanceof Error) { msg = error.message; }
-        else if (typeof error === 'string') { msg = error; }
-        else { msg = '[unknown error]'; }
+        const msg = displayMessageOf(error);
         logger.error(`Failed to start language server: ${msg}`);
         vscode.window.showErrorMessage(`Failed to start language server: ${msg}`);
     });

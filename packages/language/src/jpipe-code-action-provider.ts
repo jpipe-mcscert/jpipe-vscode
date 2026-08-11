@@ -24,6 +24,7 @@ import { nodeForDiagnostic } from './jpipe-ast-context.js';
 import { issueCodeOf, type JpipeIssueCode, type JpipeIssueData } from './jpipe-diagnostic-codes.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import type { JpipeServices } from './jpipe-module.js';
+import { messageOf } from './jpipe-errors.js';
 
 /** What the provider dispatches to. Overridable so the dispatcher's own guarantees — that a
  *  throwing module is contained, that kinds are filtered — can be tested against modules written
@@ -105,7 +106,7 @@ export class JpipeCodeActionProvider implements CodeActionProvider {
         try {
             return (await run()) as CodeAction[] ?? [];
         } catch (error) {
-            this.logger.error(`code action '${id}' failed: ${error instanceof Error ? error.message : String(error)}`);
+            this.logger.error(`code action '${id}' failed: ${messageOf(error)}`);
             return [];
         }
     }

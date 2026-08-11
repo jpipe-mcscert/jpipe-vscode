@@ -30,6 +30,7 @@ import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils
 import { allowedConfigKeys, isKnownOperator, knownOperatorNames, operatorSpec, requiredConfigKeys } from './jpipe-operators.js';
 import { JpipeIssue, issue } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
+import { messageOf } from './jpipe-errors.js';
 
 export function registerValidationChecks(services: JpipeServices) {
     const registry = services.validation.ValidationRegistry;
@@ -91,7 +92,7 @@ export class JpipeValidator {
             // Each expansion error words itself as the compiler words the matching FATAL.
             const message = error instanceof GlobExpansionError
                 ? error.describe(load.path)
-                : `Cannot expand load pattern '${load.path}': ${error instanceof Error ? error.message : String(error)}`;
+                : `Cannot expand load pattern '${load.path}': ${messageOf(error)}`;
             accept('error', message,
                 { node: load, property: 'path',
                   ...issue(JpipeIssue.LoadMalformedPattern, { path: load.path }) });

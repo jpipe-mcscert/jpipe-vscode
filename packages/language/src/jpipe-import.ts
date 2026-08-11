@@ -14,6 +14,7 @@ import {
 } from './generated/ast.js';
 import { fsPathOf, getAllElements, qualifiedIdText } from './jpipe-utils.js';
 import { byCodeUnit } from './jpipe-text.js';
+import { messageOf } from './jpipe-errors.js';
 import {
     anchorGlob,
     globToRegExp,
@@ -236,7 +237,7 @@ export class JpipeImportService {
             this.logger.debug(`Parsed import: ${resolvedPath}`);
             return doc;
         } catch (error) {
-            this.logger.error(`Failed to parse document: ${resolvedPath}: ${error instanceof Error ? error.message : String(error)}`);
+            this.logger.error(`Failed to parse document: ${resolvedPath}: ${messageOf(error)}`);
             return undefined;
         }
     }
