@@ -94,7 +94,7 @@ describe('Java NIO glob semantics', () => {
 });
 
 describe('anchorGlob', () => {
-    // The table from ADR-0022's "Anchoring: where the walk starts". The literal prefix is
+    // The table from jpipe-compiler ADR-0022's "Anchoring: where the walk starts". The literal prefix is
     // resolved like a literal load path, which is what lets a pattern climb out of the declaring
     // file's directory or name an absolute location.
     test.each([

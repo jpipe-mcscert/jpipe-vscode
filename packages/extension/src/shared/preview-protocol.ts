@@ -7,6 +7,9 @@
  * The panel used to rebuild `webview.html` from scratch on every render, which threw away the
  * page's state (zoom, pan, which overlay was showing) each time the user saved. The document
  * is now created once and everything after that arrives as one of these messages.
+ *
+ * `src/shared/` is the only place code may be shared between the two bundles — see
+ * jpipe-vscode ADR-VSC-0005.
  */
 
 import type { DiagnosticReport } from './diagnostic-report.js';

@@ -124,7 +124,7 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
             if (key !== '') desc.push(this.descriptions.createDescription(element, key));
         }
 
-        // Short-name aliases: only when unambiguous (two-pass resolution per ADR 0012).
+        // Short-name aliases: only when unambiguous (two-pass resolution per jpipe-compiler ADR-0012).
         for (const e of localElements.filter(named)) {
             const s = localName(e.id);
             if ((shortNameCount.get(s) ?? 0) === 1)

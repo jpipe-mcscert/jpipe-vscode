@@ -27,6 +27,18 @@ You can find more information about the jPipe project on the main repository: [h
   - Validation rules
   - Scoping rules
 
+### Where are the architecture decisions recorded?
+
+In [`docs/adr/`](docs/adr/README.md), one file per decision — why the language server is its own
+package, why there are five TypeScript projects, why the glob matcher is a hand-written port
+rather than a dependency, and so on. Read it before making a structural change; the reasoning
+behind a boundary is rarely visible from the code that respects it.
+
+Records here are prefixed `VSC` (`ADR-VSC-0004`). The compiler
+([jpipe-compiler](https://github.com/jpipe-mcscert/jpipe-compiler/tree/main/docs/adr)) numbers
+its own from `0001`, and both are cited from this repository's source — so when citing one, name
+the repository.
+
 ### How to setup the development environment?
 
 #### Prerequisite: Volta
