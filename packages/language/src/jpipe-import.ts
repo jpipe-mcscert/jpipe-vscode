@@ -399,7 +399,7 @@ export class JpipeImportService {
      * Returns all elements inherited by `owner` through its parent chain, each annotated
      * with the scope key to use in relations (accounting for namespace prefixes).
      *
-     * Per ADR 0012 qualified-ID scheme:
+     * Per the jpipe-compiler ADR-0012 qualified-ID scheme:
      *   - local template T    → key = T:elementId           e.g. "T:abs"
      *   - namespaced template → key = ns:templateId:elementId  e.g. "base:t:abs"
      */

@@ -8,6 +8,8 @@
     // `tsconfig.json` it finds. Held at the package root under any other name, it would be
     // invisible to the editor, and these files would be checked against the extension-host
     // project — which does not include them and has no DOM types.
+    //
+    // See jpipe-vscode ADR-VSC-0003.
     "extends": "../../../../tsconfig.json",
     "compilerOptions": {
         "noEmit": true,

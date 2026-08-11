@@ -16,6 +16,9 @@
  * Patterns and candidate paths are always compared in POSIX form (`/` separators). Java on Windows
  * reaches the same result by a different route — there the pattern's `/` is compiled to match `\`
  * and the relative path uses `\` — so normalising both sides to `/` is equivalent on every platform.
+ *
+ * See jpipe-vscode ADR-VSC-0007 for the decision and its deliberate deviations from the compiler,
+ * and jpipe-compiler ADR-0022 for the semantics this must stay faithful to.
  */
 
 /**
