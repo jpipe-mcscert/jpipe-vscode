@@ -19,6 +19,7 @@ import {
     type DownloadLog,
     type Transport
 } from '../src/extension/compiler/release-download.js';
+import type { JpipeRelease } from '../src/extension/compiler/release-selection.js';
 
 /**
  * The half of managed-compiler installs that does not need an editor.
@@ -138,6 +139,15 @@ describe('isDueForUpdateCheck', () => {
         expect(isDueForUpdateCheck(0, Date.parse('2026-08-11T00:00:00Z'), 24)).toBe(true);
     });
 
+    test('is due when the recorded check is in the future, rather than waiting for the clock', () => {
+        // A clock that was wrong when the stamp was written, or has since moved back. Without a
+        // guard the subtraction goes negative and stays below any threshold, so update checks
+        // would be suppressed until real time caught up with the bad timestamp.
+        const now = Date.parse('2026-08-11T00:00:00Z');
+        expect(isDueForUpdateCheck(now + 48 * hour, now, 24)).toBe(true);
+        expect(isDueForUpdateCheck(now + 1, now, 24)).toBe(true);
+    });
+
     test.each([[0], [-5], [undefined], [null], ['24'], [NaN]])(
         'falls back to the default interval for %j rather than checking every activation',
         (interval) => {
@@ -185,13 +195,17 @@ describe('resolveRedirect', () => {
 });
 
 describe('downloadJar', () => {
+    // `satisfies` rather than a cast: this fixture is the contract with downloadJar, and the
+    // first version of it carried a `prerelease` field JpipeRelease does not have while omitting
+    // `name` and `publishedAt`, which it does. A cast hid that; this would not.
     const release = {
         tag: 'v2.1.0',
+        name: 'jPipe 2.1.0',
+        publishedAt: '2026-07-01T00:00:00Z',
         jarName: 'jpipe-cli-2.1.0.jar',
         jarUrl: 'https://objects.githubusercontent.com/jpipe-cli-2.1.0.jar',
-        jarSize: 12,
-        prerelease: false
-    } as never;
+        jarSize: 12
+    } satisfies JpipeRelease;
 
     test('reuses a jar that is already present at the expected size, without touching the network', async () => {
         const root = join(scratch, 'reuse');
@@ -216,7 +230,7 @@ describe('downloadJar', () => {
     });
 
     test('refuses a jar URL pointing at an untrusted host', async () => {
-        const evil = { ...(release as object), jarUrl: 'https://evil.example.com/x.jar' } as never;
+        const evil = { ...release, jarUrl: 'https://evil.example.com/x.jar' } satisfies JpipeRelease;
         const root = join(scratch, 'evil');
         await expect(downloadJar(evil, root, recordingLog()))
             .rejects.toThrow('Refusing to contact untrusted host');

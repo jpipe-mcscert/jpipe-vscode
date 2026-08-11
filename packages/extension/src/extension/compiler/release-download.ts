@@ -76,7 +76,15 @@ export function isDueForUpdateCheck(lastCheckMs: number, nowMs: number, interval
     const hours = typeof intervalHours === 'number' && intervalHours > 0
         ? intervalHours
         : DEFAULT_UPDATE_INTERVAL_HOURS;
-    return nowMs - lastCheckMs >= hours * 3_600_000;
+
+    const elapsed = nowMs - lastCheckMs;
+    // A negative elapsed time means the stored check is in the future: the clock was wrong when
+    // it was written, or has since been moved back. Waiting for it to catch up would suppress
+    // update checks for however far out that timestamp is — potentially indefinitely — so treat
+    // it as due and let the next run rewrite the stamp with a sane value.
+    if (elapsed < 0) return true;
+
+    return elapsed >= hours * 3_600_000;
 }
 
 /**
