@@ -6,6 +6,7 @@ import { ImageGenerator, ImageFormat } from './image-generation/image-generator.
 import { PreviewProvider } from './image-generation/preview-provider.js';
 import { ReleaseManager, JpipeRelease } from './image-generation/release-manager.js';
 import { ExclusionManager, ExclusionDecorationProvider, ExclusionCodeLensProvider } from './exclusions.js';
+import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 import { JpipeLogger } from './logger.js';
 import {
     CONVERT_MODEL_KIND,
@@ -15,12 +16,6 @@ import {
 } from 'jpipe-language';
 
 let client: LanguageClient;
-
-/** Notification understood by the language server (see packages/extension/src/language/main.ts). */
-const SET_EXCLUDED_PATHS = 'jpipe/setExcludedPaths';
-
-/** Notification understood by the language server: extra `unifyBy` relations this build knows. */
-const SET_UNIFICATION_METHODS = 'jpipe/setUnificationMethods';
 
 /** The relation names the user has declared beyond the one jPipe ships. */
 function additionalUnificationMethods(): string[] {

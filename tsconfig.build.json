@@ -11,6 +11,9 @@
             "path": "./packages/extension/tsconfig.json"
         },
         {
+            "path": "./packages/extension/src/webview/tsconfig.json"
+        },
+        {
             "path": "./packages/extension/tsconfig.test.json"
         }
     ]

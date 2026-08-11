@@ -3,12 +3,7 @@ import { NodeFileSystem } from 'langium/node';
 import { createConnection, ProposedFeatures } from 'vscode-languageserver/node';
 import { createJpipeServices } from 'jpipe-language';
 import type { LogLevel } from 'jpipe-language';
-
-/** Notification sent by the extension when `jpipe.excludedPaths` changes. */
-const SET_EXCLUDED_PATHS = 'jpipe/setExcludedPaths';
-
-/** Notification sent when `jpipe.additionalUnificationMethods` changes. */
-const SET_UNIFICATION_METHODS = 'jpipe/setUnificationMethods';
+import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 
 // Create a connection to the client
 const connection = createConnection(ProposedFeatures.all);
