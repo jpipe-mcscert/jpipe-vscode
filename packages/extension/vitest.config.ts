@@ -42,9 +42,11 @@ export default defineConfig({
                 'src/language/main.ts',
                 'src/webview/preview.ts',
                 'src/webview/minimap.ts',
-                // Types only — nothing to execute, so a coverage figure is meaningless.
-                'src/shared/preview-protocol.ts',
-                'src/shared/diagnostic-report.ts'
+                // Types only — every export is a `type` or `interface`, so it compiles to
+                // nothing and a coverage figure for it would be meaningless. Note that its
+                // neighbour `diagnostic-report.ts` is *not* in this position: it exports a
+                // runtime `SUPPORTED_SCHEMA_VERSION`, so it stays in the report.
+                'src/shared/preview-protocol.ts'
             ]
         }
     }
