@@ -48,6 +48,11 @@ Two checks, both required on `main`:
   [Quality Gate](https://sonarcloud.io/dashboard?id=jpipe-mcscert_jpipe-vscode) enforced. The
   job fails if the gate fails, so a red check here means the gate said no.
 
+Those are the names to search for when adding them under **Settings → Branches**. Note that a
+pull request's checks list renders them with their workflow in front — *Build VS Code extension
+/ build*, *SonarQube / Build and analyze* — but the required-status-check name is the bare job
+name shown above.
+
 The gate judges **new code only**. Existing debt is baselined and will not block you; what it
 asks is that a change does not add uncovered, duplicated or smelly code. Coverage comes from
 `npm run test:coverage`, which you can run locally to see what CI will see.
