@@ -1,0 +1,84 @@
+# Dependency updates.
+#
+# Grouped rather than one pull request per package: every update here has to pass the same full
+# build, both suites and the quality gate, so ungrouped updates would mean a dozen runs of an
+# eight-minute pipeline a week to move patch versions of `@types/*`.
+#
+# See docs/adr/vsc-0013-dependency-freshness-policy.md.
+
+version: 2
+
+updates:
+
+  # ------------------------------------------------------------------ npm
+  # One entry per workspace plus the root: npm workspaces hoist to a single lockfile, but
+  # Dependabot still needs each manifest's directory to know which package.json to edit.
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Type definitions move constantly and cannot break anything the compiler will not catch.
+      types:
+        patterns:
+          - "@types/*"
+      # Everything else in one weekly pull request, so a red build names one week's changes.
+      dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@types/*"
+    ignore:
+      # Pinned deliberately, not accidentally — see docs/adr/vsc-0013.
+      #
+      # `@types/vscode` states the *minimum* VS Code API this extension is built against, and
+      # `engines.vscode` must not exceed it. Raising it drops support for older editors, which is
+      # a product decision rather than a dependency update.
+      - dependency-name: "@types/vscode"
+      # Langium's generated output tracks the CLI, and a major would require regenerating and
+      # re-checking the AST. Minor and patch still flow.
+      - dependency-name: "langium"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "langium-cli"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: /packages/language
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      language:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /packages/extension
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      extension:
+        patterns:
+          - "*"
+
+  # -------------------------------------------------------- github-actions
+  # Actions are pinned by major tag (docs/adr/vsc-0011). Dependabot therefore proposes tag moves
+  # such as `@v5` → `@v6`, which are the ones worth a human look. It is also what would maintain
+  # commit SHAs if this repository ever adopts them — see the amendment on ADR-VSC-0011.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns:
+          - "*"

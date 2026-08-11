@@ -57,7 +57,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       # The sequence build.yml runs, in the same order — the language package's `out/` must
       # exist before its tests import it — but with coverage on, because the scanner below

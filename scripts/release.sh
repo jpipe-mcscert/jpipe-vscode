@@ -422,6 +422,11 @@ cmd_prepare() {
   [ "$DRY_RUN" -eq 1 ] || pass "jpipe-language dependency set to $version"
 
   # Only now that all four agree can the lockfile be reconciled.
+  #
+  # `install`, and it must stay `install`, even though CI now uses `npm ci` everywhere
+  # (docs/adr/vsc-0013). The two commands do opposite things: `ci` installs what the lockfile
+  # already says and fails if the manifests disagree with it, which is exactly the state three
+  # lines above leave us in. Reconciling that is this line's whole job.
   run npm install --silent
   [ "$DRY_RUN" -eq 1 ] || pass "package-lock.json reconciled"
 
