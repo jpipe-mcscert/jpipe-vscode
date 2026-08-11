@@ -40,7 +40,7 @@ function rangeContains(range: SymbolRange, line: number, character: number): boo
 /**
  * Whether `a` covers less ground than `b` — the test for "more specific".
  *
- * Compared lines first, then characters, rather than by the weighted sum
+ * Compares lines first, then characters, rather than the weighted sum
  * `lineSpan * 10000 + charSpan` this replaces. That weight was doing two jobs badly: a line
  * longer than its weight let the character term bleed into the line term and rank an outer
  * symbol as the inner one, and a range spanning lines has a *negative* character span whenever
