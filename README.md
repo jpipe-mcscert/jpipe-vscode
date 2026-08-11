@@ -39,6 +39,25 @@ Records here are prefixed `VSC` (`ADR-VSC-0004`). The compiler
 its own from `0001`, and both are cited from this repository's source — so when citing one, name
 the repository.
 
+### What has to be green before a pull request merges?
+
+Two checks, both required on `main`:
+
+- **`build`** — a clean build, both test suites, and a real `vsce package`.
+- **`Build and analyze`** — SonarQube Cloud, with the
+  [Quality Gate](https://sonarcloud.io/dashboard?id=jpipe-mcscert_jpipe-vscode) enforced. The
+  job fails if the gate fails, so a red check here means the gate said no.
+
+The gate judges **new code only**. Existing debt is baselined and will not block you; what it
+asks is that a change does not add uncovered, duplicated or smelly code. Coverage comes from
+`npm run test:coverage`, which you can run locally to see what CI will see.
+
+One limitation worth knowing: **a pull request opened from a fork cannot be analysed**, because
+GitHub does not give fork workflows access to repository secrets, so the analysis has no token
+and the check fails. If you do not have write access, open an issue or ask a maintainer to push
+your branch here — `git fetch <your-fork> <branch> && git push origin HEAD:contrib/<name>` — and
+retarget the pull request at it. See [ADR-VSC-0009](docs/adr/vsc-0009-sonarcloud-as-mandatory-quality-gate.md).
+
 ### How to setup the development environment?
 
 #### Prerequisite: Volta
