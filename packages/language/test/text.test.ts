@@ -37,9 +37,12 @@ describe('byCodeUnit', () => {
         const values = ['x', 'y', 'X', '', 'xy'];
         for (const a of values) {
             for (const b of values) {
-                // `===` rather than `toBe`, which is Object.is: negating the 0 returned for
-                // equal strings gives -0, and Object.is(-0, 0) is false.
-                expect(byCodeUnit(a, b) === -byCodeUnit(b, a)).toBe(true);
+                const forward = byCodeUnit(a, b);
+                const reverse = byCodeUnit(b, a);
+                // The equal case is split out rather than asserted as `-reverse`: negating 0
+                // gives -0, and `toBe` is Object.is, for which -0 and 0 differ.
+                if (forward === 0) expect(reverse).toBe(0);
+                else expect(forward).toBe(-reverse);
             }
         }
     });
