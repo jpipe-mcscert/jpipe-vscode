@@ -56,3 +56,21 @@ SHA pinning is **not** adopted at this time.
 - Adding an action means picking a major tag, not a SHA, and existing entries should not be
   "helpfully" converted one at a time — that recreates the mixed state this decision exists to
   avoid.
+
+## Amendment (2026-08-11): the premise has changed
+
+This record declined SHA pinning on one specific ground — that with no Dependabot, nothing would
+advance the SHAs, so they would decay into pinning known-vulnerable versions.
+
+**jpipe-vscode ADR-VSC-0013 adopts Dependabot, including the `github-actions` ecosystem.** That
+ground no longer holds: something now would advance them.
+
+The decision is left standing for the moment rather than reversed silently, because the reversal
+this record already describes is all-or-nothing — *"adopt it for every action in every workflow,
+in one change"* — and that is a different change from the one that introduced Dependabot. Until
+it is made, actions stay pinned by major tag, and Dependabot proposes tag moves (`@v5` → `@v6`),
+which are the ones worth a human look.
+
+What is no longer true is the *reason* for the status quo. Anyone revisiting this should treat
+the question as open and settle it, not re-derive the maintenance objection from this record's
+Rationale — it has expired.

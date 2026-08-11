@@ -38,13 +38,16 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '${{env.NODEJS_VERSION}}'
+          cache: npm
 
       - name: Install vsce to package code
         run: |
           npm install -g @vscode/vsce
 
+      # `ci`, not `install`: it installs exactly what package-lock.json records and fails when
+      # the two disagree, so "it built in CI" is a claim about the tree we actually ship.
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       # Split out from packaging so a failure names the phase that broke, and so the
       # language package's `out/` exists before the tests import it.

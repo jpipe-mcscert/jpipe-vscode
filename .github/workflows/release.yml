@@ -13,6 +13,14 @@ env:
 permissions:
   contents: write  # required for gh release create
 
+# One release at a time. Deliberately NOT cancel-in-progress, unlike build.yml and sonar.yml:
+# those produce artefacts that a newer commit supersedes, whereas this one creates a GitHub
+# Release and publishes to the Marketplace. A run cancelled between those two steps leaves a
+# release tagged and announced but never published, which is worse than waiting.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
 
   release:
@@ -41,6 +49,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '${{env.NODEJS_VERSION}}'
+          cache: npm
 
       - name: Install vsce to package code
         run: npm install -g @vscode/vsce
@@ -69,7 +78,7 @@ jobs:
 
       - name: Build and test
         run: |
-          npm install
+          npm ci
           npm run clean
           npm run langium:generate
           npm run build
