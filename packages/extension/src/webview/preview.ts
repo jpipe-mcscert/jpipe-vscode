@@ -315,6 +315,15 @@ function resolveContent(svg: SVGSVGElement): Box | null {
  * Parsed as XML rather than assigned through innerHTML: the HTML parser reaches SVG attribute
  * casing (`viewBox`, `preserveAspectRatio`) through a fix-up table, and a malformed document
  * surfaces as a detectable `<parsererror>` instead of silently mangled markup.
+ *
+ * A document the parser rejects is not shown at all. There used to be an `innerHTML = svgText`
+ * fallback here, on the reasoning that showing something beats showing nothing — but the text is
+ * the compiler's rendering of a user's model, so that line was an HTML injection sink fed by
+ * file content. The panel's CSP (`default-src 'none'`, a nonce for scripts and no
+ * `'unsafe-inline'`) does block the inline handlers that would exploit it, but that is a
+ * defence in another file which nothing ties to this one. Since the only markup that reached
+ * the fallback was markup an XML parser had already refused, the honest answer is to drop it:
+ * the caller treats `null` as "no diagram", which is true.
  */
 function installSvg(svgText: string): SVGSVGElement | null {
     try {
@@ -324,10 +333,11 @@ function installSvg(svgText: string): SVGSVGElement | null {
             wrapper.replaceChildren(document.adoptNode(root));
             return root;
         }
-    } catch { /* fall through to the forgiving path */ }
+    } catch { /* unparseable — fall through and show nothing */ }
 
-    wrapper.innerHTML = svgText;
-    return wrapper.querySelector('svg');
+    // Clear the canvas, or the previous diagram would sit there looking current.
+    wrapper.replaceChildren();
+    return null;
 }
 
 /* ------------------------------------------------------------------ modes */
@@ -737,7 +747,46 @@ new MutationObserver(() => {
 
 /* --------------------------------------------------------------- messages */
 
-window.addEventListener('message', (event: MessageEvent<HostToWebview>) => {
+/** Every `type` the host is allowed to send. Anything else is not from our protocol. */
+const HOST_MESSAGE_TYPES: ReadonlySet<string> = new Set<HostToWebview['type']>([
+    'render', 'highlight', 'setUnsaved', 'view', 'diagnostic', 'diagnosticText', 'busy', 'config'
+]);
+
+/**
+ * Whether an arriving payload is one of ours.
+ *
+ * The single place `HostToWebview` is asserted, and it is asserted about an `unknown` — see the
+ * listener below for why the event is not typed as carrying one.
+ */
+function isHostMessage(value: unknown): value is HostToWebview {
+    return typeof value === 'object'
+        && value !== null
+        && HOST_MESSAGE_TYPES.has((value as { type?: unknown }).type as string);
+}
+
+/**
+ * The panel's inbox.
+ *
+ * The extension host is the only party that can post here — the panel is an isolated webview
+ * whose CSP is `default-src 'none'` — so this listener is not a cross-origin surface in the way
+ * the shape of the API suggests. It is not checked by `event.origin` because a webview's origin
+ * is an opaque per-session `vscode-webview://` identity rather than anything this code can name,
+ * so a comparison would either be vacuous or, if it were wrong, would silently take the whole
+ * panel offline. What is checked instead is that the message belongs to the protocol at all,
+ * which is the part that would actually matter if something else ever did get to post here.
+ *
+ * The event is typed `unknown` rather than `MessageEvent<HostToWebview>` on purpose: the latter
+ * asserts something the runtime does not provide, since `postMessage` carries whatever the
+ * sender put in it, and it would let a later edit reach for a field before validating it.
+ *
+ * Sonar reports S2819 here and it is marked a false positive on the project: the rule looks for
+ * an `event.origin` comparison, and a webview has no cross-origin sender to compare against.
+ * Two shapes of inline validation were tried before settling on that; the rule fires on whether
+ * it can see `event.data` inspected in this function, not on whether the payload is checked.
+ * The predicate above is the clearer arrangement, so it is the one kept.
+ */
+window.addEventListener('message', (event: MessageEvent<unknown>) => {
+    if (!isHostMessage(event.data)) return;
     const msg = event.data;
     switch (msg.type) {
         case 'render':

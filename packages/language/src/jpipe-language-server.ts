@@ -14,13 +14,16 @@
 import { CodeActionKind, type InitializeParams, type InitializeResult } from 'vscode-languageserver';
 import { DefaultLanguageServer } from 'langium/lsp';
 import { JPIPE_QUICK_FIXES, JPIPE_REFACTORINGS } from './code-actions/index.js';
+import { byCodeUnit } from './jpipe-text.js';
 
 /** Every action kind the registry can produce, de-duplicated and stable in order. */
 export function providedCodeActionKinds(): string[] {
     const kinds = new Set<string>();
     if (JPIPE_QUICK_FIXES.length > 0) kinds.add(CodeActionKind.QuickFix);
     for (const refactoring of JPIPE_REFACTORINGS) kinds.add(refactoring.actionKind);
-    return [...kinds].sort();
+    // Code-unit order: these are fixed ASCII identifiers, so the point is only that the order is
+    // stated and stable across runtimes rather than locale-dependent.
+    return [...kinds].sort(byCodeUnit);
 }
 
 export class JpipeLanguageServer extends DefaultLanguageServer {
