@@ -20,7 +20,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 const read = (...parts: string[]) => readFileSync(join(here, '..', ...parts), 'utf8');
 
-const shell = read('src', 'extension', 'image-generation', 'preview-shell.ts');
+const shell = read('src', 'extension', 'preview', 'preview-shell.ts');
 const preview = read('src', 'webview', 'preview.ts');
 const css = read('src', 'webview', 'preview.css');
 

@@ -7,7 +7,7 @@ import {
     parseSemver,
     selectInstallableReleases,
     type JpipeRelease
-} from '../src/extension/image-generation/release-selection.js';
+} from '../src/extension/compiler/release-selection.js';
 
 /**
  * This logic picks which compiler the user is offered and where it may be downloaded from, so a

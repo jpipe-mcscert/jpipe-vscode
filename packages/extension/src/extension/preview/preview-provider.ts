@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node';
-import { ImageGenerator, ImageFormat, type DiagnosticRun } from './image-generator.js';
+import { ImageGenerator, ImageFormat, type DiagnosticRun } from '../compiler/image-generator.js';
 import { getShellHtml } from './preview-shell.js';
 import { responseToCursorMove } from './preview-refresh.js';
 import type {
