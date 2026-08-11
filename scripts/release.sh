@@ -251,14 +251,22 @@ check_vsce() {
 }
 
 # Read from sonar-project.properties rather than repeated here, so the key has one home.
+#
+# This must not be able to fail. It is called as `key=$(sonar_project_key)`, and a plain
+# assignment from a command substitution carries that command's exit status — so under `set -e`
+# a missing or unreadable file would abort preflight outright, before check_quality_gate could
+# report it. Every path here yields a string (possibly empty) and returns 0; judging the empty
+# case is the caller's job. `head -n 1` because a properties file with two projectKey lines is
+# malformed, and one key is what the caller can act on.
 sonar_project_key() {
-  sed -n 's/^sonar\.projectKey=\(.*\)$/\1/p' sonar-project.properties 2>/dev/null
+  [ -r sonar-project.properties ] || return 0
+  sed -n 's/^sonar\.projectKey=\(.*\)$/\1/p' sonar-project.properties 2>/dev/null | head -n 1 || true
 }
 
-# The quality gate blocks merges to main (see docs/adr/vsc-0009), so a release cut from a main
-# whose gate is red ships code the project has already declined to accept. release.yml does not
-# check this — the gate runs against main, not against the tag — which is exactly the sort of
-# gap preflight exists to close.
+# The quality gate blocks merges to main, so a release cut from a main whose gate is red ships
+# code the project has already declined to accept. release.yml does not check this — the gate
+# runs against main, not against the tag — which is exactly the sort of gap preflight exists to
+# close. See docs/adr/vsc-0009-sonarcloud-as-mandatory-quality-gate.md.
 #
 # Unreachable SonarCloud is a warning, not a failure, on the same reasoning as check_in_sync's
 # missing upstream: a release must not be blocked by somebody else's outage. The project is
@@ -267,7 +275,7 @@ check_quality_gate() {
   local key url payload status
   key=$(sonar_project_key)
   if [ -z "$key" ]; then
-    warn "no sonar.projectKey in sonar-project.properties — quality gate not verified"
+    warn "could not read sonar.projectKey from sonar-project.properties — quality gate not verified"
     return
   fi
 
@@ -277,8 +285,12 @@ check_quality_gate() {
     return
   fi
 
+  # `|| true` for the same reason as sonar_project_key: with `set -o pipefail`, a body that is
+  # not the JSON we expect — SonarCloud answering 200 with an error page, say — would fail the
+  # pipeline and take preflight down with it, instead of falling through to the warning below.
   status=$(printf '%s' "$payload" \
-    | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).projectStatus.status' 2>/dev/null)
+    | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).projectStatus.status' 2>/dev/null \
+    || true)
 
   case "$status" in
     OK)
