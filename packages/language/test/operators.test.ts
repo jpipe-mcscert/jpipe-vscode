@@ -41,13 +41,16 @@ describe('the shipped operators', () => {
         expect([...knownOperatorNames()].sort()).toEqual(['assemble', 'refine']);
     });
 
+    // Object rows with `$name` placeholders rather than a tuple with `%s`: positional
+    // placeholders take the row's *second* element, which is the arity, so the title claimed
+    // `assemble is described as "1"`. Named ones cannot drift from what the row holds.
     test.each([
-        ['assemble', 1, undefined, 'at least 1'],
-        ['refine', 2, 2, 'exactly 2']
-    ])('%s is described as "%s"', (name, min, max, expected) => {
-        const spec = operatorSpec(name as string);
+        { operator: 'assemble', min: 1, max: undefined, phrase: 'at least 1' },
+        { operator: 'refine', min: 2, max: 2, phrase: 'exactly 2' }
+    ])('$operator is described as $phrase', ({ operator, min, max, phrase }) => {
+        const spec = operatorSpec(operator);
         expect(spec?.arity.min).toBe(min);
         expect(spec?.arity.max).toBe(max);
-        expect(arityPhrase(spec!.arity.min, spec!.arity.max)).toBe(expected);
+        expect(arityPhrase(spec!.arity.min, spec!.arity.max)).toBe(phrase);
     });
 });
