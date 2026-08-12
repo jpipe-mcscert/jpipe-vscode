@@ -34,7 +34,11 @@ export class JpipeExclusionService {
             }
             // `URI.parse` is lenient: a blank or root-ish entry yields path '/', which would
             // match every document and silently disable validation workspace-wide.
-            const path = uri.path.replace(/\/+$/, '');
+            // Scanned from the end rather than `replace(/\/+$/, '')`: that pattern has to retry
+            // from every position inside a run of slashes (S8786), where this is linear.
+            let end = uri.path.length;
+            while (end > 0 && uri.path[end - 1] === '/') end--;
+            const path = uri.path.slice(0, end);
             if (path.length === 0) {
                 this.logger.warn(`Ignoring excluded-path entry that resolves to the filesystem root: ${p}`);
                 return [];

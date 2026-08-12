@@ -190,5 +190,16 @@ export const USAGE_ERROR_EXIT_CODE = 2;
 
 export function isUnknownOptionFailure(exitCode: unknown, stderr: string): boolean {
     if (exitCode !== USAGE_ERROR_EXIT_CODE) return false;
-    return /^\s*(Unknown option|Unmatched argument)/mi.test(stderr);
+    // Line by line with string operations rather than one regex over the whole of stderr. The
+    // pattern this replaces was unanchored and multiline, so it was retried at every position
+    // and each attempt could rescan — the super-linear cost S8786 reports. Splitting first is
+    // linear, and says what is meant: one of these markers begins some line.
+    //
+    // Lower-cased to keep the old `i` flag, and compared with startsWith rather than equality
+    // because picocli prints "Unknown options: '-f', 'json'" when it rejects a flag together
+    // with its value, which is the case that actually turns up in the field.
+    return stderr.split('\n').some(line => {
+        const start = line.trimStart().toLowerCase();
+        return start.startsWith('unknown option') || start.startsWith('unmatched argument');
+    });
 }

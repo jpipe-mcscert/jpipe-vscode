@@ -88,7 +88,11 @@ const UNIT_PX: Record<string, number> = {
  */
 export function parseLength(attr: string | null | undefined): number | null {
     if (!attr) return null;
-    const match = /^\s*([+-]?[\d.]+(?:e[+-]?\d+)?)\s*([a-z]*)\s*$/i.exec(attr);
+    // Trimmed first so the pattern carries no leading or trailing `\s*`. Those two, with a
+    // possibly-empty unit between them, could split a run of spaces many ways — the
+    // backtracking S8786 reports. `trim()` removes exactly the characters `\s` matches, in
+    // linear time. The one remaining `\s*` sits between digits and letters, which are disjoint.
+    const match = /^([+-]?[\d.]+(?:e[+-]?\d+)?)\s*([a-z]*)$/i.exec(attr.trim());
     if (!match) return null;
     const value = Number(match[1]);
     const factor = UNIT_PX[match[2].toLowerCase()];
