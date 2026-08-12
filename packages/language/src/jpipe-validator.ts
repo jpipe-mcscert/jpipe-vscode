@@ -1,19 +1,17 @@
 import { AstUtils, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
 import { GlobExpansionError, isGlobPattern } from './jpipe-glob.js';
-import type {
-    JpipeAstType,
-    Unit,
-    Composition,
-    Evidence,
-    Strategy,
-    Conclusion,
-    SubConclusion,
-    AbstractSupport,
-    Template,
-    Justification,
-    Load
-} from './generated/ast.js';
 import {
+    type JpipeAstType,
+    type Unit,
+    type Composition,
+    type Evidence,
+    type Strategy,
+    type Conclusion,
+    type SubConclusion,
+    type AbstractSupport,
+    type Template,
+    type Justification,
+    type Load,
     isTemplate,
     isJustification,
     isAbstractSupport,
@@ -25,9 +23,15 @@ import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
 import type { JpipeImportService } from './jpipe-import.js';
 import type { JpipeUnificationService } from './jpipe-unification.js';
-import { UNIFY_BY_KEY } from './jpipe-operators.js';
+import {
+    UNIFY_BY_KEY,
+    allowedConfigKeys,
+    isKnownOperator,
+    knownOperatorNames,
+    operatorSpec,
+    requiredConfigKeys
+} from './jpipe-operators.js';
 import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
-import { allowedConfigKeys, isKnownOperator, knownOperatorNames, operatorSpec, requiredConfigKeys } from './jpipe-operators.js';
 import { JpipeIssue, issue } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 import { messageOf } from './jpipe-errors.js';
@@ -160,7 +164,7 @@ export class JpipeValidator {
                 ? `at least ${min}`
                 : `between ${min} and ${max}`;
         // The noun agrees with the number that immediately precedes it.
-        const count = max === undefined ? min : max;
+        const count = max ?? min;
         accept('error',
             `${composition.operator} requires ${expected} source ${count === 1 ? 'model' : 'models'}, got ${actual}.`,
             { node: composition, property: 'operator',

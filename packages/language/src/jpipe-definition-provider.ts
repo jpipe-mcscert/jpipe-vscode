@@ -1,8 +1,12 @@
-import { AstUtils, type AstNode, type LangiumDocument } from 'langium';
+import {
+    AstUtils,
+    type AstNode,
+    type CstNode,
+    type LangiumDocument,
+    type MaybePromise
+} from 'langium';
 import { DefaultDefinitionProvider } from 'langium/lsp';
 import { LocationLink, type DefinitionParams } from 'vscode-languageserver';
-import type { CstNode } from 'langium';
-import type { MaybePromise } from 'langium';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeImportService } from './jpipe-import.js';
 import {
@@ -95,7 +99,7 @@ export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
             if (element) break;
             node = node.$container;
         }
-        if (!element || !element.$cstNode) return undefined;
+        if (!element?.$cstNode) return undefined;
 
         const id = element.id as QualifiedId;
         if (!id?.parts || id.parts.length < 2) return undefined; // plain name, no template prefix
@@ -114,7 +118,7 @@ export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
         if (!template) return undefined;
 
         const targetElement = getAllElements(template).find(e => localName(e.id) === elementName);
-        if (!targetElement || !targetElement.$cstNode) return undefined;
+        if (!targetElement?.$cstNode) return undefined;
 
         const targetDoc = this.getDocument(targetElement);
         if (!targetDoc) return undefined;
