@@ -125,7 +125,7 @@ export function isBatchFile(file: string): boolean {
  */
 export function escapeCmdArgument(argument: string, doubleEscape: boolean): string {
     let escaped = String(argument);
-    escaped = escaped.replace(/(\\*)"/g, '$1$1\\"');
+    escaped = escaped.replace(/(\\*)"/g, String.raw`$1$1\"`);
     escaped = escaped.replace(/(\\*)$/, '$1$1');
     escaped = `"${escaped}"`;
     escaped = escaped.replace(CMD_META_CHARACTERS, '^$1');

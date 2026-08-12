@@ -316,6 +316,25 @@ describe('Operator completion', () => {
         });
     });
 
+    // Nothing covered this until the pattern that extracts the typed prefix was fixed. It used
+    // to yield the empty string in every case — `[^}]*` was greedy and reached the end before
+    // `(\w*)` was tried — so the filter below it never ran and the editor was handed the whole
+    // key list to sort out client-side.
+    test('filters the config keys by what has already been typed', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification Composed is assemble(A) { conc<|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).toContain('conclusionLabel');
+                expect(labels).not.toContain('strategyLabel');
+            }
+        });
+    });
+
     // The Unifier reads these from every composition's config, so they belong to no single
     // operator — and were offered by neither before the operator tables were unified.
     test('suggests the unification keys for every operator', async () => {

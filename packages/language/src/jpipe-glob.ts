@@ -190,7 +190,7 @@ export function globToRegExp(pattern: string): RegExp {
                     regex += '))';
                     inGroup = false;
                 } else {
-                    regex += '\\}';
+                    regex += String.raw`\}`;
                 }
                 break;
             case ',':
@@ -238,7 +238,7 @@ export function globToRegExp(pattern: string): RegExp {
 
         if (next() === '^') {
             // A literal '^' as the first class character; escape it so it is not read as negation.
-            body += '\\^';
+            body += String.raw`\^`;
             i++;
         } else {
             if (next() === '!') {

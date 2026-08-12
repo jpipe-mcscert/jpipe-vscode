@@ -91,6 +91,28 @@ describe('Java NIO glob semantics', () => {
         expect(matchesGlob('a\\*b.jd', 'a*b.jd')).toBe(true);
         expect(matchesGlob('a\\*b.jd', 'axxb.jd')).toBe(false);
     });
+
+    // Java globs negate a class with `!`, not `^` — so a leading `^` is an ordinary member of it.
+    // Anyone arriving from a shell or a regex reads `[^ab]` as "neither a nor b"; here it means
+    // "one of ^, a or b". Worth pinning precisely because the intuition runs so strongly the
+    // other way, and because the editor and the compiler must agree on which files this matches.
+    test('a leading ^ in a character class is a literal, not a negation', () => {
+        expect(matchesGlob('[^ab].jd', '^.jd')).toBe(true);
+        expect(matchesGlob('[^ab].jd', 'a.jd')).toBe(true);
+        expect(matchesGlob('[^ab].jd', 'c.jd')).toBe(false);
+    });
+
+    test('a character class is negated with ! instead', () => {
+        expect(matchesGlob('[!ab].jd', 'c.jd')).toBe(true);
+        expect(matchesGlob('[!ab].jd', 'a.jd')).toBe(false);
+    });
+
+    // A `}` with no `{` open is the character itself rather than a syntax error — unlike a
+    // nested `{`, which is one. The pair is deliberately asymmetric.
+    test('a } outside a group is a literal brace', () => {
+        expect(matchesGlob('a}b.jd', 'a}b.jd')).toBe(true);
+        expect(matchesGlob('a}b.jd', 'ab.jd')).toBe(false);
+    });
 });
 
 describe('anchorGlob', () => {

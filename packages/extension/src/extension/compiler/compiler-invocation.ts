@@ -190,5 +190,9 @@ export const USAGE_ERROR_EXIT_CODE = 2;
 
 export function isUnknownOptionFailure(exitCode: unknown, stderr: string): boolean {
     if (exitCode !== USAGE_ERROR_EXIT_CODE) return false;
-    return /^\s*(Unknown option|Unmatched argument)/mi.test(stderr);
+    // `[^\S\r\n]` rather than `\s`: with the `m` flag, `\s*` can consume newlines, so a run
+    // of blank lines gives the engine many overlapping start positions for the same match
+    // (S8786). Confining it to same-line whitespace cannot change the answer, because `^`
+    // already matches at the start of the line the marker is actually on.
+    return /^[^\S\r\n]*(Unknown option|Unmatched argument)/mi.test(stderr);
 }

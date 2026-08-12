@@ -79,5 +79,7 @@ export function freshLocalId(owner: Justification | Template, stem: string): str
 
 /** Escapes a label for the double-quoted STRING terminal. */
 function escapeLabel(label: string): string {
-    return label.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+    // The *search* strings stay quoted: a lone backslash cannot be written as String.raw`\`,
+    // since the backslash would escape the closing backtick. Only the replacements convert.
+    return label.replaceAll('\\', String.raw`\\`).replaceAll('"', String.raw`\"`);
 }

@@ -358,9 +358,16 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             start: Position.create(0, 0),
             end: pos
         });
-        const configKeyMatch = /(?:justification|template)\s+\w+\s+is\s+(\w+)\s*\([^)]*\)\s*\{[^}]*(\w*)$/.exec(textToCursor);
+        // `[^}]*(\w*)$` was ambiguous — both halves match word characters — which is the
+        // backtracking S8786 reports, and it runs against the whole document above the cursor on
+        // every keystroke. It also never worked: the greedy `[^}]*` reached the end, `(\w*)`
+        // matched empty and `$` succeeded, so the group was *always* the empty string and the
+        // fuzzy filter in getConfigKeyCompletions never ran. The block body is captured whole
+        // here and the partial key taken from it separately, which is unambiguous and correct.
+        const configKeyMatch = /(?:justification|template)\s+\w+\s+is\s+(\w+)\s*\([^)]*\)\s*\{([^}]*)$/.exec(textToCursor);
         if (configKeyMatch) {
-            const keyItems = this.getConfigKeyCompletions(configKeyMatch[1], configKeyMatch[2]);
+            const partialKey = /\w*$/.exec(configKeyMatch[2])?.[0] ?? '';
+            const keyItems = this.getConfigKeyCompletions(configKeyMatch[1], partialKey);
             if (keyItems.length > 0) {
                 items = [...keyItems, ...items.filter(i => !keyItems.some(k => k.label === i.label))];
             }
