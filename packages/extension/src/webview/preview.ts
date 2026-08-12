@@ -597,7 +597,7 @@ container.addEventListener('pointerdown', event => {
 });
 
 container.addEventListener('pointermove', event => {
-    if (!drag || drag.pointerId !== event.pointerId || !vb || !content) return;
+    if (drag?.pointerId !== event.pointerId || !vb || !content) return;
     setViewBox(panBy(vb, event.clientX - drag.x, event.clientY - drag.y, svgRect(), content));
     drag.x = event.clientX;
     drag.y = event.clientY;
@@ -605,7 +605,7 @@ container.addEventListener('pointermove', event => {
 
 for (const type of ['pointerup', 'pointercancel'] as const) {
     container.addEventListener(type, event => {
-        if (!drag || drag.pointerId !== event.pointerId) return;
+        if (drag?.pointerId !== event.pointerId) return;
         container.releasePointerCapture(event.pointerId);
         container.classList.remove('dragging');
         drag = null;

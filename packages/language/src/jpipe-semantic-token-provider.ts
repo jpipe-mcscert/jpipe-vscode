@@ -1,6 +1,9 @@
-import { AbstractSemanticTokenProvider, type SemanticTokenAcceptor } from 'langium/lsp';
+import {
+    AbstractSemanticTokenProvider,
+    type LangiumServices,
+    type SemanticTokenAcceptor
+} from 'langium/lsp';
 import type { AstNode } from 'langium';
-import type { LangiumServices } from 'langium/lsp';
 import {
     isLoad, isJustification, isTemplate, isRelation,
     isAbstractSupport, isEvidence, isConclusion, isStrategy, isSubConclusion

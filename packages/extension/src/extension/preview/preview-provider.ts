@@ -165,7 +165,7 @@ export class PreviewProvider {
     public async openPreview(): Promise<void> {
         const editor = vscode.window.activeTextEditor;
 
-        if (!editor || editor.document.languageId !== 'jpipe') {
+        if (editor?.document.languageId !== 'jpipe') {
             vscode.window.showErrorMessage('No active jPipe file');
             return;
         }

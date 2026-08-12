@@ -102,7 +102,7 @@ export class ExclusionManager implements vscode.Disposable {
         const wanted = stripTrailingSlash(target.toString());
         return this.removeMatching(entry => {
             const resolved = this.decode(entry);
-            return resolved !== undefined && resolved.toString() === wanted;
+            return resolved?.toString() === wanted;
         });
     }
 

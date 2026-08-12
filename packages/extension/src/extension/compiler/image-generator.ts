@@ -140,16 +140,14 @@ export class ImageGenerator {
 
         // Use provided document or get from active editor
         if (!document) {
-            if (!editor || editor.document.languageId !== 'jpipe') {
+            if (editor?.document.languageId !== 'jpipe') {
                 throw new Error('No active jPipe file');
             }
             document = editor.document;
         }
 
         // If we don't have an editor, try to get one from visible text editors
-        if (!editor) {
-            editor = vscode.window.visibleTextEditors.find(e => e.document === document);
-        }
+        editor ??= vscode.window.visibleTextEditors.find(e => e.document === document);
 
         const inputFile = document.uri.fsPath;
         const diagramName = forcedDiagramName ?? this.findDiagramName(document, editor);
