@@ -81,8 +81,17 @@ export const addSupporter = quickFix<
 });
 
 /** Single-letter stems matching the convention the examples use. */
+const STEMS: Record<ElementKeyword, string> = {
+    evidence: 'e',
+    strategy: 's',
+    'sub-conclusion': 'sc',
+    // Unreachable today: a conclusion is never offered as a supporter. Present because the
+    // record is total over the keyword type, which is what stops a new keyword compiling.
+    conclusion: 'c'
+};
+
 function stemFor(keyword: ElementKeyword): string {
-    return keyword === 'evidence' ? 'e' : keyword === 'strategy' ? 's' : 'sc';
+    return STEMS[keyword];
 }
 
 function article(keyword: ElementKeyword): string {

@@ -40,7 +40,10 @@ export interface Frame {
 }
 
 export function clamp(v: number, lo: number, hi: number): number {
-    return v < lo ? lo : v > hi ? hi : v;
+    // Every call site guarantees lo <= hi, so the standard form is safe: kMin <= kMax,
+    // 1/MAX_WHEEL_STEP < MAX_WHEEL_STEP, and clampTranslation's span is content + viewport
+    // less twice a 0.25 overlap, which cannot invert.
+    return Math.min(Math.max(v, lo), hi);
 }
 
 /** Fraction of the content added as breathing room on each side when fitting. */
@@ -324,8 +327,19 @@ export function wheelZoomFactor(deltaY: number, sensitivity = 1): number {
  * `viewportSize` must be the viewport's extent along the axis being converted — a page of
  * horizontal scrolling is a viewport width, not a height.
  */
+/**
+ * `WheelEvent.deltaMode` values. Named because `1` and `2` at a call site say nothing, and the
+ * DOM exposes them only as constants on the event's constructor.
+ */
+const DOM_DELTA_LINE = 1;
+const DOM_DELTA_PAGE = 2;
+
 export function wheelPixels(deltaMode: number, viewportSize: number): number {
-    return deltaMode === 1 ? 16 : deltaMode === 2 ? viewportSize : 1;
+    switch (deltaMode) {
+        case DOM_DELTA_LINE: return 16;
+        case DOM_DELTA_PAGE: return viewportSize;
+        default:             return 1;
+    }
 }
 
 /* -------------------------------------------------------------------------- */

@@ -151,9 +151,12 @@ export class ExclusionManager implements vscode.Disposable {
         if (!parsed) return undefined;
         const roots = vscode.workspace.workspaceFolders ?? [];
         // A bare entry can only be resolved when there is exactly one root to resolve it against.
-        const folder = parsed.rootName !== undefined
-            ? roots.find(f => f.name === parsed.rootName)
-            : (roots.length === 1 ? roots[0] : undefined);
+        let folder: vscode.WorkspaceFolder | undefined;
+        if (parsed.rootName !== undefined) {
+            folder = roots.find(f => f.name === parsed.rootName);
+        } else if (roots.length === 1) {
+            folder = roots[0];
+        }
         if (!folder) return undefined;
         return vscode.Uri.parse(stripTrailingSlash(vscode.Uri.joinPath(folder.uri, parsed.relativePath).toString()));
     }

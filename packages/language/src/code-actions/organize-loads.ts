@@ -115,5 +115,6 @@ function organize(loads: readonly Load[]): Load[] {
  * which has anything wrong with it. Sorting and de-duplicating are what the action is for.
  */
 function render(load: Load): string {
-    return `load "${load.path}"${load.namespace ? ` as ${load.namespace}` : ''}`;
+    const alias = load.namespace ? ` as ${load.namespace}` : '';
+    return `load "${load.path}"${alias}`;
 }

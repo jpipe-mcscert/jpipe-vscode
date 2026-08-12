@@ -20,7 +20,7 @@ export class PreviewProvider {
     private static webviewDisposed: boolean = true;
     private unsaved: boolean = false;
     private viewMode: 'diagram' | 'diagnostic' = 'diagram';
-    private subscriptions: vscode.Disposable[] = [];
+    private readonly subscriptions: vscode.Disposable[] = [];
     private lastRenderedDocumentUri: string | undefined;
     private lastRenderedDiagramName: string | undefined;
     /**

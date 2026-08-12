@@ -846,7 +846,9 @@ export class DiagnosticView {
             // promise, and it is what makes the tree and the raw text reconcilable.
             row.append(el('span', 'diag-action-index', `${node.action.index}.`));
 
-            const twisty = el('button', hasChildren ? 'diag-twisty' : 'diag-twisty leaf', hasChildren ? (open ? '▾' : '▸') : '·');
+            let glyph = '·';
+            if (hasChildren) glyph = open ? '▾' : '▸';
+            const twisty = el('button', hasChildren ? 'diag-twisty' : 'diag-twisty leaf', glyph);
             if (hasChildren) {
                 twisty.setAttribute('aria-expanded', String(open));
                 twisty.addEventListener('click', () => {

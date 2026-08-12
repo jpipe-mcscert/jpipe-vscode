@@ -694,9 +694,9 @@ function setDrawerOpen(open: boolean): void {
     downloadToggle?.setAttribute('aria-expanded', String(open));
 }
 drawer.addEventListener('click', event => event.stopPropagation());
-drawer.querySelectorAll('button[data-format]').forEach(btn => {
+drawer.querySelectorAll<HTMLElement>('button[data-format]').forEach(btn => {
     btn.addEventListener('click', () => {
-        const format = btn.getAttribute('data-format');
+        const format = btn.dataset.format;
         if (format) {
             vscode.postMessage({ type: 'download', format });
             setDrawerOpen(false);
