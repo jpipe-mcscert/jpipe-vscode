@@ -88,8 +88,10 @@ export const extractTemplate = refactoring({
 
         const rewritten = [
             `${indent}justification ${justification.id} implements ${templateId} {`,
-            ...leaves.map(element =>
-                `${inner}${renderElement('evidence', `${templateId}:${qualifiedIdText(element.id)}`, element.name)}`),
+            ...leaves.map(element => {
+                const overrideId = `${templateId}:${qualifiedIdText(element.id)}`;
+                return `${inner}${renderElement('evidence', overrideId, element.name)}`;
+            }),
             `${indent}}`
         ].join('\n');
 

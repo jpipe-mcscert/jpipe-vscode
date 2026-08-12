@@ -26,6 +26,7 @@ import type { JpipeUnificationService } from './jpipe-unification.js';
 import {
     UNIFY_BY_KEY,
     allowedConfigKeys,
+    arityPhrase,
     isKnownOperator,
     knownOperatorNames,
     operatorSpec,
@@ -158,11 +159,7 @@ export class JpipeValidator {
         const { min, max } = spec.arity;
         if (actual >= min && (max === undefined || actual <= max)) return;
 
-        const expected = max === min
-            ? `exactly ${min}`
-            : max === undefined
-                ? `at least ${min}`
-                : `between ${min} and ${max}`;
+        const expected = arityPhrase(min, max);
         // The noun agrees with the number that immediately precedes it.
         const count = max ?? min;
         accept('error',

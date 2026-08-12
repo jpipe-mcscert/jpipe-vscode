@@ -29,7 +29,7 @@ import * as fs from 'node:fs';
 const LAUNCHABLE_EXTENSIONS = ['.COM', '.EXE', '.BAT', '.CMD'];
 
 /** Shims that `CreateProcessW` cannot start; these have to be run by the command interpreter. */
-const BATCH_EXTENSIONS = ['.BAT', '.CMD'];
+const BATCH_EXTENSIONS = new Set(['.BAT', '.CMD']);
 
 /**
  * Characters `cmd.exe` acts on. Straight from `cross-spawn`'s escape rules, which are in turn
@@ -109,7 +109,7 @@ function launchableExtensions(env: NodeJS.ProcessEnv): string[] {
 
 /** Whether `file` is a batch shim, which only `cmd.exe` can start. */
 export function isBatchFile(file: string): boolean {
-    return BATCH_EXTENSIONS.includes(path.win32.extname(file).toUpperCase());
+    return BATCH_EXTENSIONS.has(path.win32.extname(file).toUpperCase());
 }
 
 /**

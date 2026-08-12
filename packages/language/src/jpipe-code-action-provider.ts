@@ -34,6 +34,15 @@ export interface CodeActionRegistry {
     readonly refactorings: readonly RefactoringDefinition[];
 }
 
+/**
+ * The registry every real instance uses. Hoisted out of the parameter default so one object is
+ * shared rather than rebuilt per construction; the parameter stays so tests can inject their own.
+ */
+const DEFAULT_REGISTRY: CodeActionRegistry = {
+    quickFixes: JPIPE_QUICK_FIXES,
+    refactorings: JPIPE_REFACTORINGS
+};
+
 export class JpipeCodeActionProvider implements CodeActionProvider {
     private readonly logger: JpipeServerLogger;
     private readonly byCode = new MultiMap<JpipeIssueCode, RegisteredQuickFix>();
@@ -41,7 +50,7 @@ export class JpipeCodeActionProvider implements CodeActionProvider {
 
     constructor(
         private readonly services: JpipeServices,
-        registry: CodeActionRegistry = { quickFixes: JPIPE_QUICK_FIXES, refactorings: JPIPE_REFACTORINGS }
+        registry: CodeActionRegistry = DEFAULT_REGISTRY
     ) {
         this.logger = services.logger;
         for (const fix of registry.quickFixes) {

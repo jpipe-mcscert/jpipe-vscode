@@ -66,9 +66,10 @@ export const convertModelKind = refactoring({
             .filter(node => node !== undefined)
             .map(node => deleteLinesEdit(context.document, node.range.start.line, node.range.end.line));
 
+        const noun = dropped.length === 1 ? 'element' : 'elements';
         const title = dropped.length === 0
             ? 'Convert to justification'
-            : `Convert to justification (drops ${dropped.length} @support ${dropped.length === 1 ? 'element' : 'elements'})`;
+            : `Convert to justification (drops ${dropped.length} @support ${noun})`;
 
         return [{
             title,

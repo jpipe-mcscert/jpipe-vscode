@@ -307,9 +307,13 @@ export class ImageGenerator {
             );
             const version = parseCompilerVersion(`${stdout}\n${stderr}`);
             supported = supportsJsonDiagnostic(version);
+            const pre = version?.pre ? `-${version.pre}` : '';
+            const reported = version ? `${version.nums.join('.')}${pre}` : 'no readable version';
+            const availability = supported
+                ? 'available'
+                : `need ${MIN_JSON_DIAGNOSTIC_VERSION.join('.')}`;
             this.logger.debug(
-                `Compiler at '${execKey}' reports ${version ? version.nums.join('.') + (version.pre ? `-${version.pre}` : '') : 'no readable version'}; `
-                + `structured diagnostics ${supported ? 'available' : `need ${MIN_JSON_DIAGNOSTIC_VERSION.join('.')}`}`);
+                `Compiler at '${execKey}' reports ${reported}; structured diagnostics ${availability}`);
         } catch (e: unknown) {
             // A build that cannot even be asked its version gets the text report, which every
             // release can produce. Not fatal: the diagnostic run itself will report the real

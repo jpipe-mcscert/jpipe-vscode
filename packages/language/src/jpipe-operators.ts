@@ -62,6 +62,21 @@ export const JPIPE_OPERATORS: readonly OperatorSpec[] = [
 
 const BY_NAME = new Map(JPIPE_OPERATORS.map(spec => [spec.name, spec]));
 
+/**
+ * How many source models an operator takes, in words: "exactly 2", "at least 1",
+ * "between 1 and 3". `max` is undefined for an operator with no upper bound.
+ *
+ * Lives here rather than in the validator that phrases the message, because it reads the
+ * `arity` shape declared above and has to keep step with it. The bounded case is unreachable
+ * through the validator today — no shipped operator declares a `max` above its `min` — which
+ * is why it is tested directly.
+ */
+export function arityPhrase(min: number, max: number | undefined): string {
+    if (max === min) return `exactly ${min}`;
+    if (max === undefined) return `at least ${min}`;
+    return `between ${min} and ${max}`;
+}
+
 export function operatorSpec(name: string): OperatorSpec | undefined {
     return BY_NAME.get(name);
 }
@@ -112,5 +127,6 @@ export function renderInvocation(
     const keys = spec.requiredKeys
         .map((key, i) => `${indent}    ${key}: "${placeholder(spec.paramNames.length + i + 1, '')}"`)
         .join('\n');
-    return `${spec.name}(${params})${keys ? ` {\n${keys}\n${indent}}` : ''}`;
+    const block = keys ? ` {\n${keys}\n${indent}}` : '';
+    return `${spec.name}(${params})${block}`;
 }

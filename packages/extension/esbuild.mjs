@@ -8,7 +8,8 @@ const success = watch ? 'Watch build succeeded' : 'Build succeeded';
 
 function getTime() {
     const date = new Date();
-    return `[${`${padZeroes(date.getHours())}:${padZeroes(date.getMinutes())}:${padZeroes(date.getSeconds())}`}] `;
+    const time = `${padZeroes(date.getHours())}:${padZeroes(date.getMinutes())}:${padZeroes(date.getSeconds())}`;
+    return `[${time}] `;
 }
 
 function padZeroes(i) {

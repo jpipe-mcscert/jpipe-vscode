@@ -141,7 +141,7 @@ export function issue<C extends JpipeIssueCode>(
 export function issue<C extends JpipeIssueCode>(
     code: C, payload?: JpipeIssuePayloads[C]
 ): { code: C; data: JpipeIssueData<C> } {
-    return { code, data: { code, ...(payload ?? {}) } as JpipeIssueData<C> };
+    return { code, data: { code, ...payload } as JpipeIssueData<C> };
 }
 
 /**

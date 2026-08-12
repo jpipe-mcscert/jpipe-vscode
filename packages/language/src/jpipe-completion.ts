@@ -669,7 +669,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             start: Position.create(position.line, 0),
             end: position
         });
-        const m = linePrefix.match(/@\w*$/);
+        const m = /@\w*$/.exec(linePrefix);
         if (!m) return undefined;
 
         const atCol = position.character - m[0].length;

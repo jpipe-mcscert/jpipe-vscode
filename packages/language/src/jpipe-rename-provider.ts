@@ -240,7 +240,9 @@ export class JpipeRenameProvider extends DefaultRenameProvider {
 }
 
 function collect(changes: Record<string, TextEdit[]>, uri: string, edits: TextEdit[]): void {
-    if (edits.length > 0) (changes[uri] ??= []).push(...edits);
+    if (edits.length === 0) return;
+    changes[uri] ??= [];
+    changes[uri].push(...edits);
 }
 
 function isModel(node: AstNode | undefined): node is Justification | Template {

@@ -114,7 +114,7 @@ export function isStrictlyNewer(candidate: string, baseline: string): boolean {
  */
 export function selectInstallableReleases(raw: unknown, includePrereleases: boolean): JpipeRelease[] {
     if (!Array.isArray(raw)) {
-        throw new Error('Unexpected response from the GitHub releases API.');
+        throw new TypeError('Unexpected response from the GitHub releases API.');
     }
 
     const releases: JpipeRelease[] = [];
