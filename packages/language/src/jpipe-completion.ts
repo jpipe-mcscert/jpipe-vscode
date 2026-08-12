@@ -38,6 +38,21 @@ import {
 import { fsPathOf, getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
 import { messageOf } from './jpipe-errors.js';
 
+const WORD_CHARACTER = /\w/;
+
+/**
+ * The word being typed at the very end of `text`, or `''` when the last character is not one.
+ *
+ * Scanned backwards rather than matched with `/\w*$/`: an unanchored pattern ending in `$` is
+ * retried from every position, which is quadratic on a long prefix (S8786). This is linear in
+ * the length of the word, which is what it needs to look at.
+ */
+function trailingWord(text: string): string {
+    let start = text.length;
+    while (start > 0 && WORD_CHARACTER.test(text[start - 1])) start--;
+    return text.slice(start);
+}
+
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private readonly services: JpipeServices;
     private readonly logger: JpipeServerLogger;
@@ -358,18 +373,31 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             start: Position.create(0, 0),
             end: pos
         });
-        // `[^}]*(\w*)$` was ambiguous — both halves match word characters — which is the
-        // backtracking S8786 reports, and it runs against the whole document above the cursor on
-        // every keystroke. It also never worked: the greedy `[^}]*` reached the end, `(\w*)`
-        // matched empty and `$` succeeded, so the group was *always* the empty string and the
-        // fuzzy filter in getConfigKeyCompletions never ran. The block body is captured whole
-        // here and the partial key taken from it separately, which is unambiguous and correct.
-        const configKeyMatch = /(?:justification|template)\s+\w+\s+is\s+(\w+)\s*\([^)]*\)\s*\{([^}]*)$/.exec(textToCursor);
-        if (configKeyMatch) {
-            const partialKey = /\w*$/.exec(configKeyMatch[2])?.[0] ?? '';
-            const keyItems = this.getConfigKeyCompletions(configKeyMatch[1], partialKey);
-            if (keyItems.length > 0) {
-                items = [...keyItems, ...items.filter(i => !keyItems.some(k => k.label === i.label))];
+        // Found by index, not by one regex over everything above the cursor.
+        //
+        // The pattern this replaces ended `\{[^}]*(\w*)$` and was unanchored, so the engine tried
+        // it at every position and each attempt scanned to the end — quadratic in the size of the
+        // document above the cursor, re-run on every keystroke (S8786). It also never worked:
+        // greedy `[^}]*` reached the end, `(\w*)` matched empty and `$` succeeded, so the group
+        // was *always* empty and the fuzzy filter in getConfigKeyCompletions was dead code.
+        //
+        // The cursor is inside a config block when the last `{` before it has no `}` after it.
+        // From there the operator is the word before the parameter list, and the regex that finds
+        // it is anchored at the end of a slice that stops at the `(` — one starting position, and
+        // no character class that can overlap its neighbour.
+        const open = textToCursor.lastIndexOf('{');
+        if (open !== -1 && !textToCursor.includes('}', open)) {
+            const head = textToCursor.slice(0, open);
+            const paren = head.lastIndexOf('(');
+            const parameterListClosed = paren !== -1 && head.indexOf(')', paren) !== -1;
+            const operator = parameterListClosed
+                ? /(?:justification|template)\s+\w+\s+is\s+(\w+)\s*$/.exec(head.slice(0, paren))
+                : null;
+            if (operator) {
+                const keyItems = this.getConfigKeyCompletions(operator[1], trailingWord(textToCursor));
+                if (keyItems.length > 0) {
+                    items = [...keyItems, ...items.filter(i => !keyItems.some(k => k.label === i.label))];
+                }
             }
         }
 
