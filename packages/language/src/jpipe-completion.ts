@@ -389,7 +389,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         if (open !== -1 && !textToCursor.includes('}', open)) {
             const head = textToCursor.slice(0, open);
             const paren = head.lastIndexOf('(');
-            const parameterListClosed = paren !== -1 && head.indexOf(')', paren) !== -1;
+            const parameterListClosed = paren !== -1 && head.includes(')', paren);
             const operator = parameterListClosed
                 ? /(?:justification|template)\s+\w+\s+is\s+(\w+)\s*$/.exec(head.slice(0, paren))
                 : null;
