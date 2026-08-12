@@ -93,3 +93,36 @@ than in the compiler.
 Excluded from the complexity remediation in jpipe-vscode ADR-VSC-0017's finding. If the warnings
 are unwanted they should be suppressed with this reason attached, not designed away.
 
+## Amendment (2026-08-11): the suppression now exists, in the repository
+
+The paragraph above left the warnings standing. During the quality-gate cleanup they were the
+only two of fourteen cognitive-complexity findings with a standing argument for staying, so they
+would have been re-litigated on every pass through the backlog. `sonar-project.properties` now
+carries:
+
+```properties
+sonar.issue.ignore.multicriteria=globPortComplexity
+sonar.issue.ignore.multicriteria.globPortComplexity.ruleKey=typescript:S3776
+sonar.issue.ignore.multicriteria.globPortComplexity.resourceKey=packages/language/src/jpipe-glob.ts
+```
+
+**In the properties file rather than accepted per-issue in the SonarCloud UI.** Marking the two
+issues Accepted would keep them visible on the dashboard, correctly labelled, and not counted
+against the gate — which is a fair description of the truth. It was rejected because the reason
+would then live only in SonarCloud: invisible to anyone reading the repository, absent from
+review, and lost if the project is ever recreated. Everything else this project decides is
+recorded in `docs/adr/`, and an exemption is a decision.
+
+The cost is real and worth stating: the debt no longer appears anywhere in SonarCloud. A reader
+of the dashboard alone would conclude `jpipe-glob.ts` is uncomplicated. This record is the
+counterweight, and the properties file points back at it.
+
+The suppression is narrow by construction — one rule, one file. Any other rule firing on
+`jpipe-glob.ts` is an ordinary finding; in particular the two `String.raw` suggestions (S7780) —
+on the escaped `}` in `globToRegExp` and the escaped `^` in `parseCharacterClass` — are **not**
+covered and remain open. The fidelity argument does not extend to them: `String.raw` produces an
+identical string, so the case for leaving them would rest on the port *reading* like the Java it
+mirrors, not on behaviour that must not change. That is a weaker claim than the one made here,
+and stretching this one to cover it would turn a specific exemption into a blanket one for the
+file.
+
