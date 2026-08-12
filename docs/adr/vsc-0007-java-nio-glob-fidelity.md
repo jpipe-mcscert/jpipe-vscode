@@ -118,9 +118,11 @@ of the dashboard alone would conclude `jpipe-glob.ts` is uncomplicated. This rec
 counterweight, and the properties file points back at it.
 
 The suppression is narrow by construction — one rule, one file. Any other rule firing on
-`jpipe-glob.ts` is an ordinary finding; the two `String.raw` suggestions (S7780) on lines 193 and
-241 are **not** covered and remain open. Whether the same fidelity argument extends to them is a
-separate question: `String.raw` is a behaviour-identical rewrite, so the case rests on the port
-reading like the Java it mirrors rather than on correctness, which is a weaker claim than the one
-made here.
+`jpipe-glob.ts` is an ordinary finding; in particular the two `String.raw` suggestions (S7780) —
+on the escaped `}` in `globToRegExp` and the escaped `^` in `parseCharacterClass` — are **not**
+covered and remain open. The fidelity argument does not extend to them: `String.raw` produces an
+identical string, so the case for leaving them would rest on the port *reading* like the Java it
+mirrors, not on behaviour that must not change. That is a weaker claim than the one made here,
+and stretching this one to cover it would turn a specific exemption into a blanket one for the
+file.
 
