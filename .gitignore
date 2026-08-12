@@ -2,6 +2,8 @@
 !.vscode/extensions.json
 !.vscode/launch.json
 !.vscode/tasks.json
+# Shared because it pins the editor's TypeScript to the workspace's; see the file.
+!.vscode/settings.json
 node_modules/
 dist/
 out/

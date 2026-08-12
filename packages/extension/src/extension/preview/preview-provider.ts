@@ -186,7 +186,10 @@ export class PreviewProvider {
     
     private async lockPreviewGroup(restoreColumn: vscode.ViewColumn): Promise<void> {
         const columnNames = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth'];
-        // Wait for VS Code to resolve ViewColumn.Beside to an actual column number on panel.viewColumn
+        // `ViewColumn.Beside` is a request, not an answer: `panel.viewColumn` holds the column it
+        // resolved to only once the editor has laid the group out, and nothing is emitted when
+        // that happens. So this waits — 100ms being long enough in practice and short enough not
+        // to be seen. If the panel ever opens in the wrong group, this is the first suspect.
         await new Promise<void>(resolve => setTimeout(resolve, 100));
         const panelColumn = PreviewProvider.webviewPanel?.viewColumn;
         if (panelColumn === undefined || (panelColumn as number) <= 0) return;

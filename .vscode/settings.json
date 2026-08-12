@@ -1,0 +1,21 @@
+{
+    // Check this repository with the TypeScript it is built with.
+    //
+    // VS Code otherwise uses the compiler bundled with the editor, which is on its own release
+    // train: at the time of writing that is 6.0.3 while `package.json` pins ~5.9.3 — a whole
+    // major apart. The editor then reports errors the build does not have, and `@types/node`
+    // ships `typesVersions` gated on the TypeScript version, so the two really can disagree
+    // about what exists. A red squiggle on `setTimeout` in code that compiles cleanly is what
+    // sent us looking.
+    //
+    // Everything else about the toolchain is already pinned — TypeScript in the three
+    // package.json files, Node by Volta and `engines`, and TypeScript majors held in
+    // .github/dependabot.yml because moving one is a project rather than a bump
+    // (docs/adr/vsc-0014-typescript-strictness-ratchet.md). The editor was the last thing
+    // running ahead of it.
+    "typescript.tsdk": "node_modules/typescript/lib",
+    // `typescript.tsdk` only names the path; VS Code still uses its own copy until someone picks
+    // "Use Workspace Version" once. This makes it offer, so a fresh clone does not silently keep
+    // checking against a different compiler.
+    "typescript.enablePromptUseWorkspaceTsdk": true
+}
