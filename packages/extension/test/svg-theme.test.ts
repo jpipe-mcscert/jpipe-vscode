@@ -24,11 +24,22 @@ import { adaptToDarkTheme } from '../src/webview/highlight.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/** Put a fixture in the page and hand back its root, past a prolog the HTML parser has no use for. */
+/**
+ * Put a fixture in the page and hand back its root, past a prolog the HTML parser has no use for.
+ *
+ * Both steps are asserted, because neither fails loudly on its own: a missing `<svg` makes
+ * `indexOf` return -1, which `slice` reads as "from the last character", and a root the parser
+ * then declines to build is cast to a type it does not have. What reaches the first test is a
+ * null dereference several frames away from the fixture that caused it.
+ */
 function install(fixture: string): SVGSVGElement {
     const text = readFileSync(join(here, 'fixtures', 'svg', fixture), 'utf8');
-    document.body.innerHTML = text.slice(text.indexOf('<svg'));
-    return document.querySelector('svg') as unknown as SVGSVGElement;
+    const start = text.indexOf('<svg');
+    expect(start, `${fixture} should contain an <svg> element`).toBeGreaterThanOrEqual(0);
+    document.body.innerHTML = text.slice(start);
+    const svg = document.querySelector('svg');
+    expect(svg, `${fixture} should parse to an <svg> root`).not.toBeNull();
+    return svg as unknown as SVGSVGElement;
 }
 
 let svg: SVGSVGElement;
