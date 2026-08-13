@@ -49,8 +49,14 @@ export function stripCaptions(svg: SVGSVGElement, documentPath: string | null, d
 export function adaptToDarkTheme(svg: SVGSVGElement): void {
     const graph = svg.querySelector('g.graph') ?? svg;
     for (const el of Array.from(graph.children)) {
-        // The canvas is the first painted shape and the only one with no stroke.
-        if (el.tagName === 'polygon' && el.getAttribute('stroke') === 'none') {
+        // The canvas is the first painted shape, and the only polygon `dot` puts directly under
+        // `g.graph` — everything else it draws is nested in a `g.cluster`, `g.node` or `g.edge`.
+        // That structure is what identifies it here, because the attributes are not stable: it
+        // was `stroke="transparent"` until Graphviz 5.0.1 (2022) dropped a keyword SVG 1.1 does
+        // not define, and `stroke="none"` since. Matching the newer spelling alone left the white
+        // sheet in place on every distribution still packaging 2.42 — which, in 2026, is Debian
+        // stable and every Ubuntu LTS before 26.04.
+        if (el.tagName === 'polygon' && hasNoStroke(el)) {
             el.remove();
             break;
         }
@@ -121,6 +127,18 @@ function thinClusterBackdrops(svg: SVGSVGElement): void {
             shape.setAttribute('fill-opacity', String(CLUSTER_WASH));
         });
     });
+}
+
+/**
+ * Whether a shape draws no outline — however the Graphviz that produced it spells that.
+ *
+ * `none` is what 5.0.1 and later emit, `transparent` what everything before it did, and an
+ * absent attribute is the SVG default of no paint. All three mean the same thing, so the guard
+ * accepts all three rather than tracking which release drew the file.
+ */
+function hasNoStroke(el: Element): boolean {
+    const stroke = el.getAttribute('stroke');
+    return stroke === null || stroke === 'none' || stroke === 'transparent';
 }
 
 /** Shapes that can carry a background; `polyline` is excluded, being decoration on a corner. */
