@@ -52,3 +52,4 @@ The compiler's records are at
 | [VSC-0016](vsc-0016-module-layout-and-naming.md) | A directory names one concern | 2026-08-11 | Accepted |
 | [VSC-0017](vsc-0017-activate-is-wiring-only.md) | `activate()` wires collaborators and nothing else | 2026-08-11 | Accepted |
 | [VSC-0018](vsc-0018-windows-launch-is-a-cross-spawn-port.md) | The Windows launch rules are a `cross-spawn` port | 2026-08-11 | Accepted |
+| [VSC-0019](vsc-0019-preview-does-not-lock-the-editor-group.md) | The preview does not lock the editor group | 2026-08-13 | Accepted |
