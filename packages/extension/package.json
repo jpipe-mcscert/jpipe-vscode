@@ -2,7 +2,7 @@
     "name": "jpipe-extension",
     "displayName": "jPipe Language (McSCert)",
     "description": "Language Support for the jPipe language",
-    "version": "1.7.0",
+    "version": "1.7.1",
     "type": "module",
     "publisher": "mcscert",
     "author": "McMaster Centre for Software Certification (McSCert)",
@@ -522,7 +522,7 @@
         "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
-        "jpipe-language": "1.7.0",
+        "jpipe-language": "1.7.1",
         "vscode-languageclient": "~10.0.1",
         "vscode-languageserver": "~10.0.1"
     },

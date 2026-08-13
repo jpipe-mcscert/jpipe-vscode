@@ -1,6 +1,6 @@
 ## Changelog
 
-### v1.7.1 (Unreleased)
+### v1.7.1 (2026-08-13)
 - Leader: Sébastien Mosser
   - Bug Fixes:
     - **The preview works in a dark theme whichever Graphviz you have.** Whether the white sheet behind a diagram disappeared depended on which version of Graphviz was drawing it. On the version most Linux machines have — it is what `apt install graphviz` still gives you on Debian stable and on every Ubuntu LTS before 26.04 — the sheet stayed, so the whole panel was a white rectangle in the middle of a dark editor and the preview was effectively unusable. Nothing about the extension, the theme or the operating system made the difference, which is why it looked arbitrary: it was the compiler's own renderer, spelling one thing two ways. Both are now understood, so the diagram sits on your editor's background everywhere
