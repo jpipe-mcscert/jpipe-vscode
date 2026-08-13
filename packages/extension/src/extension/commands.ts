@@ -12,6 +12,7 @@ import { ImageGenerator, ImageFormat } from './compiler/image-generator.js';
 import type { ReleaseManager } from './compiler/release-manager.js';
 import type { PreviewProvider } from './preview/preview-provider.js';
 import { installFromRelease } from './compiler/managed-install.js';
+import { selectJarFile } from './compiler/jar-selection.js';
 import { accessMethodHeader } from './compiler/release-presentation.js';
 import {
     addExcludedDirectory,
@@ -116,6 +117,8 @@ export function registerCommands(deps: CommandDeps): void {
 
         vscode.commands.registerCommand('jpipe.installFromRelease', () =>
             installFromRelease({ releaseManager, logger })),
+
+        vscode.commands.registerCommand('jpipe.selectJarFile', () => selectJarFile(logger)),
 
         vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
             const { ok, message } = await imageGenerator.check();

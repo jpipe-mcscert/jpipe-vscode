@@ -37,6 +37,7 @@ export default defineConfig({
                 'src/extension/commands.ts',
                 'src/extension/exclusion-commands.ts',
                 'src/extension/compiler/managed-install.ts',
+                'src/extension/compiler/jar-selection.ts',
                 'src/extension/compiler/image-generator.ts',
                 'src/extension/preview/preview-provider.ts',
                 'src/extension/compiler/release-manager.ts',

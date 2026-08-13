@@ -232,7 +232,7 @@ ADR-VSC-0004.
 
 ## VS Code Commands
 
-`packages/extension/package.json` is the source of truth — it declares **20** commands, with
+`packages/extension/package.json` is the source of truth — it declares **21** commands, with
 their menu placement and `when`-clauses. The ones worth knowing:
 
 | Command ID | Title |
@@ -242,6 +242,7 @@ their menu placement and `when`-clauses. The ones worth knowing:
 | `jpipe.downloadSVG` / `PNG` / `JPEG` / `JSON` / `DOT` / `Python` / `JPIPE` | Download as … |
 | `jpipe.checkInstallation` | Check jPipe Installation |
 | `jpipe.installFromRelease` | Install Compiler from GitHub Release |
+| `jpipe.selectJarFile` | Select Compiler JAR File… (also linked from the `jpipe.jarFile` setting) |
 | `jpipe.addExcludedDirectory` / `removeExcludedPath` | Manage excluded paths |
 | `jpipe.excludeResource` / `includeResource` | Exclude/include from jPipe validation |
 | `jpipe.organizeLoads`, `jpipe.autoIndent`, `jpipe.sortElements` | Document refactorings |
