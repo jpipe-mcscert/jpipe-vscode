@@ -1,5 +1,8 @@
 ## Changelog
 
+### v1.8.0 (Unreleased)
+- Leader: Sébastien Mosser
+
 ### v1.7.1 (2026-08-13)
 - Leader: Sébastien Mosser
   - Bug Fixes:
