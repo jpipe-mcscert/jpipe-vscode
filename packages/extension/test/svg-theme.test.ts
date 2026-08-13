@@ -11,6 +11,10 @@
  *
  * It is a template implementing another, which is what puts a Graphviz *cluster* in the picture —
  * the pale panel `dot` paints behind an inherited region, on the assumption of a white page.
+ *
+ * A second fixture is the same diagram with the one attribute Graphviz 5.0.1 changed, standing
+ * for every older release. Nothing here may assume which of the two drew a file: that assumption
+ * is the bug the pair exists to keep out.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -19,13 +23,29 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import { adaptToDarkTheme } from '../src/webview/highlight.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(join(here, 'fixtures', 'svg', 'template-with-cluster.svg'), 'utf8');
+
+/**
+ * Put a fixture in the page and hand back its root, past a prolog the HTML parser has no use for.
+ *
+ * Both steps are asserted, because neither fails loudly on its own: a missing `<svg` makes
+ * `indexOf` return -1, which `slice` reads as "from the last character", and a root the parser
+ * then declines to build is cast to a type it does not have. What reaches the first test is a
+ * null dereference several frames away from the fixture that caused it.
+ */
+function install(fixture: string): SVGSVGElement {
+    const text = readFileSync(join(here, 'fixtures', 'svg', fixture), 'utf8');
+    const start = text.indexOf('<svg');
+    expect(start, `${fixture} should contain an <svg> element`).toBeGreaterThanOrEqual(0);
+    document.body.innerHTML = text.slice(start);
+    const svg = document.querySelector('svg');
+    expect(svg, `${fixture} should parse to an <svg> root`).not.toBeNull();
+    return svg as unknown as SVGSVGElement;
+}
 
 let svg: SVGSVGElement;
 
 beforeEach(() => {
-    document.body.innerHTML = source.slice(source.indexOf('<svg'));
-    svg = document.querySelector('svg') as unknown as SVGSVGElement;
+    svg = install('template-with-cluster.svg');
 });
 
 /** The node `dot` drew for an element, found by the id the exporter gave it. */
@@ -36,6 +56,17 @@ function node(id: string): Element {
 }
 
 const backdrop = () => svg.querySelector('g.cluster polygon') as Element;
+
+/**
+ * The white sheet `dot` paints across the page.
+ *
+ * Found by where it sits rather than by what it says: it is the only polygon drawn directly
+ * under `g.graph`, everything else being nested in a cluster, a node or an edge. Naming it by
+ * its attributes is what the code used to do, and is the mistake this file has to be able to
+ * catch — a check written the same way would agree with a broken implementation that the canvas
+ * it failed to find was not there.
+ */
+const canvas = () => svg.querySelector('g.graph > polygon');
 
 describe('the fixture is the shape this code exists for', () => {
 
@@ -115,9 +146,7 @@ describe('adapting to a dark theme', () => {
     });
 
     test('the white canvas is still removed', () => {
-        const canvas = Array.from(svg.querySelectorAll('polygon'))
-            .filter(p => p.getAttribute('fill') === 'white' && p.getAttribute('stroke') === 'none');
-        expect(canvas).toEqual([]);
+        expect(canvas()).toBeNull();
     });
 
     // A cluster's own caption sits directly on the panel, so it was unreadable for the same
@@ -129,5 +158,51 @@ describe('adapting to a dark theme', () => {
     test('edges are re-pointed at the foreground', () => {
         const black = svg.querySelectorAll('g.edge [stroke="black"], g.edge [fill="black"]');
         expect(black).toHaveLength(0);
+    });
+});
+
+/**
+ * The same diagram as drawn by a Graphviz older than 5.0.1.
+ *
+ * That release stopped writing `transparent` into SVG — a keyword SVG 1.1 does not define — and
+ * started writing `none`. The canvas is the one shape in the picture the change reaches, and
+ * matching the newer spelling alone meant the sheet stayed put: the diagram sat on white in a
+ * dark theme, on every machine whose `dot` predated August 2022.
+ *
+ * Which is not an exotic machine. Debian stable and every Ubuntu LTS before 26.04 still package
+ * 2.42, so `apt install graphviz` is the affected case rather than the unlucky one — and the
+ * version is the host compiler's, not ours, so no amount of updating the extension moved it.
+ */
+describe('a diagram from a Graphviz older than 5.0.1', () => {
+
+    beforeEach(() => {
+        svg = install('template-with-cluster-legacy.svg');
+    });
+
+    test('spells the canvas the old way, which is the point of the fixture', () => {
+        expect(canvas()?.getAttribute('stroke')).toBe('transparent');
+        expect(canvas()?.getAttribute('fill')).toBe('white');
+    });
+
+    describe('once adapted', () => {
+
+        beforeEach(() => adaptToDarkTheme(svg));
+
+        test('loses its canvas too', () => {
+            expect(canvas()).toBeNull();
+        });
+
+        // The canvas is identified by position, so what stops that from taking the next polygon
+        // with it is the stroke guard. These two are the shapes it protects: both are drawn
+        // deeper in the tree, and both carry a stroke that means something.
+        test('and keeps the shapes that carry an outline', () => {
+            expect(backdrop().getAttribute('stroke')).toBe('grey');
+            expect(node('refined:base:s').querySelector('polygon')!.getAttribute('stroke')).toBe('black');
+        });
+
+        test('and is otherwise adapted as any other diagram is', () => {
+            expect(node('refined:base:sc').querySelector('text')!.getAttribute('fill')).toBe('currentColor');
+            expect(svg.querySelectorAll('g.edge [stroke="black"], g.edge [fill="black"]')).toHaveLength(0);
+        });
     });
 });
