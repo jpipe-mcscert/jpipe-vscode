@@ -159,6 +159,12 @@
                 "icon": "$(cloud-download)"
             },
             {
+                "command": "jpipe.selectJarFile",
+                "title": "Select Compiler JAR File…",
+                "category": "jPipe",
+                "icon": "$(folder-opened)"
+            },
+            {
                 "command": "jpipe.export",
                 "title": "Export Diagram (default format)",
                 "category": "jPipe",
@@ -336,7 +342,7 @@
                         "order": 3,
                         "type": "string",
                         "default": "",
-                        "markdownDescription": "**[jar mode only]** Absolute path to the `jpipe` JAR file."
+                        "markdownDescription": "**[jar mode only]** Absolute path to the `jpipe` JAR file.\n\n[Browse for a JAR file…](command:jpipe.selectJarFile)"
                     },
                     "jpipe.javaExecutable": {
                         "order": 4,
