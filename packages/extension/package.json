@@ -519,9 +519,10 @@
     "main": "./out/extension/main.cjs",
     "scripts": {
         "clean": "shx rm -fr *.tsbuildinfo out syntaxes coverage",
-        "vscode:prepublish": "npm run build",
+        "vscode:prepublish": "npm run build:release",
         "build:prepare": "shx mkdir -p ./syntaxes/ && shx cp -f ../language/syntaxes/jpipe.tmLanguage.json ./syntaxes/jpipe.tmLanguage.json",
         "build": "npm run build:prepare && tsc -b tsconfig.json src/webview && node esbuild.mjs",
+        "build:release": "npm run build:prepare && tsc -b tsconfig.json src/webview && node esbuild.mjs --minify",
         "build:clean": "npm run clean && npm run build",
         "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json src/webview --watch\" \"node esbuild.mjs --watch\"",
         "test": "vitest run",

@@ -44,6 +44,12 @@ const ctx = await esbuild.context({
     platform: 'node',
     sourcemap: !minify,
     minify,
+    // Minifying renames everything, including the function and class names that make a stack
+    // trace legible — and the shipped VSIX carries no source maps to undo it (ADR-VSC-0020), so
+    // a user's error report would arrive as `main.cjs:1:73421` in mangled code. Keeping names
+    // costs 28 KB of the 168 KB that minifying saves, which is a cheap price for being able to
+    // read the reports. Only applied when minifying: unminified builds keep them anyway.
+    keepNames: minify,
     plugins
 });
 
@@ -59,6 +65,12 @@ const webviewCtx = await esbuild.context({
     loader: { '.ts': 'ts' },
     sourcemap: !minify,
     minify,
+    // Minifying renames everything, including the function and class names that make a stack
+    // trace legible — and the shipped VSIX carries no source maps to undo it (ADR-VSC-0020), so
+    // a user's error report would arrive as `main.cjs:1:73421` in mangled code. Keeping names
+    // costs 28 KB of the 168 KB that minifying saves, which is a cheap price for being able to
+    // read the reports. Only applied when minifying: unminified builds keep them anyway.
+    keepNames: minify,
     plugins
 });
 

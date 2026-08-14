@@ -9,6 +9,7 @@
     - **Clicking a problem in the diagnostic view opens the file where it belongs.** It always opened in the first column, on the assumption that is where your model is. Whenever it was not — a three-column layout, or simply a different arrangement — the file landed on top of whatever you had on the left instead. It now opens where the file already is if you have it open, and beside the diagram otherwise
   - Maintenance:
     - **The extension ships only what it runs, and a check now enforces it.** Its package is built from a list of what belongs in it rather than a list of things to leave out, and every build compares the result against that list, so nothing drifts in unnoticed. Previously a test-coverage report left over from a local build could be packaged alongside the extension — no released version ever contained one, but nothing stood in the way. An unused 95 KB image has gone too, so the download is smaller and stays that way (nothing you do in the editor behaves differently)
+    - **The extension downloads about a quarter smaller.** Its code is now compressed when packaged for release, taking the download from roughly 680 KB to 520 KB — quicker to install and to update, and a little quicker to start. Function names are deliberately kept readable in the process, so a crash report still says where it came from and problems you report stay as diagnosable as before (nothing you do in the editor behaves differently)
 
 ### v1.7.1 (2026-08-13)
 - Leader: Sébastien Mosser
