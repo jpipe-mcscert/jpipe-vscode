@@ -15,6 +15,7 @@ import {
     isTemplate,
     isJustification,
     isAbstractSupport,
+    isConclusion,
     isEvidence,
     isStrategy,
     isSubConclusion
@@ -44,8 +45,8 @@ export function registerValidationChecks(services: JpipeServices) {
         Unit:           validator.checkUnitNotEmpty,
         Load:           validator.checkLoadResolves,
         Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys, validator.checkUnificationMethod],
-        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds],
-        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds],
+        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
+        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
         Evidence:       validator.checkLabelNotEmpty,
         Strategy:       [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
         Conclusion:     [validator.checkLabelNotEmpty, validator.checkConclusionIncomingFromStrategy],
@@ -131,7 +132,7 @@ export class JpipeValidator {
         if (self) {
             accept('error', `Circular load detected: ${self}`,
                 { node: load, property: 'path',
-                  ...issue(JpipeIssue.LoadCircular, { path: load.path, resolved: self }) });
+                  ...issue(JpipeIssue.CyclicLoad, { path: load.path, resolved: self }) });
         }
     }
 
@@ -231,14 +232,14 @@ export class JpipeValidator {
                         accept: ValidationAcceptor): void {
         if (element.name?.length === 0) {
             accept('warning', 'Element label should not be empty',
-                   { node: element, property: 'name', ...issue(JpipeIssue.EmptyLabel) });
+                   { node: element, property: 'name', ...issue(JpipeIssue.NoEmptyLabel) });
         }
     }
 
     checkUnitNotEmpty(unit: Unit, accept: ValidationAcceptor): void {
         if (unit.body?.length === 0) {
             accept('warning', 'Justification File should not be empty',
-                   { node: unit, property: 'body', ...issue(JpipeIssue.EmptyUnit) });
+                   { node: unit, property: 'body', ...issue(JpipeIssue.NoEmptyUnit) });
         }
     }
 
@@ -254,7 +255,64 @@ export class JpipeValidator {
         if (duplicates.length > 1) {
             accept('error', `Duplicate template name '${template.id}'`,
                    { node: template, property: 'id',
-                     ...issue(JpipeIssue.DuplicateModelName, { id: template.id }) });
+                     ...issue(JpipeIssue.NoDuplicateModelNames, { id: template.id }) });
+        }
+    }
+
+    /**
+     * Flags a model with no conclusion.
+     *
+     * An error, not a warning: the compiler refuses to build such a model, reporting it as
+     * `conclusion-present` — and it applies the rule to templates as well as justifications, so
+     * this one does too. An argument with nothing at its root is not an argument.
+     *
+     * Inherited conclusions count, which is why this reads `getAllElements`: the compiler checks
+     * completeness *after* `implements` has inlined the parent's elements, so a justification
+     * whose conclusion comes from its template satisfies the rule there and must here.
+     *
+     * The grammar requires a non-empty body, so `justification J { }` is a parse error rather than
+     * this; what reaches here is a model with contents that simply do not include a conclusion.
+     *
+     * A composed model — `justification K is assemble(J, T) { … }` — is skipped, because its
+     * elements do not exist until the operator has run. `assemble` synthesises a conclusion from
+     * `conclusionLabel`, so the compiler checks the *result* and is satisfied; checking the source
+     * text here would report an error on a model that builds. The cost is that a composition whose
+     * result genuinely has no conclusion is caught by the compiler and not by the editor, which is
+     * the right way round: silence about a real problem beats noise about one that is not.
+     */
+    checkModelHasConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
+        if (model.composition) return;
+        if (getAllElements(model).some(isConclusion)) return;
+
+        accept('error', `Model '${model.id}' has no conclusion`,
+               { node: model, property: 'id',
+                 ...issue(JpipeIssue.ConclusionPresent, { id: model.id }) });
+    }
+
+    /**
+     * Flags every conclusion after the first in one model.
+     *
+     * A justification claims one thing. The compiler enforces that while it is still reading the
+     * file: the first `conclusion` becomes the model's, and each later one is reported as
+     * `single-conclusion` and **discarded** — it never enters the model at all.
+     *
+     * That discarding is why this check has a second half, in `checkConclusionIncomingFromStrategy`.
+     * A second conclusion is usually written with nothing supporting it yet, so the editor used to
+     * answer "there are two conclusions here" with "the second one has no strategy" — a true
+     * statement about a element the compiler had already thrown away, and the wrong problem to put
+     * in front of someone. The compiler reports one error on this file and so does the editor now.
+     *
+     * Reported on each extra rather than once on the model, and anchored on the extra's id, so the
+     * squiggle lands on the declaration to remove and the first conclusion is left unmarked —
+     * the same shape as `checkDuplicateElementIds`, and the same anchor the compiler uses.
+     */
+    checkSingleConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
+        const conclusions = getLocalElements(model).filter(isConclusion);
+        for (const extra of conclusions.slice(1)) {
+            accept('error', `Model '${model.id}' declares multiple conclusions`,
+                   { node: extra, property: 'id',
+                     ...issue(JpipeIssue.SingleConclusion,
+                              { modelId: model.id, id: qualifiedIdText(extra.id) }) });
         }
     }
 
@@ -266,7 +324,7 @@ export class JpipeValidator {
             accept('warning',
                 `Template '${template.id}' has no @support elements. Justifications implementing this template are not required to override any elements.`,
                 { node: template, property: 'id',
-                  ...issue(JpipeIssue.TemplateWithoutSupport, { id: template.id }) });
+                  ...issue(JpipeIssue.HasAbstractSupport, { id: template.id }) });
         }
     }
 
@@ -282,14 +340,14 @@ export class JpipeValidator {
         if (duplicates.length > 1) {
             accept('error', `Duplicate justification name '${justification.id}'`,
                    { node: justification, property: 'id',
-                     ...issue(JpipeIssue.DuplicateModelName, { id: justification.id }) });
+                     ...issue(JpipeIssue.NoDuplicateModelNames, { id: justification.id }) });
         }
     }
 
     /**
      * Flags two elements in one model sharing an id.
      *
-     * The compiler rejects this as `no-duplicate-ids`, and it is worth catching in the editor
+     * The compiler rejects this under the same code, and it is worth catching in the editor
      * because the model still *parses*: relations naming the id resolve to whichever of the two
      * the scope happened to register, so the argument silently means something other than what
      * it reads as.
@@ -307,7 +365,7 @@ export class JpipeValidator {
                 accept('error',
                     `Duplicate element id '${id}' in model '${model.id}'`,
                     { node: element, property: 'id',
-                      ...issue(JpipeIssue.DuplicateElementId, { id, modelId: model.id }) });
+                      ...issue(JpipeIssue.NoDuplicateIds, { id, modelId: model.id }) });
             }
             seen.add(id);
         }
@@ -323,7 +381,7 @@ export class JpipeValidator {
             accept('warning',
                 `Strategy '${qualifiedIdText(strategy.id)}' is not supported by any evidence, sub-conclusion, or @support.`,
                 { node: strategy, property: 'id',
-                  ...issue(JpipeIssue.StrategyUnsupported, { targetId: qualifiedIdText(strategy.id) }) });
+                  ...issue(JpipeIssue.StrategySupported, { targetId: qualifiedIdText(strategy.id) }) });
             return;
         }
         for (const rel of incoming) {
@@ -333,7 +391,7 @@ export class JpipeValidator {
                 accept('error',
                     `Strategy '${qualifiedIdText(strategy.id)}' may only be supported by evidence, sub-conclusion, or @support (not ${keywordFor(fromElem)}).`,
                     { node: rel, property: 'from',
-                      ...issue(JpipeIssue.StrategyBadSupporter, {
+                      ...issue(JpipeIssue.InvalidSupport, {
                           targetId: qualifiedIdText(strategy.id),
                           supporterKind: keywordFor(fromElem)
                       }) });
@@ -345,12 +403,19 @@ export class JpipeValidator {
         const body = conclusion.$container;
         if (!body?.rels) return;
 
+        // The compiler keeps only the first conclusion and discards the rest, so it never asks
+        // whether a later one is supported — and neither should we. Without this, a model with two
+        // conclusions reports the second one as unsupported, which is a true statement about an
+        // element that will not exist and buries the error that matters (`single-conclusion`).
+        const conclusions = (body.body ?? []).filter(isConclusion);
+        if (conclusions.length > 1 && conclusions[0] !== conclusion) return;
+
         const incoming = body.rels.filter(r => r.to?.ref === conclusion);
         if (incoming.length === 0) {
             accept('warning',
                 `Conclusion '${qualifiedIdText(conclusion.id)}' is not supported by any strategy.`,
                 { node: conclusion, property: 'id',
-                  ...issue(JpipeIssue.ConclusionUnsupported, { targetId: qualifiedIdText(conclusion.id) }) });
+                  ...issue(JpipeIssue.ConclusionSupported, { targetId: qualifiedIdText(conclusion.id) }) });
             return;
         }
         const hasStrategy = incoming.some(rel => isStrategy(rel.from?.ref));
@@ -358,7 +423,7 @@ export class JpipeValidator {
             accept('error',
                 `Conclusion '${qualifiedIdText(conclusion.id)}' must be supported by at least one strategy.`,
                 { node: conclusion, property: 'id',
-                  ...issue(JpipeIssue.ConclusionNoStrategy, { targetId: qualifiedIdText(conclusion.id) }) });
+                  ...issue(JpipeIssue.ConclusionSupported, { targetId: qualifiedIdText(conclusion.id) }) });
         }
     }
 
@@ -383,7 +448,7 @@ export class JpipeValidator {
                 accept('error',
                     `Justification '${justification.id}' must override '@support ${qualifiedIdText(req.support.id)}' from template '${req.sourceTemplateId}'. Expected element with id '${req.expectedKey}'.`,
                     { node: justification, property: 'id',
-                      ...issue(JpipeIssue.MissingSupportOverride, {
+                      ...issue(JpipeIssue.NoAbstractSupport, {
                           expectedKey: req.expectedKey,
                           supportLabel: req.support.name,
                           supportId: qualifiedIdText(req.support.id),
@@ -397,7 +462,7 @@ export class JpipeValidator {
                 accept('error',
                     `Cannot override '@support ${qualifiedIdText(req.support.id)}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
                     { node: override, property: 'id',
-                      ...issue(JpipeIssue.BadSupportOverrideType, {
+                      ...issue(JpipeIssue.SupportOverrideType, {
                           actualKeyword: elemType,
                           allowedKeywords: ['evidence', 'sub-conclusion']
                       }) });

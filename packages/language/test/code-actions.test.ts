@@ -51,7 +51,7 @@ describe('the code action dispatcher', () => {
         );
         expect(action.kind).toBe(CodeActionKind.QuickFix);
         expect(action.diagnostics).toHaveLength(1);
-        expect(action.diagnostics![0].data).toMatchObject({ code: JpipeIssue.BadSupportOverrideType });
+        expect(action.diagnostics![0].data).toMatchObject({ code: JpipeIssue.SupportOverrideType });
     });
 
     // The whole point of one-module-per-action is that they fail separately. If a module that
@@ -63,12 +63,12 @@ describe('the code action dispatcher', () => {
                 quickFixes: [
                     {
                         id: 'explodes',
-                        codes: [JpipeIssue.BadSupportOverrideType],
+                        codes: [JpipeIssue.SupportOverrideType],
                         create() { throw new Error('boom'); }
                     },
                     {
                         id: 'survives',
-                        codes: [JpipeIssue.BadSupportOverrideType],
+                        codes: [JpipeIssue.SupportOverrideType],
                         create: () => [{ title: 'Still offered' }]
                     }
                 ],
@@ -124,7 +124,7 @@ describe('fix-override-type', () => {
         await expectFixResolves(
             wrongType('strategy'),
             { title: "Change 'strategy' to 'evidence'" },
-            JpipeIssue.BadSupportOverrideType
+            JpipeIssue.SupportOverrideType
         );
     });
 
@@ -132,7 +132,7 @@ describe('fix-override-type', () => {
         const after = await expectFixResolves(
             wrongType('strategy'),
             { title: "Change 'strategy' to 'sub-conclusion'" },
-            JpipeIssue.BadSupportOverrideType
+            JpipeIssue.SupportOverrideType
         );
         expect(after).toContain('sub-conclusion T:a is "A"');
     });
@@ -210,7 +210,7 @@ justification ${CURSOR}j implements t {
         const after = await expectFixResolves(
             withGaps(3),
             { title: 'Override all 3 missing @support elements' },
-            JpipeIssue.MissingSupportOverride
+            JpipeIssue.NoAbstractSupport
         );
         for (const id of ['t:abs1', 't:abs2', 't:abs3']) {
             expect(after).toContain(`evidence ${id} is `);
@@ -297,7 +297,7 @@ justification ${CURSOR}no_namespace implements t {${body}}`;
         const after = await expectFixResolves(
             missing(SKELETON),
             { title: 'Override all 2 missing @support elements' },
-            JpipeIssue.MissingSupportOverride
+            JpipeIssue.NoAbstractSupport
         );
         expect(after).toContain('evidence T:a is "An abstract support"');
         expect(after).toContain('evidence T:b is "Another abstract support"');
@@ -487,7 +487,20 @@ describe('add-supporter', () => {
         const after = await expectFixResolves(
             lonelyConclusion,
             { title: "Add a strategy supporting 'c'" },
-            JpipeIssue.ConclusionUnsupported
+            JpipeIssue.ConclusionSupported
+        );
+        expect(after).toContain('strategy s is ""');
+        expect(after).toContain('s supports c');
+    });
+
+    // `conclusion-supported` covers both "no support at all" and "support, but none of it from a
+    // strategy" — one compiler rule, one code (jpipe-vscode ADR-VSC-0022). The fix branches on the
+    // AST node rather than the code, so it has to reach the second branch as well as the first.
+    test('is still offered when the conclusion has support, but none from a strategy', async () => {
+        const after = await expectFixResolves(
+            'justification J {\n    conclusion c is "A claim"\n    evidence e is "Some evidence"\n    e supports c\n}',
+            { title: "Add a strategy supporting 'c'" },
+            JpipeIssue.ConclusionSupported
         );
         expect(after).toContain('strategy s is ""');
         expect(after).toContain('s supports c');
@@ -497,7 +510,7 @@ describe('add-supporter', () => {
         const after = await expectFixResolves(
             lonelyStrategy,
             { title: "Add some evidence supporting 's'" },
-            JpipeIssue.StrategyUnsupported
+            JpipeIssue.StrategySupported
         );
         const lines = after.split('\n').map(l => l.trim());
         expect(lines.indexOf('evidence e is ""')).toBeLessThan(lines.indexOf('s supports c'));
@@ -570,7 +583,7 @@ justification J implements T {
     test('the diagnostic itself stays narrow', async () => {
         const document = await parseValidated(MISSING_OVERRIDE);
         const anchored = (document.diagnostics ?? [])
-            .filter(d => issueCodeOf(d) === JpipeIssue.MissingSupportOverride);
+            .filter(d => issueCodeOf(d) === JpipeIssue.NoAbstractSupport);
         expect(anchored.length).toBeGreaterThan(0);
         // One identifier wide — precise, which is what a squiggle should be.
         const [first] = anchored;

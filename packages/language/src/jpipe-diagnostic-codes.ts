@@ -7,29 +7,35 @@
  * validator has already done the work of finding out *what* is wrong — which key is missing,
  * which id an override must carry — and recomputing that inside the fix means maintaining the
  * same reasoning twice, in two places that are free to disagree.
+ *
+ * **These identities are shared with the compiler.** Six are the compiler's own rule names,
+ * adopted verbatim so one defect reads the same in the Problems panel and in a compiler report;
+ * the rest are coined in its naming style. `jpipe-compiler-codes.ts` records which is which, and
+ * a test holds the partition. See jpipe-vscode ADR-VSC-0022 and jpipe-compiler ADR-0016.
  */
 
 export const JpipeIssue = {
-    EmptyLabel:             'jpipe.empty-label',
-    EmptyUnit:              'jpipe.empty-unit',
-    DuplicateModelName:     'jpipe.duplicate-model-name',
-    DuplicateElementId:     'jpipe.duplicate-element-id',
-    TemplateWithoutSupport: 'jpipe.template-without-support',
-    UnknownOperator:        'jpipe.unknown-operator',
-    OperatorArity:          'jpipe.operator-arity',
-    UnknownConfigKey:       'jpipe.unknown-config-key',
-    UnknownUnificationMethod: 'jpipe.unknown-unification-method',
-    MissingConfigKey:       'jpipe.missing-config-key',
-    MissingSupportOverride: 'jpipe.missing-support-override',
-    BadSupportOverrideType: 'jpipe.bad-support-override-type',
-    StrategyUnsupported:    'jpipe.strategy-unsupported',
-    StrategyBadSupporter:   'jpipe.strategy-bad-supporter',
-    ConclusionUnsupported:  'jpipe.conclusion-unsupported',
-    ConclusionNoStrategy:   'jpipe.conclusion-no-strategy',
-    LoadUnresolved:         'jpipe.load-unresolved',
-    LoadNoMatch:            'jpipe.load-no-match',
-    LoadMalformedPattern:   'jpipe.load-malformed-pattern',
-    LoadCircular:           'jpipe.load-circular'
+    NoEmptyLabel:           'no-empty-label',
+    NoEmptyUnit:            'no-empty-unit',
+    NoDuplicateModelNames:  'no-duplicate-model-names',
+    NoDuplicateIds:         'no-duplicate-ids',
+    HasAbstractSupport:     'has-abstract-support',
+    ConclusionPresent:      'conclusion-present',
+    SingleConclusion:       'single-conclusion',
+    UnknownOperator:        'unknown-operator',
+    OperatorArity:          'operator-arity',
+    UnknownConfigKey:       'unknown-config-key',
+    UnknownUnificationMethod: 'unknown-unification-method',
+    MissingConfigKey:       'missing-config-key',
+    NoAbstractSupport:      'no-abstract-support',
+    SupportOverrideType:    'support-override-type',
+    StrategySupported:      'strategy-supported',
+    InvalidSupport:         'invalid-support',
+    ConclusionSupported:    'conclusion-supported',
+    LoadUnresolved:         'load-unresolved',
+    LoadNoMatch:            'load-no-match',
+    LoadMalformedPattern:   'load-malformed-pattern',
+    CyclicLoad:             'cyclic-load'
 } as const;
 
 export type JpipeIssueCode = typeof JpipeIssue[keyof typeof JpipeIssue];
@@ -51,7 +57,7 @@ export function isJpipeIssueCode(value: unknown): value is JpipeIssueCode {
  * positional we stored alongside it would go stale while looking authoritative.
  */
 export interface JpipeIssuePayloads {
-    [JpipeIssue.MissingSupportOverride]: {
+    [JpipeIssue.NoAbstractSupport]: {
         /** The id the overriding declaration must carry, e.g. `T:abs` or `base:T:abs`. */
         expectedKey: string;
         /** The `@support`'s label, so the override reuses the wording it refines. */
@@ -62,7 +68,7 @@ export interface JpipeIssuePayloads {
         /** Every override still missing on this justification, for a fix-all action. */
         allMissing: ReadonlyArray<{ expectedKey: string; supportLabel: string }>;
     };
-    [JpipeIssue.BadSupportOverrideType]: {
+    [JpipeIssue.SupportOverrideType]: {
         /** The keyword actually written, e.g. `strategy`. */
         actualKeyword: string;
         /** The keywords that may refine an `@support`. */
@@ -98,21 +104,25 @@ export interface JpipeIssuePayloads {
          *  so a fix must write the block and its first entry in a single edit. */
         hasConfigBlock: boolean;
     };
-    [JpipeIssue.StrategyUnsupported]:   { targetId: string };
-    [JpipeIssue.ConclusionUnsupported]: { targetId: string };
-    [JpipeIssue.ConclusionNoStrategy]:  { targetId: string };
-    [JpipeIssue.StrategyBadSupporter]:  { targetId: string; supporterKind: string };
+    [JpipeIssue.StrategySupported]:     { targetId: string };
+    /** Carries no discriminant between "no support at all" and "support, but none from a
+     *  strategy": the two are one rule to the compiler, and the fix branches on the AST node
+     *  rather than on the code. See jpipe-vscode ADR-VSC-0022. */
+    [JpipeIssue.ConclusionSupported]:   { targetId: string };
+    [JpipeIssue.InvalidSupport]:        { targetId: string; supporterKind: string };
     [JpipeIssue.LoadUnresolved]:        { path: string };
     [JpipeIssue.LoadNoMatch]:           { path: string };
     [JpipeIssue.LoadMalformedPattern]:  { path: string };
-    [JpipeIssue.LoadCircular]:          { path: string; resolved: string };
-    [JpipeIssue.DuplicateModelName]:    { id: string };
-    [JpipeIssue.DuplicateElementId]:    { id: string; modelId: string };
-    [JpipeIssue.TemplateWithoutSupport]: { id: string };
+    [JpipeIssue.CyclicLoad]:            { path: string; resolved: string };
+    [JpipeIssue.NoDuplicateModelNames]: { id: string };
+    [JpipeIssue.NoDuplicateIds]:        { id: string; modelId: string };
+    [JpipeIssue.HasAbstractSupport]:    { id: string };
+    [JpipeIssue.ConclusionPresent]:     { id: string };
+    [JpipeIssue.SingleConclusion]:      { modelId: string; id: string };
     // `Record<never, never>` rather than `Record<string, never>`: only the former has `keyof`
     // equal to `never`, which is what marks a code as callable through `issue(code)` alone.
-    [JpipeIssue.EmptyLabel]:            Record<never, never>;
-    [JpipeIssue.EmptyUnit]:             Record<never, never>;
+    [JpipeIssue.NoEmptyLabel]:          Record<never, never>;
+    [JpipeIssue.NoEmptyUnit]:           Record<never, never>;
 }
 
 /** The `data` a diagnostic of the given code carries. */
@@ -128,11 +138,12 @@ type CodeWithoutPayload = {
  * Builds the `code` and `data` fields of a diagnostic.
  *
  * Spread into a `DiagnosticInfo`, so attaching an identity to a check costs one line:
- * `{ node, property: 'id', ...issue(JpipeIssue.EmptyLabel) }`.
+ * `{ node, property: 'id', ...issue(JpipeIssue.NoEmptyLabel) }`.
  *
  * `code` is set as well as `data.code` on purpose. `data` is what dispatch reads — it is Langium's
  * own convention and never shown — while `code` is what surfaces in the Problems panel, so a user
- * can see and filter on the rule that fired.
+ * can see and filter on the rule that fired. It needs no `jpipe.` prefix to be unambiguous there:
+ * Langium already sets `source` to the language id, so the panel reads `jpipe(no-empty-label)`.
  */
 export function issue<C extends CodeWithoutPayload>(code: C): { code: C; data: JpipeIssueData<C> };
 export function issue<C extends JpipeIssueCode>(

@@ -21,9 +21,9 @@ import { quickFix, type JpipeActionContext } from './types.js';
 /** Both keywords that may refine an `@support`; `evidence` first, so it is the preferred fix. */
 const OVERRIDE_KEYWORDS: readonly ElementKeyword[] = ['evidence', 'sub-conclusion'];
 
-export const addSupportOverride = quickFix<typeof JpipeIssue.MissingSupportOverride>({
+export const addSupportOverride = quickFix<typeof JpipeIssue.NoAbstractSupport>({
     id: 'add-support-override',
-    codes: [JpipeIssue.MissingSupportOverride],
+    codes: [JpipeIssue.NoAbstractSupport],
 
     create(context, diagnostic, data): CodeAction[] {
         const justification = justificationFor(context, diagnostic);

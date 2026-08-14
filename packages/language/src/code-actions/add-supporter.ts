@@ -24,15 +24,13 @@ import { qualifiedIdText } from '../jpipe-utils.js';
 import { quickFix, type JpipeActionContext } from './types.js';
 
 export const addSupporter = quickFix<
-    typeof JpipeIssue.ConclusionUnsupported
-    | typeof JpipeIssue.ConclusionNoStrategy
-    | typeof JpipeIssue.StrategyUnsupported
+    typeof JpipeIssue.ConclusionSupported
+    | typeof JpipeIssue.StrategySupported
 >({
     id: 'add-supporter',
     codes: [
-        JpipeIssue.ConclusionUnsupported,
-        JpipeIssue.ConclusionNoStrategy,
-        JpipeIssue.StrategyUnsupported
+        JpipeIssue.ConclusionSupported,
+        JpipeIssue.StrategySupported
     ],
 
     create(context, diagnostic, data): CodeAction[] {
