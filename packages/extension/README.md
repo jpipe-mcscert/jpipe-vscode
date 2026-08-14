@@ -63,6 +63,22 @@ organize-on-save setting kept for another language will not reach your `.jd` fil
 When you do run it, it never removes a `load` whose path does not resolve — a half-typed path is
 exactly the state a file is in while you are writing one.
 
+**Format Document** (`⇧⌥F` / `Shift+Alt+F`, or *jPipe: Auto-indent and Align* in the palette)
+lays a model out the way the reference examples are written: nesting by braces, and each run of
+declarations padded so its ids and its `is` keywords start in the same column, with relations
+lined up on their supporters the same way. A body then reads down its columns instead of along
+its lines. Levels use your editor's tab size — or tabs, if that is what you indent with — while
+the padding that lines the columns up is always spaces.
+
+It rewrites lines and never moves anything between them: comments stay beside what they
+describe, blank lines stay where you put them (they are how a body is divided into
+sub-arguments), and a model written on one line comes back on one line, correctly indented. A
+file that does not parse is left alone. Format Selection does the same for the lines you
+selected, lined up with the neighbours it leaves alone.
+
+Format-on-save applies here as it does anywhere else. To keep it off for models while leaving it
+on elsewhere, add `"[jpipe]": { "editor.formatOnSave": false }` to your settings.
+
 #### Your own unification relations
 
 jPipe ships one equivalence relation for `unifyBy`: `sameLabel`. If your build registers others,

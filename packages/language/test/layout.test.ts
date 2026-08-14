@@ -1,32 +1,62 @@
 /**
- * "Auto-indent and align" — the layout, and everything it must not disturb.
+ * Format Document — the layout, and everything it must not disturb.
  *
  * A formatter is invoked on a whole file and its result is rarely read line by line, so what it
  * *leaves alone* is as much a part of the behaviour as what it rewrites. Roughly half of these
- * cases pin something the action must not touch: a comment's place, a blank line, the interior of
- * a block comment, the exact literal an author quoted, a model written on one line.
+ * cases pin something it must not touch: a comment's place, a blank line, the interior of a block
+ * comment, the exact literal an author quoted, a model written on one line.
  *
  * Two whole-file properties carry the rest. The layout must be **idempotent** — running it twice
- * changes nothing the second time, which is what makes it safe to bind to a key — and it must be
+ * changes nothing the second time, which is what makes it safe to run on save — and it must be
  * **meaning-preserving**, checked by validating the result rather than by reading it.
+ *
+ * These drive `lsp.Formatter` directly rather than through a connection, so they exercise the
+ * service the language server binds.
  */
 import { describe, expect, test } from 'vitest';
 
-import { Diagnostic } from 'vscode-languageserver';
-import { AUTO_INDENT_KIND } from 'jpipe-language';
-import { actionTitles, applyCodeAction, parseValidated } from './code-action-helper.js';
+import { EmptyFileSystem } from 'langium';
+import { Diagnostic, TextDocument, type FormattingOptions, type Range, type TextEdit } from 'vscode-languageserver';
+import { createJpipeServices } from 'jpipe-language';
+import { parseValidated } from './code-action-helper.js';
 
-const ONLY = AUTO_INDENT_KIND;
-const TITLE = 'Auto-indent and align';
+const formatter = createJpipeServices(EmptyFileSystem).Jpipe.lsp.Formatter!;
 
-/** The file as it stands once the action is accepted. */
-function laidOut(source: string): Promise<string> {
-    return applyCodeAction(source, { title: TITLE, only: ONLY });
+/** What a client with the default editor settings sends. */
+const FOUR_SPACES: FormattingOptions = { tabSize: 4, insertSpaces: true };
+
+async function editsFor(source: string, options: FormattingOptions = FOUR_SPACES): Promise<TextEdit[]> {
+    const document = await parseValidated(source);
+    return formatter.formatDocument(document, {
+        textDocument: { uri: document.uri.toString() },
+        options
+    });
 }
 
-/** Whether the action is offered at all — it is not, on a file that already reads correctly. */
-async function isOffered(source: string): Promise<boolean> {
-    return (await actionTitles(source, ONLY)).includes(TITLE);
+/** The file as it stands once Format Document has run. */
+async function laidOut(source: string, options: FormattingOptions = FOUR_SPACES): Promise<string> {
+    const document = await parseValidated(source);
+    const edits = await formatter.formatDocument(document, {
+        textDocument: { uri: document.uri.toString() },
+        options
+    });
+    return TextDocument.applyEdits(document.textDocument, edits);
+}
+
+/** The file once Format Selection has run over `range`. */
+async function laidOutRange(source: string, range: Range): Promise<string> {
+    const document = await parseValidated(source);
+    const edits = await formatter.formatDocumentRange(document, {
+        textDocument: { uri: document.uri.toString() },
+        options: FOUR_SPACES,
+        range
+    });
+    return TextDocument.applyEdits(document.textDocument, edits);
+}
+
+/** Whether formatting would change anything — it would not, on a file that already reads correctly. */
+async function changesAnything(source: string, options: FormattingOptions = FOUR_SPACES): Promise<boolean> {
+    return (await editsFor(source, options)).length > 0;
 }
 
 async function errorsIn(source: string): Promise<string[]> {
@@ -266,15 +296,25 @@ template T implements T2 {
 @support abs is "A"
 }`;
 
-    // The property that makes it safe to invoke without reading the result: a second run is a
-    // no-op, so the file has a fixed point rather than drifting on each use.
+    // The property that makes it safe to run on save: a second run is a no-op, so the file has a
+    // fixed point rather than drifting on each use.
     test('running it twice changes nothing the second time', async () => {
         const once = await laidOut(MESSY);
-        expect(await isOffered(once)).toBe(false);
+        expect(await changesAnything(once)).toBe(false);
     });
 
-    test('it is not offered on a file that already reads correctly', async () => {
-        expect(await isOffered(CANONICAL)).toBe(false);
+    test('it produces no edits for a file that already reads correctly', async () => {
+        expect(await changesAnything(CANONICAL)).toBe(false);
+    });
+
+    // Idempotence is a property of the layout, not of the four-space default: a run that settles
+    // under one indent unit and drifts under another would rewrite the file on every save.
+    test.each([
+        ['two spaces', { tabSize: 2, insertSpaces: true }],
+        ['tabs', { tabSize: 4, insertSpaces: false }]
+    ])('and nothing the second time under %s either', async (_name, options) => {
+        const once = await laidOut(MESSY, options);
+        expect(await changesAnything(once, options)).toBe(false);
     });
 
     // Every other assertion here could pass on a file that no longer means what it did.
@@ -296,9 +336,9 @@ s supports c
     });
 
     // Depth and columns are both read off the tree. On a file the tree does not describe, the
-    // action would indent the part it understood and leave the rest where it fell.
-    test('it is not offered on a file that does not parse', async () => {
-        expect(await isOffered('justification J {\n  conclusion c is\n')).toBe(false);
+    // layout would indent the part it understood and leave the rest where it fell.
+    test('it declines on a file that does not parse', async () => {
+        expect(await changesAnything('justification J {\n  conclusion c is\n')).toBe(false);
     });
 
     test('a qualified id is written in its canonical spelling', async () => {
@@ -310,10 +350,112 @@ evidence T : a is "E"
     });
 
     // Every line of a document with Windows endings would otherwise differ from itself, and the
-    // action would offer to rewrite every file on the platform.
+    // formatter would rewrite every file on the platform.
     test('carriage returns survive, and do not make every line look wrong', async () => {
-        expect(await isOffered('justification J {\r\n    conclusion c is "C"\r\n}')).toBe(false);
+        expect(await changesAnything('justification J {\r\n    conclusion c is "C"\r\n}')).toBe(false);
         expect(await laidOut('justification J {\r\nconclusion c is "C"\r\n}'))
             .toBe('justification J {\r\n    conclusion c is "C"\r\n}');
+    });
+});
+
+/**
+ * The indent unit is the editor's; the alignment padding is not.
+ *
+ * A tab advances to the next tab stop rather than by a width, so a column padded with tabs lines
+ * up only by luck. Every case here is really the same case: the leading indent follows the
+ * setting, and everything after the first non-blank character is unchanged by it.
+ */
+describe('the editor\'s indentation settings', () => {
+
+    const CRAMPED = `justification J {
+conclusion c is "C"
+strategy long_s is "S"
+}`;
+
+    test('four spaces by default', async () => {
+        expect(await laidOut(CRAMPED)).toBe(`justification J {
+    conclusion c      is "C"
+    strategy   long_s is "S"
+}`);
+    });
+
+    test('a tab size of two gives two-space levels', async () => {
+        expect(await laidOut(CRAMPED, { tabSize: 2, insertSpaces: true })).toBe(`justification J {
+  conclusion c      is "C"
+  strategy   long_s is "S"
+}`);
+    });
+
+    // The case the whole distinction exists for: tabs indent, spaces still align.
+    test('tabs indent, and the columns are still padded with spaces', async () => {
+        expect(await laidOut(CRAMPED, { tabSize: 4, insertSpaces: false })).toBe(`justification J {
+\tconclusion c      is "C"
+\tstrategy   long_s is "S"
+}`);
+    });
+
+    test('a tab size of zero is treated as no answer, not as no indent', async () => {
+        expect(await laidOut(CRAMPED, { tabSize: 0, insertSpaces: true }))
+            .toContain('\n    conclusion');
+    });
+
+    // Nesting has to multiply the unit, so a single level cannot prove it.
+    test('a second level is a second unit', async () => {
+        const nested = `justification J is assemble(a, b) {
+key: "value"
+}`;
+        expect(await laidOut(nested, { tabSize: 2, insertSpaces: true })).toContain('\n  key: "value"\n');
+        expect(await laidOut(nested, { tabSize: 4, insertSpaces: false })).toContain('\n\tkey: "value"\n');
+    });
+});
+
+/**
+ * Format Selection.
+ *
+ * The columns a declaration lines up to belong to its run, not to the selection, so the range is
+ * applied by dropping edits rather than by laying the range out on its own — a selection of three
+ * lines out of a run of six is padded to the run's widest id, not to its own.
+ */
+describe('formatting a range', () => {
+
+    const MESSY = `justification J {
+conclusion c is "C"
+strategy long_s is "S"
+evidence e is "E"
+}`;
+
+    /** A range over `[first, last]` inclusive, as a client selecting whole lines sends it. */
+    const lines = (first: number, last: number): Range => ({
+        start: { line: first, character: 0 },
+        end: { line: last, character: Number.MAX_SAFE_INTEGER }
+    });
+
+    test('only the selected lines are rewritten', async () => {
+        expect(await laidOutRange(MESSY, lines(1, 2))).toBe(`justification J {
+    conclusion c      is "C"
+    strategy   long_s is "S"
+evidence e is "E"
+}`);
+    });
+
+    // The padding on line 1 is the whole run's, not the selection's — `long_s` is on line 2 and
+    // `c` would only be padded to its own width if the range were laid out in isolation.
+    test('the columns are the run\'s, not the selection\'s', async () => {
+        expect(await laidOutRange(MESSY, lines(1, 1)))
+            .toContain('    conclusion c      is "C"\n');
+    });
+
+    // What a selection dragged down to the start of the next line looks like.
+    test('a range ending at character zero has not reached the line it names', async () => {
+        const after = await laidOutRange(MESSY, {
+            start: { line: 1, character: 0 },
+            end: { line: 2, character: 0 }
+        });
+        expect(after).toContain('\n    conclusion');
+        expect(after).toContain('\nstrategy long_s is "S"\n');
+    });
+
+    test('a selection outside any declaration changes nothing', async () => {
+        expect(await laidOutRange(MESSY, lines(4, 4))).toBe(MESSY);
     });
 });
