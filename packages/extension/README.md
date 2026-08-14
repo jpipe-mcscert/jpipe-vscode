@@ -41,13 +41,6 @@ files a model `load`s, quick fixes on the lightbulb (`⌘.` / `Ctrl+.`), refacto
 preview you can export. Everything is also in the command palette under *jPipe*. The tutorials
 below walk through them.
 
-#### Your own unification relations
-
-jPipe ships one equivalence relation for `unifyBy`: `sameLabel`. If your build registers others,
-list their names under **jPipe: Compiler → Additional Unification Methods** and the editor will
-accept them. Until you do, an unfamiliar name is flagged as a *warning* — never an error, since
-the editor cannot know what your compiler has registered, only what it has been told.
-
 #### Tutorials
 
 Please visit [https://www.jpipe.org/tutorials/](https://www.jpipe.org/tutorials/) for examples and guidance on how to develop justification models using jPipe.
