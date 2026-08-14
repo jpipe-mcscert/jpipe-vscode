@@ -85,13 +85,16 @@ model is actually in, rather than assuming column one.
 - **`lockPreviewGroup` goes, and with it the 100 ms sleep, the focus round trip and the nine-entry
   column table.** The one piece of timing-sensitive layout code in the extension is removed rather
   than fixed.
-- **`revealLocation` must derive its target column** from the editor holding the model, falling
-  back to `ViewColumn.One` only when there is none. Until that is done the reveal bug outlives the
-  lock that motivated it.
-- **None of this is covered by the suite**, before or after — `preview-provider.ts` imports
-  `vscode` and is coverage-excluded (jpipe-vscode ADR-VSC-0010). The change is verified by hand in
-  the Extension Development Host, and a regression would surface as a user report rather than a
-  red build. Removing the sleep at least removes a failure mode that depended on machine load,
-  which is the kind manual testing is worst at finding.
-- **The code does not yet match this record.** The decision is taken; `openPreview`,
-  `lockPreviewGroup` and `revealLocation` still carry the old behaviour at the time of writing.
+- **`revealLocation` derives its target column** instead of naming one: the column already
+  showing the file, else one holding a model, else any column that holds text, and the first
+  column only when nothing is visible at all. That last tier is what replaces the lock's
+  protection — a webview panel is never among the visible *text* editors, so no column the rule
+  can see is the diagram's, and a revealed source cannot land on the panel even though nothing
+  pins it away any more.
+- **The panel's own behaviour remains uncovered.** `preview-provider.ts` imports `vscode` and is
+  coverage-excluded (jpipe-vscode ADR-VSC-0010), so the removal is verified by hand in the
+  Extension Development Host and a regression there surfaces as a user report rather than a red
+  build. The column rule is the exception: it lives in `preview/reveal-column.ts`, which is
+  `vscode`-free and tested (jpipe-vscode ADR-VSC-0004), because a silently wrong column is
+  precisely what it used to produce. Removing the sleep also retires a failure mode that depended
+  on machine load, which is the kind manual testing is worst at finding.
