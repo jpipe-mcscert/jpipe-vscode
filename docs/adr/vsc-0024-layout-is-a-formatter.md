@@ -50,6 +50,10 @@ Three points settled along with it:
   silently does nothing is worse than one that works.
 - **Format-on-type is not offered.** `formatOnTypeOptions` returns `undefined`.
 
+This ships as a **patch** release, not a minor one. Nothing here is a new capability: the layout
+existed and did the same work, in a menu that was the wrong place for it. What changed is where the
+editor looks for it.
+
 `JpipeFormatter` implements Langium's `Formatter` interface rather than extending
 `AbstractFormatter`. The abstract base builds edits by declaring what whitespace sits between one
 token and the next; the house layout is defined as much by what it refuses to move — a blank line,
