@@ -16,6 +16,13 @@
 
 set -euo pipefail
 
+# Sort in C collation, always. `sort` orders by the caller's locale, and the default differs
+# between a macOS developer machine (case-insensitive: `language-configuration.json` before
+# `LICENSE.txt`) and a Linux CI runner (ASCII: `LICENSE.txt` first). The two produce the same
+# *set* of files in a different order, so an inventory generated on one platform can never match
+# on the other — which is precisely how this check first failed, on identical contents.
+export LC_ALL=C
+
 here=$(cd "$(dirname "$0")/.." && pwd)
 expected="$here/packages/extension/vsix-contents.txt"
 
