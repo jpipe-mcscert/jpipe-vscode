@@ -45,8 +45,8 @@ export function registerValidationChecks(services: JpipeServices) {
         Unit:           validator.checkUnitNotEmpty,
         Load:           validator.checkLoadResolves,
         Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys, validator.checkUnificationMethod],
-        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion],
-        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion],
+        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
+        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
         Evidence:       validator.checkLabelNotEmpty,
         Strategy:       [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
         Conclusion:     [validator.checkLabelNotEmpty, validator.checkConclusionIncomingFromStrategy],
@@ -284,10 +284,36 @@ export class JpipeValidator {
         if (model.composition) return;
         if (getAllElements(model).some(isConclusion)) return;
 
-        const kind = isTemplate(model) ? 'Template' : 'Justification';
-        accept('error', `${kind} '${model.id}' has no conclusion`,
+        accept('error', `Model '${model.id}' has no conclusion`,
                { node: model, property: 'id',
                  ...issue(JpipeIssue.ConclusionPresent, { id: model.id }) });
+    }
+
+    /**
+     * Flags every conclusion after the first in one model.
+     *
+     * A justification claims one thing. The compiler enforces that while it is still reading the
+     * file: the first `conclusion` becomes the model's, and each later one is reported as
+     * `single-conclusion` and **discarded** — it never enters the model at all.
+     *
+     * That discarding is why this check has a second half, in `checkConclusionIncomingFromStrategy`.
+     * A second conclusion is usually written with nothing supporting it yet, so the editor used to
+     * answer "there are two conclusions here" with "the second one has no strategy" — a true
+     * statement about a element the compiler had already thrown away, and the wrong problem to put
+     * in front of someone. The compiler reports one error on this file and so does the editor now.
+     *
+     * Reported on each extra rather than once on the model, and anchored on the extra's id, so the
+     * squiggle lands on the declaration to remove and the first conclusion is left unmarked —
+     * the same shape as `checkDuplicateElementIds`, and the same anchor the compiler uses.
+     */
+    checkSingleConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
+        const conclusions = getLocalElements(model).filter(isConclusion);
+        for (const extra of conclusions.slice(1)) {
+            accept('error', `Model '${model.id}' declares multiple conclusions`,
+                   { node: extra, property: 'id',
+                     ...issue(JpipeIssue.SingleConclusion,
+                              { modelId: model.id, id: qualifiedIdText(extra.id) }) });
+        }
     }
 
     checkTemplateHasSupport(template: Template, accept: ValidationAcceptor): void {
@@ -376,6 +402,13 @@ export class JpipeValidator {
     checkConclusionIncomingFromStrategy(conclusion: Conclusion, accept: ValidationAcceptor): void {
         const body = conclusion.$container;
         if (!body?.rels) return;
+
+        // The compiler keeps only the first conclusion and discards the rest, so it never asks
+        // whether a later one is supported — and neither should we. Without this, a model with two
+        // conclusions reports the second one as unsupported, which is a true statement about an
+        // element that will not exist and buries the error that matters (`single-conclusion`).
+        const conclusions = (body.body ?? []).filter(isConclusion);
+        if (conclusions.length > 1 && conclusions[0] !== conclusion) return;
 
         const incoming = body.rels.filter(r => r.to?.ref === conclusion);
         if (incoming.length === 0) {

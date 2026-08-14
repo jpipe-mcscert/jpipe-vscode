@@ -66,6 +66,7 @@ describe('diagnostic codes', () => {
         [JpipeIssue.NoDuplicateModelNames, 'justification J { conclusion c is "C" }\njustification J { conclusion c is "C" }'],
         [JpipeIssue.HasAbstractSupport, 'template T { conclusion c is "C" }'],
         [JpipeIssue.ConclusionPresent, 'justification J { evidence e is "E" }'],
+        [JpipeIssue.SingleConclusion, 'justification J { conclusion c1 is "A" conclusion c2 is "B" }'],
         [JpipeIssue.UnknownOperator, 'justification A { conclusion c is "C" }\njustification B is nope(A)'],
         [JpipeIssue.UnknownConfigKey, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" strategyLabel: "S" nope: "X" }'],
         [JpipeIssue.MissingConfigKey, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" }'],
@@ -135,6 +136,14 @@ describe('one code, two severities', () => {
     });
 });
 
+/** The messages of the errors reported for `source`. */
+async function errorsIn(source: string): Promise<string[]> {
+    const document = await parse(source);
+    return (document.diagnostics ?? [])
+        .filter(d => d.severity === DiagnosticSeverity.Error)
+        .map(d => Diagnostic.getMessageString(d));
+}
+
 /**
  * `conclusion-present` is the compiler's rule, and the editor is only useful here if it agrees
  * with it on all three of the awkward cases: an inherited conclusion satisfies it, a composed
@@ -142,29 +151,21 @@ describe('one code, two severities', () => {
  */
 describe('a model must have a conclusion', () => {
 
-    /** The messages of the errors reported for `source`. */
-    async function errorsIn(source: string): Promise<string[]> {
-        const document = await parse(source);
-        return (document.diagnostics ?? [])
-            .filter(d => d.severity === DiagnosticSeverity.Error)
-            .map(d => Diagnostic.getMessageString(d));
-    }
-
     test('a justification with elements but no conclusion is an error', async () => {
         expect(await errorsIn('justification J { evidence e is "E" }'))
-            .toContain("Justification 'J' has no conclusion");
+            .toContain("Model 'J' has no conclusion");
     });
 
     test('a template is held to the rule as well', async () => {
         expect(await errorsIn('template T { @support a is "A" }'))
-            .toContain("Template 'T' has no conclusion");
+            .toContain("Model 'T' has no conclusion");
     });
 
     // The compiler checks completeness after `implements` has inlined the parent's elements, so a
     // conclusion inherited from the template satisfies it there and must here.
     test('a conclusion inherited from the template satisfies it', async () => {
         const source = `${TEMPLATE}\njustification J implements T { evidence T:a is "A" evidence T:b is "B" }`;
-        expect(await errorsIn(source)).not.toContain("Justification 'J' has no conclusion");
+        expect(await errorsIn(source)).not.toContain("Model 'J' has no conclusion");
     });
 
     // `assemble` synthesises a conclusion from `conclusionLabel`, so the compiler is satisfied by
@@ -172,7 +173,66 @@ describe('a model must have a conclusion', () => {
     test('a composed model is not judged on a body it does not have', async () => {
         const source = 'justification A { conclusion c is "C" }\n'
             + 'justification B is assemble(A) { conclusionLabel: "All of it" strategyLabel: "Together" }';
-        expect(await errorsIn(source)).not.toContain("Justification 'B' has no conclusion");
+        expect(await errorsIn(source)).not.toContain("Model 'B' has no conclusion");
+    });
+});
+
+/**
+ * A model claims one thing. The compiler keeps the first conclusion and discards every later one,
+ * so the interesting half of this rule is what it *stops* the editor saying: a second conclusion
+ * is usually written with nothing supporting it, and answering "there are two conclusions" with
+ * "the second has no strategy" describes an element that will not exist.
+ *
+ * The fixture is the compiler's own `examples/invalid/005_multiple_conclusion.jd`.
+ */
+describe('a model may claim only one conclusion', () => {
+
+    const TWO_CONCLUSIONS = `justification j {
+    conclusion c1 is "First conclusion"
+    conclusion c2 is "Second conclusion"
+    strategy   s  is "A strategy"
+    evidence   e  is "An evidence"
+
+    s supports c1
+    e supports s
+}`;
+
+    test('the second conclusion is an error, in the compiler\'s words', async () => {
+        expect(await errorsIn(TWO_CONCLUSIONS)).toEqual(["Model 'j' declares multiple conclusions"]);
+    });
+
+    test('it is anchored on the extra conclusion, leaving the first unmarked', async () => {
+        const diagnostic = await diagnosticFor(TWO_CONCLUSIONS, JpipeIssue.SingleConclusion);
+        expect(diagnostic.range.start.line).toBe(2);
+        expect(diagnostic.range.start.character).toBe(15);
+    });
+
+    // The point of the rule: the extra conclusion is discarded by the compiler, so it never asks
+    // whether that one is supported, and neither may we.
+    test('the discarded conclusion is not also reported as unsupported', async () => {
+        const document = await parse(TWO_CONCLUSIONS);
+        const codes = (document.diagnostics ?? []).map(d => issueCodeOf(d));
+        expect(codes).not.toContain(JpipeIssue.ConclusionSupported);
+    });
+
+    // Only the extras are discarded. A lone conclusion with no strategy is still the ordinary
+    // `conclusion-supported` warning, and suppressing it here would hide a real problem.
+    test('a single unsupported conclusion is still reported', async () => {
+        const document = await parse('justification J { conclusion c is "C" evidence e is "E"\n e supports c }');
+        const codes = (document.diagnostics ?? []).map(d => issueCodeOf(d));
+        expect(codes).toContain(JpipeIssue.ConclusionSupported);
+    });
+
+    test('a template is held to the rule as well', async () => {
+        const source = 'template t {\n conclusion c1 is "First"\n conclusion c2 is "Second"\n'
+            + ' strategy s is "S"\n @support abs is "A"\n s supports c1\n abs supports s\n}';
+        expect(await errorsIn(source)).toEqual(["Model 't' declares multiple conclusions"]);
+    });
+
+    test('a third conclusion is reported too, so fixing one does not hide the next', async () => {
+        const source = 'justification J {\n conclusion c1 is "A"\n conclusion c2 is "B"\n conclusion c3 is "C"\n'
+            + ' strategy s is "S"\n evidence e is "E"\n s supports c1\n e supports s\n}';
+        expect(await errorsIn(source)).toHaveLength(2);
     });
 });
 

@@ -194,3 +194,50 @@ The remaining gaps are unchanged: `sub-conclusion-supported`, `acyclic-support`,
 `acyclic-implements`, `single-conclusion`, `unresolved-override`, `cyclic-implements`,
 `implements-error`, `reference-into-template`, `incompatible-unification`, and `invalid-support`
 beyond strategies.
+
+## Amendment (2026-08-13): `single-conclusion`, and a rule that removes a diagnostic
+
+The second gap is closed, and it is the more interesting one, because most of its value is in what
+the editor now *stops* saying.
+
+On the compiler's own `examples/invalid/005_multiple_conclusion.jd` the editor used to report that
+the second conclusion had no supporting strategy. That was true, and it was the wrong problem: the
+compiler keeps the first conclusion a model declares and **discards** every later one
+(`ActionListProvider.enterConclusion` returns without creating it), so it never asks whether the
+second is supported. It reports one error, `single-conclusion`, on the extra declaration. The
+editor was answering "you have written two conclusions" with a remark about an element that was
+never going to exist.
+
+So this amendment adds two things, and the second is not optional:
+
+- `checkSingleConclusion` reports every conclusion after the first, anchored on the extra's id so
+  the first is left unmarked — the shape `checkDuplicateElementIds` already uses, and the anchor
+  the compiler already uses.
+- `checkConclusionIncomingFromStrategy` now returns early for a conclusion that is not the first
+  in its model. Suppressing a true statement needs justifying, and the justification is that the
+  compiler's model does not contain the element the statement is about.
+
+The two outputs are now identical on that file, down to the column:
+
+```
+[ERROR] 10:15 [single-conclusion] Model 'j' declares multiple conclusions
+[ERROR] 21:15 [single-conclusion] Model 't' declares multiple conclusions
+```
+
+**Messages for shared rules copy the compiler's wording.** `conclusion-present` was written in the
+previous amendment as `Justification 'J' has no conclusion`, following the extension's local habit
+of naming the kind; it now reads `Model 'J' has no conclusion`, as the compiler words it. The
+extension's own checks keep their own voice — the habit is right for a rule only the editor has.
+For a rule both tools enforce, a user searching the message should find one explanation, which is
+the argument jpipe-vscode ADR-VSC-0007 already makes about the glob errors.
+
+**The cost is a coupling that nothing detects.** Suppressing `conclusion-supported` on later
+conclusions is correct only for as long as the compiler discards them. If it ever kept both and
+reported on both, the editor would go quiet about a real problem — the failure mode this record
+elsewhere calls the worse one, because it is invisible. No test can see across the repository
+boundary; the comment in `checkConclusionIncomingFromStrategy` names the assumption so that
+anyone changing that behaviour upstream has a chance of finding it.
+
+Remaining gaps: `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`,
+`unresolved-override`, `cyclic-implements`, `implements-error`, `reference-into-template`,
+`incompatible-unification`, and `invalid-support` beyond strategies.
