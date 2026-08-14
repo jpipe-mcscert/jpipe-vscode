@@ -24,10 +24,16 @@
  * Depth comes from the brace *tokens*, never from scanning the text: a label is a string, a string
  * may contain a brace, and a formatter that counts those indents the rest of the file wrongly.
  *
+ * **Indentation and alignment are not the same character.** The unit a level is indented by is
+ * the editor's — a tab where the editor uses tabs — but the padding that lines the columns up is
+ * always spaces, because a tab advances to the next tab stop rather than by a width and so cannot
+ * line anything up. That is the ordinary "tabs to indent, spaces to align" rule, and it is why
+ * `body` below does not take the indent unit.
+ *
  * Pure over a document — no services — so it is testable without a workspace.
  */
 import { CstUtils, GrammarUtils, isLeafCstNode, type AstNode, type CstNode, type LangiumDocument, type Reference } from 'langium';
-import type { TextEdit } from 'vscode-languageserver';
+import type { FormattingOptions, TextEdit } from 'vscode-languageserver';
 import type { JustificationElement, Unit } from './generated/ast.js';
 import { keywordFor } from './jpipe-render.js';
 import { qualifiedIdText } from './jpipe-utils.js';
@@ -35,6 +41,18 @@ import { modelsOf, segmentNodes } from './jpipe-qualified-names.js';
 
 /** One level of nesting. The examples use four spaces, so this does. */
 export const INDENT_UNIT = '    ';
+
+/**
+ * One level of nesting as the editor asks for it, or the house four spaces where it has not.
+ *
+ * A `tabSize` of zero would silently flatten the file, so it is treated as no answer rather than
+ * as an answer of none.
+ */
+export function indentUnitOf(options?: FormattingOptions): string {
+    if (!options) return INDENT_UNIT;
+    if (!options.insertSpaces) return '\t';
+    return options.tabSize > 0 ? ' '.repeat(options.tabSize) : INDENT_UNIT;
+}
 
 /** A line holding exactly one declaration, in the pieces the columns are built from. */
 type Piece =
@@ -56,14 +74,14 @@ interface Placed {
  * syntax tree, and a tree that does not describe the whole file would indent the part it does
  * understand and leave the rest sitting at whatever column it happened to be at.
  */
-export function layoutEdits(document: LangiumDocument<Unit>): TextEdit[] {
+export function layoutEdits(document: LangiumDocument<Unit>, unit: string = INDENT_UNIT): TextEdit[] {
     const root = document.parseResult.value.$cstNode;
     if (!root || document.parseResult.parserErrors.length > 0) return [];
 
     const lines = document.textDocument.getText().split('\n');
     const { indents, continuations } = readNesting(root, lines.length);
     const placed = placeDeclarations(document.parseResult.value, lines);
-    const rendered = renderGroups(placed, indents);
+    const rendered = renderGroups(placed, indents, unit);
 
     const edits: TextEdit[] = [];
     for (let line = 0; line < lines.length; line++) {
@@ -72,7 +90,7 @@ export function layoutEdits(document: LangiumDocument<Unit>): TextEdit[] {
         if (continuations[line]) continue;
 
         const replacement = rendered.get(line)
-            ?? plainLine(content, indents[line]);
+            ?? plainLine(content, indents[line], unit);
         if (replacement === undefined || replacement === content) continue;
 
         edits.push({
@@ -84,12 +102,12 @@ export function layoutEdits(document: LangiumDocument<Unit>): TextEdit[] {
 }
 
 /** A line carrying no declaration: re-indented, trailing whitespace dropped, otherwise as written. */
-function plainLine(content: string, indent: number | undefined): string | undefined {
+function plainLine(content: string, indent: number | undefined, unit: string): string | undefined {
     if (content.trim() === '') return '';
     // No token starts here and none spans into it, which only happens where the tree does not
     // describe the text. Leaving it alone is the honest answer.
     if (indent === undefined) return undefined;
-    return INDENT_UNIT.repeat(indent) + content.trim();
+    return unit.repeat(indent) + content.trim();
 }
 
 /**
@@ -202,7 +220,7 @@ function referenceText(reference: Reference | undefined): string | undefined {
  * the alignment local: one long id somewhere else in the body does not push a whole model's labels
  * across the screen, and each sub-argument lines up within itself.
  */
-function renderGroups(placed: Placed[], indents: Array<number | undefined>): Map<number, string> {
+function renderGroups(placed: Placed[], indents: Array<number | undefined>, unit: string): Map<number, string> {
     const rendered = new Map<number, string>();
 
     for (let start = 0; start < placed.length;) {
@@ -219,7 +237,7 @@ function renderGroups(placed: Placed[], indents: Array<number | undefined>): Map
             key:     max(group, piece => piece.kind === 'entry' ? piece.key.length + 1 : 0)
         };
         for (const item of group) {
-            const indent = INDENT_UNIT.repeat(indents[item.line] ?? 0);
+            const indent = unit.repeat(indents[item.line] ?? 0);
             rendered.set(item.line, indent + body(item.piece, widths) + item.tail);
         }
         start = end;

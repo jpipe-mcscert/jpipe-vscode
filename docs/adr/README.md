@@ -57,3 +57,4 @@ The compiler's records are at
 | [VSC-0021](vsc-0021-the-shipped-bundles-are-minified-with-names-kept.md) | The shipped bundles are minified, with names kept | 2026-08-13 | Accepted |
 | [VSC-0022](vsc-0022-one-diagnostic-vocabulary-with-the-compiler.md) | One diagnostic vocabulary, and it is the compiler's | 2026-08-13 | Accepted |
 | [VSC-0023](vsc-0023-error-means-the-build-fails.md) | An error means the build fails | 2026-08-13 | Accepted |
+| [VSC-0024](vsc-0024-layout-is-a-formatter.md) | Laying a model out is a formatter, not a source action | 2026-08-14 | Accepted |

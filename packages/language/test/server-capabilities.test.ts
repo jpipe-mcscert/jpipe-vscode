@@ -97,6 +97,15 @@ describe('the code action capability', () => {
         }
     });
 
+    // Laying a file out is Format Document now, so no source kind may claim it as well: two
+    // routes to one edit is two things to keep in step, and the source action was the one dropped.
+    test('claims no auto-indent source kind, since the formatter has that job', async () => {
+        for (const kind of providedCodeActionKinds()) {
+            expect(kind.startsWith('source.jpipe.autoIndent'),
+                `'${kind}' duplicates what Format Document does`).toBe(false);
+        }
+    });
+
     // Everything else the server advertises should be untouched by the override.
     test('leaves the other capabilities alone', async () => {
         const caps = await capabilities();
@@ -105,5 +114,28 @@ describe('the code action capability', () => {
         expect(caps.hoverProvider).toBe(true);
         expect(caps.completionProvider).toBeDefined();
         expect(caps.renameProvider).toBeDefined();
+    });
+});
+
+/**
+ * Formatting is advertised by the presence of the service, not by a list — but a client that is
+ * never told cannot ask, so an accidental unbinding is silent in exactly the way a missing menu
+ * entry is.
+ */
+describe('the formatting capability', () => {
+
+    test('Format Document is offered', async () => {
+        expect((await capabilities()).documentFormattingProvider).toBe(true);
+    });
+
+    // Not a separate binding: Langium derives it from the same service, which is why the formatter
+    // has to give a range a meaning rather than leaving the menu entry inert.
+    test('Format Selection is offered too', async () => {
+        expect((await capabilities()).documentRangeFormattingProvider).toBe(true);
+    });
+
+    // Re-aligning a run rewrites every line in it, which is not something to do on a keystroke.
+    test('format-on-type is not', async () => {
+        expect((await capabilities()).documentOnTypeFormattingProvider).toBeUndefined();
     });
 });

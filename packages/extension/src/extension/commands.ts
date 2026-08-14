@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import {
     ORGANIZE_LOADS_KIND,
-    AUTO_INDENT_KIND,
     CONVERT_MODEL_KIND,
     SORT_ELEMENTS_KIND,
     EXTRACT_TEMPLATE_KIND
@@ -72,7 +71,6 @@ const EXPORT_COMMANDS: ReadonlyArray<readonly [command: string, format: ImageFor
  */
 const CODE_ACTION_COMMANDS: ReadonlyArray<readonly [command: string, kind: string, action: string]> = [
     ['jpipe.organizeLoads', ORGANIZE_LOADS_KIND, 'editor.action.sourceAction'],
-    ['jpipe.autoIndent', AUTO_INDENT_KIND, 'editor.action.sourceAction'],
     ['jpipe.convertModelKind', CONVERT_MODEL_KIND, 'editor.action.refactor'],
     ['jpipe.sortElements', SORT_ELEMENTS_KIND, 'editor.action.refactor'],
     ['jpipe.extractTemplate', EXTRACT_TEMPLATE_KIND, 'editor.action.refactor']
@@ -109,6 +107,12 @@ export function registerCommands(deps: CommandDeps): void {
             vscode.commands.registerCommand(command, async () => {
                 await vscode.commands.executeCommand(action, { kind, apply: 'first' });
             })),
+
+        // Laying a model out is Format Document — the language server provides the formatter. The
+        // command survives its move out of the list above so that a keybinding people already
+        // have keeps working, and so that the palette answers "auto indent" under jPipe.
+        vscode.commands.registerCommand('jpipe.autoIndent', () =>
+            vscode.commands.executeCommand('editor.action.formatDocument')),
 
         vscode.commands.registerCommand('jpipe.addExcludedDirectory', () => addExcludedDirectory(exclusions)),
         vscode.commands.registerCommand('jpipe.excludeResource', (uri?: vscode.Uri) => excludeResource(exclusions, uri)),

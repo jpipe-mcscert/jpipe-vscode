@@ -1,5 +1,12 @@
 ## Changelog
 
+### v1.9.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Changes:
+    - **Laying a model out is now Format Document.** Tidying a `.jd` file used to live in the **Source Action…** menu, which meant the one gesture most people would try for it — `⇧⌥F`, or right-click → Format Document — reported that no formatter was available. It is now the formatter, so Format Document, Format Selection and format-on-save all lay a model out, and the *jPipe: Auto-indent and Align* command still does too. The layout itself is unchanged: comments stay beside what they describe, blank lines stay where you put them, and a model written on one line comes back on one line. **Read this if you use format-on-save:** v1.7.0 promised the opposite — that a format-on-save setting kept for another language would never re-space your models — and that is no longer true. If you would rather it did not, `"[jpipe]": { "editor.formatOnSave": false }` in your settings turns it off for `.jd` files only
+    - **Indentation follows your editor settings.** The layout used to be four spaces per level whatever your editor was set to. It now uses your tab size, and tabs if that is what you indent with. The padding that lines the `is` keywords up in a column is still spaces either way — a tab jumps to the next tab stop rather than by a fixed width, so it cannot line anything up — which is the usual "tabs to indent, spaces to align" arrangement. Four spaces remain the default, so a project that has not set anything looks exactly as it did
+    - **Format Selection lays out just the lines you selected**, padded to line up with the neighbours it leaves alone rather than only with each other, so formatting part of a body does not split its columns down the middle
+
 ### v1.8.0 (2026-08-14)
 - Leader: Sébastien Mosser
   - Features:

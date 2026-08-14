@@ -35,6 +35,8 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
         jpipe-scope.ts          ← cross-file scope/reference resolution
         jpipe-import.ts         ← `load` statement resolution (BFS transitive imports)
         jpipe-completion.ts     ← smart completion provider
+        jpipe-formatter.ts      ← Format Document / Selection (ADR-VSC-0024)
+        jpipe-layout.ts         ← the house layout, pure over a document (what the formatter runs)
         jpipe-utils.ts          ← getAllElements / getLocalElements (AST helpers)
         jpipe-glob.ts           ← Java-NIO glob matcher for `load` patterns (ADR-VSC-0007)
         code-actions/           ← one module per quick-fix/refactoring, aggregated by index.ts
@@ -245,7 +247,8 @@ their menu placement and `when`-clauses. The ones worth knowing:
 | `jpipe.selectJarFile` | Select Compiler JAR File… (also linked from the `jpipe.jarFile` setting) |
 | `jpipe.addExcludedDirectory` / `removeExcludedPath` | Manage excluded paths |
 | `jpipe.excludeResource` / `includeResource` | Exclude/include from jPipe validation |
-| `jpipe.organizeLoads`, `jpipe.autoIndent`, `jpipe.sortElements` | Document refactorings |
+| `jpipe.organizeLoads`, `jpipe.sortElements` | Document refactorings (code actions) |
+| `jpipe.autoIndent` | Auto-indent and Align — delegates to `editor.action.formatDocument`, *not* a code action (ADR-VSC-0024) |
 | `jpipe.convertModelKind`, `jpipe.extractTemplate` | Model refactorings |
 
 The preview panel auto-refreshes on file save, highlights the node under the cursor (via LSP `textDocument/documentSymbol`), and has zoom controls (+/−/0 keys or toolbar buttons).

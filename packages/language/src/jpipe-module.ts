@@ -12,6 +12,7 @@ import { JpipeHoverProvider } from './jpipe-hover-provider.js';
 import { JpipeSemanticTokenProvider } from './jpipe-semantic-token-provider.js';
 import { JpipeRenameProvider } from './jpipe-rename-provider.js';
 import { JpipeCodeActionProvider } from './jpipe-code-action-provider.js';
+import { JpipeFormatter } from './jpipe-formatter.js';
 import { JpipeLanguageServer } from './jpipe-language-server.js';
 import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 import { JpipeDocumentValidator } from './jpipe-document-validator.js';
@@ -79,7 +80,9 @@ function buildJpipeModule(
             RenameProvider:         (services) => new JpipeRenameProvider(services),
             // Binding this is all it takes: `startLanguageServer` advertises
             // `codeActionProvider` from the presence of the service.
-            CodeActionProvider:     (services) => new JpipeCodeActionProvider(services)
+            CodeActionProvider:     (services) => new JpipeCodeActionProvider(services),
+            // Likewise `documentFormattingProvider` and `documentRangeFormattingProvider`.
+            Formatter:              () => new JpipeFormatter()
         },
         logger: () => logger,
         exclusions: () => exclusions,

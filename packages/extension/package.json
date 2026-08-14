@@ -21,7 +21,8 @@
     "contributes": {
         "configurationDefaults": {
             "[jpipe]": {
-                "editor.wordBasedSuggestions": "off"
+                "editor.wordBasedSuggestions": "off",
+                "editor.defaultFormatter": "mcscert.jpipe-extension"
             }
         },
         "languages": [

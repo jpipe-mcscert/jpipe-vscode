@@ -7,7 +7,6 @@
  * "what can this thing do".
  */
 import { addRequiredConfigKeys } from './add-required-config-keys.js';
-import { autoIndent } from './auto-indent.js';
 import { addSupportOverride } from './add-support-override.js';
 import { addMissingLoad } from './add-missing-load.js';
 import { addSupporter } from './add-supporter.js';
@@ -38,7 +37,6 @@ export const JPIPE_QUICK_FIXES: readonly RegisteredQuickFix[] = [
 export const JPIPE_REFACTORINGS: readonly RefactoringDefinition[] = [
     addMissingLoad,
     organizeLoads,
-    autoIndent,
     convertModelKind,
     sortElements,
     extractTemplate
