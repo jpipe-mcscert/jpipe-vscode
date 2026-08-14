@@ -34,7 +34,7 @@ import {
     requiredConfigKeys
 } from './jpipe-operators.js';
 import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
-import { JpipeIssue, issue } from './jpipe-diagnostic-codes.js';
+import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 import { messageOf } from './jpipe-errors.js';
 
@@ -81,10 +81,8 @@ export class JpipeValidator {
         if (!isGlobPattern(load.path)) {
             const resolved = this.importService.resolveExistingImportPath(load.path, document);
             if (!resolved) {
-                accept('error',
-                    `Cannot resolve load path '${load.path}': no such file.`,
-                    { node: load, property: 'path',
-                      ...issue(JpipeIssue.LoadUnresolved, { path: load.path }) });
+                report(accept, JpipeIssue.LoadUnresolved, `Cannot resolve load path '${load.path}': no such file.`,
+                       { node: load, property: 'path' }, { path: load.path });
             } else {
                 this.checkNotSelfLoad([resolved], load, document, accept);
             }
@@ -99,16 +97,13 @@ export class JpipeValidator {
             const message = error instanceof GlobExpansionError
                 ? error.describe(load.path)
                 : `Cannot expand load pattern '${load.path}': ${messageOf(error)}`;
-            accept('error', message,
-                { node: load, property: 'path',
-                  ...issue(JpipeIssue.LoadMalformedPattern, { path: load.path }) });
+            report(accept, JpipeIssue.LoadMalformedPattern, message,
+                   { node: load, property: 'path' }, { path: load.path });
             return;
         }
         if (matches.length === 0) {
-            accept('error',
-                `No file matches load pattern '${load.path}'`,
-                { node: load, property: 'path',
-                  ...issue(JpipeIssue.LoadNoMatch, { path: load.path }) });
+            report(accept, JpipeIssue.LoadNoMatch, `No file matches load pattern '${load.path}'`,
+                   { node: load, property: 'path' }, { path: load.path });
             return;
         }
 
@@ -130,19 +125,15 @@ export class JpipeValidator {
     ): void {
         const self = resolvedPaths.find(candidate => this.importService.isSameFile(candidate, document));
         if (self) {
-            accept('error', `Circular load detected: ${self}`,
-                { node: load, property: 'path',
-                  ...issue(JpipeIssue.CyclicLoad, { path: load.path, resolved: self }) });
+            report(accept, JpipeIssue.CyclicLoad, `Circular load detected: ${self}`,
+                   { node: load, property: 'path' }, { path: load.path, resolved: self });
         }
     }
 
     checkOperatorName(composition: Composition, accept: ValidationAcceptor): void {
         if (!isKnownOperator(composition.operator)) {
-            accept('error',
-                `Unknown operator '${composition.operator}'. Expected: ${knownOperatorNames().join(', ')}.`,
-                { node: composition, property: 'operator',
-                  ...issue(JpipeIssue.UnknownOperator,
-                           { actual: composition.operator, known: knownOperatorNames() }) });
+            report(accept, JpipeIssue.UnknownOperator, `Unknown operator '${composition.operator}'. Expected: ${knownOperatorNames().join(', ')}.`,
+                   { node: composition, property: 'operator' }, { actual: composition.operator, known: knownOperatorNames() });
         }
     }
 
@@ -163,18 +154,16 @@ export class JpipeValidator {
         const expected = arityPhrase(min, max);
         // The noun agrees with the number that immediately precedes it.
         const count = max ?? min;
-        accept('error',
-            `${composition.operator} requires ${expected} source ${count === 1 ? 'model' : 'models'}, got ${actual}.`,
-            { node: composition, property: 'operator',
-              ...issue(JpipeIssue.OperatorArity, { operator: composition.operator, actual, min, ...(max !== undefined ? { max } : {}) }) });
+        report(accept, JpipeIssue.OperatorArity, `${composition.operator} requires ${expected} source ${count === 1 ? 'model' : 'models'}, got ${actual}.`,
+               { node: composition, property: 'operator' }, { operator: composition.operator, actual, min, ...(max !== undefined ? { max } : {}) });
     }
 
     /**
      * Checks a composition's config block against the operator's key table.
      *
-     * A missing required key is an error: the compiler refuses to run without it. An unknown key
-     * is only a warning, because the compiler ignores keys it does not recognise — flagging one
-     * as an error would claim a build failure that will not happen.
+     * The two halves land at different severities, and deliberately: the compiler refuses to run
+     * without a required key, but silently ignores one it does not recognise. `JpipeIssueSeverity`
+     * records that, along with the rule it follows from (jpipe-vscode ADR-VSC-0023).
      */
     checkConfigKeys(composition: Composition, accept: ValidationAcceptor): void {
         const op = composition.operator;
@@ -183,34 +172,31 @@ export class JpipeValidator {
         const present = new Set(composition.config?.entries.map(e => e.key) ?? []);
         for (const entry of composition.config?.entries ?? []) {
             if (!allowed.includes(entry.key)) {
-                accept('warning',
-                    `Unknown config key '${entry.key}' for operator '${op}'. Allowed: ${allowed.join(', ')}.`,
-                    { node: entry, property: 'key',
-                      ...issue(JpipeIssue.UnknownConfigKey,
-                               { actual: entry.key, operator: op, allowed }) });
+                report(accept, JpipeIssue.UnknownConfigKey, `Unknown config key '${entry.key}' for operator '${op}'. Allowed: ${allowed.join(', ')}.`,
+                       { node: entry, property: 'key' }, { actual: entry.key, operator: op, allowed });
             }
         }
         const allMissing = requiredConfigKeys(op).filter(key => !present.has(key));
         for (const key of allMissing) {
-            accept('error',
-                `Missing required config key '${key}' for operator '${op}'.`,
-                { node: composition, property: 'operator',
-                  ...issue(JpipeIssue.MissingConfigKey, {
+            report(accept, JpipeIssue.MissingConfigKey, `Missing required config key '${key}' for operator '${op}'.`,
+                   { node: composition, property: 'operator' }, {
                       missingKey: key,
                       operator: op,
                       allMissing,
                       hasConfigBlock: composition.config !== undefined
-                  }) });
+                  });
         }
     }
 
     /**
      * Flags a `unifyBy` naming a relation this workspace does not recognise.
      *
-     * A warning, not an error. The compiler's registry is populated at startup, so a build may
-     * carry relations shipped with neither jPipe core nor this extension — a project with its own
-     * is not doing anything wrong, and calling its models broken would be simply wrong. What is
-     * reported is the limit of what the editor knows, which the settings can widen.
+     * **The one exception to jpipe-vscode ADR-VSC-0023**, and the reason the exception exists. The
+     * compiler would reject this, so the rule says error — but its registry is populated at
+     * startup, so a build may carry relations shipped with neither jPipe core nor this extension.
+     * A project with its own is not doing anything wrong, and calling its models broken would be
+     * simply wrong. The editor cannot know, so it reports the limit of what it knows — which the
+     * settings can widen — and the message is worded to claim exactly that and no more.
      *
      * Staying silent is not the alternative: a typo'd relation name fails the build with nothing
      * having warned, and the value is a plain string that nothing else checks.
@@ -221,25 +207,23 @@ export class JpipeValidator {
             const actual = entry.value;
             if (!actual || this.unification.isKnown(actual)) continue;
             const known = this.unification.known();
-            accept('warning',
-                `Unknown unification method '${actual}'; registered: ${known.join(', ')}.`,
-                { node: entry, property: 'value',
-                  ...issue(JpipeIssue.UnknownUnificationMethod, { actual, known }) });
+            report(accept, JpipeIssue.UnknownUnificationMethod, `Unknown unification method '${actual}'; registered: ${known.join(', ')}.`,
+                   { node: entry, property: 'value' }, { actual, known });
         }
     }
 
     checkLabelNotEmpty(element: Evidence | Strategy | Conclusion | SubConclusion | AbstractSupport,
                         accept: ValidationAcceptor): void {
         if (element.name?.length === 0) {
-            accept('warning', 'Element label should not be empty',
-                   { node: element, property: 'name', ...issue(JpipeIssue.NoEmptyLabel) });
+            report(accept, JpipeIssue.NoEmptyLabel, 'Element label should not be empty',
+                   { node: element, property: 'name' });
         }
     }
 
     checkUnitNotEmpty(unit: Unit, accept: ValidationAcceptor): void {
         if (unit.body?.length === 0) {
-            accept('warning', 'Justification File should not be empty',
-                   { node: unit, property: 'body', ...issue(JpipeIssue.NoEmptyUnit) });
+            report(accept, JpipeIssue.NoEmptyUnit, 'Justification File should not be empty',
+                   { node: unit, property: 'body' });
         }
     }
 
@@ -253,18 +237,17 @@ export class JpipeValidator {
         );
 
         if (duplicates.length > 1) {
-            accept('error', `Duplicate template name '${template.id}'`,
-                   { node: template, property: 'id',
-                     ...issue(JpipeIssue.NoDuplicateModelNames, { id: template.id }) });
+            report(accept, JpipeIssue.NoDuplicateModelNames, `Duplicate template name '${template.id}'`,
+                   { node: template, property: 'id' }, { id: template.id });
         }
     }
 
     /**
      * Flags a model with no conclusion.
      *
-     * An error, not a warning: the compiler refuses to build such a model, reporting it as
-     * `conclusion-present` — and it applies the rule to templates as well as justifications, so
-     * this one does too. An argument with nothing at its root is not an argument.
+     * The compiler refuses to build such a model, and applies the rule to templates as well as
+     * justifications, so this one does too. An argument with nothing at its root is not an
+     * argument.
      *
      * Inherited conclusions count, which is why this reads `getAllElements`: the compiler checks
      * completeness *after* `implements` has inlined the parent's elements, so a justification
@@ -284,9 +267,8 @@ export class JpipeValidator {
         if (model.composition) return;
         if (getAllElements(model).some(isConclusion)) return;
 
-        accept('error', `Model '${model.id}' has no conclusion`,
-               { node: model, property: 'id',
-                 ...issue(JpipeIssue.ConclusionPresent, { id: model.id }) });
+        report(accept, JpipeIssue.ConclusionPresent, `Model '${model.id}' has no conclusion`,
+               { node: model, property: 'id' }, { id: model.id });
     }
 
     /**
@@ -309,22 +291,24 @@ export class JpipeValidator {
     checkSingleConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
         const conclusions = getLocalElements(model).filter(isConclusion);
         for (const extra of conclusions.slice(1)) {
-            accept('error', `Model '${model.id}' declares multiple conclusions`,
-                   { node: extra, property: 'id',
-                     ...issue(JpipeIssue.SingleConclusion,
-                              { modelId: model.id, id: qualifiedIdText(extra.id) }) });
+            report(accept, JpipeIssue.SingleConclusion, `Model '${model.id}' declares multiple conclusions`,
+                   { node: extra, property: 'id' }, { modelId: model.id, id: qualifiedIdText(extra.id) });
         }
     }
 
+    /**
+     * Flags a template that declares no `@support`.
+     *
+     * The compiler's own note for this rule says it best: a template with no abstract supports is
+     * a justification in disguise. It refuses to build one, and the message here is its wording.
+     */
     checkTemplateHasSupport(template: Template, accept: ValidationAcceptor): void {
         const allElements = getAllElements(template);
         const hasSupport = allElements.some(elem => isAbstractSupport(elem));
 
         if (!hasSupport) {
-            accept('warning',
-                `Template '${template.id}' has no @support elements. Justifications implementing this template are not required to override any elements.`,
-                { node: template, property: 'id',
-                  ...issue(JpipeIssue.HasAbstractSupport, { id: template.id }) });
+            report(accept, JpipeIssue.HasAbstractSupport, `Template '${template.id}' declares no abstract supports`,
+                   { node: template, property: 'id' }, { id: template.id });
         }
     }
 
@@ -338,9 +322,8 @@ export class JpipeValidator {
         );
 
         if (duplicates.length > 1) {
-            accept('error', `Duplicate justification name '${justification.id}'`,
-                   { node: justification, property: 'id',
-                     ...issue(JpipeIssue.NoDuplicateModelNames, { id: justification.id }) });
+            report(accept, JpipeIssue.NoDuplicateModelNames, `Duplicate justification name '${justification.id}'`,
+                   { node: justification, property: 'id' }, { id: justification.id });
         }
     }
 
@@ -362,10 +345,8 @@ export class JpipeValidator {
             // An element being typed has no id yet; it is not a duplicate of every other one.
             if (!id) continue;
             if (seen.has(id)) {
-                accept('error',
-                    `Duplicate element id '${id}' in model '${model.id}'`,
-                    { node: element, property: 'id',
-                      ...issue(JpipeIssue.NoDuplicateIds, { id, modelId: model.id }) });
+                report(accept, JpipeIssue.NoDuplicateIds, `Duplicate element id '${id}' in model '${model.id}'`,
+                       { node: element, property: 'id' }, { id, modelId: model.id });
             }
             seen.add(id);
         }
@@ -378,23 +359,19 @@ export class JpipeValidator {
         // `to` is absent while `e supports ` is still being typed, which is most of the time.
         const incoming = body.rels.filter(r => r.to?.ref === strategy);
         if (incoming.length === 0) {
-            accept('warning',
-                `Strategy '${qualifiedIdText(strategy.id)}' is not supported by any evidence, sub-conclusion, or @support.`,
-                { node: strategy, property: 'id',
-                  ...issue(JpipeIssue.StrategySupported, { targetId: qualifiedIdText(strategy.id) }) });
+            report(accept, JpipeIssue.StrategySupported, `Strategy '${qualifiedIdText(strategy.id)}' is not supported by any evidence, sub-conclusion, or @support.`,
+                   { node: strategy, property: 'id' }, { targetId: qualifiedIdText(strategy.id) });
             return;
         }
         for (const rel of incoming) {
             const fromElem = rel.from?.ref;
             if (!fromElem) continue;
             if (!isEvidence(fromElem) && !isSubConclusion(fromElem) && !isAbstractSupport(fromElem)) {
-                accept('error',
-                    `Strategy '${qualifiedIdText(strategy.id)}' may only be supported by evidence, sub-conclusion, or @support (not ${keywordFor(fromElem)}).`,
-                    { node: rel, property: 'from',
-                      ...issue(JpipeIssue.InvalidSupport, {
+                report(accept, JpipeIssue.InvalidSupport, `Strategy '${qualifiedIdText(strategy.id)}' may only be supported by evidence, sub-conclusion, or @support (not ${keywordFor(fromElem)}).`,
+                       { node: rel, property: 'from' }, {
                           targetId: qualifiedIdText(strategy.id),
                           supporterKind: keywordFor(fromElem)
-                      }) });
+                      });
             }
         }
     }
@@ -412,18 +389,14 @@ export class JpipeValidator {
 
         const incoming = body.rels.filter(r => r.to?.ref === conclusion);
         if (incoming.length === 0) {
-            accept('warning',
-                `Conclusion '${qualifiedIdText(conclusion.id)}' is not supported by any strategy.`,
-                { node: conclusion, property: 'id',
-                  ...issue(JpipeIssue.ConclusionSupported, { targetId: qualifiedIdText(conclusion.id) }) });
+            report(accept, JpipeIssue.ConclusionSupported, `Conclusion '${qualifiedIdText(conclusion.id)}' is not supported by any strategy.`,
+                   { node: conclusion, property: 'id' }, { targetId: qualifiedIdText(conclusion.id) });
             return;
         }
         const hasStrategy = incoming.some(rel => isStrategy(rel.from?.ref));
         if (!hasStrategy) {
-            accept('error',
-                `Conclusion '${qualifiedIdText(conclusion.id)}' must be supported by at least one strategy.`,
-                { node: conclusion, property: 'id',
-                  ...issue(JpipeIssue.ConclusionSupported, { targetId: qualifiedIdText(conclusion.id) }) });
+            report(accept, JpipeIssue.ConclusionSupported, `Conclusion '${qualifiedIdText(conclusion.id)}' must be supported by at least one strategy.`,
+                   { node: conclusion, property: 'id' }, { targetId: qualifiedIdText(conclusion.id) });
         }
     }
 
@@ -445,27 +418,23 @@ export class JpipeValidator {
         for (const req of required) {
             const override = localById.get(req.expectedKey);
             if (!override) {
-                accept('error',
-                    `Justification '${justification.id}' must override '@support ${qualifiedIdText(req.support.id)}' from template '${req.sourceTemplateId}'. Expected element with id '${req.expectedKey}'.`,
-                    { node: justification, property: 'id',
-                      ...issue(JpipeIssue.NoAbstractSupport, {
+                report(accept, JpipeIssue.NoAbstractSupport, `Justification '${justification.id}' must override '@support ${qualifiedIdText(req.support.id)}' from template '${req.sourceTemplateId}'. Expected element with id '${req.expectedKey}'.`,
+                       { node: justification, property: 'id' }, {
                           expectedKey: req.expectedKey,
                           supportLabel: req.support.name,
                           supportId: qualifiedIdText(req.support.id),
                           sourceTemplateId: req.sourceTemplateId,
                           allMissing
-                      }) });
+                      });
                 continue;
             }
             const elemType = concreteKeywordFor(override);
             if (elemType && elemType !== 'evidence' && elemType !== 'sub-conclusion') {
-                accept('error',
-                    `Cannot override '@support ${qualifiedIdText(req.support.id)}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
-                    { node: override, property: 'id',
-                      ...issue(JpipeIssue.SupportOverrideType, {
+                report(accept, JpipeIssue.SupportOverrideType, `Cannot override '@support ${qualifiedIdText(req.support.id)}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
+                       { node: override, property: 'id' }, {
                           actualKeyword: elemType,
                           allowedKeywords: ['evidence', 'sub-conclusion']
-                      }) });
+                      });
             }
         }
     }

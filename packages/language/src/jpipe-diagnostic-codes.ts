@@ -14,6 +14,9 @@
  * a test holds the partition. See jpipe-vscode ADR-VSC-0022 and jpipe-compiler ADR-0016.
  */
 
+import type { AstNode } from 'langium';
+import type { DiagnosticInfo, ValidationAcceptor } from 'langium';
+
 export const JpipeIssue = {
     NoEmptyLabel:           'no-empty-label',
     NoEmptyUnit:            'no-empty-unit',
@@ -39,6 +42,59 @@ export const JpipeIssue = {
 } as const;
 
 export type JpipeIssueCode = typeof JpipeIssue[keyof typeof JpipeIssue];
+
+/** The only two severities this language reports. See jpipe-vscode ADR-VSC-0023. */
+export type JpipeSeverity = 'error' | 'warning';
+
+/**
+ * How severely each problem is reported, and why.
+ *
+ * The rule is one line: **a diagnostic is an error if and only if the compiler will reject the
+ * model.** Otherwise it is a warning. The compiler has no warning level of its own — jpipe-compiler
+ * ADR-0016 removed it — so "the compiler noticed" and "the build fails" are the same statement, and
+ * every entry below is settled by asking what `jpipe` does with the file, not by taste.
+ *
+ * Two things follow, and are worth naming because they look like separate decisions and are not.
+ * A rule only the editor has can never be an error, since a check the compiler does not run cannot
+ * fail a build — that is the whole reason `no-empty-label` is a warning. And the one exception is
+ * for what the editor *cannot know*: `unknown-unification-method` would fail the build, but the
+ * editor cannot see the compiler's startup registry, so it warns and its message claims only the
+ * limit of its own knowledge.
+ *
+ * This is a `Record`, not a lookup with a default: a new code that declares no severity **fails to
+ * compile**, which is the point. Choosing `'warning'` additionally has to be justified against the
+ * list in `test/diagnostic-codes.test.ts`.
+ */
+export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
+    // Errors — verified against the compiler, mostly against its own `examples/invalid/` fixtures.
+    [JpipeIssue.NoDuplicateModelNames]: 'error',   // `execution-error`: "Duplicate model name"
+    [JpipeIssue.NoDuplicateIds]:        'error',   // rejected under this same code
+    [JpipeIssue.HasAbstractSupport]:    'error',   // rejected under this same code
+    [JpipeIssue.ConclusionPresent]:     'error',   // rejected under this same code
+    [JpipeIssue.SingleConclusion]:      'error',   // rejected under this same code
+    [JpipeIssue.NoAbstractSupport]:     'error',   // rejected under this same code
+    [JpipeIssue.StrategySupported]:     'error',   // rejected under this same code
+    [JpipeIssue.ConclusionSupported]:   'error',   // rejected under this same code
+    [JpipeIssue.InvalidSupport]:        'error',   // rejected under this same code
+    [JpipeIssue.SupportOverrideType]:   'error',   // surfaces upstream as `no-abstract-support`
+    [JpipeIssue.UnknownOperator]:       'error',   // `execution-error` from `ApplyOperator`
+    [JpipeIssue.OperatorArity]:         'error',   // `execution-error`: "requires exactly 2 sources"
+    [JpipeIssue.MissingConfigKey]:      'error',   // `execution-error`: "were not provided"
+    [JpipeIssue.LoadUnresolved]:        'error',   // FATAL from `LoadResolver`; aborts the pipeline
+    [JpipeIssue.LoadNoMatch]:           'error',   // FATAL from `LoadResolver`
+    [JpipeIssue.LoadMalformedPattern]:  'error',   // FATAL from `LoadResolver`
+    [JpipeIssue.CyclicLoad]:            'error',   // FATAL from `LoadResolver`
+
+    // Warnings — the compiler builds these files. Each was run through `jpipe diagnostic`, and each
+    // exited 0.
+    [JpipeIssue.NoEmptyLabel]:          'warning', // accepted: nothing checks a label's contents
+    [JpipeIssue.NoEmptyUnit]:           'warning', // accepted: a file of only `load`s is legal
+    [JpipeIssue.UnknownConfigKey]:      'warning', // accepted: unrecognised keys are ignored
+    // The exception. The compiler *would* reject this, but its relation registry is populated at
+    // startup and a project may register its own, so the editor cannot know. The message says what
+    // the editor does not recognise rather than predicting a failure, and settings can widen it.
+    [JpipeIssue.UnknownUnificationMethod]: 'warning'
+};
 
 const ALL_CODES: ReadonlySet<string> = new Set(Object.values(JpipeIssue));
 
@@ -165,4 +221,35 @@ export function issueCodeOf(diagnostic: { code?: unknown; data?: unknown }): Jpi
     const fromData = (diagnostic.data as { code?: unknown } | undefined)?.code;
     if (isJpipeIssueCode(fromData)) return fromData;
     return isJpipeIssueCode(diagnostic.code) ? diagnostic.code : undefined;
+}
+
+/** What a caller of `report` supplies: a `DiagnosticInfo` minus the two fields `issue()` fills. */
+type IssueTarget<N extends AstNode> = Omit<DiagnosticInfo<N>, 'code' | 'data'>;
+
+/**
+ * Reports a problem at the severity its code declares.
+ *
+ * The severity is deliberately not a parameter. It used to be the first argument of every
+ * `accept(...)`, which made it a judgement to be made afresh at each call site — and it was made
+ * inconsistently, because nothing there says what the rule is. It now comes from
+ * `JpipeIssueSeverity`, where the rule and the reason for each entry are written down once
+ * (jpipe-vscode ADR-VSC-0023).
+ *
+ * Overloaded like `issue()`: one arity for codes carrying no payload, one for the rest.
+ */
+export function report<N extends AstNode, C extends CodeWithoutPayload>(
+    accept: ValidationAcceptor, code: C, message: string, target: IssueTarget<N>
+): void;
+export function report<N extends AstNode, C extends JpipeIssueCode>(
+    accept: ValidationAcceptor, code: C, message: string,
+    target: IssueTarget<N>, payload: JpipeIssuePayloads[C]
+): void;
+export function report<N extends AstNode, C extends JpipeIssueCode>(
+    accept: ValidationAcceptor, code: C, message: string,
+    target: IssueTarget<N>, payload?: JpipeIssuePayloads[C]
+): void {
+    accept(JpipeIssueSeverity[code], message, {
+        ...target,
+        ...issue(code, payload as JpipeIssuePayloads[C])
+    } as DiagnosticInfo<N>);
 }
