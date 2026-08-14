@@ -19,6 +19,7 @@ import {
     COMPILER_CODES,
     EXTENSION_ONLY_CODES,
     JpipeIssue,
+    JpipeIssueSeverity,
     createJpipeServices,
     isJpipeIssueCode,
     issueCodeOf,
@@ -114,24 +115,30 @@ describe('diagnostic codes', () => {
 
 /**
  * `conclusion-supported` is one code over two checks, because it is one rule to the compiler
- * (jpipe-vscode ADR-VSC-0022). Severity is what still tells them apart, and nothing else in the
- * suite would notice if the collapse quietly lost one of the two branches.
+ * (jpipe-vscode ADR-VSC-0022). Severity used to be what told them apart; under ADR-VSC-0023 both
+ * are errors, because the compiler rejects both. **Message text is now the only discriminator**,
+ * which is why the two messages must stay distinct — nothing else in the suite would notice if the
+ * collapse quietly lost one of the two branches.
  */
-describe('one code, two severities', () => {
+describe('one code, two checks', () => {
 
-    test('a conclusion with no support at all is a warning', async () => {
+    test('a conclusion with no support at all says so', async () => {
         const diagnostic = await diagnosticFor(
             'justification J { conclusion c is "C" }',
             JpipeIssue.ConclusionSupported
         );
-        expect(diagnostic.severity).toBe(DiagnosticSeverity.Warning);
+        expect(Diagnostic.getMessageString(diagnostic))
+            .toBe("Conclusion 'c' is not supported by any strategy.");
+        expect(diagnostic.severity).toBe(DiagnosticSeverity.Error);
     });
 
-    test('a conclusion supported by something other than a strategy is an error', async () => {
+    test('a conclusion supported by something other than a strategy says that instead', async () => {
         const diagnostic = await diagnosticFor(
             'justification J { conclusion c is "C" evidence e is "E"\n e supports c }',
             JpipeIssue.ConclusionSupported
         );
+        expect(Diagnostic.getMessageString(diagnostic))
+            .toBe("Conclusion 'c' must be supported by at least one strategy.");
         expect(diagnostic.severity).toBe(DiagnosticSeverity.Error);
     });
 });
@@ -268,6 +275,42 @@ describe('the vocabulary is shared with the compiler', () => {
     // `jpipe.`-prefixed names used before ADR-VSC-0022 — a dot is not in the class.
     test('every code has the shape the compiler\'s report schema allows', () => {
         expect(codes.filter(code => !CODE_PATTERN.test(code))).toEqual([]);
+    });
+});
+
+/**
+ * jpipe-vscode ADR-VSC-0023: a diagnostic is an error if and only if the compiler will reject the
+ * model. The compiler has no warning level, so every rule it enforces is an error here too, and a
+ * warning has to be justified by the compiler *accepting* the file — or, once, by the editor being
+ * unable to know.
+ *
+ * `JpipeIssueSeverity` is a `Record`, so a code with no declared severity already fails to
+ * compile. What this adds is the harder half: choosing `'warning'` means editing the list below,
+ * which is the moment to check that the compiler really does build the file.
+ */
+describe('severity follows the compiler', () => {
+
+    /** Every code deliberately reported as a warning, with the reason it is not an error. */
+    const EXPECTED_WARNINGS: readonly JpipeIssueCode[] = [
+        JpipeIssue.NoEmptyLabel,             // compiler builds it: nothing checks a label's contents
+        JpipeIssue.NoEmptyUnit,              // compiler builds it: a file of only `load`s is legal
+        JpipeIssue.UnknownConfigKey,         // compiler builds it: unrecognised keys are ignored
+        JpipeIssue.UnknownUnificationMethod  // the exception: the editor cannot see its registry
+    ];
+
+    test('the warnings are exactly the ones ADR-VSC-0023 allows', () => {
+        const actual = Object.values(JpipeIssue)
+            .filter(code => JpipeIssueSeverity[code] === 'warning')
+            .sort();
+        expect(actual, 'a new warning needs a reason the compiler accepts the file — see ADR-VSC-0023')
+            .toEqual([...EXPECTED_WARNINGS].sort());
+    });
+
+    test('everything else is an error', () => {
+        const warnings = new Set<string>(EXPECTED_WARNINGS);
+        const misfiled = Object.values(JpipeIssue)
+            .filter(code => !warnings.has(code) && JpipeIssueSeverity[code] !== 'error');
+        expect(misfiled).toEqual([]);
     });
 });
 

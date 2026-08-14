@@ -80,7 +80,10 @@ describe('Validation tests', () => {
         expect(messages.some(m => m.includes("Duplicate template name 'T'"))).toBe(true);
     });
 
-    test('template with no @support triggers warning', async () => {
+    // An error, not a warning: the compiler refuses to build it (jpipe-vscode ADR-VSC-0023), and
+    // the message is its wording — a template with no abstract supports is a justification in
+    // disguise.
+    test('template with no @support is an error', async () => {
         const doc = await parse(`
             template T {
                 conclusion c is "Claim"
@@ -92,7 +95,10 @@ describe('Validation tests', () => {
         `);
         assertNoParseErrors(doc);
         const messages = diagnosticMessages(doc);
-        expect(messages.some(m => m.includes('has no @support elements'))).toBe(true);
+        expect(messages.some(m => m.includes('declares no abstract supports'))).toBe(true);
+        const diagnostic = (doc.diagnostics ?? [])
+            .find(d => Diagnostic.getMessageString(d).includes('declares no abstract supports'));
+        expect(diagnostic?.severity).toBe(DiagnosticSeverity.Error);
     });
 
     test('@support not overridden triggers error', async () => {

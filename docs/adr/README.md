@@ -56,3 +56,4 @@ The compiler's records are at
 | [VSC-0020](vsc-0020-the-vsix-contains-only-what-runs.md) | The VSIX contains only what runs | 2026-08-13 | Accepted |
 | [VSC-0021](vsc-0021-the-shipped-bundles-are-minified-with-names-kept.md) | The shipped bundles are minified, with names kept | 2026-08-13 | Accepted |
 | [VSC-0022](vsc-0022-one-diagnostic-vocabulary-with-the-compiler.md) | One diagnostic vocabulary, and it is the compiler's | 2026-08-13 | Accepted |
+| [VSC-0023](vsc-0023-error-means-the-build-fails.md) | An error means the build fails | 2026-08-13 | Accepted |
