@@ -6,6 +6,7 @@ import { responseToCursorMove } from './preview-refresh.js';
 import { panelExportTarget } from './export-target.js';
 import { symbolAtPosition, type DocumentSymbol } from './document-symbols.js';
 import { dispositionOf, type ResultDisposition } from './staleness.js';
+import { chooseRevealColumn } from './reveal-column.js';
 import type {
     DiagnosticMessage,
     HostToWebview,
@@ -171,37 +172,15 @@ export class PreviewProvider {
         }
 
         if (PreviewProvider.webviewDisposed || !PreviewProvider.webviewPanel) {
-            const previousColumn = editor.viewColumn ?? vscode.ViewColumn.One;
             PreviewProvider.webviewPanel = this.createWebviewPanel();
             PreviewProvider.webviewDisposed = false;
             this.logger.info('Webview panel created');
-            await this.lockPreviewGroup(previousColumn);
         } else {
             PreviewProvider.webviewPanel.reveal(vscode.ViewColumn.Beside, true);
         }
 
         this.logger.info(`Opening preview: ${editor.document.fileName}`);
         await this.updatePreview(editor.document, editor);
-    }
-    
-    private async lockPreviewGroup(restoreColumn: vscode.ViewColumn): Promise<void> {
-        const columnNames = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth'];
-        // `ViewColumn.Beside` is a request, not an answer: `panel.viewColumn` holds the column it
-        // resolved to only once the editor has laid the group out, and nothing is emitted when
-        // that happens. So this waits — 100ms being long enough in practice and short enough not
-        // to be seen. If the panel ever opens in the wrong group, this is the first suspect.
-        await new Promise<void>(resolve => setTimeout(resolve, 100));
-        const panelColumn = PreviewProvider.webviewPanel?.viewColumn;
-        if (panelColumn === undefined || (panelColumn as number) <= 0) return;
-        const colIndex = (panelColumn as number) - 1;
-        if (colIndex >= columnNames.length) return;
-        // Use executeCommand for focus so we can await it (panel.reveal() is fire-and-forget)
-        await vscode.commands.executeCommand(`workbench.action.focus${columnNames[colIndex]}EditorGroup`);
-        await vscode.commands.executeCommand('workbench.action.lockEditorGroup');
-        const restoreIndex = (restoreColumn as number) - 1;
-        if (restoreIndex >= 0 && restoreIndex < columnNames.length) {
-            await vscode.commands.executeCommand(`workbench.action.focus${columnNames[restoreIndex]}EditorGroup`);
-        }
     }
 
     private setupEventListeners(context: vscode.ExtensionContext): void {
@@ -301,9 +280,10 @@ export class PreviewProvider {
             const document = await vscode.workspace.openTextDocument(uri);
             const position = new vscode.Position(Math.max(0, line - 1), Math.max(0, column));
             const editor = await vscode.window.showTextDocument(document, {
-                // Beside the panel, not on top of it: the preview is locked to its own group, so
-                // reusing the group the user came from keeps both visible.
-                viewColumn: vscode.ViewColumn.One,
+                // Into a column that already holds text, so the source cannot land on the diagram.
+                // Derived rather than assumed: this used to be column one, which was only ever
+                // right when the model happened to be there (jpipe-vscode ADR-VSC-0019).
+                viewColumn: this.revealColumn(document),
                 preserveFocus: false
             });
             editor.selection = new vscode.Selection(position, position);
@@ -316,6 +296,15 @@ export class PreviewProvider {
             const msg = messageOf(error);
             this.logger.warn(`Could not reveal ${source}:${line}:${column} — ${msg}`);
         }
+    }
+
+    /** Where to put a revealed source, read off what is currently on screen. */
+    private revealColumn(document: vscode.TextDocument): vscode.ViewColumn {
+        return chooseRevealColumn(vscode.window.visibleTextEditors.map(editor => ({
+            column: editor.viewColumn,
+            showsTarget: editor.document === document,
+            isModel: editor.document.languageId === 'jpipe'
+        })));
     }
 
     /** Extract the SVG document from CLI output (drops any path or log text before/after the <svg>). */
