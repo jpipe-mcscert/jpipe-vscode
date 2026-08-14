@@ -87,7 +87,15 @@ jobs:
       - name: Package extension as VSIX artefact
         run: |
           cd packages/extension
-          vsce package -o jpipe-extension-${{ github.ref_name }}.vsix
+          vsce package --no-dependencies -o jpipe-extension-${{ github.ref_name }}.vsix
+
+      # Checked here as well as in build.yml, because this is the archive that reaches users:
+      # build.yml validates a VSIX built from the same commit, but not this one. The gap that
+      # matters is under-inclusion — an allow-list that stops matching ships an extension which
+      # installs cleanly and does not work, and the two steps below would publish it.
+      # See jpipe-vscode ADR-VSC-0020.
+      - name: Check the VSIX contains only what it should
+        run: ./scripts/check-vsix.sh packages/extension/jpipe-extension-${{ github.ref_name }}.vsix
 
       - name: Create GitHub Release
         env:
@@ -98,7 +106,12 @@ jobs:
             --generate-notes \
             --title "Release ${{ github.ref_name }}"
 
+      # Publishes the archive built and checked above, rather than building a third one: a bare
+      # `vsce publish` packages again from source, so the artefact that reached the Marketplace
+      # was never the artefact the guard inspected, nor the one attached to the GitHub Release.
+      # Users, the release page and CI now all see the same bytes.
       - name: Publish to VS Code Marketplace
         run: |
           cd packages/extension
-          vsce publish -p ${{ secrets.VS_CODE_MARKETPLACE_SECRET }}
+          vsce publish -p ${{ secrets.VS_CODE_MARKETPLACE_SECRET }} \
+            --packagePath jpipe-extension-${{ github.ref_name }}.vsix
