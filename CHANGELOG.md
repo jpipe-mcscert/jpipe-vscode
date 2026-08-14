@@ -1,6 +1,6 @@
 ## Changelog
 
-### v1.8.0 (Unreleased)
+### v1.8.0 (2026-08-14)
 - Leader: Sébastien Mosser
   - Features:
     - **Browse for the compiler JAR instead of typing its path.** Running jPipe from a JAR meant hand-writing an absolute path into a settings text box — long, different on every machine, and easy to get subtly wrong, with the only symptom being a compiler that would not start and nothing pointing back at the setting that caused it. There is now a file dialog, reachable from a link in the setting itself or from the command palette, that opens where your current JAR is and fills the path in for you. It writes the path wherever you already keep it, so a project-specific JAR is not quietly overwritten by a machine-wide one, and if your execution mode is not set to JAR it tells you the file will be ignored and offers to switch — rather than saving a setting nothing would read
