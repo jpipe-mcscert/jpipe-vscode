@@ -1,25 +1,51 @@
-#.vscode/**
-#.vscode-test/**
+# What goes into the VSIX — an allow-list, not a deny-list.
+#
+# Everything is excluded, and each line below re-admits one thing the extension executes or the
+# Marketplace displays. The previous form was the other way round, naming things to leave out,
+# and it failed the way deny-lists fail: it carefully excluded `.git/`, `node_modules/` and
+# `src/` — none of which vsce would have packaged anyway, since they cannot be reached from this
+# directory — while saying nothing about `coverage/`, which is generated right here and shipped
+# 34 files and 667 KB of HTML renderings of our own source whenever someone had run the coverage
+# task before packaging.
+#
+# The cost of this direction is real and worth stating: a new runtime asset is invisible until
+# somebody adds it here, and the symptom is a feature that silently does not work rather than a
+# fat download. That trade is deliberate — see jpipe-vscode ADR-VSC-0020 — and it is why
+# `scripts/check-vsix.sh` compares the packaged result against `vsix-contents.txt` on every
+# build, in both directions.
+#
+# vsce always includes package.json and generates the manifest, so neither is listed.
 
-# Ignore development files
-.vscode/
-.vscode-test
-.git/
-node_modules/
-src/
-tsconfig*.json
-.eslintrc.json
-.gitignore
-.vscodeignore
-docs 
-**/*.map 
+**
 
-# Ignore build artifacts (if necessary)
-out/test/
-**/*.tsbuildinfo
+# The bundles. This is the extension: two CJS entry points and the webview's assets, all
+# self-contained esbuild output with no node_modules behind them.
+#
+# Admitted by extension rather than as `!out/**`, because vsce applies every negation *last*
+# rather than letting later lines win: `!out/**` followed by `out/**/*.map` does not re-exclude
+# the source maps, it ships them, and the VSIX more than doubles to 1.9 MB. Naming the kinds we
+# run leaves the `.map` files out by construction instead of by a rule vsce will not honour.
+!out/**/*.cjs
+!out/**/*.js
+!out/**/*.css
 
-# Ignore test and build tooling. Only `out/` is executed at runtime — the bundle is
-# self-contained — so anything used to produce or verify it stays out of the VSIX.
-test/
-vitest.config.ts
-esbuild.mjs
+# Grammar and editor behaviour for `.jd` files.
+!syntaxes/**
+!language-configuration.json
+
+# The published contract for the compiler's diagnostic report. Not loaded at runtime, but it is
+# what `src/shared/diagnostic-report.ts` declares itself to mirror, and anyone reading it out of
+# an installed extension is doing something reasonable.
+!schema/**
+
+# The extension icon, the two command icons the preview toolbar uses, and the one image the
+# shipped README renders. `images/mcscert.svg` is deliberately absent: 95 KB that nothing —
+# manifest, README or source — refers to.
+!images/logo.png
+!images/icon_dark.svg
+!images/icon_light.svg
+!images/mcscert.png
+
+# What the Marketplace shows on the extension's page.
+!README.md
+!LICENSE

@@ -1,0 +1,16 @@
+[Content_Types].xml
+extension.vsixmanifest
+extension/images/icon_dark.svg
+extension/images/icon_light.svg
+extension/images/logo.png
+extension/images/mcscert.png
+extension/language-configuration.json
+extension/LICENSE.txt
+extension/out/extension/main.cjs
+extension/out/language/main.cjs
+extension/out/webview/preview.css
+extension/out/webview/preview.js
+extension/package.json
+extension/readme.md
+extension/schema/diagnostic-report.v1.schema.json
+extension/syntaxes/jpipe.tmLanguage.json

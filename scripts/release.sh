@@ -335,6 +335,11 @@ check_build() {
 # Packaging is the last thing release.yml does before publishing, and it can fail on
 # its own (a bad .vscodeignore, a missing icon). Cheap to check, expensive to discover
 # after the tag is public.
+#
+# The size alone used to be the whole check, and it was reassurance rather than a test:
+# this runs on a developer's machine, where build artefacts CI never sees are lying
+# around, so it was reporting on an artefact that is not the one that ships. Hence the
+# inventory check — see jpipe-vscode ADR-VSC-0020.
 check_package() {
   local out
   if [ "$SKIP_VERIFY" -eq 1 ]; then
@@ -343,13 +348,22 @@ check_package() {
   fi
   command -v vsce >/dev/null || return 0
   out=$(mktemp -t jpipe-preflight-vsix).vsix
-  if (cd packages/extension && vsce package -o "$out") >/dev/null 2>&1; then
+  if (cd packages/extension && vsce package --no-dependencies -o "$out") >/dev/null 2>&1; then
     pass "vsce package succeeds ($(du -h "$out" | cut -f1) VSIX)"
-    rm -f "$out"
   else
     fail "vsce package failed"
-    (cd packages/extension && vsce package -o "$out" 2>&1 | tail -10 | sed 's/^/       /') || true
+    (cd packages/extension && vsce package --no-dependencies -o "$out" 2>&1 | tail -10 | sed 's/^/       /') || true
+    rm -f "$out"
+    return
   fi
+
+  if scripts/check-vsix.sh "$out" >/dev/null 2>&1; then
+    pass "VSIX contains exactly the expected files"
+  else
+    fail "VSIX contents differ from packages/extension/vsix-contents.txt"
+    scripts/check-vsix.sh "$out" 2>&1 | tail -20 | sed 's/^/       /' || true
+  fi
+  rm -f "$out"
 }
 
 print_manual_checklist() {
