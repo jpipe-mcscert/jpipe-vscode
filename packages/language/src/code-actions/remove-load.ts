@@ -16,14 +16,14 @@ import { JpipeIssue } from '../jpipe-diagnostic-codes.js';
 import { quickFix } from './types.js';
 
 export const removeLoad = quickFix<
-    typeof JpipeIssue.LoadCircular
+    typeof JpipeIssue.CyclicLoad
     | typeof JpipeIssue.LoadUnresolved
     | typeof JpipeIssue.LoadNoMatch
     | typeof JpipeIssue.LoadMalformedPattern
 >({
     id: 'remove-load',
     codes: [
-        JpipeIssue.LoadCircular,
+        JpipeIssue.CyclicLoad,
         JpipeIssue.LoadUnresolved,
         JpipeIssue.LoadNoMatch,
         JpipeIssue.LoadMalformedPattern
@@ -41,7 +41,7 @@ export const removeLoad = quickFix<
             title: `Remove load '${node.path}'`,
             kind: CodeActionKind.QuickFix,
             // Circular is the one case where removal is the whole answer rather than a fallback.
-            isPreferred: data.code === JpipeIssue.LoadCircular,
+            isPreferred: data.code === JpipeIssue.CyclicLoad,
             edit: {
                 changes: {
                     [context.document.uri.toString()]: [

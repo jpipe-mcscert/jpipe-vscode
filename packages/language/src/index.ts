@@ -3,6 +3,7 @@ export * from './jpipe-validator.js';
 export * from './jpipe-operators.js';
 export * from './jpipe-unification.js';
 export * from './jpipe-diagnostic-codes.js';
+export * from './jpipe-compiler-codes.js';
 export * from './jpipe-code-action-provider.js';
 export * from './jpipe-language-server.js';
 export { JPIPE_QUICK_FIXES, JPIPE_REFACTORINGS } from './code-actions/index.js';

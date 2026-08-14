@@ -131,7 +131,7 @@ export class JpipeValidator {
         if (self) {
             accept('error', `Circular load detected: ${self}`,
                 { node: load, property: 'path',
-                  ...issue(JpipeIssue.LoadCircular, { path: load.path, resolved: self }) });
+                  ...issue(JpipeIssue.CyclicLoad, { path: load.path, resolved: self }) });
         }
     }
 
@@ -231,14 +231,14 @@ export class JpipeValidator {
                         accept: ValidationAcceptor): void {
         if (element.name?.length === 0) {
             accept('warning', 'Element label should not be empty',
-                   { node: element, property: 'name', ...issue(JpipeIssue.EmptyLabel) });
+                   { node: element, property: 'name', ...issue(JpipeIssue.NoEmptyLabel) });
         }
     }
 
     checkUnitNotEmpty(unit: Unit, accept: ValidationAcceptor): void {
         if (unit.body?.length === 0) {
             accept('warning', 'Justification File should not be empty',
-                   { node: unit, property: 'body', ...issue(JpipeIssue.EmptyUnit) });
+                   { node: unit, property: 'body', ...issue(JpipeIssue.NoEmptyUnit) });
         }
     }
 
@@ -254,7 +254,7 @@ export class JpipeValidator {
         if (duplicates.length > 1) {
             accept('error', `Duplicate template name '${template.id}'`,
                    { node: template, property: 'id',
-                     ...issue(JpipeIssue.DuplicateModelName, { id: template.id }) });
+                     ...issue(JpipeIssue.NoDuplicateModelNames, { id: template.id }) });
         }
     }
 
@@ -266,7 +266,7 @@ export class JpipeValidator {
             accept('warning',
                 `Template '${template.id}' has no @support elements. Justifications implementing this template are not required to override any elements.`,
                 { node: template, property: 'id',
-                  ...issue(JpipeIssue.TemplateWithoutSupport, { id: template.id }) });
+                  ...issue(JpipeIssue.HasAbstractSupport, { id: template.id }) });
         }
     }
 
@@ -282,14 +282,14 @@ export class JpipeValidator {
         if (duplicates.length > 1) {
             accept('error', `Duplicate justification name '${justification.id}'`,
                    { node: justification, property: 'id',
-                     ...issue(JpipeIssue.DuplicateModelName, { id: justification.id }) });
+                     ...issue(JpipeIssue.NoDuplicateModelNames, { id: justification.id }) });
         }
     }
 
     /**
      * Flags two elements in one model sharing an id.
      *
-     * The compiler rejects this as `no-duplicate-ids`, and it is worth catching in the editor
+     * The compiler rejects this under the same code, and it is worth catching in the editor
      * because the model still *parses*: relations naming the id resolve to whichever of the two
      * the scope happened to register, so the argument silently means something other than what
      * it reads as.
@@ -307,7 +307,7 @@ export class JpipeValidator {
                 accept('error',
                     `Duplicate element id '${id}' in model '${model.id}'`,
                     { node: element, property: 'id',
-                      ...issue(JpipeIssue.DuplicateElementId, { id, modelId: model.id }) });
+                      ...issue(JpipeIssue.NoDuplicateIds, { id, modelId: model.id }) });
             }
             seen.add(id);
         }
@@ -323,7 +323,7 @@ export class JpipeValidator {
             accept('warning',
                 `Strategy '${qualifiedIdText(strategy.id)}' is not supported by any evidence, sub-conclusion, or @support.`,
                 { node: strategy, property: 'id',
-                  ...issue(JpipeIssue.StrategyUnsupported, { targetId: qualifiedIdText(strategy.id) }) });
+                  ...issue(JpipeIssue.StrategySupported, { targetId: qualifiedIdText(strategy.id) }) });
             return;
         }
         for (const rel of incoming) {
@@ -333,7 +333,7 @@ export class JpipeValidator {
                 accept('error',
                     `Strategy '${qualifiedIdText(strategy.id)}' may only be supported by evidence, sub-conclusion, or @support (not ${keywordFor(fromElem)}).`,
                     { node: rel, property: 'from',
-                      ...issue(JpipeIssue.StrategyBadSupporter, {
+                      ...issue(JpipeIssue.InvalidSupport, {
                           targetId: qualifiedIdText(strategy.id),
                           supporterKind: keywordFor(fromElem)
                       }) });
@@ -350,7 +350,7 @@ export class JpipeValidator {
             accept('warning',
                 `Conclusion '${qualifiedIdText(conclusion.id)}' is not supported by any strategy.`,
                 { node: conclusion, property: 'id',
-                  ...issue(JpipeIssue.ConclusionUnsupported, { targetId: qualifiedIdText(conclusion.id) }) });
+                  ...issue(JpipeIssue.ConclusionSupported, { targetId: qualifiedIdText(conclusion.id) }) });
             return;
         }
         const hasStrategy = incoming.some(rel => isStrategy(rel.from?.ref));
@@ -358,7 +358,7 @@ export class JpipeValidator {
             accept('error',
                 `Conclusion '${qualifiedIdText(conclusion.id)}' must be supported by at least one strategy.`,
                 { node: conclusion, property: 'id',
-                  ...issue(JpipeIssue.ConclusionNoStrategy, { targetId: qualifiedIdText(conclusion.id) }) });
+                  ...issue(JpipeIssue.ConclusionSupported, { targetId: qualifiedIdText(conclusion.id) }) });
         }
     }
 
@@ -383,7 +383,7 @@ export class JpipeValidator {
                 accept('error',
                     `Justification '${justification.id}' must override '@support ${qualifiedIdText(req.support.id)}' from template '${req.sourceTemplateId}'. Expected element with id '${req.expectedKey}'.`,
                     { node: justification, property: 'id',
-                      ...issue(JpipeIssue.MissingSupportOverride, {
+                      ...issue(JpipeIssue.NoAbstractSupport, {
                           expectedKey: req.expectedKey,
                           supportLabel: req.support.name,
                           supportId: qualifiedIdText(req.support.id),
@@ -397,7 +397,7 @@ export class JpipeValidator {
                 accept('error',
                     `Cannot override '@support ${qualifiedIdText(req.support.id)}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
                     { node: override, property: 'id',
-                      ...issue(JpipeIssue.BadSupportOverrideType, {
+                      ...issue(JpipeIssue.SupportOverrideType, {
                           actualKeyword: elemType,
                           allowedKeywords: ['evidence', 'sub-conclusion']
                       }) });

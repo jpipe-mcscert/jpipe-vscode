@@ -12,9 +12,9 @@ import { JpipeIssue } from '../jpipe-diagnostic-codes.js';
 import { keywordFor } from '../jpipe-render.js';
 import { quickFix, type JpipeActionContext } from './types.js';
 
-export const fixOverrideType = quickFix<typeof JpipeIssue.BadSupportOverrideType>({
+export const fixOverrideType = quickFix<typeof JpipeIssue.SupportOverrideType>({
     id: 'fix-override-type',
-    codes: [JpipeIssue.BadSupportOverrideType],
+    codes: [JpipeIssue.SupportOverrideType],
 
     create(context, diagnostic, data): CodeAction[] {
         const element = elementFor(context, diagnostic);
