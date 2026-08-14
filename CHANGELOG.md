@@ -1,6 +1,6 @@
 ## Changelog
 
-### v1.8.1 (Unreleased)
+### v1.8.1 (2026-08-14)
 - Leader: Sébastien Mosser
   - Bug Fixes:
     - **Format Document now works on a model.** Pressing `⇧⌥F`, or picking Format Document from the right-click menu, reported that no formatter was installed for jPipe — and the feature that would have laid the file out was sitting in the **Source Action…** menu instead, where almost nobody looks. Tidying a file is what Format Document is *for*, so that is where it belongs and where it now is: Format Document, Format Selection and format-on-save all lay a model out, and *jPipe: Auto-indent and Align* in the palette still does too. The layout itself is unchanged — comments stay beside what they describe, blank lines stay where you put them, and a model written on one line comes back on one line. **If you use format-on-save:** v1.7.0 said a format-on-save setting kept for another language would never re-space your models, and that is the part of it being in the wrong menu that was worth keeping. It no longer holds. To keep save quiet for models only, add `"[jpipe]": { "editor.formatOnSave": false }` to your settings
