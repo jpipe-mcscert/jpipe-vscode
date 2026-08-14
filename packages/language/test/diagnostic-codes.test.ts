@@ -65,6 +65,7 @@ describe('diagnostic codes', () => {
         [JpipeIssue.NoEmptyUnit, 'load "nowhere.jd"'],
         [JpipeIssue.NoDuplicateModelNames, 'justification J { conclusion c is "C" }\njustification J { conclusion c is "C" }'],
         [JpipeIssue.HasAbstractSupport, 'template T { conclusion c is "C" }'],
+        [JpipeIssue.ConclusionPresent, 'justification J { evidence e is "E" }'],
         [JpipeIssue.UnknownOperator, 'justification A { conclusion c is "C" }\njustification B is nope(A)'],
         [JpipeIssue.UnknownConfigKey, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" strategyLabel: "S" nope: "X" }'],
         [JpipeIssue.MissingConfigKey, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" }'],
@@ -131,6 +132,47 @@ describe('one code, two severities', () => {
             JpipeIssue.ConclusionSupported
         );
         expect(diagnostic.severity).toBe(DiagnosticSeverity.Error);
+    });
+});
+
+/**
+ * `conclusion-present` is the compiler's rule, and the editor is only useful here if it agrees
+ * with it on all three of the awkward cases: an inherited conclusion satisfies it, a composed
+ * model is not judged on source text it does not have, and a template is held to it too.
+ */
+describe('a model must have a conclusion', () => {
+
+    /** The messages of the errors reported for `source`. */
+    async function errorsIn(source: string): Promise<string[]> {
+        const document = await parse(source);
+        return (document.diagnostics ?? [])
+            .filter(d => d.severity === DiagnosticSeverity.Error)
+            .map(d => Diagnostic.getMessageString(d));
+    }
+
+    test('a justification with elements but no conclusion is an error', async () => {
+        expect(await errorsIn('justification J { evidence e is "E" }'))
+            .toContain("Justification 'J' has no conclusion");
+    });
+
+    test('a template is held to the rule as well', async () => {
+        expect(await errorsIn('template T { @support a is "A" }'))
+            .toContain("Template 'T' has no conclusion");
+    });
+
+    // The compiler checks completeness after `implements` has inlined the parent's elements, so a
+    // conclusion inherited from the template satisfies it there and must here.
+    test('a conclusion inherited from the template satisfies it', async () => {
+        const source = `${TEMPLATE}\njustification J implements T { evidence T:a is "A" evidence T:b is "B" }`;
+        expect(await errorsIn(source)).not.toContain("Justification 'J' has no conclusion");
+    });
+
+    // `assemble` synthesises a conclusion from `conclusionLabel`, so the compiler is satisfied by
+    // the built result. Judging the source text would report an error on a model that builds.
+    test('a composed model is not judged on a body it does not have', async () => {
+        const source = 'justification A { conclusion c is "C" }\n'
+            + 'justification B is assemble(A) { conclusionLabel: "All of it" strategyLabel: "Together" }';
+        expect(await errorsIn(source)).not.toContain("Justification 'B' has no conclusion");
     });
 });
 

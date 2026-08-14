@@ -20,6 +20,7 @@ export const JpipeIssue = {
     NoDuplicateModelNames:  'no-duplicate-model-names',
     NoDuplicateIds:         'no-duplicate-ids',
     HasAbstractSupport:     'has-abstract-support',
+    ConclusionPresent:      'conclusion-present',
     UnknownOperator:        'unknown-operator',
     OperatorArity:          'operator-arity',
     UnknownConfigKey:       'unknown-config-key',
@@ -115,6 +116,7 @@ export interface JpipeIssuePayloads {
     [JpipeIssue.NoDuplicateModelNames]: { id: string };
     [JpipeIssue.NoDuplicateIds]:        { id: string; modelId: string };
     [JpipeIssue.HasAbstractSupport]:    { id: string };
+    [JpipeIssue.ConclusionPresent]:     { id: string };
     // `Record<never, never>` rather than `Record<string, never>`: only the former has `keyof`
     // equal to `never`, which is what marks a code as callable through `issue(code)` alone.
     [JpipeIssue.NoEmptyLabel]:          Record<never, never>;

@@ -15,6 +15,7 @@ import {
     isTemplate,
     isJustification,
     isAbstractSupport,
+    isConclusion,
     isEvidence,
     isStrategy,
     isSubConclusion
@@ -44,8 +45,8 @@ export function registerValidationChecks(services: JpipeServices) {
         Unit:           validator.checkUnitNotEmpty,
         Load:           validator.checkLoadResolves,
         Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys, validator.checkUnificationMethod],
-        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds],
-        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds],
+        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion],
+        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion],
         Evidence:       validator.checkLabelNotEmpty,
         Strategy:       [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
         Conclusion:     [validator.checkLabelNotEmpty, validator.checkConclusionIncomingFromStrategy],
@@ -256,6 +257,37 @@ export class JpipeValidator {
                    { node: template, property: 'id',
                      ...issue(JpipeIssue.NoDuplicateModelNames, { id: template.id }) });
         }
+    }
+
+    /**
+     * Flags a model with no conclusion.
+     *
+     * An error, not a warning: the compiler refuses to build such a model, reporting it as
+     * `conclusion-present` — and it applies the rule to templates as well as justifications, so
+     * this one does too. An argument with nothing at its root is not an argument.
+     *
+     * Inherited conclusions count, which is why this reads `getAllElements`: the compiler checks
+     * completeness *after* `implements` has inlined the parent's elements, so a justification
+     * whose conclusion comes from its template satisfies the rule there and must here.
+     *
+     * The grammar requires a non-empty body, so `justification J { }` is a parse error rather than
+     * this; what reaches here is a model with contents that simply do not include a conclusion.
+     *
+     * A composed model — `justification K is assemble(J, T) { … }` — is skipped, because its
+     * elements do not exist until the operator has run. `assemble` synthesises a conclusion from
+     * `conclusionLabel`, so the compiler checks the *result* and is satisfied; checking the source
+     * text here would report an error on a model that builds. The cost is that a composition whose
+     * result genuinely has no conclusion is caught by the compiler and not by the editor, which is
+     * the right way round: silence about a real problem beats noise about one that is not.
+     */
+    checkModelHasConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
+        if (model.composition) return;
+        if (getAllElements(model).some(isConclusion)) return;
+
+        const kind = isTemplate(model) ? 'Template' : 'Justification';
+        accept('error', `${kind} '${model.id}' has no conclusion`,
+               { node: model, property: 'id',
+                 ...issue(JpipeIssue.ConclusionPresent, { id: model.id }) });
     }
 
     checkTemplateHasSupport(template: Template, accept: ValidationAcceptor): void {

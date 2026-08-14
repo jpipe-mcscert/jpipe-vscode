@@ -160,3 +160,37 @@ offering a corrected path is meaningless for a glob that matched nothing.
   ("the code is data, not text"), so the human renderer prints the bracket twice. It is a
   compiler-repo bug and it is good evidence for this record: a shared vocabulary drifted from its
   own rule *inside a single repository*, which is why the one spanning two needs a check.
+
+## Amendment (2026-08-13): `conclusion-present` is now implemented
+
+The first of the gaps listed above is closed. `checkModelHasConclusion` reports a justification or
+template whose elements include no conclusion, as an **error** — the compiler refuses to build such
+a model, and this repository's rule is that a diagnostic is an error exactly when the build will
+actually fail (the reasoning already written into `checkConfigKeys`).
+
+Adding it cost one line in `JpipeIssue` and no thought at all about what to call it, which is the
+first evidence that this record earns its keep: `conclusion-present` was already in
+`COMPILER_CODES`, so the partition test went green without `jpipe-compiler-codes.ts` being touched.
+The name was not a decision to be made — it had already been made, upstream, and the vocabulary
+file said so.
+
+Two subtleties, both settled by reading the compiler rather than by choosing:
+
+- **Inherited conclusions count.** The compiler checks completeness *after* `implements` has
+  inlined the parent's elements, so the check reads `getAllElements`, not `getLocalElements`.
+- **Composed models are skipped.** `justification K is assemble(J, T) { … }` has no body; its
+  elements exist only once the operator has run, and `assemble` synthesises a conclusion from
+  `conclusionLabel`. The compiler judges the *result* and is satisfied. A first version of this
+  check judged the source text and reported an error on a model that builds — caught by an existing
+  fixture in `renaming.test.ts`, which is what that fixture's "nothing wrong with it" assertion is
+  for. The cost is accepted and is the right way round: a composition whose result genuinely lacks
+  a conclusion is caught by the compiler and not by the editor, and silence about a real problem
+  beats noise about one that is not (the same trade jpipe-vscode ADR-VSC-0007 makes for globs).
+
+No quick fix is offered. Writing a conclusion means writing the claim the argument exists to make,
+and that is the one thing in a `.jd` file the editor cannot guess.
+
+The remaining gaps are unchanged: `sub-conclusion-supported`, `acyclic-support`,
+`acyclic-implements`, `single-conclusion`, `unresolved-override`, `cyclic-implements`,
+`implements-error`, `reference-into-template`, `incompatible-unification`, and `invalid-support`
+beyond strategies.
