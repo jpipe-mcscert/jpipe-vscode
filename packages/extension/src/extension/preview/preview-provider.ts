@@ -459,8 +459,15 @@ export class PreviewProvider {
             this.post({ type: 'busy', busy: true });
             // Pass the pre-resolved diagramName so generate() does not re-derive
             // it from activeTextEditor (which may have a different cursor position).
+            //
+            // Timed so the logs say how long the preview costs in practice. This brackets the
+            // compiler process alone — not the symbol lookup below, and not the page's own
+            // drawing — and in JAR mode a large and roughly constant share of it is JVM startup,
+            // so read it as the cost of invoking the compiler rather than of the diagram.
+            const started = performance.now();
             const stdout = await this.imageGenerator.generate(false, ImageFormat.SVG, document, diagramName);
-            this.logger.debug(`Preview updated: '${diagramName}' in ${document.fileName}`);
+            const elapsed = Math.round(performance.now() - started);
+            this.logger.info(`Preview updated: '${diagramName}' in ${document.fileName} (compiled in ${elapsed} ms)`);
             // Checked here as well as inside sendRender, which asks again after its own await.
             // This one is the cheap short-circuit: a result already known to be unwanted should
             // not cost an LSP round trip for a highlight nobody will see.
