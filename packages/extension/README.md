@@ -17,7 +17,7 @@
 
 #### Required software
 
-The plugin requires the `jpipe` compiler to be vailable on your computer:
+The plugin requires the `jpipe` compiler to be available on your computer:
   - [https://www.jpipe.org/tutorials/install/](https://www.jpipe.org/tutorials/install/)
 
 You can provide the compiler in three ways, selected via the `jpipe.executionMode` setting:
@@ -35,49 +35,11 @@ You can provide the compiler in three ways, selected via the `jpipe.executionMod
 
 Simply open a file using the `.jd` extension.
 
-#### Quick fixes and refactorings
-
-Where the editor reports a problem it can repair, the lightbulb (`⌘.` / `Ctrl+.`) offers to do
-it: write the declaration a template's `@support` demands, correct a mistyped operator or
-config key, add the missing `load` for a model you referenced, or wire up a conclusion that
-nothing supports yet.
-
-Three more are offered for wherever your cursor is. Reach them from the lightbulb, from
-**Refactor…** in the right-click menu (or `⌃⇧R` / `Ctrl+Shift+R`), or by name in the command
-palette — *jPipe: Convert Justification to Template*, *Sort Elements*, *Extract Template*:
-
-  - **Convert to template / justification** — switch what a model is. Converting a template says
-    up front how many `@support` elements it would drop.
-  - **Sort elements** — put a model's declarations in the order its argument reads: the
-    conclusion first, then down through what supports it, one branch at a time, with a blank
-    line opening each sub-argument.
-  - **Extract template** — turn a justification into a reusable template plus a justification
-    that implements it.
-
-**Organize loads** — sort and de-duplicate the `load` statements at the top of a file — lives
-under **Source Action…**, and in the command palette as *jPipe: Organize Loads*. It runs only
-when you ask for it: reordering your source is a decision you make, not one that happens while
-you save. It is deliberately not registered as `source.organizeImports`, so a global
-organize-on-save setting kept for another language will not reach your `.jd` files.
-
-When you do run it, it never removes a `load` whose path does not resolve — a half-typed path is
-exactly the state a file is in while you are writing one.
-
-**Format Document** (`⇧⌥F` / `Shift+Alt+F`, or *jPipe: Auto-indent and Align* in the palette)
-lays a model out the way the reference examples are written: nesting by braces, and each run of
-declarations padded so its ids and its `is` keywords start in the same column, with relations
-lined up on their supporters the same way. A body then reads down its columns instead of along
-its lines. Levels use your editor's tab size — or tabs, if that is what you indent with — while
-the padding that lines the columns up is always spaces.
-
-It rewrites lines and never moves anything between them: comments stay beside what they
-describe, blank lines stay where you put them (they are how a body is divided into
-sub-arguments), and a model written on one line comes back on one line, correctly indented. A
-file that does not parse is left alone. Format Selection does the same for the lines you
-selected, lined up with the neighbours it leaves alone.
-
-Format-on-save applies here as it does anywhere else. To keep it off for models while leaving it
-on elsewhere, add `"[jpipe]": { "editor.formatOnSave": false }` to your settings.
+You get syntax highlighting, live validation, completion, hover and go-to-definition across the
+files a model `load`s, quick fixes on the lightbulb (`⌘.` / `Ctrl+.`), refactorings under
+**Refactor…**, **Format Document** (`⇧⌥F` / `Shift+Alt+F`) to lay a model out, and a diagram
+preview you can export. Everything is also in the command palette under *jPipe*. The tutorials
+below walk through them.
 
 #### Your own unification relations
 
@@ -88,7 +50,7 @@ the editor cannot know what your compiler has registered, only what it has been 
 
 #### Tutorials
 
-Please visit [https://www.jpipe.org/tutorials/](https://www.jpipe.org/tutorials/) for examples and guidance o how to develop justificiation models using jPipe.
+Please visit [https://www.jpipe.org/tutorials/](https://www.jpipe.org/tutorials/) for examples and guidance on how to develop justification models using jPipe.
 
 ### How to contribute?
 
