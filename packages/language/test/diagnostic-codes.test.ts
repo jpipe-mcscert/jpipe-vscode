@@ -73,6 +73,7 @@ describe('diagnostic codes', () => {
         [JpipeIssue.MissingConfigKey, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" }'],
         [JpipeIssue.OperatorArity, 'justification A { conclusion c is "C" }\njustification B is refine(A)'],
         [JpipeIssue.UnknownUnificationMethod, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" strategyLabel: "S" unifyBy: "nope" }'],
+        [JpipeIssue.UnknownHook, 'justification A { conclusion c is "C" }\njustification B { conclusion d is "D" }\njustification R is refine(A, B) { hook: "nope" }'],
         [JpipeIssue.NoDuplicateIds, 'justification J { conclusion c is "C" evidence c is "E" }'],
         [JpipeIssue.StrategySupported, 'justification J { conclusion c is "C" strategy s is "S"\n s supports c }'],
         [JpipeIssue.InvalidSupport, 'justification J { conclusion c is "C" strategy s is "S" strategy t is "T"\n t supports s\n s supports c }'],

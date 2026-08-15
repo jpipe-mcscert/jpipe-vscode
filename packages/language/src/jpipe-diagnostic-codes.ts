@@ -28,6 +28,7 @@ export const JpipeIssue = {
     UnknownOperator:        'unknown-operator',
     OperatorArity:          'operator-arity',
     UnknownConfigKey:       'unknown-config-key',
+    UnknownHook:            'unknown-hook',
     UnknownUnificationMethod: 'unknown-unification-method',
     MissingConfigKey:       'missing-config-key',
     NoAbstractSupport:      'no-abstract-support',
@@ -85,6 +86,7 @@ export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     [JpipeIssue.LoadMalformedPattern]:  'error',   // FATAL from `LoadResolver`
     [JpipeIssue.CyclicLoad]:            'error',   // FATAL from `LoadResolver`
     [JpipeIssue.NoEmptyUnit]:           'error',   // FATAL: "Compilation aborted due to syntax errors"
+    [JpipeIssue.UnknownHook]:           'error',   // `execution-error`: "hook element 'x' not found"
 
     // Warnings — the compiler builds these files. Each was run through `jpipe diagnostic`, and each
     // exited 0.
@@ -175,6 +177,8 @@ export interface JpipeIssuePayloads {
     [JpipeIssue.HasAbstractSupport]:    { id: string };
     [JpipeIssue.ConclusionPresent]:     { id: string };
     [JpipeIssue.SingleConclusion]:      { modelId: string; id: string };
+    /** `candidates` are the ids a hook could name here, for a fix that offers the near misses. */
+    [JpipeIssue.UnknownHook]:           { actual: string; modelId: string; candidates: string[] };
     // `Record<never, never>` rather than `Record<string, never>`: only the former has `keyof`
     // equal to `never`, which is what marks a code as callable through `issue(code)` alone.
     [JpipeIssue.NoEmptyLabel]:          Record<never, never>;

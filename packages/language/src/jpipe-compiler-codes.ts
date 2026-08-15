@@ -65,7 +65,7 @@ export const COMPILER_CODES = [
  *   ignores keys it does not recognise), `support-override-type`.
  * - **It checks it, but reports it as the `execution-error` catch-all**, so there is no name to
  *   adopt: `no-duplicate-model-names`, `unknown-operator`, `operator-arity`, `missing-config-key`,
- *   `unknown-unification-method`.
+ *   `unknown-unification-method`, `unknown-hook`.
  * - **It reports it as `FATAL`, and a fatal carries no code by policy** (jpipe-compiler ADR-0016):
  *   the whole `load-*` family, `cyclic-load`, and `no-empty-unit` — an empty file is a syntax
  *   error there, `Compilation aborted due to syntax errors`, which no rule name reaches.
@@ -81,6 +81,7 @@ export const EXTENSION_ONLY_CODES = [
     'operator-arity',
     'unknown-config-key',
     'unknown-unification-method',
+    'unknown-hook',
     'missing-config-key',
     'support-override-type',
     'load-unresolved',

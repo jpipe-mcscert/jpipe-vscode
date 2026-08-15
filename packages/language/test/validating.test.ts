@@ -364,6 +364,97 @@ describe('Empty unit', () => {
     });
 });
 
+/**
+ * A `refine` hook is a name in a string, so nothing linked it and nothing reported it: the model
+ * looked clean and the build failed with `hook element 'x' not found in base model 'B'`.
+ *
+ * Half of these cases are about *not* reporting. The compiler resolves a hook more generously than
+ * an equality test would — its suffix fallback lets a bare name reach a qualified element — and it
+ * resolves some hooks only after an operator has run, which the editor never does. Each silence
+ * below was confirmed against `jpipe --headless diagnostic`, which exits 0 on all of them.
+ */
+describe('Refine hook', () => {
+
+    const REF = `justification Ref {
+ conclusion rc is "RC"
+ strategy rs is "RS"
+ evidence re is "RE"
+ re supports rs
+ rs supports rc
+}`;
+
+    const BASE = `justification Base {
+ conclusion c is "C"
+ strategy s is "S"
+ evidence e is "E"
+ e supports s
+ s supports c
+}`;
+
+    async function hookErrors(source: string): Promise<string[]> {
+        const doc = await parse(source);
+        assertNoParseErrors(doc);
+        return diagnosticMessages(doc).filter(m => m.startsWith('Hook element'));
+    }
+
+    test('a hook naming nothing is reported in the compiler\'s words', async () => {
+        const messages = await hookErrors(
+            `${BASE}\n${REF}\njustification R is refine(Base, Ref) { hook: "nope" }`);
+        expect(messages).toEqual(["Hook element 'nope' not found in base model 'Base'"]);
+    });
+
+    test('a hook naming an element of the base model is accepted', async () => {
+        expect(await hookErrors(
+            `${BASE}\n${REF}\njustification R is refine(Base, Ref) { hook: "e" }`)).toEqual([]);
+    });
+
+    // The compiler's `findById` falls back to a ':'-suffix match, so the name written in the
+    // template reaches the element that template expansion qualified. Verified: exit 0.
+    test('a bare hook naming an element declared qualified is accepted', async () => {
+        const source = `template T {
+ @support a is "A"
+ strategy s is "S"
+ conclusion c is "C"
+ a supports s
+ s supports c
+}
+justification Base implements T { evidence T:a is "Signed" }
+${REF}
+justification R is refine(Base, Ref) { hook: "a" }`;
+        expect(await hookErrors(source)).toEqual([]);
+    });
+
+    // Its elements do not exist until the operator has run, and its hooks resolve through aliases
+    // no file contains. Verified: `refine(AB, Ref) { hook: "ae" }` builds, exit 0.
+    test('a composed base model is left alone', async () => {
+        const source = `${BASE}
+${REF}
+justification AB is assemble(Base, Ref) { conclusionLabel: "Both" strategyLabel: "S" }
+justification R is refine(AB, Ref) { hook: "ae" }`;
+        expect(await hookErrors(source)).toEqual([]);
+    });
+
+    // The `implements` is the visible problem; the hook may name something real this cannot see.
+    test('a base with a broken implements chain is left alone', async () => {
+        const source = `${REF}
+justification Base implements Missing { evidence e is "E" }
+justification R is refine(Base, Ref) { hook: "inherited" }`;
+        expect(await hookErrors(source)).toEqual([]);
+    });
+
+    test('an unresolved first source is left to the linker', async () => {
+        expect(await hookErrors(
+            `${REF}\njustification R is refine(Nothing, Ref) { hook: "e" }`)).toEqual([]);
+    });
+
+    test('only refine has a hook', async () => {
+        const source = `${BASE}
+${REF}
+justification A is assemble(Base, Ref) { conclusionLabel: "C" strategyLabel: "S" hook: "nope" }`;
+        expect(await hookErrors(source)).toEqual([]);
+    });
+});
+
 describe('Operator arity', () => {
 
     // Nothing checked this before: `refine(a)` parsed, validated clean, and failed at build time

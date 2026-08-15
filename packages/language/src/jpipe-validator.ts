@@ -25,6 +25,7 @@ import type { JpipeServerLogger } from './jpipe-logger.js';
 import type { JpipeImportService } from './jpipe-import.js';
 import type { JpipeUnificationService } from './jpipe-unification.js';
 import {
+    HOOK_KEY,
     UNIFY_BY_KEY,
     allowedConfigKeys,
     arityPhrase,
@@ -33,7 +34,7 @@ import {
     operatorSpec,
     requiredConfigKeys
 } from './jpipe-operators.js';
-import { getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { getAllElements, getLocalElements, hookTarget, qualifiedIdText } from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 import { messageOf } from './jpipe-errors.js';
@@ -44,7 +45,7 @@ export function registerValidationChecks(services: JpipeServices) {
     const checks: ValidationChecks<JpipeAstType> = {
         Unit:           validator.checkUnitNotEmpty,
         Load:           validator.checkLoadResolves,
-        Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys, validator.checkUnificationMethod],
+        Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys, validator.checkUnificationMethod, validator.checkRefineHook],
         Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
         Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
         Evidence:       validator.checkLabelNotEmpty,
@@ -210,6 +211,46 @@ export class JpipeValidator {
             report(accept, JpipeIssue.UnknownUnificationMethod, `Unknown unification method '${actual}'; registered: ${known.join(', ')}.`,
                    { node: entry, property: 'value' }, { actual, known });
         }
+    }
+
+    /**
+     * Flags a `refine` whose `hook` names no element of the model being refined.
+     *
+     * `hook` is a string in the grammar, so nothing links it: a typo, or a rename that passed it
+     * by, produced a model that looked fine in the editor and died at build time with
+     * `hook element 'x' not found in base model 'B'`. That message is borrowed here, because it is
+     * the same defect and jpipe-vscode ADR-VSC-0022 says one defect reads one way.
+     *
+     * `hookTarget` decides what resolves, and matches the compiler including its suffix fallback.
+     * Three shapes are passed over instead, each because the editor genuinely cannot answer:
+     *
+     * - **A composed base.** Its elements do not exist until the operator has run, and its hooks
+     *   resolve through aliases no `.jd` file contains. `checkModelHasConclusion` steps around the
+     *   same corner for the same reason.
+     * - **An unresolved first source**, which is a linking error already reported where it is.
+     * - **A broken `implements` chain**, where the inherited half of the element list is missing.
+     *   The hook may name something perfectly real that this cannot see, and the visible problem
+     *   is the `implements` — pointing at the hook would send the user to the wrong line.
+     *
+     * A missing `hook` is `missing-config-key`'s business, and an empty one is not spelled out as
+     * a hook at all, so both are left alone.
+     */
+    checkRefineHook(composition: Composition, accept: ValidationAcceptor): void {
+        if (composition.operator !== 'refine') return;
+        const entry = composition.config?.entries.find(candidate => candidate.key === HOOK_KEY);
+        const actual = entry?.value;
+        if (!entry || !actual) return;
+
+        const base = composition.params?.refs[0]?.ref;
+        if (!base || base.composition || hasUnresolvedParent(base)) return;
+        if (hookTarget(base, actual)) return;
+
+        const candidates = getAllElements(base)
+            .map(element => qualifiedIdText(element.id))
+            .filter(id => id.length > 0);
+        report(accept, JpipeIssue.UnknownHook,
+               `Hook element '${actual}' not found in base model '${base.id}'`,
+               { node: entry, property: 'value' }, { actual, modelId: base.id, candidates });
     }
 
     checkLabelNotEmpty(element: Evidence | Strategy | Conclusion | SubConclusion | AbstractSupport,
@@ -504,4 +545,23 @@ export class JpipeValidator {
     }
 
 
+}
+
+/**
+ * Whether any `implements` in the model's chain names a template that did not resolve.
+ *
+ * `getAllElements` follows `parent?.ref` and simply stops when it is undefined, so a model with a
+ * broken `implements` reports a *shorter* element list rather than an error — which reads, to
+ * anything asking "is this id here?", as a confident no. The chain is walked with a `seen` set
+ * because a cycle is one of the states this can be asked about.
+ */
+function hasUnresolvedParent(model: Justification | Template): boolean {
+    const seen = new Set<Justification | Template>();
+    let current: Justification | Template | undefined = model;
+    while (current && !seen.has(current)) {
+        seen.add(current);
+        if (current.parent && !current.parent.ref) return true;
+        current = current.parent?.ref;
+    }
+    return false;
 }
