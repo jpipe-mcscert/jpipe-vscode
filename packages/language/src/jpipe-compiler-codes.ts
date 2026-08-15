@@ -57,13 +57,14 @@ export const COMPILER_CODES = [
  *
  * Three reasons appear here, and the distinction matters when the compiler next gains a rule:
  *
- * - **It does not check this at all.** `no-empty-label`, `no-empty-unit`, `unknown-config-key`
- *   (the compiler ignores keys it does not recognise), `support-override-type`.
+ * - **It does not check this at all.** `no-empty-label`, `unknown-config-key` (the compiler
+ *   ignores keys it does not recognise), `support-override-type`.
  * - **It checks it, but reports it as the `execution-error` catch-all**, so there is no name to
  *   adopt: `no-duplicate-model-names`, `unknown-operator`, `operator-arity`, `missing-config-key`,
  *   `unknown-unification-method`.
  * - **It reports it as `FATAL`, and a fatal carries no code by policy** (jpipe-compiler ADR-0016):
- *   the whole `load-*` family, and `cyclic-load`.
+ *   the whole `load-*` family, `cyclic-load`, and `no-empty-unit` — an empty file is a syntax
+ *   error there, `Compilation aborted due to syntax errors`, which no rule name reaches.
  *
  * A name that moves out of this list because the compiler grew a rule for it is a rename, and
  * ADR-VSC-0022 says the compiler's name wins.

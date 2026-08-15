@@ -220,8 +220,25 @@ export class JpipeValidator {
         }
     }
 
+    /**
+     * Flags a document that declares nothing at all.
+     *
+     * `imports` counts. A file whose entire content is `load` statements is an aggregator, and the
+     * compiler resolves it and exits 0 — reading only `body` called that file empty, which is the
+     * one shape the rule fired on where it was wrong (#70). The grammar routes loads to `imports`
+     * rather than `body`, so the two lists have to be checked together.
+     *
+     * What remains is the genuinely empty document — nothing, whitespace, comments only, or text
+     * that does not parse. The grammar's `+` makes all of those parse errors, but Langium's error
+     * recovery still hands this a `Unit` with both lists empty, so the rule is not dead: it says in
+     * plain words what the parser says as a token-set mismatch.
+     *
+     * Those are the files the compiler aborts on — `Compilation aborted due to syntax errors`,
+     * exit 1 — which is why this is an error under ADR-VSC-0023 rather than the warning it used to
+     * be. The warning had been justified by the loads-only file exiting 0, i.e. by the bug.
+     */
     checkUnitNotEmpty(unit: Unit, accept: ValidationAcceptor): void {
-        if (unit.body?.length === 0) {
+        if (unit.body?.length === 0 && unit.imports?.length === 0) {
             report(accept, JpipeIssue.NoEmptyUnit, 'Justification File should not be empty',
                    { node: unit, property: 'body' });
         }

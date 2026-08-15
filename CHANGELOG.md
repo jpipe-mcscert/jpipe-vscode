@@ -1,5 +1,10 @@
 ## Changelog
 
+### v1.8.2 (Unreleased)
+- Leader: Sébastien Mosser
+  - Bug Fixes:
+    - **A file that only loads other files is no longer called empty.** An aggregator — a `.jd` file whose whole content is `load` lines, with the models themselves living elsewhere — was flagged with a warning saying the justification file should not be empty. The compiler read the same file, resolved every load and said nothing, so the editor and the CLI disagreed about a file that is perfectly ordinary, which is what made it confusing: the warning was the only sign of a problem, and there was no problem. They now agree. What is still flagged is the file that genuinely declares nothing — blank, whitespace, or comments alone — and since the compiler refuses to build one of those, it is now an error rather than a warning (#70)
+
 ### v1.8.1 (2026-08-14)
 - Leader: Sébastien Mosser
   - Bug Fixes:

@@ -63,7 +63,7 @@ describe('diagnostic codes', () => {
 
     test.each([
         [JpipeIssue.NoEmptyLabel, 'justification J { conclusion c is "" }'],
-        [JpipeIssue.NoEmptyUnit, 'load "nowhere.jd"'],
+        [JpipeIssue.NoEmptyUnit, '// nothing but a comment\n'],
         [JpipeIssue.NoDuplicateModelNames, 'justification J { conclusion c is "C" }\njustification J { conclusion c is "C" }'],
         [JpipeIssue.HasAbstractSupport, 'template T { conclusion c is "C" }'],
         [JpipeIssue.ConclusionPresent, 'justification J { evidence e is "E" }'],
@@ -293,7 +293,6 @@ describe('severity follows the compiler', () => {
     /** Every code deliberately reported as a warning, with the reason it is not an error. */
     const EXPECTED_WARNINGS: readonly JpipeIssueCode[] = [
         JpipeIssue.NoEmptyLabel,             // compiler builds it: nothing checks a label's contents
-        JpipeIssue.NoEmptyUnit,              // compiler builds it: a file of only `load`s is legal
         JpipeIssue.UnknownConfigKey,         // compiler builds it: unrecognised keys are ignored
         JpipeIssue.UnknownUnificationMethod  // the exception: the editor cannot see its registry
     ];

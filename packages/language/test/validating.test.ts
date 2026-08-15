@@ -319,6 +319,51 @@ describe('Validation tests', () => {
     });
 });
 
+/**
+ * The grammar routes `load` to `imports` and everything else to `body`, so a rule reading only
+ * `body` calls an aggregator empty (#70). The compiler resolves such a file and exits 0, and the
+ * extension told its users it was empty — the one shape the rule reached where it was wrong.
+ *
+ * The other half is that the rule still has work to do. What is left is the document that declares
+ * nothing, which the grammar's `+` makes a parse error; these tests read through the parser errors
+ * deliberately, because it is precisely there that Langium's recovery still yields a `Unit` and the
+ * check has to fire.
+ */
+describe('Empty unit', () => {
+
+    const EMPTY_UNIT = 'Justification File should not be empty';
+
+    test('a file of only loads is not empty', async () => {
+        // The load does not resolve — that is `load-unresolved`'s business, not this rule's.
+        const doc = await parse('load "nowhere.jd"\nload "elsewhere.jd"\n');
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc)).not.toContain(EMPTY_UNIT);
+    });
+
+    test('loads mixed with a model are not empty either', async () => {
+        const doc = await parse('load "nowhere.jd"\njustification J { conclusion c is "C" }');
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc)).not.toContain(EMPTY_UNIT);
+    });
+
+    test.each([
+        ['nothing at all', ''],
+        ['whitespace only', '   \n\n  '],
+        ['comments only', '// a note\n// and another\n']
+    ])('a file with %s is empty', async (_name, source) => {
+        const doc = await parse(source);
+        expect(diagnosticMessages(doc)).toContain(EMPTY_UNIT);
+    });
+
+    // ADR-VSC-0023: an error means the build fails. `jpipe diagnostic` on an empty file reports
+    // `Compilation aborted due to syntax errors` and exits 1, so this one is red.
+    test('an empty file is an error, not a warning', async () => {
+        const doc = await parse('');
+        const empty = (doc.diagnostics ?? []).find(d => Diagnostic.getMessageString(d) === EMPTY_UNIT);
+        expect(empty?.severity).toBe(DiagnosticSeverity.Error);
+    });
+});
+
 describe('Operator arity', () => {
 
     // Nothing checked this before: `refine(a)` parsed, validated clean, and failed at build time

@@ -84,11 +84,11 @@ export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     [JpipeIssue.LoadNoMatch]:           'error',   // FATAL from `LoadResolver`
     [JpipeIssue.LoadMalformedPattern]:  'error',   // FATAL from `LoadResolver`
     [JpipeIssue.CyclicLoad]:            'error',   // FATAL from `LoadResolver`
+    [JpipeIssue.NoEmptyUnit]:           'error',   // FATAL: "Compilation aborted due to syntax errors"
 
     // Warnings — the compiler builds these files. Each was run through `jpipe diagnostic`, and each
     // exited 0.
     [JpipeIssue.NoEmptyLabel]:          'warning', // accepted: nothing checks a label's contents
-    [JpipeIssue.NoEmptyUnit]:           'warning', // accepted: a file of only `load`s is legal
     [JpipeIssue.UnknownConfigKey]:      'warning', // accepted: unrecognised keys are ignored
     // The exception. The compiler *would* reject this, but its relation registry is populated at
     // startup and a project may register its own, so the editor cannot know. The message says what
