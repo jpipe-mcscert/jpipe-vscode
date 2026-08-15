@@ -115,23 +115,40 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         super.completionFor(context, next, acceptor);
     }
 
+    /**
+     * The edit accepting a completion applies.
+     *
+     * The `@` case is the whole reason this is overridden, and it has to measure what the user
+     * typed from the **line**, not from `context.tokenOffset`. `@support` is a keyword, so a lone
+     * `@` matches no token: the lexer leaves it behind and `tokenOffset` points *past* it, at the
+     * cursor. Reading the typed text from there returns nothing that starts with `@`, the whole
+     * branch is skipped, and the default edit inserts a second `@` beside the first — `@@support`,
+     * from the one keystroke that says unambiguously which keyword is wanted. `@su` doubles the
+     * same way, since `su` lexes on its own and the `@` is again outside the token.
+     *
+     * The line prefix has no such gap: `/@\w*$/` is exactly what has been typed, so its length is
+     * exactly what the edit must replace.
+     */
     protected override buildCompletionTextEdit(context: CompletionContext, label: string, newText: string): TextEdit | undefined {
-        const content = context.textDocument.getText();
-        const identifier = content.substring(context.tokenOffset, context.offset);
+        const typed = /@\w*$/.exec(this.linePrefixToCursor(context));
 
-        if (this.lineEndsWithAtKeywordPrefix(context) && !label.startsWith('@')) {
+        if (typed && !label.startsWith('@')) {
             return undefined;
         }
 
-        if (label.startsWith('@') && identifier.startsWith('@')) {
-            const identTail = identifier.slice(1);
+        if (typed && label.startsWith('@')) {
+            const typedTail = typed[0].slice(1);
             const labelTail = label.slice(1);
-            if (identTail.length === 0 || this.services.shared.lsp.FuzzyMatcher.match(identTail, labelTail)) {
-                const start = context.textDocument.positionAt(context.tokenOffset);
-                const end = context.position;
-                return { newText, range: { start, end } };
+            if (typedTail.length > 0 && !this.services.shared.lsp.FuzzyMatcher.match(typedTail, labelTail)) {
+                return undefined;
             }
-            return undefined;
+            return {
+                newText,
+                range: {
+                    start: context.textDocument.positionAt(context.offset - typed[0].length),
+                    end: context.position
+                }
+            };
         }
 
         return super.buildCompletionTextEdit(context, label, newText);
