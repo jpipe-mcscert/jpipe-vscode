@@ -1,4 +1,8 @@
-import { beforeAll, describe, expect, test } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { EmptyFileSystem } from 'langium';
 import { parseHelper } from 'langium/test';
 import type { LocationLink } from 'vscode-languageserver-types';
@@ -110,5 +114,87 @@ justification J implements T {
 }
 `, 'T:absent is', 4);
         expect(links).toHaveLength(0);
+    });
+});
+
+/**
+ * The same navigation when the template lives in another file.
+ *
+ * `resolveTemplate` has three branches — a template declared here, one reached through a plain
+ * `load`, and one reached through an aliased load, where the override is written `lib:T:abs` and
+ * the first segment is the alias rather than the template. Only the local branch had a test, and
+ * the other two are the ones that carry the cost of being wrong: F12 silently does nothing, which
+ * reads as "there is nothing there" rather than as a bug.
+ *
+ * They need files on disk for the same reason the outline's loaded-model cases do — the import
+ * service reads through `node:fs`, so `EmptyFileSystem` never sees these loads.
+ */
+describe('go to definition on an override of a loaded template', () => {
+
+    let tmpDir: string;
+    let roots = 0;
+
+    beforeAll(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-definition-'));
+        fs.writeFileSync(path.join(tmpDir, 'lib.jd'), `template T {
+    conclusion c is "Claim"
+    strategy s is "Strategy"
+    @support abs is "Abstract"
+    abs supports s
+    s supports c
+}`);
+    });
+
+    afterAll(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    /** As `definitionsAt`, for a document that really sits beside `lib.jd`. */
+    async function definitionsInFile(input: string, marker: string, within: number): Promise<LocationLink[]> {
+        const uri = pathToFileURL(path.join(tmpDir, `root${roots++}.jd`)).toString();
+        const document = await parse(input, { documentUri: uri });
+        const offset = document.textDocument.getText().indexOf(marker);
+        expect(offset, `marker not found: ${marker}`).toBeGreaterThanOrEqual(0);
+        const links = await services.Jpipe.lsp.DefinitionProvider!.getDefinition(document, {
+            textDocument: { uri },
+            position: document.textDocument.positionAt(offset + within)
+        });
+        return links ?? [];
+    }
+
+    const IMPLEMENTOR = (prefix: string) => `justification J implements ${prefix}T {
+    conclusion c is "Claim"
+    strategy s is "Strategy"
+    evidence ${prefix}T:abs is "Concrete"
+    ${prefix}T:abs supports s
+    s supports c
+}`;
+
+    test('navigates into the file a plain load brought in', async () => {
+        const source = `load "./lib.jd"\n${IMPLEMENTOR('')}`;
+        const links = await definitionsInFile(source, 'evidence T:abs', 12);
+        expect(links).toHaveLength(1);
+        expect(links[0].targetUri).toContain('lib.jd');
+        expect(links[0].targetSelectionRange.start.line).toBe(3);
+    });
+
+    test('navigates through the alias an aliased load introduced', async () => {
+        const source = `load "./lib.jd" as lib\n${IMPLEMENTOR('lib:')}`;
+        const links = await definitionsInFile(source, 'evidence lib:T:abs', 16);
+        expect(links).toHaveLength(1);
+        expect(links[0].targetUri).toContain('lib.jd');
+        expect(links[0].targetSelectionRange.start.line).toBe(3);
+    });
+
+    // The alias has to be the one that was written: another file's alias for the same template
+    // does not make this one resolve.
+    test('offers nothing for an alias no load declares', async () => {
+        const source = `load "./lib.jd" as lib\n${IMPLEMENTOR('other:')}`;
+        expect(await definitionsInFile(source, 'evidence other:T:abs', 18)).toHaveLength(0);
+    });
+
+    test('offers nothing when the load resolves to no file', async () => {
+        const source = `load "./nowhere.jd"\n${IMPLEMENTOR('')}`;
+        expect(await definitionsInFile(source, 'evidence T:abs', 12)).toHaveLength(0);
     });
 });

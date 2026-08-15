@@ -10,7 +10,7 @@
  * whoever adds the next code to *decide* whether the compiler already names that rule, at the
  * moment they add it, rather than discovering the answer after both names have shipped.
  *
- * SOURCE: jpipe-compiler v2.4.0 (b79b400), copied 2026-08-13 from
+ * SOURCE: jpipe-compiler v2.5.0 (0bb9332), copied 2026-08-15 from
  *   jpipe-compiler/src/main/java/ca/mcscert/jpipe/compiler/model/DiagnosticCodes.java
  *   jpipe-model/src/main/java/ca/mcscert/jpipe/model/validation/ConsistencyValidator.java
  *   jpipe-model/src/main/java/ca/mcscert/jpipe/model/validation/CompletenessValidator.java
@@ -41,6 +41,10 @@ export const COMPILER_CODES = [
     'unresolved-symbol',
     // ConsistencyValidator.java
     'no-duplicate-ids',
+    // Merge aliases only; the element ids it shares a namespace with are `no-duplicate-ids`. The
+    // aliases exist only once an operator has unified something, so nothing in a `.jd` file names
+    // one and this extension cannot check it — ADR-VSC-0022's amendment of 2026-08-15.
+    'unique-identifiers',
     'acyclic-support',
     'acyclic-implements',
     // CompletenessValidator.java
@@ -57,13 +61,14 @@ export const COMPILER_CODES = [
  *
  * Three reasons appear here, and the distinction matters when the compiler next gains a rule:
  *
- * - **It does not check this at all.** `no-empty-label`, `no-empty-unit`, `unknown-config-key`
- *   (the compiler ignores keys it does not recognise), `support-override-type`.
+ * - **It does not check this at all.** `no-empty-label`, `unknown-config-key` (the compiler
+ *   ignores keys it does not recognise), `support-override-type`.
  * - **It checks it, but reports it as the `execution-error` catch-all**, so there is no name to
  *   adopt: `no-duplicate-model-names`, `unknown-operator`, `operator-arity`, `missing-config-key`,
- *   `unknown-unification-method`.
+ *   `unknown-unification-method`, `unknown-hook`.
  * - **It reports it as `FATAL`, and a fatal carries no code by policy** (jpipe-compiler ADR-0016):
- *   the whole `load-*` family, and `cyclic-load`.
+ *   the whole `load-*` family, `cyclic-load`, and `no-empty-unit` — an empty file is a syntax
+ *   error there, `Compilation aborted due to syntax errors`, which no rule name reaches.
  *
  * A name that moves out of this list because the compiler grew a rule for it is a rename, and
  * ADR-VSC-0022 says the compiler's name wins.
@@ -76,6 +81,7 @@ export const EXTENSION_ONLY_CODES = [
     'operator-arity',
     'unknown-config-key',
     'unknown-unification-method',
+    'unknown-hook',
     'missing-config-key',
     'support-override-type',
     'load-unresolved',

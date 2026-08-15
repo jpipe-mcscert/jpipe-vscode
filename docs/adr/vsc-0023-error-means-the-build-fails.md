@@ -115,3 +115,43 @@ disguise.*
   unchanged; `002_unsupported_elements.jd` still shows the compiler reporting
   `sub-conclusion-supported` where the editor is silent. Getting the severities right on the rules
   we do have does not add the ones we do not.
+
+## Amendment (2026-08-15): `no-empty-unit` is an error, and its fixture was the bug
+
+This record listed `no-empty-unit` among the four warnings, describing it as an editor-only style
+rule the compiler does not check, "confirmed by running `jpipe diagnostic` and seeing it exit 0".
+The run was real. The file it was run on was the wrong one.
+
+`checkUnitNotEmpty` read only `unit.body`, and the grammar routes `load` to `unit.imports`, so a
+file whose entire content is `load` statements counted as empty. That file is exactly what was
+measured, and the compiler does resolve it and exit 0 — so the measurement was sound and the
+conclusion drawn from it was not, because the file should never have been reported in the first
+place. It was asserted as the rule's fixture in `diagnostic-codes.test.ts`, which is why nothing
+caught it. Reported as #70, from tutorial exercise stubs that are loads-only by design.
+
+With the check reading both lists, what remains is the document that declares nothing — empty,
+whitespace, comments, or text that does not parse. Measured the same way:
+
+| file | `jpipe --headless diagnostic` | exit |
+|---|---|---|
+| `load "brick.jd"` | `(none)` | 0 |
+| empty, or comments only | `[FATAL] Compilation aborted due to syntax errors` | 1 |
+
+So the rule now fires only on files the compiler rejects, and **the rule in this record makes it an
+error**. Three warnings remain, and the exception is still the sole one.
+
+Two things follow that are worth keeping.
+
+**The check is not redundant with the parse error.** The grammar's `+` means an empty document
+cannot parse, and Langium's error recovery still hands the validator a `Unit` with both lists
+empty — verified, not assumed. The parser's own message is a token-set mismatch; this one says it
+in words. Deleting the rule was considered on the grounds that the parse error already covers every
+case: rejected, because it would remove a name from the vocabulary ADR-VSC-0022 vendors in exchange
+for removing a sentence a user can read.
+
+**"Editor-only rule" and "warning" are not the same claim.** The derivation in this record — a rule
+the compiler does not run cannot fail a build, so it can only warn — is sound, but it applies to
+rules the compiler does not run. `no-empty-unit` looked like one because the compiler has no named
+rule for it; the compiler nevertheless rejects the file, as a syntax error. Absence of a code
+upstream is not absence of a verdict, and `jpipe-compiler-codes.ts` now files it with the `FATAL`
+family for that reason.

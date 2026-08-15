@@ -28,6 +28,7 @@ export const JpipeIssue = {
     UnknownOperator:        'unknown-operator',
     OperatorArity:          'operator-arity',
     UnknownConfigKey:       'unknown-config-key',
+    UnknownHook:            'unknown-hook',
     UnknownUnificationMethod: 'unknown-unification-method',
     MissingConfigKey:       'missing-config-key',
     NoAbstractSupport:      'no-abstract-support',
@@ -84,11 +85,12 @@ export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     [JpipeIssue.LoadNoMatch]:           'error',   // FATAL from `LoadResolver`
     [JpipeIssue.LoadMalformedPattern]:  'error',   // FATAL from `LoadResolver`
     [JpipeIssue.CyclicLoad]:            'error',   // FATAL from `LoadResolver`
+    [JpipeIssue.NoEmptyUnit]:           'error',   // FATAL: "Compilation aborted due to syntax errors"
+    [JpipeIssue.UnknownHook]:           'error',   // `execution-error`: "hook element 'x' not found"
 
     // Warnings — the compiler builds these files. Each was run through `jpipe diagnostic`, and each
     // exited 0.
     [JpipeIssue.NoEmptyLabel]:          'warning', // accepted: nothing checks a label's contents
-    [JpipeIssue.NoEmptyUnit]:           'warning', // accepted: a file of only `load`s is legal
     [JpipeIssue.UnknownConfigKey]:      'warning', // accepted: unrecognised keys are ignored
     // The exception. The compiler *would* reject this, but its relation registry is populated at
     // startup and a project may register its own, so the editor cannot know. The message says what
@@ -175,6 +177,8 @@ export interface JpipeIssuePayloads {
     [JpipeIssue.HasAbstractSupport]:    { id: string };
     [JpipeIssue.ConclusionPresent]:     { id: string };
     [JpipeIssue.SingleConclusion]:      { modelId: string; id: string };
+    /** `candidates` are the ids a hook could name here, for a fix that offers the near misses. */
+    [JpipeIssue.UnknownHook]:           { actual: string; modelId: string; candidates: string[] };
     // `Record<never, never>` rather than `Record<string, never>`: only the former has `keyof`
     // equal to `never`, which is what marks a code as callable through `issue(code)` alone.
     [JpipeIssue.NoEmptyLabel]:          Record<never, never>;

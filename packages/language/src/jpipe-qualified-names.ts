@@ -16,7 +16,7 @@
  * Pure functions over an AST — no services — so the rename provider and its tests reach the same
  * answer without a workspace.
  */
-import type { AstNode, CstNode } from 'langium';
+import { GrammarUtils, type AstNode, type CstNode } from 'langium';
 import { TextEdit } from 'vscode-languageserver-types';
 import {
     isJustification,
@@ -26,6 +26,8 @@ import {
     type Template,
     type Unit
 } from './generated/ast.js';
+import { HOOK_KEY } from './jpipe-operators.js';
+import { hookTarget } from './jpipe-utils.js';
 
 /** An identifier written out segment by segment — `['lib', 'T', 'abs']` for `lib:T:abs`. */
 export type NamePrefix = readonly string[];
@@ -207,4 +209,71 @@ export function elementEdits(
         }
     }
     return edits;
+}
+
+/**
+ * Every edit renaming an element requires in one unit's `refine` hooks.
+ *
+ * A hook is a name in a string — `refine(Base, Ref) { hook: "e" }` — so it is the same problem as
+ * an override one step further from the type system: not a reference, not even a qualified id, and
+ * invisible to a rename that follows either. It is separate from `elementEdits` because it is
+ * matched differently. An override is recognised by how it is spelled; a hook is recognised by
+ * *what it resolves to*, since `hookTarget` is the only thing that knows a bare `a` may name an
+ * element declared `T:a`. Identity is also what keeps a same-named element of an unrelated model
+ * out of the rename — spelling alone could not tell the two apart.
+ *
+ * A composed base is passed over, exactly as the validator passes it over: its hooks resolve
+ * through aliases that appear only once an operator has run, so nothing here can say whether one
+ * names the element being renamed. That is the known cost — rename a hooked element of a composed
+ * model and the hook keeps the old spelling — and it is the honest half of a guess.
+ *
+ * Only the last segment is rewritten, so `"T:a"` becomes `"T:b"` and the qualifier survives.
+ */
+export function hookEdits(
+    unit: Unit,
+    affected: ReadonlySet<AstNode>,
+    newName: string
+): TextEdit[] {
+    const edits: TextEdit[] = [];
+    for (const model of modelsOf(unit)) {
+        const composition = model.composition;
+        if (composition?.operator !== 'refine') continue;
+
+        const entry = composition.config?.entries.find(candidate => candidate.key === HOOK_KEY);
+        if (!entry?.value) continue;
+        const base = composition.params?.refs[0]?.ref;
+        if (!base || base.composition) continue;
+
+        const target = hookTarget(base, entry.value);
+        if (!target || !affected.has(target)) continue;
+
+        const edit = stringTailEdit(GrammarUtils.findNodeForProperty(entry.$cstNode, 'value'), newName);
+        if (edit) edits.push(edit);
+    }
+    return edits;
+}
+
+/**
+ * Replaces the last `:`-separated segment *inside* a string literal, quotes left alone.
+ *
+ * The value is one token, so unlike a qualified id there is no CST to read the segments off and
+ * the offsets have to be counted in the token's own text. Counting it rather than rebuilding the
+ * literal is what keeps the user's quote style, escapes and spacing untouched — only the name
+ * moves. A literal broken across lines is declined rather than guessed at: the grammar's STRING
+ * permits one, and the arithmetic here is single-line.
+ */
+function stringTailEdit(cst: CstNode | undefined, newName: string): TextEdit | undefined {
+    if (!cst || cst.range.start.line !== cst.range.end.line) return undefined;
+    const text = cst.text;
+    if (text.length < 2) return undefined;
+
+    const content = text.slice(1, -1);
+    const start = cst.range.start.character + 1 + content.lastIndexOf(':') + 1;
+    const end = cst.range.end.character - 1;
+    if (start > end) return undefined;
+
+    return TextEdit.replace({
+        start: { line: cst.range.start.line, character: start },
+        end: { line: cst.range.start.line, character: end }
+    }, newName);
 }

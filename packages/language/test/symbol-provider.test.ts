@@ -1,4 +1,8 @@
-import { beforeAll, describe, expect, test } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { EmptyFileSystem } from 'langium';
 import { parseHelper } from 'langium/test';
 import { SymbolKind, type DocumentSymbol } from 'vscode-languageserver-types';
@@ -133,5 +137,95 @@ describe('Document symbol provider (outline)', () => {
         expect(byName['sc']).toBe(SymbolKind.Variable);
         expect(byName['c']).toBe(SymbolKind.Constructor);
         expect(byName['(inherited) T:abs']).toBe(SymbolKind.TypeParameter);
+    });
+});
+
+/**
+ * The outline's other half: everything a `load` brings in.
+ *
+ * None of it was covered, because none of it can be reached without files on disk —
+ * `JpipeImportService` reads through `node:fs` rather than Langium's `FileSystemProvider`, so
+ * `EmptyFileSystem` does not intercept it and a fixture written as a string is invisible to it.
+ * That is the same reason `import.test.ts` and `glob-load.test.ts` write real files, and this
+ * follows them.
+ *
+ * What it protects is the shape of the tree rather than any one symbol: an unnamespaced load
+ * folds its models in beside the local ones, an aliased load gets a node of its own named after
+ * the alias, and a load matching several files puts all of them under that one node. Each is a
+ * separate branch, and a regression in any of them shows up as an outline that is merely
+ * *arranged* wrongly — still populated, still plausible, and easy to miss.
+ */
+describe('Document symbol provider (loaded models)', () => {
+
+    let tmpDir: string;
+
+    beforeAll(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-symbols-'));
+        fs.writeFileSync(path.join(tmpDir, 'lib.jd'),
+            'template T {\n conclusion c is "C"\n @support a is "A"\n a supports c\n}');
+        fs.writeFileSync(path.join(tmpDir, 'more.jd'),
+            'justification M {\n conclusion mc is "MC"\n}');
+    });
+
+    afterAll(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    let roots = 0;
+
+    /**
+     * Symbols for a document that really sits in the temp directory, so its loads resolve.
+     *
+     * Each call gets its own filename: the documents live in one shared workspace for the whole
+     * file, and re-registering a URI is an error rather than a replacement.
+     */
+    async function symbolsOfFile(source: string): Promise<DocumentSymbol[]> {
+        const uri = pathToFileURL(path.join(tmpDir, `root${roots++}.jd`)).toString();
+        const doc = await parse(source, { documentUri: uri });
+        return services.Jpipe.lsp.DocumentSymbolProvider!.getSymbols(
+            doc, { textDocument: { uri } }) as Promise<DocumentSymbol[]>;
+    }
+
+    const nameOf = (symbols: DocumentSymbol[] | undefined) => (symbols ?? []).map(s => s.name);
+
+    test('an unnamespaced load contributes its models to (default)', async () => {
+        const symbols = await symbolsOfFile('load "./lib.jd"\njustification J { conclusion c is "C" }');
+        expect(nameOf(symbols)).toEqual(['(default)']);
+        expect(nameOf(symbols[0].children)).toEqual(['J', 'T']);
+    });
+
+    test('a loaded model brings its own elements with it', async () => {
+        const symbols = await symbolsOfFile('load "./lib.jd"\njustification J { conclusion c is "C" }');
+        const template = symbols[0].children?.find(child => child.name === 'T');
+        expect(template?.kind).toBe(SymbolKind.Interface);
+        expect(nameOf(template?.children)).toEqual(['c', 'a']);
+    });
+
+    test('an aliased load gets a namespace node of its own', async () => {
+        const symbols = await symbolsOfFile('load "./lib.jd" as lib\njustification J { conclusion c is "C" }');
+        expect(nameOf(symbols)).toEqual(['(default)', 'lib']);
+        expect(nameOf(symbols[0].children)).toEqual(['J']);
+        const namespace = symbols[1];
+        expect(namespace.kind).toBe(SymbolKind.Module);
+        expect(nameOf(namespace.children)).toEqual(['T']);
+    });
+
+    // A file with nothing but an aliased load has no (default) node at all, which is the branch
+    // that decides whether the outline opens with one.
+    test('a namespace node stands alone when nothing is declared locally', async () => {
+        const symbols = await symbolsOfFile('load "./lib.jd" as lib');
+        expect(nameOf(symbols)).toEqual(['lib']);
+    });
+
+    test('a globbed load puts every file it matched under the one namespace', async () => {
+        const symbols = await symbolsOfFile('load "./*.jd" as all');
+        expect(nameOf(symbols)).toEqual(['all']);
+        expect(nameOf(symbols[0].children)).toEqual(['T', 'M']);
+    });
+
+    test('a load that resolves to nothing contributes no symbols', async () => {
+        const symbols = await symbolsOfFile('load "./nowhere.jd" as gone\njustification J { conclusion c is "C" }');
+        expect(nameOf(symbols)).toEqual(['(default)', 'gone']);
+        expect(symbols[1].children).toBeUndefined();
     });
 });

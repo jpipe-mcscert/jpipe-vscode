@@ -135,3 +135,36 @@ export function getAllElements(
 export function getLocalElements(node: Justification | Template): JustificationElement[] {
     return (node.contents?.body ?? []) as JustificationElement[];
 }
+
+/**
+ * The element a `refine` hook names in `base`, or `undefined` if it names none.
+ *
+ * A port of the compiler's `JustificationModel.findById`, and it must stay one: this decides both
+ * whether a hook is reported as unknown and whether renaming an element rewrites it, so a rule
+ * stricter than the compiler's invents errors and a looser one misses them.
+ *
+ * Two ways to match, in the compiler's order. An **exact** id, and failing that a **suffix**: an
+ * id ending in `':' + hook`, which is what lets `hook: "a"` name an element declared `T:a`. The
+ * fallback exists because template expansion qualifies inherited elements, so the name the author
+ * wrote in the template is not the id the element ends up with — verified against `jpipe`, which
+ * builds that model without complaint.
+ *
+ * The compiler looks at the conclusion before the other elements. That ordering decides which of
+ * two matching elements is returned, never whether one matches, so it is not reproduced here —
+ * `getAllElements` yields local before inherited, which is the order that matters for a hook.
+ *
+ * **Its answer is only as good as `base` being a plain model.** A composed one resolves hooks
+ * through aliases that no `.jd` file contains and that exist only once the operator has run, so
+ * callers must exclude it rather than trust a `undefined` from here.
+ */
+export function hookTarget(
+    base: Justification | Template,
+    hook: string
+): JustificationElement | undefined {
+    if (!hook) return undefined;
+    const elements = getAllElements(base);
+    const exact = elements.find(element => qualifiedIdText(element.id) === hook);
+    if (exact) return exact;
+    const suffix = `:${hook}`;
+    return elements.find(element => qualifiedIdText(element.id).endsWith(suffix));
+}
