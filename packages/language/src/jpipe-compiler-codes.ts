@@ -10,7 +10,7 @@
  * whoever adds the next code to *decide* whether the compiler already names that rule, at the
  * moment they add it, rather than discovering the answer after both names have shipped.
  *
- * SOURCE: jpipe-compiler v2.4.0 (b79b400), copied 2026-08-13 from
+ * SOURCE: jpipe-compiler v2.5.0 (0bb9332), copied 2026-08-15 from
  *   jpipe-compiler/src/main/java/ca/mcscert/jpipe/compiler/model/DiagnosticCodes.java
  *   jpipe-model/src/main/java/ca/mcscert/jpipe/model/validation/ConsistencyValidator.java
  *   jpipe-model/src/main/java/ca/mcscert/jpipe/model/validation/CompletenessValidator.java
@@ -41,6 +41,10 @@ export const COMPILER_CODES = [
     'unresolved-symbol',
     // ConsistencyValidator.java
     'no-duplicate-ids',
+    // Merge aliases only; the element ids it shares a namespace with are `no-duplicate-ids`. The
+    // aliases exist only once an operator has unified something, so nothing in a `.jd` file names
+    // one and this extension cannot check it — ADR-VSC-0022's amendment of 2026-08-15.
+    'unique-identifiers',
     'acyclic-support',
     'acyclic-implements',
     // CompletenessValidator.java
