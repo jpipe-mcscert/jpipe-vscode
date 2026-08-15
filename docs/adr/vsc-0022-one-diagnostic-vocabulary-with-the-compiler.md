@@ -255,6 +255,31 @@ verifying an unrelated fix, and it failed on `main` as well as on the branch. Th
 by a human running the script, or not at all" consequence above, behaving exactly as described: the
 gap existed from the day v2.5.0 was tagged until someone happened to look.
 
+**So `release.sh preflight` now runs it.** Not CI, which still cannot: the reasoning above is
+unchanged, and a gate that never runs still gets deleted. What changed is that "a human running the
+script" had no moment attached to it, and now it has the only moment where the answer has
+consequences — a release is exactly when this repository decides which compiler it claims to work
+with. It sits beside the SonarCloud gate, which is there for the same shape of reason, and borrows
+its escape: **a missing checkout warns rather than fails**, because releasing from a machine
+without jpipe-compiler beside this one is legitimate, and a check that could not run must never
+read as one that passed. That is a trigger, not a guarantee — a release cut from a machine with a
+stale checkout still sees `ok`, and between releases the vocabulary can drift as freely as before.
+
+Two things were considered and rejected. **Running it in `npm test`** would put the whole suite at
+the mercy of a sibling checkout's state, so an unrelated change would go red for a reason that has
+nothing to do with it — which is how the drift was found this time, and it cost a detour.
+**Fetching the compiler's sources over the network in CI** would gate the build on somebody else's
+availability and would still have to pick a version, which is the objection that sank the published
+artifact above.
+
+One residual weakness, recorded rather than fixed: the script finds codes by two globs, and errors
+only when a glob matches *nothing*. A rule added to a file it already reads is caught — this one
+was. A new validator outside `model/validation/`, or a code declared away from `DiagnosticCodes`,
+would be missed in silence. Every code site upstream is inside the globs today, and jpipe-compiler
+ADR-0016 requires that ("introducing a diagnostic code means adding a constant to
+`DiagnosticCodes`"), so the globs are sound by upstream policy rather than by luck — but they
+inherit that policy's fate.
+
 **It is not `no-duplicate-ids` renamed.** Both rules exist, and they check different things.
 `no-duplicate-ids` covers element ids within a model. `unique-identifiers` covers the identifiers
 an *exported* model can be addressed by, which is the ids plus the aliases a merge leaves behind:
