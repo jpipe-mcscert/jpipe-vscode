@@ -2,6 +2,8 @@
 
 ### v1.9.1 (Unreleased)
 - Leader: Sébastien Mosser
+  - Changes:
+    - **Accepting a suggestion in the middle of a word can now replace the rest of it.** Completing with the cursor inside a name always inserted the suggestion and left whatever followed the cursor in place, so completing `ev|idence` in a relation gave `evidenceidence` to clean up by hand. If you have set the editor to replace rather than insert when accepting a suggestion, it now overwrites the whole word. Insert mode, the default, behaves exactly as before. Accepting `@support` after typing `@` still replaces just what you typed (#86)
   - Bug Fixes:
     - **Completion inside a model no longer offers a composition's settings.** In a file where a composition — `refine`, `assemble` and the like — came before the model you were editing, suggestions inside that model had, since v1.7.1, been padded with the composition's configuration keys, such as `hook` and `unifyBy`. Completing the target of a `supports` relation, for instance, offered them next to the elements that could actually go there. Those keys are now suggested only inside a composition's own `{ … }` block, as intended
     - **Suggestions while writing a composition fit where the cursor is.** Asking for suggestions inside a setting's quoted value offered the setting names, and accepting one wrote it into the string; now only `hook` and `unifyBy` offer anything there, since theirs are the values with a known set. A comment between the list of sources and the `{` no longer stops those values from being suggested, a setting you have already written is not offered a second time, and operator names are suggested even when `is` starts a new line or the model also implements a template

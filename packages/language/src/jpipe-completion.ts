@@ -7,7 +7,7 @@ import {
     type CompletionValueItem,
     type NextFeature
 } from 'langium/lsp';
-import { MarkupKind, Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, type CompletionParams, InsertTextFormat } from 'vscode-languageserver';
+import { MarkupKind, Position, type TextEdit, type InsertReplaceEdit, CompletionItem, CompletionItemKind, CompletionList, type CompletionParams, InsertTextFormat } from 'vscode-languageserver';
 import type { IToken } from 'chevrotain';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -207,8 +207,12 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
      *
      * The line prefix has no such gap: `/@\w*$/` is exactly what has been typed, so its length is
      * exactly what the edit must replace.
+     *
+     * That edit stays a plain `TextEdit` even when the client supports insert/replace, which the
+     * default otherwise answers with: the default's replace range runs from the same token offsets
+     * that miss the `@`, so it would bring the doubling back.
      */
-    protected override buildCompletionTextEdit(context: CompletionContext, label: string, newText: string): TextEdit | undefined {
+    protected override buildCompletionTextEdit(context: CompletionContext, label: string, newText: string): TextEdit | InsertReplaceEdit | undefined {
         const typed = /@\w*$/.exec(this.linePrefixToCursor(context));
 
         if (typed && !label.startsWith('@')) {
