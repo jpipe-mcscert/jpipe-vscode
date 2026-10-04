@@ -1,6 +1,6 @@
 ## Changelog
 
-### v1.9.1 (Unreleased)
+### v1.9.1 (2026-10-04)
 - Leader: Sébastien Mosser
   - Changes:
     - **Accepting a suggestion in the middle of a word can now replace the rest of it.** Completing with the cursor inside a name always inserted the suggestion and left whatever followed the cursor in place, so completing `ev|idence` in a relation gave `evidenceidence` to clean up by hand. If you have set the editor to replace rather than insert when accepting a suggestion, it now overwrites the whole word. Insert mode, the default, behaves exactly as before. `@support` follows the same rule, so completing `@su` in the middle of `@support` no longer leaves a stray `pport` behind (#90)
