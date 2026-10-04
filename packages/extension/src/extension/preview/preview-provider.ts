@@ -189,7 +189,7 @@ export class PreviewProvider {
             this.unsaved = false;
             this.post({ type: 'setUnsaved', unsaved: false });
             const editor = vscode.window.visibleTextEditors.find(e => e.document === document);
-            this.updatePreview(document, editor);
+            void this.updatePreview(document, editor);
         });
 
         const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
@@ -217,8 +217,8 @@ export class PreviewProvider {
                 diagramAtCursor,
                 renderedDiagram: this.lastRenderedDiagramName
             })) {
-                case 'render':    this.updatePreview(doc, editor); break;
-                case 'highlight': this.updateHighlightOnly(doc, editor); break;
+                case 'render':    void this.updatePreview(doc, editor); break;
+                case 'highlight': void this.updateHighlightOnly(doc, editor); break;
                 case 'nothing':   break;
             }
         });
