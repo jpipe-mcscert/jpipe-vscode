@@ -1,5 +1,7 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { execFile, type ExecFileOptions } from 'node:child_process';
+import { promisify } from 'node:util';
 
 /**
  * Turning an argv pair into something Windows can actually launch.
@@ -187,4 +189,38 @@ export function planLaunchHere(file: string, args: string[], env: NodeJS.Process
             }
         }
     });
+}
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Runs `file` without a shell and returns what it printed, decoded as UTF-8.
+ *
+ * The output is collected as bytes and decoded here, never by passing `encoding: 'utf8'`. That
+ * option makes Node call `setEncoding` on the child's streams, which constructs a `StringDecoder`
+ * — and the extension host of VS Code 1.139 and later can lose that constructor. When it does,
+ * every program fails to start with `StringDecoder is not a constructor`: the preview, and the
+ * built-in Git extension beside it. Seen here in an Extension Development Host, and reported by
+ * nimblescape/vscode-dev-environments#11 on 1.139.1. Decoding once the bytes are all in sidesteps
+ * it, and with the whole output in hand no character can be split across a chunk boundary.
+ *
+ * A failure rejects with Node's own error, `stdout` and `stderr` decoded in place, so
+ * `asProcessFailure` reads it exactly as it read the string-encoded one.
+ */
+export async function execFileText(
+    file: string,
+    args: readonly string[],
+    options: Omit<ExecFileOptions, 'encoding'>
+): Promise<{ stdout: string; stderr: string }> {
+    try {
+        const { stdout, stderr } = await execFileAsync(file, args, { ...options, encoding: 'buffer' });
+        return { stdout: stdout.toString('utf8'), stderr: stderr.toString('utf8') };
+    } catch (error: unknown) {
+        if (typeof error === 'object' && error !== null) {
+            const failure = error as { stdout?: unknown; stderr?: unknown };
+            if (Buffer.isBuffer(failure.stdout)) failure.stdout = failure.stdout.toString('utf8');
+            if (Buffer.isBuffer(failure.stderr)) failure.stderr = failure.stderr.toString('utf8');
+        }
+        throw error;
+    }
 }

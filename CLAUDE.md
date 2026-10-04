@@ -54,7 +54,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
           commands.ts           ← the 20 contributed commands, as a table (ADR-VSC-0017)
           exclusion-commands.ts ← the exclusion flows and their failure messages
           exclusions.ts         ← excluded-path manager, decorations, code lenses
-          process-launcher.ts   ← Windows command resolution + cmd.exe escaping (tested)
+          process-launcher.ts   ← Windows command resolution, cmd.exe escaping, running a program (tested)
           compiler/             ← obtaining and running the jPipe compiler (ADR-VSC-0016)
             image-generator.ts  ← calls the external jpipe CLI/JAR for SVG/PNG/JSON
             compiler-invocation.ts ← argv construction, vscode-free (tested)
@@ -219,7 +219,8 @@ The parsing test's `beforeAll` wires up services with `EmptyFileSystem` (no real
 **There is no VS Code host here**, so a module that imports `vscode` cannot be loaded. Testable
 logic therefore lives in vscode-free modules that the vscode-importing ones consume:
 
-- `process-launcher.ts` — Windows command resolution and `cmd.exe` escaping. Platform, env and
+- `process-launcher.ts` — Windows command resolution and `cmd.exe` escaping, and `execFileText`,
+  which decodes a program's output itself (VS Code 1.139+ can break `setEncoding`). Platform, env and
   filesystem are injected, so the Windows rules are exercised on any runner.
 - `release-selection.ts` — semver precedence, release filtering, download host allowlist.
 

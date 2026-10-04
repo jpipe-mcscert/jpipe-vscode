@@ -1,13 +1,16 @@
-import { describe, expect, test } from 'vitest';
+import { Readable } from 'node:stream';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
     escapeCmdArgument,
     escapeCmdCommand,
+    execFileText,
     isBatchFile,
     planLaunch,
     readEnv,
     resolveWindowsExecutable,
     type LaunchEnvironment
 } from '../src/extension/process-launcher.js';
+import { asProcessFailure } from '../src/shared/errors.js';
 
 /**
  * These run on any platform: the Windows rules are exercised through an injected platform, env
@@ -206,5 +209,44 @@ describe('cmd.exe escaping', () => {
 
     test('escapeCmdCommand protects the command without quoting it', () => {
         expect(escapeCmdCommand('C:\\Program Files\\jpipe.cmd')).toBe('C:\\Program^ Files\\jpipe.cmd');
+    });
+});
+
+/**
+ * These start a real process — this Node, running a one-line script — because what is under test
+ * is how its output comes back, and that only exists once something has printed it.
+ */
+describe('execFileText', () => {
+
+    const node = (script: string) => execFileText(process.execPath, ['-e', script], {});
+
+    // Multi-byte on purpose: each of these is two or three bytes in UTF-8.
+    const TEXT = 'Évidence — vérifiée ✓';
+
+    test('returns stdout and stderr as UTF-8 text', async () => {
+        const result = await node(`process.stdout.write(${JSON.stringify(TEXT)}); process.stderr.write('warn é')`);
+        expect(result).toEqual({ stdout: TEXT, stderr: 'warn é' });
+    });
+
+    test('a failure keeps its exit code and its output, decoded', async () => {
+        const error = await node(`process.stdout.write('<svg/>'); process.stderr.write('Modèle invalide'); process.exit(1)`)
+            .then(() => undefined, (e: unknown) => e);
+        expect(asProcessFailure(error)).toMatchObject({ stdout: '<svg/>', stderr: 'Modèle invalide', exitCode: 1 });
+    });
+
+    /**
+     * The extension host of VS Code 1.139+ can lose `StringDecoder`, and `setEncoding` is where
+     * Node builds one. Breaking it the same way here is the closest a test can come to that host:
+     * the string-encoded `execFile` this replaced fails this case with the very message the
+     * preview showed.
+     */
+    describe('in a host whose StringDecoder is broken', () => {
+        const original = Readable.prototype.setEncoding;
+        afterEach(() => { Readable.prototype.setEncoding = original; });
+
+        test('the output still comes back', async () => {
+            Readable.prototype.setEncoding = () => { throw new TypeError('StringDecoder is not a constructor'); };
+            expect((await node(`process.stdout.write(${JSON.stringify(TEXT)})`)).stdout).toBe(TEXT);
+        });
     });
 });
