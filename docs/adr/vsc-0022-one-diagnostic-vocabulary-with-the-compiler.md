@@ -241,3 +241,67 @@ anyone changing that behaviour upstream has a chance of finding it.
 Remaining gaps: `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`,
 `unresolved-override`, `cyclic-implements`, `implements-error`, `reference-into-template`,
 `incompatible-unification`, and `invalid-support` beyond strategies.
+
+## Amendment (2026-08-15): `unique-identifiers`, a gap that cannot be closed here
+
+The staleness this record predicted happened, and the mechanism it provided caught it.
+`npm run check:codes` reported `+ unique-identifiers (the compiler has it; we do not)` — a rule
+jpipe-compiler added in v2.5.0, in `ConsistencyValidator`, alongside the three already vendored.
+It is now in `COMPILER_CODES`, and the SOURCE line moves to v2.5.0 (`0bb9332`). Nothing else in the
+three files changed since v2.4.0; the diff is that one rule.
+
+Worth noting how it was found. Not by the script being run on a schedule — it was run while
+verifying an unrelated fix, and it failed on `main` as well as on the branch. That is the "caught
+by a human running the script, or not at all" consequence above, behaving exactly as described: the
+gap existed from the day v2.5.0 was tagged until someone happened to look.
+
+**So `release.sh preflight` now runs it.** Not CI, which still cannot: the reasoning above is
+unchanged, and a gate that never runs still gets deleted. What changed is that "a human running the
+script" had no moment attached to it, and now it has the only moment where the answer has
+consequences — a release is exactly when this repository decides which compiler it claims to work
+with. It sits beside the SonarCloud gate, which is there for the same shape of reason, and borrows
+its escape: **a missing checkout warns rather than fails**, because releasing from a machine
+without jpipe-compiler beside this one is legitimate, and a check that could not run must never
+read as one that passed. That is a trigger, not a guarantee — a release cut from a machine with a
+stale checkout still sees `ok`, and between releases the vocabulary can drift as freely as before.
+
+Two things were considered and rejected. **Running it in `npm test`** would put the whole suite at
+the mercy of a sibling checkout's state, so an unrelated change would go red for a reason that has
+nothing to do with it — which is how the drift was found this time, and it cost a detour.
+**Fetching the compiler's sources over the network in CI** would gate the build on somebody else's
+availability and would still have to pick a version, which is the objection that sank the published
+artifact above.
+
+One residual weakness, recorded rather than fixed: the script finds codes by two globs, and errors
+only when a glob matches *nothing*. A rule added to a file it already reads is caught — this one
+was. A new validator outside `model/validation/`, or a code declared away from `DiagnosticCodes`,
+would be missed in silence. Every code site upstream is inside the globs today, and jpipe-compiler
+ADR-0016 requires that ("introducing a diagnostic code means adding a constant to
+`DiagnosticCodes`"), so the globs are sound by upstream policy rather than by luck — but they
+inherit that policy's fate.
+
+**It is not `no-duplicate-ids` renamed.** Both rules exist, and they check different things.
+`no-duplicate-ids` covers element ids within a model. `unique-identifiers` covers the identifiers
+an *exported* model can be addressed by, which is the ids plus the aliases a merge leaves behind:
+every id unified into an element keeps addressing that element, so a reference written before a
+composition still resolves after it. A key landing on two elements gives a consumer no way to
+choose, and `jpipe-runner` discards the whole model rather than guess.
+
+**This gap is of a different kind from the others listed above, and the list should not flatten
+it.** The rest — `sub-conclusion-supported`, `acyclic-support`, and the others — are rules the
+editor could implement and has not. This one it cannot. Aliases are created only by
+`CompositionOperator` and `Unifier`, which emit `RegisterAlias` commands when they merge elements;
+no `.jd` file names an alias, and no alias exists until an operator has run. Checking the rule would
+mean executing unification in the language server, which is the same boundary
+`checkModelHasConclusion` already declines to cross for composed models — their elements do not
+exist until the operator has run either.
+
+So it is vendored to be filed, not to be implemented, and its entry in `COMPILER_CODES` carries
+that reason inline. If the editor ever does evaluate compositions, this becomes reachable and the
+distinction stops mattering; until then, recording it as merely "not yet done" would misstate what
+is missing.
+
+Remaining gaps: `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`,
+`unresolved-override`, `cyclic-implements`, `implements-error`, `reference-into-template`,
+`incompatible-unification`, `invalid-support` beyond strategies, and — out of reach rather than
+undone — `unique-identifiers`.

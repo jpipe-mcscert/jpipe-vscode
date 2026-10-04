@@ -877,3 +877,151 @@ describe('Unification method completion', () => {
         });
     });
 });
+
+/**
+ * What the provider *suppresses*, which is most of what makes it feel like it understands jPipe.
+ *
+ * Every case here is a branch that had no test: offering `is` where a label cannot go, offering
+ * ordinary keywords after `@`, or offering the wrong side of a relation. None of them throws when
+ * it regresses — the list simply fills up with things that do not belong, which is exactly the
+ * state the provider exists to prevent, and exactly the state nothing was checking for.
+ */
+describe('Keyword filtering', () => {
+
+    test('`is` is offered once an element has been named', async () => {
+        await checkCompletion({
+            text: 'justification J {\n evidence e <|>\n}',
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).toContain('is');
+            }
+        });
+    });
+
+    // A qualified override is named the same way, and the regex has to allow the colon.
+    test('`is` is offered after a qualified override id', async () => {
+        await checkCompletion({
+            text: 'template T {\n @support a is "A"\n}\njustification J implements T {\n evidence T:a <|>\n}',
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).toContain('is');
+            }
+        });
+    });
+
+    // A relation takes an element, never a label, so `is` on that line is always wrong.
+    test('`is` is withheld after `supports`', async () => {
+        await checkCompletion({
+            text: 'justification J {\n evidence e is "E"\n strategy s is "S"\n e supports <|>\n}',
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).not.toContain('is');
+            }
+        });
+    });
+
+    test('`is` is withheld before an element has a name', async () => {
+        await checkCompletion({
+            text: 'justification J {\n evidence <|>\n}',
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).not.toContain('is');
+            }
+        });
+    });
+});
+
+/**
+ * Typing `@` is an unambiguous statement of intent: the only thing in the grammar that starts
+ * with it is `@support`. Everything else is withheld, and the insertion has to replace the `@`
+ * already typed rather than append to it — which is what `buildCompletionTextEdit` is for, and
+ * what the second case pins.
+ */
+describe('The @ prefix', () => {
+
+    test('offers @support and nothing else', async () => {
+        await checkCompletion({
+            text: 'template T {\n @<|>\n}',
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).toContain('@support');
+                expect(labels.filter(label => !label.startsWith('@'))).toEqual([]);
+            }
+        });
+    });
+
+    // The bug this pins: `@support` is a keyword, so a lone `@` matches no token and the default
+    // edit inserted beside it, giving `@@support` from the one keystroke that could not have been
+    // clearer about what was meant.
+    test.each([
+        ['a lone @', 'template T {\n @<|>\n}', 1],
+        ['a partly typed @su', 'template T {\n @su<|>\n}', 1]
+    ])('replaces %s instead of inserting beside it', async (_name, text, startCharacter) => {
+        await checkCompletion({
+            text,
+            index: 0,
+            assert: (completions) => {
+                const item = completions.items.find(i => i.label === '@support');
+                expect(item?.textEdit, '@support is not offered').toBeDefined();
+                const edit = item!.textEdit as { range: { start: { character: number } }; newText: string };
+                expect(edit.newText.startsWith('@support')).toBe(true);
+                expect(edit.range.start.character, 'the edit must open on the @').toBe(startCharacter);
+            }
+        });
+    });
+
+    /**
+     * Two mechanisms can produce this item: the keyword pipeline, and the hand-built fallback in
+     * `tryAtSupportKeywordCompletion` that fills in when the pipeline offers nothing. They must
+     * agree, because which one answers depends on how much has been typed — and the fallback was
+     * *shadowed* by the pipeline's broken edit, so the one case that looked right in the code was
+     * the one the user never got.
+     */
+    test.each([
+        ['@<|>', 1],
+        ['@s<|>', 1],
+        ['@zzz<|>', 1]
+    ])('whichever mechanism answers %s, the edit opens on the @', async (typed, startCharacter) => {
+        await checkCompletion({
+            text: `template T {\n ${typed}\n}`,
+            index: 0,
+            assert: (completions) => {
+                const item = completions.items.find(i => i.label === '@support');
+                expect(item?.textEdit, '@support is not offered').toBeDefined();
+                const edit = item!.textEdit as { range: { start: { character: number } } };
+                expect(edit.range.start.character).toBe(startCharacter);
+            }
+        });
+    });
+});
+
+/**
+ * `implements` is the one place this provider deliberately consults the workspace index rather
+ * than staying inside what the file loads, so a template can be offered before the `load` that
+ * would make it resolve exists. Local templates come first, then loaded ones, and a name is
+ * offered once however many times it is reachable.
+ */
+describe('implements completion', () => {
+
+    test('offers a template declared in the same file', async () => {
+        await checkCompletion({
+            text: 'template T { conclusion c is "C" }\njustification J implements <|>',
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).toContain('T');
+            }
+        });
+    });
+
+    test('offers each name once, however many ways it is reachable', async () => {
+        await checkCompletion({
+            text: 'template T { conclusion c is "C" }\njustification J implements <|>',
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label).filter(label => label === 'T');
+                expect(labels).toHaveLength(1);
+            }
+        });
+    });
+});

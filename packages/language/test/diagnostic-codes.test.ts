@@ -63,7 +63,7 @@ describe('diagnostic codes', () => {
 
     test.each([
         [JpipeIssue.NoEmptyLabel, 'justification J { conclusion c is "" }'],
-        [JpipeIssue.NoEmptyUnit, 'load "nowhere.jd"'],
+        [JpipeIssue.NoEmptyUnit, '// nothing but a comment\n'],
         [JpipeIssue.NoDuplicateModelNames, 'justification J { conclusion c is "C" }\njustification J { conclusion c is "C" }'],
         [JpipeIssue.HasAbstractSupport, 'template T { conclusion c is "C" }'],
         [JpipeIssue.ConclusionPresent, 'justification J { evidence e is "E" }'],
@@ -73,6 +73,7 @@ describe('diagnostic codes', () => {
         [JpipeIssue.MissingConfigKey, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" }'],
         [JpipeIssue.OperatorArity, 'justification A { conclusion c is "C" }\njustification B is refine(A)'],
         [JpipeIssue.UnknownUnificationMethod, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" strategyLabel: "S" unifyBy: "nope" }'],
+        [JpipeIssue.UnknownHook, 'justification A { conclusion c is "C" }\njustification B { conclusion d is "D" }\njustification R is refine(A, B) { hook: "nope" }'],
         [JpipeIssue.NoDuplicateIds, 'justification J { conclusion c is "C" evidence c is "E" }'],
         [JpipeIssue.StrategySupported, 'justification J { conclusion c is "C" strategy s is "S"\n s supports c }'],
         [JpipeIssue.InvalidSupport, 'justification J { conclusion c is "C" strategy s is "S" strategy t is "T"\n t supports s\n s supports c }'],
@@ -293,7 +294,6 @@ describe('severity follows the compiler', () => {
     /** Every code deliberately reported as a warning, with the reason it is not an error. */
     const EXPECTED_WARNINGS: readonly JpipeIssueCode[] = [
         JpipeIssue.NoEmptyLabel,             // compiler builds it: nothing checks a label's contents
-        JpipeIssue.NoEmptyUnit,              // compiler builds it: a file of only `load`s is legal
         JpipeIssue.UnknownConfigKey,         // compiler builds it: unrecognised keys are ignored
         JpipeIssue.UnknownUnificationMethod  // the exception: the editor cannot see its registry
     ];

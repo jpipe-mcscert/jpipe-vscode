@@ -37,6 +37,7 @@ export interface OperatorSpec {
  * operator, and `Unifier` reads these two out of it. So they are not `assemble` keys or `refine`
  * keys — they belong to the composition machinery itself.
  */
+export const HOOK_KEY = 'hook';
 export const UNIFY_BY_KEY = 'unifyBy';
 export const UNIFY_EXCLUDE_KEY = 'unifyExclude';
 export const UNIVERSAL_CONFIG_KEYS = [UNIFY_BY_KEY, UNIFY_EXCLUDE_KEY] as const;
@@ -53,7 +54,7 @@ export const JPIPE_OPERATORS: readonly OperatorSpec[] = [
     {
         name: 'refine',
         summary: 'graft a model onto a hooked element of another',
-        requiredKeys: ['hook'],
+        requiredKeys: [HOOK_KEY],
         optionalKeys: [],
         arity: { min: 2, max: 2 },
         paramNames: ['base', 'refinement']

@@ -230,6 +230,32 @@ check_tag_absent() {
   fi
 }
 
+# The vendored diagnostic vocabulary against a sibling jpipe-compiler checkout.
+#
+# jpipe-vscode ADR-VSC-0022 rules this out as a CI gate — CI builds this repository alone, so the
+# gate could never run — and leaves staleness to "a human running the script, or not at all". That
+# held for the whole life of jpipe-compiler v2.5.0's `unique-identifiers`, which was found by
+# accident. This is the missing trigger: not every build, but the one moment the answer matters,
+# on the one machine that has the checkout.
+#
+# A missing checkout warns rather than fails. Releasing from a machine without jpipe-compiler
+# beside this one is legitimate, and a check that cannot run must not read as one that passed.
+check_codes() {
+  local out
+  if ! out=$(npm run --silent check:codes 2>&1); then
+    fail "the vendored diagnostic vocabulary disagrees with jpipe-compiler"
+    # Its own report names the codes and cites ADR-VSC-0022; repeating either here would only
+    # bury it. Indented to sit under the marker, with the blank line kept but not padded.
+    printf '%s\n' "$out" | sed -e 's/^./       &/' -e 's/[[:space:]]*$//'
+    return
+  fi
+  case $out in
+    skipped*) warn "vocabulary unchecked — no jpipe-compiler checkout beside this one"
+              note "npm run check:codes -- /path/to/jpipe-compiler" ;;
+    *)        pass "${out#ok — }" ;;   # the script's own "ok — " would double the pass marker
+  esac
+}
+
 check_changelog_closed() {
   local version=$1
   if grep -qE "^### v$version \([0-9]{4}-[0-9]{2}-[0-9]{2}\)$" CHANGELOG.md; then
@@ -480,6 +506,7 @@ cmd_preflight() {
   check_versions_match "$version"
   check_changelog_closed "$version"
   check_tag_absent "$version"
+  check_codes
   check_quality_gate
   check_build
   check_package

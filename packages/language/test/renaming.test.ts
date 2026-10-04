@@ -340,6 +340,107 @@ justification J implements T {
         });
     });
 
+    /**
+     * A hook is the third way this grammar writes a name that no link records, after the override
+     * and the relation — and the least visible, because it is inside a string. A rename that misses
+     * it leaves a model that parses, reads correctly, and dies in the compiler.
+     */
+    describe('a refine hook naming the renamed element', () => {
+
+        const REF = `justification Ref {
+ conclusion rc is "RC"
+ strategy rs is "RS"
+ evidence re is "RE"
+ re supports rs
+ rs supports rc
+}`;
+
+        const HOOKED = `justification Base {
+ conclusion c is "C"
+ strategy s is "S"
+ evidence e is "E"
+ e supports s
+ s supports c
+}
+${REF}
+justification R is refine(Base, Ref) { hook: "e" }`;
+
+        test('the hook follows the element', async () => {
+            expect(await renamed(HOOKED, 'evidence e', 9, 'signed'))
+                .toContain('hook: "signed"');
+        });
+
+        // The edit reaches inside the literal: replacing the whole token would work here and
+        // would quietly eat the quotes the moment the name were qualified.
+        test('the quotes are left where they were', async () => {
+            expect(await renamed(HOOKED, 'evidence e', 9, 'signed'))
+                .toContain('justification R is refine(Base, Ref) { hook: "signed" }');
+            expect(replaced(HOOKED, await renameEdits(HOOKED, 'evidence e', 9, 'signed')))
+                .not.toContain('"e"');
+        });
+
+        // Renaming the `@support` renames every override of it, and the hook resolves to one of
+        // them through the compiler's suffix fallback — so it has to move with them.
+        const THROUGH_TEMPLATE = `template T {
+ @support a is "A"
+ strategy s is "S"
+ conclusion c is "C"
+ a supports s
+ s supports c
+}
+justification Base implements T { evidence T:a is "Signed" }
+${REF}
+justification R is refine(Base, Ref) { hook: "HOOKTEXT" }`;
+
+        test('a qualified hook keeps its qualifier', async () => {
+            const source = THROUGH_TEMPLATE.replace('HOOKTEXT', 'T:a');
+            expect(await renamed(source, '@support a', 9, 'signed'))
+                .toContain('hook: "T:signed"');
+        });
+
+        test('a bare hook naming a qualified element is rewritten bare', async () => {
+            const source = THROUGH_TEMPLATE.replace('HOOKTEXT', 'a');
+            expect(await renamed(source, '@support a', 9, 'signed'))
+                .toContain('hook: "signed"');
+        });
+
+        // `Base` overrides `a` but not `e`, so the only `e` is the template's — which expansion
+        // turned into `T:e`, the spelling the hook uses.
+        test('a hook naming an inherited element by its qualified id follows it', async () => {
+            const source = `template T {
+ @support a is "A"
+ evidence e is "E"
+ strategy s is "S"
+ conclusion c is "C"
+ a supports s
+ e supports s
+ s supports c
+}
+justification Base implements T { evidence T:a is "Signed" }
+${REF}
+justification R is refine(Base, Ref) { hook: "T:e" }`;
+            expect(await renamed(source, 'evidence e', 9, 'signed'))
+                .toContain('hook: "T:signed"');
+        });
+
+        // Spelling alone could not tell these apart: both hooks say "e", and only one of them
+        // resolves to the element being renamed.
+        test('a same-named element of another model is not dragged along', async () => {
+            const source = `${HOOKED}
+justification Other {
+ conclusion oc is "OC"
+ strategy os is "OS"
+ evidence e is "E"
+ e supports os
+ os supports oc
+}
+justification R2 is refine(Other, Ref) { hook: "e" }`;
+            const result = await renamed(source, 'evidence e', 9, 'signed');
+            expect(result).toContain('hook: "signed"');
+            expect(result).toContain('hook: "e"');
+        });
+    });
+
     describe('an override is renamed at the template, not where it is restated', () => {
 
         const QUALIFIED_RELATION = `template T { @support a is "A" }

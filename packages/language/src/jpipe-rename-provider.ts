@@ -17,7 +17,7 @@ import type { JpipeServices } from './jpipe-module.js';
 import { getDocumentAndUnit } from './jpipe-ast-context.js';
 import { keywordFor } from './jpipe-render.js';
 import { localName, qualifiedIdText } from './jpipe-utils.js';
-import { elementEdits, overridesIn, qualifierEdits, segmentNodes, type NamePrefix } from './jpipe-qualified-names.js';
+import { elementEdits, hookEdits, overridesIn, qualifierEdits, segmentNodes, type NamePrefix } from './jpipe-qualified-names.js';
 
 /** What the cursor is asking to rename. */
 type RenameTarget =
@@ -57,6 +57,12 @@ interface Candidate {
  * a cursor on it belongs to *that* node rather than to the element, and Langium's resolution stops
  * there and finds nothing to rename. Renaming an element therefore worked from a relation naming
  * it and not from its own declaration, which is the wrong way round.
+ *
+ * **A name can be a string.** `refine(Base, Ref) { hook: "e" }` names an element of `Base` inside
+ * a string literal, which is neither a reference nor an identifier, so every mechanism above
+ * misses it and a rename used to leave it pointing at a name that no longer existed — a model that
+ * still looked right in the editor and failed at build time. Hooks are matched by what they
+ * resolve to rather than by how they are spelled, since `hook: "a"` may name `T:a`.
  *
  * **An override is renamed from the template, not at the override.** Renaming `T:abs` where it is
  * used would have to rename the `@support` it restates and every sibling override across the
@@ -198,8 +204,11 @@ export class JpipeRenameProvider extends DefaultRenameProvider {
 
         const changes: Record<string, TextEdit[]> = {};
         for (const { document, unit, prefixes } of candidates) {
-            collect(changes, document.uri.toString(),
-                elementEdits(unit, prefixes, name, affected, newName));
+            collect(changes, document.uri.toString(), [
+                ...elementEdits(unit, prefixes, name, affected, newName),
+                // A `refine` hook names the element in a string, so nothing above sees it.
+                ...hookEdits(unit, affected, newName)
+            ]);
         }
         return { changes };
     }

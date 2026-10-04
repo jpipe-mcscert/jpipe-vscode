@@ -174,6 +174,11 @@ gate runs against `main`, so a release cut from a red `main` would otherwise shi
 project has already declined to merge. An unreachable SonarCloud is a warning rather than a
 failure — a release should not be blocked by somebody else's outage.
 
+The diagnostic vocabulary is compared against a `jpipe-compiler` checkout beside this one, for
+the same reason and with the same escape: CI has no such checkout, so this is the only place the
+comparison can run, and a missing checkout warns rather than fails. Point it elsewhere with
+`npm run check:codes -- /path/to/jpipe-compiler`.
+
 #### 3. Tag
 
 ```
