@@ -8,6 +8,7 @@ import {
     type NextFeature
 } from 'langium/lsp';
 import { MarkupKind, Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, type CompletionParams, InsertTextFormat } from 'vscode-languageserver';
+import type { IToken } from 'chevrotain';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { JpipeServices } from './jpipe-module.js';
@@ -51,6 +52,83 @@ function trailingWord(text: string): string {
     let start = text.length;
     while (start > 0 && WORD_CHARACTER.test(text[start - 1])) start--;
     return text.slice(start);
+}
+
+/**
+ * Where the cursor sits in a composition — `justification Name is operator(sources) { key: "value" }`
+ * — with what the completions for that spot need to know. `partial` is what has been typed of
+ * the word or value being completed.
+ */
+type CompositionCursor =
+    | { readonly at: 'operator'; readonly partial: string }
+    | { readonly at: 'key'; readonly operator: string; readonly written: readonly string[]; readonly partial: string }
+    | { readonly at: 'value'; readonly operator: string; readonly sources: readonly string[]; readonly key: string; readonly partial: string };
+
+const isModelKeyword = (token: IToken | undefined): boolean =>
+    token?.image === 'justification' || token?.image === 'template';
+
+const isId = (token: IToken | undefined): boolean => token?.tokenType.name === 'ID';
+
+/**
+ * Whether the tokens before `tokens[is]` declare a model: `justification Name`, or the same with
+ * `implements Parent` after it, where the parent may be qualified (`ns:Parent`).
+ */
+function declaresModelBefore(tokens: readonly IToken[], is: number): boolean {
+    if (isModelKeyword(tokens[is - 2]) && isId(tokens[is - 1])) return true;
+    let parent = is - 1;
+    while (tokens[parent - 1]?.image === ':' && isId(tokens[parent - 2])) parent -= 2;
+    return isId(tokens[parent])
+        && tokens[parent - 1]?.image === 'implements'
+        && isId(tokens[parent - 2])
+        && isModelKeyword(tokens[parent - 3]);
+}
+
+/** The cursor completing the operator, right after `justification Name is`. */
+function operatorCursor(tokens: readonly IToken[], partial: string): CompositionCursor | undefined {
+    const is = partial && tokens.at(-1)?.image === partial ? tokens.length - 2 : tokens.length - 1;
+    return tokens[is]?.image === 'is' && declaresModelBefore(tokens, is) ? { at: 'operator', partial } : undefined;
+}
+
+/**
+ * The composition whose config block is still open at the end of `tokens`: the last `{` is
+ * unclosed and closes the parameter list of `justification Name is operator(…)`. A model's body
+ * opens with `{` too, so being inside an unclosed brace is not enough on its own.
+ */
+function openConfigBlock(tokens: readonly IToken[]): { operator: string; sources: string[]; block: readonly IToken[] } | undefined {
+    let open = tokens.length - 1;
+    while (open >= 0 && tokens[open].image !== '{') {
+        if (tokens[open].image === '}') return undefined;
+        open--;
+    }
+    if (tokens[open - 1]?.image !== ')') return undefined;
+
+    let paren = open - 2;
+    while (paren >= 0 && tokens[paren].image !== '(') paren--;
+    const operator = tokens[paren - 1];
+    if (!isId(operator) || tokens[paren - 2]?.image !== 'is' || !declaresModelBefore(tokens, paren - 2)) return undefined;
+
+    // A qualified source, `ns:Model`, is several tokens; the commas are what separate them.
+    const sources = tokens.slice(paren + 1, open - 1).map(token => token.image).join('').split(',');
+    return { operator: operator.image, sources, block: tokens.slice(open + 1) };
+}
+
+/** The cursor in the value of `key: "…`, the tokens being those before the value's opening quote. */
+function valueCursor(tokens: readonly IToken[], partial: string): CompositionCursor | undefined {
+    const config = openConfigBlock(tokens);
+    const [key, colon] = config?.block.slice(-2) ?? [];
+    if (!config || !isId(key) || colon?.image !== ':') return undefined;
+    return { at: 'value', operator: config.operator, sources: config.sources, key: key.image, partial };
+}
+
+/** The cursor on a key in an open config block, with the keys the block already sets. */
+function keyCursor(tokens: readonly IToken[], partial: string): CompositionCursor | undefined {
+    const config = openConfigBlock(tokens);
+    // Right after `key:` a value is due, not another key.
+    if (!config || config.block.at(-1)?.image === ':') return undefined;
+    const written = config.block
+        .filter((token, i) => isId(token) && config.block[i + 1]?.image === ':')
+        .map(token => token.image);
+    return { at: 'key', operator: config.operator, written, partial };
 }
 
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
@@ -378,55 +456,31 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             return { ...result, items: loadPathItems };
         }
 
-        const operatorMatch = /(?:justification|template)\s+\w+\s+is\s+(\w*)$/.exec(linePfx);
-        if (operatorMatch) {
+        const textToCursor = document.textDocument.getText({
+            start: Position.create(0, 0),
+            end: pos
+        });
+        const cursor = this.compositionCursor(textToCursor);
+
+        // Inside a config value only that value is completed. Most values are free text, where
+        // nothing applies — certainly not the key names, which is what used to be offered here.
+        if (cursor?.at === 'value') {
+            return { ...result, items: this.getConfigValueCompletions(document, cursor, pos) };
+        }
+
+        if (cursor?.at === 'operator') {
             const indent = /^[ \t]*/.exec(linePfx)?.[0] ?? '';
-            const operatorItems = this.getOperatorCompletions(operatorMatch[1], indent);
+            const operatorItems = this.getOperatorCompletions(cursor.partial, indent);
             if (operatorItems.length > 0) {
                 items = [...operatorItems, ...items.filter(i => !operatorItems.some(o => o.label === i.label))];
             }
         }
 
-        const textToCursor = document.textDocument.getText({
-            start: Position.create(0, 0),
-            end: pos
-        });
-        // Found by index, not by one regex over everything above the cursor.
-        //
-        // The pattern this replaces ended `\{[^}]*(\w*)$` and was unanchored, so the engine tried
-        // it at every position and each attempt scanned to the end — quadratic in the size of the
-        // document above the cursor, re-run on every keystroke (S8786). It also never worked:
-        // greedy `[^}]*` reached the end, `(\w*)` matched empty and `$` succeeded, so the group
-        // was *always* empty and the fuzzy filter in getConfigKeyCompletions was dead code.
-        //
-        // The cursor is inside a config block when the last `{` before it has no `}` after it.
-        // From there the operator is the word before the parameter list, and the regex that finds
-        // it is anchored at the end of a slice that stops at the `(` — one starting position, and
-        // no character class that can overlap its neighbour.
-        const open = textToCursor.lastIndexOf('{');
-        if (open !== -1 && !textToCursor.includes('}', open)) {
-            const head = textToCursor.slice(0, open);
-            const paren = head.lastIndexOf('(');
-            const parameterListClosed = paren !== -1 && head.includes(')', paren);
-            const operator = parameterListClosed
-                ? /(?:justification|template)\s+\w+\s+is\s+(\w+)\s*$/.exec(head.slice(0, paren))
-                : null;
-            if (operator) {
-                const keyItems = this.getConfigKeyCompletions(operator[1], trailingWord(textToCursor));
-                if (keyItems.length > 0) {
-                    items = [...keyItems, ...items.filter(i => !keyItems.some(k => k.label === i.label))];
-                }
+        if (cursor?.at === 'key') {
+            const keyItems = this.getConfigKeyCompletions(cursor.operator, cursor.partial, cursor.written);
+            if (keyItems.length > 0) {
+                items = [...keyItems, ...items.filter(i => !keyItems.some(k => k.label === i.label))];
             }
-        }
-
-        const hookItems = this.getHookValueCompletions(document, params);
-        if (hookItems.length > 0) {
-            return { ...result, items: hookItems };
-        }
-
-        const unifyItems = this.getUnificationMethodCompletions(document, params);
-        if (unifyItems.length > 0) {
-            return { ...result, items: unifyItems };
         }
 
         const contexts = Array.from(this.buildContexts(document, params.position));
@@ -456,19 +510,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
      * middle of one. The compiler resolves the hook by id and does not check its type, so this
      * narrows what is suggested rather than what is permitted.
      */
-    private getHookValueCompletions(document: LangiumDocument, params: CompletionParams): CompletionItem[] {
-        const textToCursor = document.textDocument.getText({
-            start: Position.create(0, 0),
-            end: params.position
-        });
-
-        // Inside an unterminated `hook: "` of a composition, with the partial value so far.
-        const inHookValue = /is\s+(\w+)\s*\(([^)]*)\)\s*\{[^}]*\bhook\s*:\s*"([^"\n]*)$/.exec(textToCursor);
-        if (!inHookValue) return [];
-        const [, operator, paramList, partial] = inHookValue;
-        if (operator !== 'refine') return [];
-
-        const firstParam = paramList.split(',')[0]?.trim();
+    private getHookValueCompletions(document: LangiumDocument, firstParam: string | undefined, partial: string, position: Position): CompletionItem[] {
         if (!firstParam) return [];
 
         const unit = document.parseResult.value as Unit | undefined;
@@ -477,7 +519,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         if (!base) return [];
 
         const start = document.textDocument.positionAt(
-            document.textDocument.offsetAt(params.position) - partial.length
+            document.textDocument.offsetAt(position) - partial.length
         );
 
         return getAllElements(base)
@@ -495,7 +537,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                     documentation: element.name,
                     sortText: `0_hook_${id}`,
                     // Replaces what has been typed so far inside the quotes, and nothing else.
-                    textEdit: { range: { start, end: params.position }, newText: id }
+                    textEdit: { range: { start, end: position }, newText: id }
                 };
             });
     }
@@ -508,19 +550,9 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
      * been *told* its build registers. Each is labelled, so accepting a name makes clear whether
      * the editor knows it exists or has merely been assured of it.
      */
-    private getUnificationMethodCompletions(document: LangiumDocument, params: CompletionParams): CompletionItem[] {
-        const textToCursor = document.textDocument.getText({
-            start: Position.create(0, 0),
-            end: params.position
-        });
-
-        // Inside an unterminated `unifyBy: "` of a composition's config block.
-        const inValue = /is\s+\w+\s*\([^)]*\)\s*\{[^}]*\bunifyBy\s*:\s*"([^"\n]*)$/.exec(textToCursor);
-        if (!inValue) return [];
-        const partial = inValue[1];
-
+    private getUnificationMethodCompletions(document: LangiumDocument, partial: string, position: Position): CompletionItem[] {
         const start = document.textDocument.positionAt(
-            document.textDocument.offsetAt(params.position) - partial.length
+            document.textDocument.offsetAt(position) - partial.length
         );
 
         return this.services.unification.known()
@@ -536,9 +568,24 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                         : undefined,
                     // Core relations first: they are the ones certain to exist.
                     sortText: `${isCore ? '0' : '1'}_unify_${name}`,
-                    textEdit: { range: { start, end: params.position }, newText: name }
+                    textEdit: { range: { start, end: position }, newText: name }
                 };
             });
+    }
+
+    /** The values worth offering for a config key: only `hook` and `unifyBy` have a known set. */
+    private getConfigValueCompletions(
+        document: LangiumDocument,
+        cursor: Extract<CompositionCursor, { at: 'value' }>,
+        position: Position
+    ): CompletionItem[] {
+        if (cursor.key === 'hook' && cursor.operator === 'refine') {
+            return this.getHookValueCompletions(document, cursor.sources[0], cursor.partial, position);
+        }
+        if (cursor.key === 'unifyBy') {
+            return this.getUnificationMethodCompletions(document, cursor.partial, position);
+        }
+        return [];
     }
 
     /** Resolves a composition parameter's text to a local or loaded model. */
@@ -579,8 +626,34 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             });
     }
 
-    private getConfigKeyCompletions(operator: string, partial: string): CompletionItem[] {
-        const keys = allowedConfigKeys(operator);
+    /**
+     * Where the cursor is in a composition, or `undefined` when it is in none.
+     *
+     * Read from the grammar's own tokens rather than from the text, once, for every completion
+     * that depends on it — the operator name, the config keys and the config values each used to
+     * run a regex of their own, and each got a different corner wrong. Comments are hidden tokens,
+     * so one between the `)` and the `{` still leaves a config block; a brace or a parenthesis
+     * inside a comment or a label is not structure; and the parts may sit on separate lines.
+     * Lexing is linear in the text above the cursor, where the regexes were quadratic (S8786).
+     *
+     * A value being typed is an unterminated string, which the lexer reports as an error on its
+     * opening quote before lexing the rest as if it were code. The first such quote is therefore
+     * where the value starts, and only the tokens before it describe where the value sits.
+     */
+    private compositionCursor(textToCursor: string): CompositionCursor | undefined {
+        const lexed = this.services.parser.Lexer.tokenize(textToCursor);
+        const quote = lexed.errors.find(error => textToCursor[error.offset] === '"' || textToCursor[error.offset] === "'");
+        if (quote) {
+            const tokens = lexed.tokens.filter(token => token.startOffset < quote.offset);
+            return valueCursor(tokens, textToCursor.slice(quote.offset + 1));
+        }
+        const partial = trailingWord(textToCursor);
+        return operatorCursor(lexed.tokens, partial) ?? keyCursor(lexed.tokens, partial);
+    }
+
+    /** The keys `operator` accepts, less those already `written` in the block. */
+    private getConfigKeyCompletions(operator: string, partial: string, written: readonly string[]): CompletionItem[] {
+        const keys = allowedConfigKeys(operator).filter((k: string) => !written.includes(k));
         return keys
             .filter((k: string) => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, k))
             .map((k: string) => {
