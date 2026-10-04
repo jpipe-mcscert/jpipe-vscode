@@ -78,6 +78,5 @@ if (watch) {
     await Promise.all([ctx.watch(), webviewCtx.watch()]);
 } else {
     await Promise.all([ctx.rebuild(), webviewCtx.rebuild()]);
-    ctx.dispose();
-    webviewCtx.dispose();
+    await Promise.all([ctx.dispose(), webviewCtx.dispose()]);
 }
