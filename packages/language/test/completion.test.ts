@@ -458,6 +458,30 @@ describe('Operator completion', () => {
         });
     });
 
+    // `implements` may sit between the model's name and `is`, its parent qualified or not.
+    test('recognises a composition whose model also implements a template', async () => {
+        for (const parent of ['T', 'lib:T']) {
+            const header = `justification Composed implements ${parent} is`;
+            for (const [text, expected] of [
+                [`${header} <|>`, 'refine'],
+                [`${header} refine(A, A) { <|>`, 'hook'],
+                [`${header} refine(A, A) { hook: "<|>`, 'e'],
+                [`${header} assemble(A) { unifyBy: "<|>`, 'sameLabel']
+            ]) {
+                await checkCompletion({
+                    text: `
+                        justification A { evidence e is "E" strategy s is "S" conclusion c is "C" e supports s s supports c }
+                        ${text}
+                    `,
+                    index: 0,
+                    assert: (completions) => {
+                        expect(completions.items.map(i => i.label), text).toContain(expected);
+                    }
+                });
+            }
+        }
+    });
+
     test('suggests operator names when `is` is on its own line', async () => {
         await checkCompletion({
             text: `

@@ -69,6 +69,68 @@ const isModelKeyword = (token: IToken | undefined): boolean =>
 
 const isId = (token: IToken | undefined): boolean => token?.tokenType.name === 'ID';
 
+/**
+ * Whether the tokens before `tokens[is]` declare a model: `justification Name`, or the same with
+ * `implements Parent` after it, where the parent may be qualified (`ns:Parent`).
+ */
+function declaresModelBefore(tokens: readonly IToken[], is: number): boolean {
+    if (isModelKeyword(tokens[is - 2]) && isId(tokens[is - 1])) return true;
+    let parent = is - 1;
+    while (tokens[parent - 1]?.image === ':' && isId(tokens[parent - 2])) parent -= 2;
+    return isId(tokens[parent])
+        && tokens[parent - 1]?.image === 'implements'
+        && isId(tokens[parent - 2])
+        && isModelKeyword(tokens[parent - 3]);
+}
+
+/** The cursor completing the operator, right after `justification Name is`. */
+function operatorCursor(tokens: readonly IToken[], partial: string): CompositionCursor | undefined {
+    const is = partial && tokens.at(-1)?.image === partial ? tokens.length - 2 : tokens.length - 1;
+    return tokens[is]?.image === 'is' && declaresModelBefore(tokens, is) ? { at: 'operator', partial } : undefined;
+}
+
+/**
+ * The composition whose config block is still open at the end of `tokens`: the last `{` is
+ * unclosed and closes the parameter list of `justification Name is operator(…)`. A model's body
+ * opens with `{` too, so being inside an unclosed brace is not enough on its own.
+ */
+function openConfigBlock(tokens: readonly IToken[]): { operator: string; sources: string[]; block: readonly IToken[] } | undefined {
+    let open = tokens.length - 1;
+    while (open >= 0 && tokens[open].image !== '{') {
+        if (tokens[open].image === '}') return undefined;
+        open--;
+    }
+    if (tokens[open - 1]?.image !== ')') return undefined;
+
+    let paren = open - 2;
+    while (paren >= 0 && tokens[paren].image !== '(') paren--;
+    const operator = tokens[paren - 1];
+    if (!isId(operator) || tokens[paren - 2]?.image !== 'is' || !declaresModelBefore(tokens, paren - 2)) return undefined;
+
+    // A qualified source, `ns:Model`, is several tokens; the commas are what separate them.
+    const sources = tokens.slice(paren + 1, open - 1).map(token => token.image).join('').split(',');
+    return { operator: operator.image, sources, block: tokens.slice(open + 1) };
+}
+
+/** The cursor in the value of `key: "…`, the tokens being those before the value's opening quote. */
+function valueCursor(tokens: readonly IToken[], partial: string): CompositionCursor | undefined {
+    const config = openConfigBlock(tokens);
+    const [key, colon] = config?.block.slice(-2) ?? [];
+    if (!config || !isId(key) || colon?.image !== ':') return undefined;
+    return { at: 'value', operator: config.operator, sources: config.sources, key: key.image, partial };
+}
+
+/** The cursor on a key in an open config block, with the keys the block already sets. */
+function keyCursor(tokens: readonly IToken[], partial: string): CompositionCursor | undefined {
+    const config = openConfigBlock(tokens);
+    // Right after `key:` a value is due, not another key.
+    if (!config || config.block.at(-1)?.image === ':') return undefined;
+    const written = config.block
+        .filter((token, i) => isId(token) && config.block[i + 1]?.image === ':')
+        .map(token => token.image);
+    return { at: 'key', operator: config.operator, written, partial };
+}
+
 export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private readonly services: JpipeServices;
     private readonly logger: JpipeServerLogger;
@@ -574,10 +636,6 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
      * inside a comment or a label is not structure; and the parts may sit on separate lines.
      * Lexing is linear in the text above the cursor, where the regexes were quadratic (S8786).
      *
-     * The cursor is in a config block when the last `{` before it is unclosed *and* closes a
-     * parameter list. A model's body opens with `{` too, so the first test alone offers config
-     * keys inside every body that follows a composition.
-     *
      * A value being typed is an unterminated string, which the lexer reports as an error on its
      * opening quote before lexing the rest as if it were code. The first such quote is therefore
      * where the value starts, and only the tokens before it describe where the value sits.
@@ -585,50 +643,12 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
     private compositionCursor(textToCursor: string): CompositionCursor | undefined {
         const lexed = this.services.parser.Lexer.tokenize(textToCursor);
         const quote = lexed.errors.find(error => textToCursor[error.offset] === '"' || textToCursor[error.offset] === "'");
-        const tokens = quote ? lexed.tokens.filter(token => token.startOffset < quote.offset) : lexed.tokens;
-
-        if (!quote) {
-            const partial = trailingWord(textToCursor);
-            const head = partial && tokens.at(-1)?.image === partial ? tokens.slice(0, -1) : tokens;
-            const [kind, name, is] = head.slice(-3);
-            if (head.length >= 3 && isModelKeyword(kind) && isId(name) && is.image === 'is') {
-                return { at: 'operator', partial };
-            }
-        }
-
-        let open = tokens.length - 1;
-        while (open >= 0 && tokens[open].image !== '{') {
-            if (tokens[open].image === '}') return undefined;
-            open--;
-        }
-        if (open < 1 || tokens[open - 1].image !== ')') return undefined;
-
-        let paren = open - 2;
-        while (paren >= 0 && tokens[paren].image !== '(') paren--;
-        if (paren < 4) return undefined;
-
-        const [kind, name, is, operatorToken] = tokens.slice(paren - 4, paren);
-        if (!isModelKeyword(kind) || !isId(name) || is.image !== 'is' || !isId(operatorToken)) return undefined;
-        const operator = operatorToken.image;
-        const block = tokens.slice(open + 1);
-
         if (quote) {
-            const [key, colon] = block.slice(-2);
-            if (block.length < 2 || !isId(key) || colon.image !== ':') return undefined;
-            // A qualified source, `ns:Model`, is several tokens; the commas are what separate them.
-            const sources = tokens.slice(paren + 1, open - 1)
-                .map(token => token.image)
-                .join('')
-                .split(',');
-            return { at: 'value', operator, sources, key: key.image, partial: textToCursor.slice(quote.offset + 1) };
+            const tokens = lexed.tokens.filter(token => token.startOffset < quote.offset);
+            return valueCursor(tokens, textToCursor.slice(quote.offset + 1));
         }
-
-        // Right after `key:` a value is due, not another key.
-        if (block.at(-1)?.image === ':') return undefined;
-        const written = block
-            .filter((token, i) => isId(token) && block[i + 1]?.image === ':')
-            .map(token => token.image);
-        return { at: 'key', operator, written, partial: trailingWord(textToCursor) };
+        const partial = trailingWord(textToCursor);
+        return operatorCursor(lexed.tokens, partial) ?? keyCursor(lexed.tokens, partial);
     }
 
     /** The keys `operator` accepts, less those already `written` in the block. */
