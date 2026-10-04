@@ -1,6 +1,6 @@
 ## Changelog
 
-### v1.9.0 (Unreleased)
+### v1.9.0 (2026-10-04)
 - Leader: Sébastien Mosser
   - Features:
     - **A `refine` that hooks onto nothing is flagged as you write it.** The hook names an element of the model being refined, but it is written as a quoted string, so nothing checked it: a typo, or an element renamed afterwards, left a model that read perfectly and then failed the build with a message about an element not being found. It is now reported on the hook itself, in the compiler's own words, so the problem is on the line that causes it. Two things are deliberately not flagged, because the compiler accepts them: a bare name that reaches an element inherited from a template under its longer name, and a hook onto a model that is itself assembled or refined, whose elements only come into existence when that composition runs
