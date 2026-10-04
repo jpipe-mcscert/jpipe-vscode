@@ -425,6 +425,52 @@ describe('Operator completion', () => {
             }
         });
     });
+
+    // Accepting a key there wrote it inside the string: `conclusionLabel: "strategyLabel: ""`.
+    test('offers no config keys inside a config value', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification Composed is assemble(A) { conclusionLabel: "<|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).not.toContain('conclusionLabel');
+                expect(labels).not.toContain('strategyLabel');
+                expect(labels).not.toContain('unifyBy');
+            }
+        });
+    });
+
+    test('does not offer a config key that is already written', async () => {
+        await checkCompletion({
+            text: `
+                template T { conclusion c is "C" }
+                justification Composed is refine(T) { hook: "c" <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).not.toContain('hook');
+                expect(labels).toContain('unifyBy');
+            }
+        });
+    });
+
+    test('suggests operator names when `is` is on its own line', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification Composed
+                    is <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                expect(completions.items.map(i => i.label)).toContain('assemble');
+            }
+        });
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -851,6 +897,30 @@ describe('Hook value completion', () => {
         });
     });
 
+    test('still offers hooks when a comment separates the parameters from the block', async () => {
+        for (const comment of ['/* sources */', '// sources\n']) {
+            await checkCompletion({
+                text: `
+                    justification Base {
+                        conclusion c is "C"
+                        strategy s is "S"
+                        evidence e is "E"
+                        e supports s
+                        s supports c
+                    }
+                    justification Ref { conclusion rc is "RC" }
+                    justification Composed is refine(Base, Ref) ${comment} { hook: "<|>" }
+                `,
+                index: 0,
+                assert: (completions) => {
+                    const labels = completions.items.map(i => i.label);
+                    expect(labels).toContain('e');
+                    expect(labels).not.toContain('hook');
+                }
+            });
+        }
+    });
+
     test('offers nothing for assemble, which has no hook', async () => {
         await checkCompletion({
             text: `
@@ -881,6 +951,21 @@ describe('Unification method completion', () => {
                 const item = completions.items.find(i => i.label === 'sameLabel');
                 expect(item).toBeDefined();
                 expect(item?.detail).toBe('jPipe core');
+            }
+        });
+    });
+
+    test('still offers them when a comment separates the parameters from the block', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification Composed is assemble(A) /* sources */ { unifyBy: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).toContain('sameLabel');
+                expect(labels).not.toContain('unifyBy');
             }
         });
     });
