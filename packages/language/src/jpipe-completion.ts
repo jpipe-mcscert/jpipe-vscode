@@ -7,7 +7,7 @@ import {
     type CompletionValueItem,
     type NextFeature
 } from 'langium/lsp';
-import { MarkupKind, Position, type TextEdit, CompletionItem, CompletionItemKind, CompletionList, type CompletionParams, InsertTextFormat } from 'vscode-languageserver';
+import { MarkupKind, Position, type TextEdit, type InsertReplaceEdit, CompletionItem, CompletionItemKind, CompletionList, type CompletionParams, InsertTextFormat } from 'vscode-languageserver';
 import type { IToken } from 'chevrotain';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -206,9 +206,10 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
      * same way, since `su` lexes on its own and the `@` is again outside the token.
      *
      * The line prefix has no such gap: `/@\w*$/` is exactly what has been typed, so its length is
-     * exactly what the edit must replace.
+     * exactly what the edit must replace. The edit is built by `atSupportEdit` rather than by the
+     * default, whose insert/replace ranges run from the same token offsets that miss the `@`.
      */
-    protected override buildCompletionTextEdit(context: CompletionContext, label: string, newText: string): TextEdit | undefined {
+    protected override buildCompletionTextEdit(context: CompletionContext, label: string, newText: string): TextEdit | InsertReplaceEdit | undefined {
         const typed = /@\w*$/.exec(this.linePrefixToCursor(context));
 
         if (typed && !label.startsWith('@')) {
@@ -221,16 +222,35 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             if (typedTail.length > 0 && !this.services.shared.lsp.FuzzyMatcher.match(typedTail, labelTail)) {
                 return undefined;
             }
-            return {
-                newText,
-                range: {
-                    start: context.textDocument.positionAt(context.offset - typed[0].length),
-                    end: context.position
-                }
-            };
+            return this.atSupportEdit(context.textDocument, context.position, typed[0].length, newText);
         }
 
         return super.buildCompletionTextEdit(context, label, newText);
+    }
+
+    /**
+     * The edit for an `@support` completion, opening on the `@` that is `typedLength` characters
+     * before the cursor.
+     *
+     * For a client with insert/replace support it is a pair, like the default's: inserting keeps
+     * what follows the cursor, replacing also takes the rest of the word, so `@su|pport` becomes
+     * `@support` and not `@supportpport`.
+     */
+    private atSupportEdit(
+        textDocument: LangiumDocument['textDocument'],
+        position: Position,
+        typedLength: number,
+        newText: string
+    ): TextEdit | InsertReplaceEdit {
+        const start = Position.create(position.line, position.character - typedLength);
+        const insert = { start, end: position };
+        if (!this.clientCapabilities?.completionItem?.insertReplaceSupport) {
+            return { newText, range: insert };
+        }
+        const rest = textDocument.getText({ start: position, end: Position.create(position.line + 1, 0) });
+        const wordAfterCursor = /^\w*/.exec(rest)?.[0] ?? '';
+        const end = Position.create(position.line, position.character + wordAfterCursor.length);
+        return { newText, insert, replace: { start, end } };
     }
 
     protected override getReferenceCandidates(refInfo: ReferenceInfo, context: CompletionContext): Stream<AstNodeDescription> {
@@ -798,7 +818,6 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         const m = /@\w*$/.exec(linePrefix);
         if (!m) return undefined;
 
-        const atCol = position.character - m[0].length;
         return {
             label: '@support',
             kind: CompletionItemKind.Keyword,
@@ -806,13 +825,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             sortText: '0_@support',
             filterText: '@support',
             preselect: true,
-            textEdit: {
-                range: {
-                    start: { line: position.line, character: atCol },
-                    end: position
-                },
-                newText: '@support '
-            }
+            textEdit: this.atSupportEdit(document.textDocument, position, m[0].length, '@support ')
         };
     }
 

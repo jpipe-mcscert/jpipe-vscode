@@ -12,5 +12,6 @@
             }
         }
     ],
-    "out": "src/generated"
+    "out": "src/generated",
+    "mode": "production"
 }

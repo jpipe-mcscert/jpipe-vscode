@@ -7,7 +7,7 @@ import { EmptyFileSystem, type LangiumDocument } from 'langium';
 import { clearDocuments, expectCompletion, parseHelper } from 'langium/test';
 import type { Unit } from 'jpipe-language';
 import { createJpipeServices, isUnit, isJustification, isTemplate } from 'jpipe-language';
-import { InsertTextFormat } from 'vscode-languageserver';
+import { InsertTextFormat, type InsertReplaceEdit } from 'vscode-languageserver';
 import { getRelationCandidates, qualifiedIdText } from '../src/jpipe-utils.js';
 
 let services: ReturnType<typeof createJpipeServices>;
@@ -1171,6 +1171,44 @@ describe('The @ prefix', () => {
                 const edit = item!.textEdit as { range: { start: { character: number } } };
                 expect(edit.range.start.character).toBe(startCharacter);
             }
+        });
+    });
+
+    // A client in replace mode overwrites the replace range. Ending it at the cursor, as a plain
+    // edit does, turned `@su|pport` into `@supportpport`; it has to take the rest of the word.
+    describe('for a client with insert/replace support', () => {
+        let replaceServices: ReturnType<typeof createJpipeServices>;
+        let checkReplace: ReturnType<typeof expectCompletion>;
+
+        beforeAll(async () => {
+            replaceServices = createJpipeServices(EmptyFileSystem);
+            await replaceServices.shared.lsp.LanguageServer.initialize({
+                processId: null,
+                rootUri: null,
+                capabilities: { textDocument: { completion: { completionItem: { insertReplaceSupport: true } } } }
+            });
+            checkReplace = expectCompletion(replaceServices.Jpipe);
+        });
+
+        test.each([
+            // The line is indented one space, so the `@` is at character 1.
+            ['@su<|>pport', 4, 9],
+            ['@<|>support', 2, 9],
+            ['@<|>', 2, 2]
+        ])('in %s, inserts up to the cursor and replaces to the end of the word', async (typed, insertEnd, replaceEnd) => {
+            await checkReplace({
+                text: `template T {\n ${typed}\n}`,
+                index: 0,
+                assert: (completions) => {
+                    const item = completions.items.find(i => i.label === '@support');
+                    const edit = item?.textEdit as InsertReplaceEdit | undefined;
+                    expect(edit?.insert, '@support is not offered as an insert/replace pair').toBeDefined();
+                    expect(edit!.insert.start.character, 'the edit must open on the @').toBe(1);
+                    expect(edit!.replace.start.character).toBe(1);
+                    expect(edit!.insert.end.character).toBe(insertEnd);
+                    expect(edit!.replace.end.character).toBe(replaceEnd);
+                }
+            });
         });
     });
 });
