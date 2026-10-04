@@ -391,32 +391,11 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             start: Position.create(0, 0),
             end: pos
         });
-        // Found by index, not by one regex over everything above the cursor.
-        //
-        // The pattern this replaces ended `\{[^}]*(\w*)$` and was unanchored, so the engine tried
-        // it at every position and each attempt scanned to the end — quadratic in the size of the
-        // document above the cursor, re-run on every keystroke (S8786). It also never worked:
-        // greedy `[^}]*` reached the end, `(\w*)` matched empty and `$` succeeded, so the group
-        // was *always* empty and the fuzzy filter in getConfigKeyCompletions was dead code.
-        //
-        // The cursor is inside a config block when the last `{` before it has no `}` after it and
-        // that `{` follows the `)` closing a parameter list — a model's body opens with `{` too,
-        // and any `(` found further up belongs to some earlier composition. From there the
-        // operator is the word before the parameter list, and the regex that finds it is anchored
-        // at the end of a slice that stops at the `(` — one starting position, and no character
-        // class that can overlap its neighbour.
-        const open = textToCursor.lastIndexOf('{');
-        if (open !== -1 && !textToCursor.includes('}', open)) {
-            const head = textToCursor.slice(0, open).trimEnd();
-            const paren = head.endsWith(')') ? head.lastIndexOf('(') : -1;
-            const operator = paren === -1
-                ? null
-                : /(?:justification|template)\s+\w+\s+is\s+(\w+)\s*$/.exec(head.slice(0, paren));
-            if (operator) {
-                const keyItems = this.getConfigKeyCompletions(operator[1], trailingWord(textToCursor));
-                if (keyItems.length > 0) {
-                    items = [...keyItems, ...items.filter(i => !keyItems.some(k => k.label === i.label))];
-                }
+        const operator = this.configBlockOperator(textToCursor);
+        if (operator) {
+            const keyItems = this.getConfigKeyCompletions(operator, trailingWord(textToCursor));
+            if (keyItems.length > 0) {
+                items = [...keyItems, ...items.filter(i => !keyItems.some(k => k.label === i.label))];
             }
         }
 
@@ -578,6 +557,39 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
                     sortText: `0_op_${spec.name}`
                 };
             });
+    }
+
+    /**
+     * The operator whose config block the cursor is in, or `undefined` when it is in none.
+     *
+     * The cursor is in one when the last `{` before it is unclosed *and* closes a parameter list:
+     * `justification Name is operator(…) {`. A model's body opens with `{` too, so the first test
+     * alone offers config keys inside every body that follows a composition.
+     *
+     * Read from the grammar's own tokens rather than from the text. Comments are hidden tokens, so
+     * a comment between the `)` and the `{` still leaves a config block, and a brace or a
+     * parenthesis inside a comment or a label is not one. Lexing is linear in the text above the cursor, where
+     * the regex this replaced was quadratic (S8786).
+     */
+    private configBlockOperator(textToCursor: string): string | undefined {
+        const tokens = this.services.parser.Lexer.tokenize(textToCursor).tokens;
+        let open = tokens.length - 1;
+        while (open >= 0 && tokens[open].image !== '{') {
+            if (tokens[open].image === '}') return undefined;
+            open--;
+        }
+        if (open < 1 || tokens[open - 1].image !== ')') return undefined;
+
+        let paren = open - 2;
+        while (paren >= 0 && tokens[paren].image !== '(') paren--;
+        if (paren < 4) return undefined;
+
+        const [kind, name, is, operator] = tokens.slice(paren - 4, paren);
+        const declaresModel = (kind.image === 'justification' || kind.image === 'template')
+            && name.tokenType.name === 'ID'
+            && is.image === 'is'
+            && operator.tokenType.name === 'ID';
+        return declaresModel ? operator.image : undefined;
     }
 
     private getConfigKeyCompletions(operator: string, partial: string): CompletionItem[] {

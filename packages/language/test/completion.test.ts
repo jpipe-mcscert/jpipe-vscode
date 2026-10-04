@@ -385,6 +385,46 @@ describe('Operator completion', () => {
             });
         }
     });
+
+    // Comments are hidden in the grammar, so one may sit between the parameter list and its
+    // block without changing what the block is.
+    test('still offers config keys when a comment separates the parameters from the block', async () => {
+        for (const comment of ['/* sources */', '// sources\n']) {
+            await checkCompletion({
+                text: `
+                    template T { conclusion c is "C" }
+                    justification Composed is refine(T) ${comment} { <|>
+                `,
+                index: 0,
+                assert: (completions) => {
+                    const labels = completions.items.map(i => i.label);
+                    expect(labels).toContain('hook');
+                    expect(labels).toContain('unifyBy');
+                }
+            });
+        }
+    });
+
+    // Braces and parentheses inside labels and comments are text, not structure.
+    test('ignores braces and parentheses inside labels and comments', async () => {
+        await checkCompletion({
+            text: `
+                justification A { conclusion c is "C" }
+                justification Composed is refine(A, A) { hook: "c" }
+                justification J {
+                    evidence e1 is "see f(x) {"
+                    // also (here) {
+                    strategy s1 is "S"
+                    e1 supports <|>
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).not.toContain('hook');
+                expect(labels).toContain('s1');
+            }
+        });
+    });
 });
 
 // ---------------------------------------------------------------------------
