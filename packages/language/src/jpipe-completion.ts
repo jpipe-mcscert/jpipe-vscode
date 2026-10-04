@@ -1,4 +1,4 @@
-import { stream, type Stream, AstUtils, GrammarAST, type AstNode, type AstNodeDescription, type ReferenceInfo, type LangiumDocument } from 'langium';
+import { stream, type Stream, AstUtils, GrammarAST, type AstNode, type AstNodeDescription, type ReferenceInfo, type LangiumDocument, type MaybePromise } from 'langium';
 import {
     DefaultCompletionProvider,
     type CompletionAcceptor,
@@ -107,12 +107,13 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         context: CompletionContext,
         next: NextFeature,
         acceptor: CompletionAcceptor
-    ): void {
+    ): MaybePromise<void> {
         if (this.lineEndsWithAtKeywordPrefix(context)) {
             if (GrammarAST.isCrossReference(next.feature)) return;
             if (GrammarAST.isKeyword(next.feature) && !next.feature.value.startsWith('@')) return;
         }
-        super.completionFor(context, next, acceptor);
+        // Returned, not dropped: Langium awaits every feature's result before it builds the list.
+        return super.completionFor(context, next, acceptor);
     }
 
     /**
