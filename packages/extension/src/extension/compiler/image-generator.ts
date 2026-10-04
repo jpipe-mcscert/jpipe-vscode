@@ -1,13 +1,11 @@
 import * as vscode from 'vscode';
-import { execFile, type ExecFileOptionsWithStringEncoding } from 'node:child_process';
-import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { JpipeLogger } from '../logger.js';
 import { asProcessFailure, detailOf, messageOf } from '../../shared/errors.js';
 import { ReleaseManager } from './release-manager.js';
-import { planLaunchHere } from '../process-launcher.js';
+import { execFileText, planLaunchHere } from '../process-launcher.js';
 import {
     buildPathEnv,
     findDiagramName as findDiagramNameIn,
@@ -35,8 +33,6 @@ export interface DiagnosticRun {
     exitCode: number | undefined;
 }
 
-const execFileAsync = promisify(execFile);
-
 /**
  * Runs the compiler, still without a shell.
  *
@@ -49,15 +45,7 @@ function runCompiler(
     options: { env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number }
 ): Promise<{ stdout: string; stderr: string }> {
     const plan = planLaunchHere(file, args, options.env);
-    // Annotated so the promisified overload resolving to string (not Buffer) is the one chosen.
-    // `ExecFileOptions` alone no longer picks it: its `encoding` is typed loosely enough that
-    // the overload returning `string | Buffer` wins, so name the string-encoding variant.
-    const execOptions: ExecFileOptionsWithStringEncoding = {
-        ...options,
-        encoding: 'utf8',
-        windowsVerbatimArguments: plan.windowsVerbatimArguments
-    };
-    return execFileAsync(plan.file, plan.args, execOptions);
+    return execFileText(plan.file, plan.args, { ...options, windowsVerbatimArguments: plan.windowsVerbatimArguments });
 }
 
 /** Generous stdout cap so large SVG renders are not truncated (default is only 1 MB). */
