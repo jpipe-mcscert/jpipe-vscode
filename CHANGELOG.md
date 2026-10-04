@@ -1,5 +1,10 @@
 ## Changelog
 
+### v1.9.1 (Unreleased)
+- Leader: Sébastien Mosser
+  - Bug Fixes:
+    - **Completion inside a model no longer offers a composition's settings.** In a file where a composition — `refine`, `assemble` and the like — came before the model you were editing, suggestions inside that model were padded with the composition's configuration keys, such as `hook` and `unifyBy`. Completing the target of a `supports` relation, for instance, offered them next to the elements that could actually go there. Those keys are now suggested only inside a composition's own `{ … }` block, as intended. This had been the case since v1.7.1
+
 ### v1.9.0 (2026-10-04)
 - Leader: Sébastien Mosser
   - Features:

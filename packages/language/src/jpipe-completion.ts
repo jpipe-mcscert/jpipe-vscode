@@ -399,18 +399,19 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         // greedy `[^}]*` reached the end, `(\w*)` matched empty and `$` succeeded, so the group
         // was *always* empty and the fuzzy filter in getConfigKeyCompletions was dead code.
         //
-        // The cursor is inside a config block when the last `{` before it has no `}` after it.
-        // From there the operator is the word before the parameter list, and the regex that finds
-        // it is anchored at the end of a slice that stops at the `(` — one starting position, and
-        // no character class that can overlap its neighbour.
+        // The cursor is inside a config block when the last `{` before it has no `}` after it and
+        // that `{` follows the `)` closing a parameter list — a model's body opens with `{` too,
+        // and any `(` found further up belongs to some earlier composition. From there the
+        // operator is the word before the parameter list, and the regex that finds it is anchored
+        // at the end of a slice that stops at the `(` — one starting position, and no character
+        // class that can overlap its neighbour.
         const open = textToCursor.lastIndexOf('{');
         if (open !== -1 && !textToCursor.includes('}', open)) {
-            const head = textToCursor.slice(0, open);
-            const paren = head.lastIndexOf('(');
-            const parameterListClosed = paren !== -1 && head.includes(')', paren);
-            const operator = parameterListClosed
-                ? /(?:justification|template)\s+\w+\s+is\s+(\w+)\s*$/.exec(head.slice(0, paren))
-                : null;
+            const head = textToCursor.slice(0, open).trimEnd();
+            const paren = head.endsWith(')') ? head.lastIndexOf('(') : -1;
+            const operator = paren === -1
+                ? null
+                : /(?:justification|template)\s+\w+\s+is\s+(\w+)\s*$/.exec(head.slice(0, paren));
             if (operator) {
                 const keyItems = this.getConfigKeyCompletions(operator[1], trailingWord(textToCursor));
                 if (keyItems.length > 0) {

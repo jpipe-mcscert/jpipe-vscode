@@ -355,6 +355,36 @@ describe('Operator completion', () => {
             });
         }
     });
+
+    // A model's body opens with `{` too, so "inside an unclosed brace" is not enough: the brace
+    // has to close the parameter list. Without that, any composition earlier in the file leaked
+    // its keys into every body after it — `hook` and `unifyBy` offered as the target of a relation.
+    test('does not offer config keys inside a model body that follows a composition', async () => {
+        const preamble = `
+            justification A { conclusion c is "C" }
+            justification Composed is refine(A, A) { hook: "c" }
+        `;
+        for (const body of [
+            `justification J {
+                evidence e1 is "E"
+                strategy s1 is "S"
+                e1 supports <|>`,
+            `template T {
+                evidence e1 is "E"
+                <|>`
+        ]) {
+            await checkCompletion({
+                text: preamble + body,
+                index: 0,
+                assert: (completions) => {
+                    const labels = completions.items.map(i => i.label);
+                    expect(labels).not.toContain('hook');
+                    expect(labels).not.toContain('unifyBy');
+                    expect(labels).not.toContain('unifyExclude');
+                }
+            });
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------
