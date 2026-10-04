@@ -2,6 +2,7 @@ import { type AstNode, type CstNode, GrammarUtils, URI } from 'langium';
 import { DefaultNameProvider } from 'langium';
 import {
     isAbstractSupport,
+    isConclusion,
     type Justification,
     type Template,
     type JustificationElement,
@@ -136,6 +137,47 @@ export function getLocalElements(node: Justification | Template): JustificationE
     return (node.contents?.body ?? []) as JustificationElement[];
 }
 
+/** An element of a model, under the id the compiler gives it once `implements` is expanded. */
+export interface ExpandedElement {
+    readonly element: JustificationElement;
+    readonly id: string;
+}
+
+/**
+ * Every element of `model` under its **effective** id: the one the compiler's model carries after
+ * template expansion, which is not always the one written in the file.
+ *
+ * A port of `JustificationModel.inline`. An inherited element is copied as `Decl:id`, where `Decl`
+ * is the template that declared it, and an id already qualified keeps its qualifier — so an element
+ * `U` declares is `U:e` in a model two `implements` below it, never `T:U:e`. A local element keeps
+ * the id it is written with, and replaces the inherited one it shares an id with: that is how
+ * `evidence T:a` overrides `@support a`. A local conclusion likewise displaces an inherited one.
+ * The compiler rejects that last pairing outright, and letting the local one win keeps a hook from
+ * adding a second, misleading error to a model already reported for it.
+ *
+ * Inherited elements come first and local ones after, which is the compiler's order and the one a
+ * suffix match is first-found in. The AST node is the declaration, so identity survives the
+ * renaming — which is what lets rename follow a hook spelled with the effective id.
+ */
+export function expandedElements(
+    model: Justification | Template,
+    seen: Set<Justification | Template> = new Set()
+): ExpandedElement[] {
+    if (seen.has(model)) return [];
+    seen.add(model);
+    const parent = model.parent?.ref;
+    const inherited = parent
+        ? expandedElements(parent, seen).map(({ element, id }) =>
+            ({ element, id: id.includes(':') ? id : `${parent.id}:${id}` }))
+        : [];
+    const local = getLocalElements(model).map(element => ({ element, id: qualifiedIdText(element.id) }));
+    const replaced = new Set(local.map(entry => entry.id));
+    const ownConclusion = local.some(entry => isConclusion(entry.element));
+    const kept = inherited.filter(entry =>
+        !replaced.has(entry.id) && !(ownConclusion && isConclusion(entry.element)));
+    return [...kept, ...local];
+}
+
 /**
  * The element a `refine` hook names in `base`, or `undefined` if it names none.
  *
@@ -143,15 +185,11 @@ export function getLocalElements(node: Justification | Template): JustificationE
  * whether a hook is reported as unknown and whether renaming an element rewrites it, so a rule
  * stricter than the compiler's invents errors and a looser one misses them.
  *
- * Two ways to match, in the compiler's order. An **exact** id, and failing that a **suffix**: an
- * id ending in `':' + hook`, which is what lets `hook: "a"` name an element declared `T:a`. The
- * fallback exists because template expansion qualifies inherited elements, so the name the author
- * wrote in the template is not the id the element ends up with — verified against `jpipe`, which
- * builds that model without complaint.
- *
- * The compiler looks at the conclusion before the other elements. That ordering decides which of
- * two matching elements is returned, never whether one matches, so it is not reproduced here —
- * `getAllElements` yields local before inherited, which is the order that matters for a hook.
+ * It matches against effective ids (`expandedElements`), so `hook: "T:e"` names an `e` that `Base`
+ * inherits from `T` without overriding it. Two ways to match, in the compiler's order. An **exact**
+ * id, and failing that a **suffix**: an id ending in `':' + hook`, which is what lets `hook: "a"`
+ * name `T:a`. The suffix pass skips the conclusion, as the compiler's does, so an inherited
+ * conclusion answers only to its full `T:c`.
  *
  * **Its answer is only as good as `base` being a plain model.** A composed one resolves hooks
  * through aliases that no `.jd` file contains and that exist only once the operator has run, so
@@ -161,10 +199,9 @@ export function hookTarget(
     base: Justification | Template,
     hook: string
 ): JustificationElement | undefined {
-    if (!hook) return undefined;
-    const elements = getAllElements(base);
-    const exact = elements.find(element => qualifiedIdText(element.id) === hook);
-    if (exact) return exact;
+    const elements = expandedElements(base);
+    const exact = elements.find(entry => entry.id === hook);
+    if (exact) return exact.element;
     const suffix = `:${hook}`;
-    return elements.find(element => qualifiedIdText(element.id).endsWith(suffix));
+    return elements.find(entry => !isConclusion(entry.element) && entry.id.endsWith(suffix))?.element;
 }

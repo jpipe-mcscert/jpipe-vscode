@@ -424,6 +424,87 @@ justification R is refine(Base, Ref) { hook: "a" }`;
         expect(await hookErrors(source)).toEqual([]);
     });
 
+    // The key is present, so `missing-config-key` is silent, and the compiler looks `''` up like any
+    // other hook. Verified: `hook element '' not found in base model 'Base'`.
+    test('an empty hook is reported', async () => {
+        expect(await hookErrors(
+            `${BASE}\n${REF}\njustification R is refine(Base, Ref) { hook: "" }`))
+            .toEqual(["Hook element '' not found in base model 'Base'"]);
+    });
+
+    /**
+     * Template expansion renames what it copies: `e` declared in `T` is `T:e` in the model that
+     * implements it, overridden or not, and keeps the qualifier of the template that declared it
+     * however far down the chain it travels. Each case below was run through `jpipe` 2.5.0.
+     */
+    describe('against the ids template expansion gives', () => {
+
+        const INHERITED = `template T {
+ @support a is "A"
+ evidence e is "E"
+ strategy s is "S"
+ conclusion c is "C"
+ a supports s
+ e supports s
+ s supports c
+}
+justification Base implements T { evidence T:a is "Signed" }
+${REF}`;
+
+        const inherited = (hook: string) =>
+            hookErrors(`${INHERITED}\njustification R is refine(Base, Ref) { hook: "${hook}" }`);
+
+        test('an inherited element is named by its qualified id', async () => {
+            expect(await inherited('T:e')).toEqual([]);
+        });
+
+        test('and still by its bare one, through the suffix fallback', async () => {
+            expect(await inherited('e')).toEqual([]);
+        });
+
+        // The compiler's suffix pass skips the conclusion, so only the full id reaches it.
+        test('an inherited conclusion answers only to its qualified id', async () => {
+            expect(await inherited('T:c')).toEqual([]);
+            expect(await inherited('c')).toEqual(["Hook element 'c' not found in base model 'Base'"]);
+        });
+
+        test('a conclusion declared qualified is not reached by a suffix', async () => {
+            const source = `justification P {
+ conclusion T:c is "C"
+ strategy s is "S"
+ evidence e is "E"
+ e supports s
+ s supports T:c
+}
+${REF}
+justification R is refine(P, Ref) { hook: "c" }`;
+            expect(await hookErrors(source)).toEqual(["Hook element 'c' not found in base model 'P'"]);
+        });
+
+        const NESTED = `template U {
+ @support u is "U"
+ @support v is "V"
+ evidence ue is "UE"
+ strategy us is "US"
+ conclusion uc is "UC"
+ u supports us
+ v supports us
+ ue supports us
+ us supports uc
+}
+template T implements U { evidence U:u is "Filled" }
+justification Base implements T { evidence U:v is "V2" }
+${REF}`;
+
+        const nested = (hook: string) =>
+            hookErrors(`${NESTED}\njustification R is refine(Base, Ref) { hook: "${hook}" }`);
+
+        test('an element keeps the qualifier of the template that declared it', async () => {
+            expect(await nested('U:ue')).toEqual([]);
+            expect(await nested('T:ue')).toEqual(["Hook element 'T:ue' not found in base model 'Base'"]);
+        });
+    });
+
     // Its elements do not exist until the operator has run, and its hooks resolve through aliases
     // no file contains. Verified: `refine(AB, Ref) { hook: "ae" }` builds, exit 0.
     test('a composed base model is left alone', async () => {

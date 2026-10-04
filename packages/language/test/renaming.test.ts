@@ -404,6 +404,25 @@ justification R is refine(Base, Ref) { hook: "HOOKTEXT" }`;
                 .toContain('hook: "signed"');
         });
 
+        // `Base` overrides `a` but not `e`, so the only `e` is the template's — which expansion
+        // turned into `T:e`, the spelling the hook uses.
+        test('a hook naming an inherited element by its qualified id follows it', async () => {
+            const source = `template T {
+ @support a is "A"
+ evidence e is "E"
+ strategy s is "S"
+ conclusion c is "C"
+ a supports s
+ e supports s
+ s supports c
+}
+justification Base implements T { evidence T:a is "Signed" }
+${REF}
+justification R is refine(Base, Ref) { hook: "T:e" }`;
+            expect(await renamed(source, 'evidence e', 9, 'signed'))
+                .toContain('hook: "T:signed"');
+        });
+
         // Spelling alone could not tell these apart: both hooks say "e", and only one of them
         // resolves to the element being renamed.
         test('a same-named element of another model is not dragged along', async () => {

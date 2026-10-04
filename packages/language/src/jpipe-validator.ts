@@ -34,7 +34,7 @@ import {
     operatorSpec,
     requiredConfigKeys
 } from './jpipe-operators.js';
-import { getAllElements, getLocalElements, hookTarget, qualifiedIdText } from './jpipe-utils.js';
+import { expandedElements, getAllElements, getLocalElements, hookTarget, qualifiedIdText } from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 import { messageOf } from './jpipe-errors.js';
@@ -221,8 +221,8 @@ export class JpipeValidator {
      * `hook element 'x' not found in base model 'B'`. That message is borrowed here, because it is
      * the same defect and jpipe-vscode ADR-VSC-0022 says one defect reads one way.
      *
-     * `hookTarget` decides what resolves, and matches the compiler including its suffix fallback.
-     * Three shapes are passed over instead, each because the editor genuinely cannot answer:
+     * `hookTarget` decides what resolves, and matches the compiler: against the ids template
+     * expansion gives inherited elements, then by its suffix fallback. Three shapes are passed over instead, each because the editor genuinely cannot answer:
      *
      * - **A composed base.** Its elements do not exist until the operator has run, and its hooks
      *   resolve through aliases no `.jd` file contains. `checkModelHasConclusion` steps around the
@@ -232,21 +232,22 @@ export class JpipeValidator {
      *   The hook may name something perfectly real that this cannot see, and the visible problem
      *   is the `implements` — pointing at the hook would send the user to the wrong line.
      *
-     * A missing `hook` is `missing-config-key`'s business, and an empty one is not spelled out as
-     * a hook at all, so both are left alone.
+     * A missing `hook` is `missing-config-key`'s business and is left alone. An empty one is not:
+     * the key is present, so nothing else reports it, and the compiler looks `''` up like any other
+     * hook and fails the build on it.
      */
     checkRefineHook(composition: Composition, accept: ValidationAcceptor): void {
         if (composition.operator !== 'refine') return;
         const entry = composition.config?.entries.find(candidate => candidate.key === HOOK_KEY);
         const actual = entry?.value;
-        if (!entry || !actual) return;
+        if (!entry || actual === undefined) return;
 
         const base = composition.params?.refs[0]?.ref;
         if (!base || base.composition || hasUnresolvedParent(base)) return;
         if (hookTarget(base, actual)) return;
 
-        const candidates = getAllElements(base)
-            .map(element => qualifiedIdText(element.id))
+        const candidates = expandedElements(base)
+            .map(entry => entry.id)
             .filter(id => id.length > 0);
         report(accept, JpipeIssue.UnknownHook,
                `Hook element '${actual}' not found in base model '${base.id}'`,
