@@ -10,7 +10,8 @@
 #
 #   2. GROUPS CARRY MINOR AND PATCH ONLY. A grouped major takes the whole pull request down
 #      with it: the first run bundled TypeScript 5.8 → 7.0 with three harmless
-#      vscode-languageserver minors, and the group failed as one.
+#      vscode-languageserver minors, and the group failed as one. The one exception is a group
+#      of packages that must match exactly (`vitest` below), where failing together is right.
 #
 #   3. TOOLCHAIN MAJORS ARE NOT PROPOSED AT ALL. Where a package is pinned to something else —
 #      the Node runtime, the editor baseline, generated code — a major is a project, not an
@@ -29,6 +30,18 @@ updates:
     open-pull-requests-limit: 5
 
     groups:
+      # Vitest and its coverage plugin peer-depend on each other's *exact* version, so they are
+      # one dependency in two packages and must move in one pull request — majors included.
+      # Held apart, Dependabot moves `vitest` alone, npm keeps the old one for the plugin, and
+      # the lockfile carries two vitest majors. Vitest only warns about the mismatch, so the
+      # pull request still goes green (#92). This group comes first: a dependency joins the
+      # first group it matches, and the minors would otherwise land in `dependencies`.
+      vitest:
+        applies-to: version-updates
+        update-types: [major, minor, patch]
+        patterns:
+          - "vitest"
+          - "@vitest/*"
       # Type definitions: noisy, and nothing they break escapes the compiler.
       types:
         applies-to: version-updates
@@ -43,6 +56,8 @@ updates:
           - "*"
         exclude-patterns:
           - "@types/*"
+          - "vitest"
+          - "@vitest/*"
 
     ignore:
       # Each of these is pinned to something outside npm's control, so a major is a piece of
@@ -70,9 +85,6 @@ updates:
       - dependency-name: "langium"
         update-types: ["version-update:semver-major"]
       - dependency-name: "langium-cli"
-        update-types: ["version-update:semver-major"]
-      # Must match `vitest` exactly or Vitest refuses to start, so it moves when vitest moves.
-      - dependency-name: "@vitest/coverage-v8"
         update-types: ["version-update:semver-major"]
       # These move when langium moves, for two different reasons.
       #
