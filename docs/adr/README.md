@@ -7,8 +7,11 @@ not for every change. Most of the records here are *retroactive*: the decision w
 before it was written down, and the point of writing it down is that the next reader inherits
 the reasoning instead of re-deriving it, or worse, quietly undoing it.
 
-An ADR is never edited once accepted. Correct it by appending a dated `## Amendment` section, or
-supersede it with a new one and set the old status to `Superseded by ADR-VSC-NNNN`.
+An ADR states the decision as it currently stands. When the decision is refined, revise the
+record in place so it still reads as one decision, with no amendment sections and no account of
+how the change came about (that belongs in the commit). When the decision is replaced outright,
+supersede it with a new record and set the old status to `Superseded by ADR-VSC-NNNN`
+(jpipe-vscode ADR-VSC-0001).
 
 Start from [TEMPLATE.md](TEMPLATE.md).
 

@@ -29,8 +29,9 @@ what CI now enforces, what becomes harder. Do not list only the benefits.
 
 - Insert **at most one** domain-specific section between `## Decision` and `## Consequences`
   when the decision has internal structure worth naming.
-- An ADR is never edited once accepted. Correct it by appending
-  `## Amendment (YYYY-MM-DD): one-line summary`, or supersede it and set this one's status to
+- An ADR states the decision as it currently stands. Refine it by revising it in place, never
+  by appending an amendment section, and keep the story of the change in the commit message.
+  Replace it outright by superseding it and setting this one's status to
   `Superseded by ADR-VSC-NNNN`.
 - When citing a decision from the sibling compiler repository, **name the repository**:
   `jpipe-compiler ADR-0022`, never a bare `ADR-0022`.
