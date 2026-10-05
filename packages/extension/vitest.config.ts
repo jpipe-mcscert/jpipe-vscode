@@ -5,9 +5,10 @@ export default defineConfig({
         // Only vscode-free modules are testable here: there is no VS Code host, so anything
         // importing 'vscode' must stay out of these tests.
         include: ['test/**/*.test.ts'],
-        // Most of these run in plain Node. The diagnostic view is DOM code — it builds the
-        // tables the panel shows — so it opts into a document with a per-file annotation
-        // (`@vitest-environment happy-dom`) rather than everything paying for one.
+        // Most of these run in plain Node. The diagnostic view and the minimap are DOM code —
+        // the panel's tables and its overview map — so their tests opt into a document with a
+        // per-file annotation (`@vitest-environment happy-dom`) rather than everything paying
+        // for one.
         environment: 'node',
         coverage: {
             provider: 'v8',
@@ -44,7 +45,6 @@ export default defineConfig({
                 'src/extension/preview/preview-shell.ts',
                 'src/language/main.ts',
                 'src/webview/preview.ts',
-                'src/webview/minimap.ts',
                 // Types only — every export is a `type` or `interface`, so it compiles to
                 // nothing and a coverage figure for it would be meaningless. Note that its
                 // neighbour `diagnostic-report.ts` is *not* in this position: it exports a

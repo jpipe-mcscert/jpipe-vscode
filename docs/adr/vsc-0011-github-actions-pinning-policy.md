@@ -23,6 +23,7 @@ among six tag-pinned ones, in two different workflows.
 All GitHub Actions in this repository are pinned by **major version tag**, uniformly, in every
 workflow.
 
+Dependabot's `github-actions` ecosystem (jpipe-vscode ADR-VSC-0013) proposes the tag moves.
 SHA pinning is **not** adopted at this time.
 
 ## Rationale
@@ -30,19 +31,20 @@ SHA pinning is **not** adopted at this time.
 - **A mixed policy is worse than either consistent one.** One SHA-pinned action among six
   tag-pinned ones signals a threat model the rest of the file does not honour, and it invites a
   reader to assume the repository is SHA-pinned when it mostly is not.
-- SHA pinning is only a defence while the SHAs are maintained. This repository has **no
-  Dependabot**, so nothing would advance them; within a year they decay from "pinned to a known
-  version" into "pinned to a version with a known vulnerability", which is strictly worse than
-  tracking a maintained major tag.
+- SHA pinning is only a defence while the SHAs are maintained; unmaintained, they decay from
+  "pinned to a known version" into "pinned to a version with a known vulnerability", which is
+  strictly worse than tracking a maintained major tag. Dependabot would now maintain them, so
+  maintenance is **not** an objection to SHA pinning here. What keeps major tags in place is the
+  first point: the switch must be made for every action at once, and it has not been made. The
+  choice between the two is open, and whoever revisits it should settle it on the threat model
+  rather than on maintenance cost.
 - The actions in use are all first-party `actions/*` or `SonarSource/*`. That is not a guarantee
   — a first-party account can be compromised — but it materially changes the risk relative to an
   unmaintained third-party action.
 - Consistency with the compiler, which pins the same way, keeps one convention across the
   project.
-- **This decision reverses the moment its premise does.** Adopting Dependabot's
-  `github-actions` ecosystem removes the maintenance objection, and at that point SHA pinning
-  should be adopted for every action in every workflow, in one change, and this record
-  superseded.
+- **Adopting SHA pinning supersedes this record**, and is done for every action in every
+  workflow in one change.
 
 ## Consequences
 
@@ -53,24 +55,9 @@ SHA pinning is **not** adopted at this time.
   for `build.yml` and `sonar.yml`, `contents: write` only in `release.yml`.
 - Upstream fixes to actions arrive without a pull request, and so do upstream behaviour changes
   within a major version. A workflow can break without anything in this repository changing.
+- Dependabot proposes only major tag moves (`@v5` → `@v6`), which are the updates worth a human
+  look.
 - Adding an action means picking a major tag, not a SHA, and existing entries should not be
   "helpfully" converted one at a time — that recreates the mixed state this decision exists to
   avoid.
 
-## Amendment (2026-08-11): the premise has changed
-
-This record declined SHA pinning on one specific ground — that with no Dependabot, nothing would
-advance the SHAs, so they would decay into pinning known-vulnerable versions.
-
-**jpipe-vscode ADR-VSC-0013 adopts Dependabot, including the `github-actions` ecosystem.** That
-ground no longer holds: something now would advance them.
-
-The decision is left standing for the moment rather than reversed silently, because the reversal
-this record already describes is all-or-nothing — *"adopt it for every action in every workflow,
-in one change"* — and that is a different change from the one that introduced Dependabot. Until
-it is made, actions stay pinned by major tag, and Dependabot proposes tag moves (`@v5` → `@v6`),
-which are the ones worth a human look.
-
-What is no longer true is the *reason* for the status quo. Anyone revisiting this should treat
-the question as open and settle it, not re-derive the maintenance objection from this record's
-Rationale — it has expired.

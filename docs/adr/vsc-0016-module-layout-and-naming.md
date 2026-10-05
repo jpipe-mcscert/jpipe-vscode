@@ -73,9 +73,8 @@ stays as it is and points the right way: the panel depends on the compiler, neve
 - `git mv` keeps the history, so `git log --follow` still works on every moved file. Reviewers
   should read the diff as a rename plus import updates; no file content changed apart from the
   one import inside `preview-provider.ts`.
-- ADR-VSC-0004 names four of these modules by their old paths in its Consequences. It carries an
-  amendment pointing here; the decision it records is untouched, since which folder a module sits
-  in has no bearing on whether it can be loaded without a VS Code host.
+- The decision in ADR-VSC-0004 is untouched, since which folder a module sits in has no bearing
+  on whether it can be loaded without a VS Code host.
 - `preview/` is the natural home for anything else the panel grows, and `compiler/` for the
   managed-install work. That is the point: the next file has an obvious place, and if it does not,
   that is a signal worth noticing rather than a folder to widen.

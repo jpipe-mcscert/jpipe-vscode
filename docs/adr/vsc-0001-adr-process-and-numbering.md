@@ -38,8 +38,11 @@ a jpipe-vscode decision; a bare number is always a jpipe-compiler decision.
 **When citing an ADR anywhere — code comment, test, prose — name the repository.** The prefix is
 the safety net; naming the repository is the rule.
 
-An ADR is never edited once accepted. It is corrected by appending a dated `## Amendment`
-section, or superseded by a newer record.
+An ADR states a decision as it currently stands. When the decision is refined, the record is
+revised in place so that it still reads as one decision — Context, Decision, Rationale,
+Consequences — with no amendment sections and no account of the incident that prompted the
+change. When the decision is replaced outright, a new record supersedes it, and the old record's
+status becomes `Superseded by ADR-VSC-NNNN`.
 
 ## Rationale
 
@@ -55,6 +58,9 @@ section, or superseded by a newer record.
   in step with the first.
 - Matching the compiler's template costs nothing and means a contributor moving between the two
   repositories reads the same shape twice.
+- Revising in place rather than appending dated amendments keeps a record readable as a statement
+  of the architecture. An amendment log makes the reader replay a history to learn what holds now,
+  and that history is already in git and in the pull request that changed the record.
 
 ## Consequences
 
@@ -64,6 +70,8 @@ section, or superseded by a newer record.
   edits, made in the same change that introduced this record.
 - Numbers are allocated in order and never reused, including for records that are later
   superseded or deprecated.
+- A record's text is not a history. Why a decision changed is found with `git log` on its file,
+  so the commit that revises a record must explain the change.
 - Writing an ADR is now part of taking a structural decision, not a task for later. The cost is
   real: it is roughly an hour per record, and the batch that accompanies this one covers only the
   decisions already taken.

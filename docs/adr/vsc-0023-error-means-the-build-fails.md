@@ -41,32 +41,52 @@ instance is `unknown-unification-method`.
 Severity is no longer a per-call-site decision. It is declared once per code in
 `JpipeIssueSeverity`, with the reason beside it, and `report()` reads it there.
 
-## What follows, and what had to change
-
-Two consequences look like separate decisions and are not — they fall out of the rule.
+## What follows from the rule
 
 **A rule only the editor has can never be an error.** A check the compiler does not run cannot fail
-a build, so it can only ever be a warning. That is the whole reason `no-empty-label` is one, and it
-is now a derivation rather than a judgement.
+a build, so it can only ever be a warning. That is why `no-empty-label` is one: a derivation, not a
+judgement.
 
-**Severity can be attached to the code rather than the call site** — but only because the rule
-removes the one code that needed two. `conclusion-supported` was deliberately emitted at both
-severities, warning for "nothing supports this" and error for "supported, but not by a strategy".
-The compiler rejects both, so both are errors, and message text becomes the only thing telling the
-two branches apart. The two messages must therefore stay distinct, and a test in
-`diagnostic-codes.test.ts` now pins them; that test previously pinned the severities.
+**"Editor-only rule" and "warning" are not the same claim.** The derivation applies to rules the
+compiler does not *run*, which is not the same as rules it has no *name* for. The compiler can
+still reject a file through some other route — most often as a syntax error — and then the editor's
+rule is an error, however editor-specific it looks. Absence of a code upstream is not absence of a
+verdict; `jpipe-compiler-codes.ts` files such a rule with the `FATAL` family.
 
-Three diagnostics moved from warning to error: `has-abstract-support`, `strategy-supported`,
-`conclusion-supported`. Four stayed warnings, each confirmed by running `jpipe diagnostic` and
-seeing it exit 0: `no-empty-label`, `no-empty-unit` (both editor-only style rules the compiler does
-not check), `unknown-config-key` (unrecognised keys are ignored), and the exception.
+**Severity is attached to the code, not the call site.** One code may still have several branches.
+`conclusion-supported` fires both for "nothing supports this" and for "supported, but not by a
+strategy"; the compiler rejects both, so both are errors, and message text is the only thing
+telling them apart. The two messages must stay distinct, and `diagnostic-codes.test.ts` pins them.
 
-`has-abstract-support` also needed rewording. Its message was advisory prose — "Justifications
-implementing this template are not required to override any elements" — which is exactly why it
-looked like a warning. It now uses the compiler's own words, `Template 't' declares no abstract
-supports`, per the message rule in ADR-VSC-0022's second amendment. The compiler's note for that
-rule is the better explanation anyway: *a template with no abstract supports is a justification in
-disguise.*
+**The warning set is exactly three codes**, each confirmed by running `jpipe diagnostic` on a model
+that triggers it and seeing it exit 0:
+
+| Code | Why it is not an error |
+|---|---|
+| `no-empty-label` | editor-only style rule; nothing in the compiler checks a label's contents |
+| `unknown-config-key` | the compiler ignores keys it does not recognise |
+| `unknown-unification-method` | the exception: the method registry is populated at the compiler's startup, which the editor cannot see |
+
+Every other code is an error, each confirmed against the compiler's own `examples/invalid/`
+fixtures or a hand-written model. That includes three that read like advice —
+`has-abstract-support`, `strategy-supported`, `conclusion-supported` — and `no-empty-unit`.
+
+**`no-empty-unit` fires on a document that declares nothing**: empty, whitespace, comments only, or
+text that does not parse. It reads both the unit's `load` statements and its body, so a file made
+only of `load` statements is not empty; the compiler resolves such a file and exits 0, and tutorial
+exercise stubs are written that way on purpose. A file that declares nothing, the compiler rejects
+with `[FATAL] Compilation aborted due to syntax errors`.
+
+The check is not redundant with the parse error. The grammar's `+` means an empty document cannot
+parse, but Langium's error recovery still hands the validator a `Unit` with both lists empty. The
+parser's own message is a token-set mismatch; this one says it in words, and it keeps a name in the
+vocabulary jpipe-vscode ADR-VSC-0022 vendors.
+
+**Messages for compiler-enforced rules use the compiler's words.** `has-abstract-support` reads
+`Template 't' declares no abstract supports`, per the message rule in jpipe-vscode ADR-VSC-0022.
+Advisory prose such as "implementing justifications are not required to override any elements" is
+exactly what makes an error look like a warning. The compiler's note for that rule is the better
+explanation anyway: *a template with no abstract supports is a justification in disguise.*
 
 ## Rationale
 
@@ -102,56 +122,20 @@ disguise.*
 - **The exception is a door, and it must not be widened casually.** "The editor cannot know" is
   true of a great deal if argued loosely, and it would become a way to downgrade anything
   inconvenient. It applies only where the compiler consults state the editor genuinely cannot see —
-  today, a registry populated at startup. Adding a second instance needs an amendment here.
+  today, a registry populated at startup. Adding a second instance means revising this record.
 - **Choosing `'warning'` requires editing a list.** Compile-time exhaustiveness forces a decision;
-  a test asserting the warning set is exactly the four documented codes forces the *right*
+  a test asserting the warning set is exactly the three documented codes forces the *right*
   decision, since adding one means confronting the sentence that says the compiler must accept the
   file.
-- **`report()` replaced 23 `accept()` calls.** The severity literal is gone from every call site
-  and the code is named once instead of twice. `issue()` still does the work underneath, so the
-  `code` + `data.code` duality that quick-fix dispatch depends on is untouched, and
-  `jpipe-code-action-provider.ts` needed no change.
+- **Checks report through `report()`, never `accept()` directly.** No call site carries a
+  severity literal, and each names its code once. `issue()` does the work underneath, so the
+  `code` + `data.code` duality that quick-fix dispatch depends on is preserved.
+- **A rule's fixture must be checked against the compiler, not only asserted.** A test that pins
+  a diagnostic on a fixture only shows the editor is consistent with itself; whether the fixture
+  really is a file the compiler rejects (or accepts) is settled by running `jpipe diagnostic` on
+  it.
 - **This says nothing about which rules are checked.** The gaps listed in ADR-VSC-0022 are
   unchanged; `002_unsupported_elements.jd` still shows the compiler reporting
   `sub-conclusion-supported` where the editor is silent. Getting the severities right on the rules
   we do have does not add the ones we do not.
 
-## Amendment (2026-08-15): `no-empty-unit` is an error, and its fixture was the bug
-
-This record listed `no-empty-unit` among the four warnings, describing it as an editor-only style
-rule the compiler does not check, "confirmed by running `jpipe diagnostic` and seeing it exit 0".
-The run was real. The file it was run on was the wrong one.
-
-`checkUnitNotEmpty` read only `unit.body`, and the grammar routes `load` to `unit.imports`, so a
-file whose entire content is `load` statements counted as empty. That file is exactly what was
-measured, and the compiler does resolve it and exit 0 — so the measurement was sound and the
-conclusion drawn from it was not, because the file should never have been reported in the first
-place. It was asserted as the rule's fixture in `diagnostic-codes.test.ts`, which is why nothing
-caught it. Reported as #70, from tutorial exercise stubs that are loads-only by design.
-
-With the check reading both lists, what remains is the document that declares nothing — empty,
-whitespace, comments, or text that does not parse. Measured the same way:
-
-| file | `jpipe --headless diagnostic` | exit |
-|---|---|---|
-| `load "brick.jd"` | `(none)` | 0 |
-| empty, or comments only | `[FATAL] Compilation aborted due to syntax errors` | 1 |
-
-So the rule now fires only on files the compiler rejects, and **the rule in this record makes it an
-error**. Three warnings remain, and the exception is still the sole one.
-
-Two things follow that are worth keeping.
-
-**The check is not redundant with the parse error.** The grammar's `+` means an empty document
-cannot parse, and Langium's error recovery still hands the validator a `Unit` with both lists
-empty — verified, not assumed. The parser's own message is a token-set mismatch; this one says it
-in words. Deleting the rule was considered on the grounds that the parse error already covers every
-case: rejected, because it would remove a name from the vocabulary ADR-VSC-0022 vendors in exchange
-for removing a sentence a user can read.
-
-**"Editor-only rule" and "warning" are not the same claim.** The derivation in this record — a rule
-the compiler does not run cannot fail a build, so it can only warn — is sound, but it applies to
-rules the compiler does not run. `no-empty-unit` looked like one because the compiler has no named
-rule for it; the compiler nevertheless rejects the file, as a syntax error. Absence of a code
-upstream is not absence of a verdict, and `jpipe-compiler-codes.ts` now files it with the `FATAL`
-family for that reason.

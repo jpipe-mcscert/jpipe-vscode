@@ -54,7 +54,7 @@ to this rule and this file.
   and one path-resolution routine, and the port is what makes the rules injectable and therefore
   testable on Linux. That trade is the same one ADR-VSC-0004 makes everywhere else.
 - The suppression is in the properties file, not the SonarCloud UI, for the reason given in
-  ADR-VSC-0007's second amendment: an exemption is a decision, and this project's decisions live
+  ADR-VSC-0007: an exemption is a decision, and this project's decisions live
   in the repository where they are reviewed with the code.
 
 ## What this does *not* cover
