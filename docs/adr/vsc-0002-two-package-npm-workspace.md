@@ -23,15 +23,16 @@ The repository is an npm workspace with two packages: `packages/language` (`jpip
 it has an `exports` map, a `main`, a `types` entry and a real build output under `out/` — even
 though it is not currently published to npm.
 
-The extension depends on it as an ordinary dependency pinned to an **exact version**
-(`"jpipe-language": "1.7.0"`), not `workspace:*` or a range. npm workspaces resolve that to the
+The extension depends on it as an ordinary dependency pinned to an **exact version** —
+`"jpipe-language": "X.Y.Z"`, the repository's own current version — not `workspace:*` or a
+range. npm workspaces resolve that to the
 local package by symlink.
 
 ## Rationale
 
 - The package boundary is what actually keeps the language server editor-agnostic. `vscode`
-  appears in exactly seven files, all of them in `packages/extension/src/extension/`; the
-  language package cannot import it because it does not depend on it.
+  is imported only under `packages/extension/src/extension/`; the language package cannot import
+  it because it does not depend on it.
 - Shaping `jpipe-language` as publishable, rather than as an internal folder, means the day it is
   wanted in another editor's client — or as a standalone LSP binary — nothing has to be
   untangled. The public surface is deliberate: `src/index.ts` is the only entry point.
@@ -63,18 +64,12 @@ local package by symlink.
 - Anything genuinely shared *within* the extension (the webview protocol, the diagnostic report
   types) lives in `packages/extension/src/shared/`, which the language package cannot reach. That
   directory is shared between bundles, not between packages.
-
-## Amendment (2026-08-11): the suspected import cycle does not exist
-
-A structural cycle through `jpipe-module.ts` had been suspected — seventeen services imported by
-it, several importing back for the `JpipeServices` type.
-
-The architecture audit built the full graph with the TypeScript compiler over 68 files,
-separating value imports from type-only ones, and found **zero value-level cycles**. All ten
-imports of `jpipe-module.ts` are type-only and erase at compile time. The
-`jpipe-code-action-provider → code-actions/index → jpipe-language-server` triangle is not a cycle
-either: nothing imports back.
-
-Recorded so the question is not re-derived. The pre-injection `DocumentBuilder.onUpdate` wiring,
-whose comment cites a cycle risk, is defensible as written.
+- The language package has no value-level import cycle. Every service that refers back to
+  `jpipe-module.ts` does so for the `JpipeServices` type alone, with `import type`, which erases
+  at compile time; no service imports it for a value (only `index.ts` re-exports it). A service that needs another one reaches it
+  through the injected `JpipeServices` handle, never through a value import of the module, so
+  that stays true. Wiring that must reach a service *during* injection — the
+  `DocumentBuilder.onUpdate` hook that clears the glob cache — is done in `createJpipeServices`
+  after `inject` returns, which avoids a cycle in the dependency-injection graph rather than in
+  the import graph.
 

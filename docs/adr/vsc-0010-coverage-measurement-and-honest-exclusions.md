@@ -39,6 +39,12 @@ belongs on it because loading it throws — not because covering it is inconveni
 because it is currently untested. Adding to it is a decision to be argued, not a way to make a
 number go up.
 
+An excluded module must also be **thin**: an adapter doing only what needs an editor. A module
+that imports `vscode` but does substantial work that does not need it fails the rule even though
+it cannot be loaded. That work is split into a `vscode`-free module below the seam
+(jpipe-vscode ADR-VSC-0004), which is measured, and only the adapter stays excluded —
+`release-download.ts` beneath `release-manager.ts` is the pattern.
+
 ## The `include` asymmetry between the two configs
 
 The two `vitest.config.ts` files differ, and the difference is not an oversight.
@@ -51,8 +57,8 @@ average.
 The language package's config **deliberately omits it**. The filter is applied to the
 *executed* path, so with `include: ['src/**/*.ts']` every `out/*.js` file is discarded before
 it can be mapped back to source. The report does not fail — it silently collapses to the three
-modules some tests import from `../src/` directly, and reports **6.38%** where the true figure
-is **86.52%**. Nothing in the output indicates the number is wrong. Omitting `include` loses
+modules some tests import from `../src/` directly, and reports around **6%** where the true
+figure is above **85%**. Nothing in the output indicates the number is wrong. Omitting `include` loses
 nothing there, because `src/index.ts` re-exports the whole package, so every module is loaded
 and appears in the report anyway.
 
@@ -65,7 +71,8 @@ they must not be anchored at the package root. `src/generated/**` does not match
 - Measuring per workspace, rather than merging into one report, matches how the packages are
   built and tested and avoids a merge step that could hide a missing report as a passing one.
 - `@vitest/coverage-v8` over Istanbul: it needs no instrumentation step and reuses the runtime's
-  own coverage. Its version must match `vitest` exactly, or Vitest refuses to start.
+  own coverage. Its version must match `vitest` exactly; a mismatch only prints a warning, which
+  is why the two move as one Dependabot group (jpipe-vscode ADR-VSC-0013).
 - Aliasing `'jpipe-language'` to `src/index.ts` under test was considered as a way to sidestep
   the remapping entirely. It works — 82% — but it changes what the suite guarantees, from
   "the built package behaves" to "the sources behave", and it would stop the tests noticing a
@@ -74,6 +81,9 @@ they must not be anchored at the package root. `src/generated/**` does not match
 - Excluding the unloadable modules rather than lowering the gate's coverage threshold: a
   threshold applies to everything, so lowering it to accommodate code that *cannot* be tested
   would also excuse code that simply *is not*.
+- Requiring excluded modules to be thin is what keeps "cannot be loaded" from becoming a place to
+  park untested logic: a module can fail to load because of a single `vscode` import at the top
+  of three hundred lines that never touch the editor.
 
 ## Consequences
 
@@ -83,10 +93,8 @@ they must not be anchored at the package root. `src/generated/**` does not match
   the extension's source modules; Sonar carries two additional entries with no Vitest
   counterpart, `packages/language/src/index.ts` (eighteen `export *` lines, reporting `LF:0`)
   and `esbuild.mjs` (a build script outside Vitest's `src/` coverage scope).
-- The baseline, from a clean build: language 81.85% statements / 86.52% lines across 45
-  modules; extension 93.44% / 94.17% across 11. The extension's figure covers only the half of
-  the package that is loadable, and reads high for that reason — it is not comparable to the
-  language package's.
+- The extension's figure covers only the half of the package that is loadable, and reads high
+  for that reason — it is not comparable to the language package's.
 - `coverage/` is git-ignored and removed by both `clean` scripts. Both were required in the same
   change: `release.sh check_clean_tree` uses `git status --porcelain`, which reports untracked
   files, so without the ignore rule `release.sh prepare` would refuse to run on any machine that
@@ -94,37 +102,17 @@ they must not be anchored at the package root. `src/generated/**` does not match
 - The exclusion list is a standing invitation to cheat, and the rule above is the only thing
   preventing it. A module that becomes hard to test is not thereby uncoverable; the answer is to
   push its logic below the seam (jpipe-vscode ADR-VSC-0004), not to add a line here.
+- **Splitting a module below the seam lowers the measured figure**, because lines that were
+  invisible start being counted and not all of them are covered at once. That is correct: a
+  figure that improves when code stops being measured is the failure this record exists to
+  prevent, and the same arithmetic works in reverse.
+- A module's logic that a test cannot otherwise reach is made reachable by injection, not by
+  loosening the module. `release-download.ts` takes its `Transport` as a parameter because its
+  host allowlist refuses everything but GitHub, so no local test server could be contacted.
+- `image-generator.ts` is the excluded module with the most editor-free work still inside it,
+  and the next candidate for the same split.
 - A "types only" justification must be checked against the file's exports rather than assumed
   from its name. `preview-protocol.ts` qualifies — every export is a `type` or `interface`. Its
   neighbour `diagnostic-report.ts` does not: it exports a runtime `SUPPORTED_SCHEMA_VERSION`,
-  and was briefly and wrongly excluded on this basis.
-
-## Amendment (2026-08-11): release-manager.ts is now excluded honestly
-
-This record's rule is *uncoverable by construction, never merely untested*. The architecture
-audit found `release-manager.ts` failing it: 300 lines behind **five** `vscode.*` references — a
-1.7% density — doing GitHub HTTPS, redirect handling, host validation and file placement, none of
-which needs an editor. It was on the exclusion list by **accretion**, which by this record's own
-terms made the exclusion dishonest.
-
-It has been split. `release-download.ts` holds the work and imports no `vscode`; `ReleaseManager`
-is now 131 lines of settings reads, `globalState` and one notification — things only an extension
-host can do.
-
-- **The exclusion list is unchanged.** `release-manager.ts` still cannot be loaded, so it stays
-  on it; `release-download.ts` was never added. What changed is that the exclusion is now true
-  rather than convenient.
-- **45 tests now cover logic that had none**, including the security boundary: HTTPS-only, the
-  host allowlist, and the redirect ceiling — checked on every hop, since a 302 to an
-  attacker-controlled host is the obvious way around a validated first URL.
-- **The transport is injectable** (`Transport`, defaulting to `httpsTransport`). Not for its own
-  sake: the allowlist refuses every host but GitHub's, so a local test server could not be
-  contacted even if one were started. Parameterising it is the only way the redirect, rate-limit
-  and malformed-body handling is reachable at all.
-- **Measured coverage of the extension package went down**, from 94.19% to 93.28% lines. It went
-  down because 96 lines that were previously invisible are now counted, 82 of them covered. A
-  figure that improves when code stops being measured is the failure mode this record exists to
-  prevent, and the same arithmetic works in reverse.
-
-`image-generator.ts` (6% density) is the same shape one step milder and has not been done.
+  so it stays measured despite the name suggesting otherwise.
 

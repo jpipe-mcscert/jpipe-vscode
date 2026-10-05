@@ -43,7 +43,7 @@ export const COMPILER_CODES = [
     'no-duplicate-ids',
     // Merge aliases only; the element ids it shares a namespace with are `no-duplicate-ids`. The
     // aliases exist only once an operator has unified something, so nothing in a `.jd` file names
-    // one and this extension cannot check it — ADR-VSC-0022's amendment of 2026-08-15.
+    // one and this extension cannot check it — jpipe-vscode ADR-VSC-0022.
     'unique-identifiers',
     'acyclic-support',
     'acyclic-implements',

@@ -39,6 +39,14 @@ Four failure modes are errors, **worded exactly as the compiler words them**: a 
 pattern, a `..` surviving anchoring, an anchor that is not a directory, and zero matches. A load
 resolving to its own file is reported as `Circular load detected`. Results are sorted.
 
+The port's cognitive complexity is accepted, not refactored. SonarCloud's `typescript:S3776` is
+suppressed for `jpipe-glob.ts` alone, in `sonar-project.properties`:
+
+```properties
+sonar.issue.ignore.multicriteria.globPortComplexity.ruleKey=typescript:S3776
+sonar.issue.ignore.multicriteria.globPortComplexity.resourceKey=packages/language/src/jpipe-glob.ts
+```
+
 ## Deliberate deviations from the compiler
 
 Two, both concessions to running inside an editor rather than once per build:
@@ -63,6 +71,16 @@ Neither changes which files a well-formed pattern in a real project resolves to.
   explanation, not two subtly different ones.
 - The cost — a hand-maintained ~300-line matcher in a package that is otherwise about a DSL — is
   accepted deliberately.
+- **The complexity is the algorithm's.** `parseCharacterClass` and `globToRegExp` are the most
+  complex functions in the language package, because OpenJDK's `Globs.toUnixRegexPattern` is
+  shaped that way and the port mirrors it. Refactoring them for a complexity score would trade
+  the one property they must have, in the module where a divergence is hardest to notice: the
+  symptom is a model loading different files in the IDE than in the compiler.
+- **The suppression lives in the repository, not in the SonarCloud UI.** Marking the issues
+  Accepted there would keep them visible on the dashboard and out of the gate, but the reason
+  would live only in SonarCloud — invisible in the repository, absent from review, lost if the
+  project is recreated. An exemption is a decision, and decisions here are recorded in
+  `docs/adr/`.
 
 ## Consequences
 
@@ -72,57 +90,17 @@ Neither changes which files a well-formed pattern in a real project resolves to.
 - Any change to the matcher requires re-running `test/glob-matcher.test.ts`, whose cases exist to
   catch exactly this.
 - The two deviations above must stay meaning-preserving. Adding a third needs to be argued the
-  same way and recorded here as an amendment.
+  same way and recorded here.
+- **The complexity debt does not appear anywhere in SonarCloud.** A reader of the dashboard alone
+  would conclude `jpipe-glob.ts` is uncomplicated; this record is the counterweight, and the
+  properties file points back at it.
+- The suppression is one rule on one file. Any other rule firing on `jpipe-glob.ts` is an ordinary
+  finding. The fidelity argument covers behaviour, not appearance: a suggestion that produces an
+  identical string or regex — `String.raw` (`typescript:S7780`), say — is not exempt on the
+  grounds that the port should read like the Java it mirrors.
 - **Glob resolution powers hover but deliberately not go-to-definition.** F12 on a pattern returns
   nothing, because "go to definition" names one target and a pattern does not; the hover lists the
   matches as clickable links instead.
 - The matcher is domain-free and currently lives in the language package. That placement is
   incidental rather than decided.
-
-## Amendment (2026-08-11): the complexity warnings on this file are expected
-
-SonarCloud reports cognitive complexity above threshold on `parseCharacterClass` (30) and
-`globToRegExp` (27) — the two highest in the language package.
-
-They stay. This record makes agreement with OpenJDK's `Globs.toUnixRegexPattern` the requirement,
-and the shape of that algorithm is the shape of the port. **Refactoring these for a complexity
-score would trade the one property they must have**, and would do it in the module where a
-divergence is hardest to notice, since the symptom is a model loading different files in the IDE
-than in the compiler.
-
-Excluded from the complexity remediation in jpipe-vscode ADR-VSC-0017's finding. If the warnings
-are unwanted they should be suppressed with this reason attached, not designed away.
-
-## Amendment (2026-08-11): the suppression now exists, in the repository
-
-The paragraph above left the warnings standing. During the quality-gate cleanup they were the
-only two of fourteen cognitive-complexity findings with a standing argument for staying, so they
-would have been re-litigated on every pass through the backlog. `sonar-project.properties` now
-carries:
-
-```properties
-sonar.issue.ignore.multicriteria=globPortComplexity
-sonar.issue.ignore.multicriteria.globPortComplexity.ruleKey=typescript:S3776
-sonar.issue.ignore.multicriteria.globPortComplexity.resourceKey=packages/language/src/jpipe-glob.ts
-```
-
-**In the properties file rather than accepted per-issue in the SonarCloud UI.** Marking the two
-issues Accepted would keep them visible on the dashboard, correctly labelled, and not counted
-against the gate — which is a fair description of the truth. It was rejected because the reason
-would then live only in SonarCloud: invisible to anyone reading the repository, absent from
-review, and lost if the project is ever recreated. Everything else this project decides is
-recorded in `docs/adr/`, and an exemption is a decision.
-
-The cost is real and worth stating: the debt no longer appears anywhere in SonarCloud. A reader
-of the dashboard alone would conclude `jpipe-glob.ts` is uncomplicated. This record is the
-counterweight, and the properties file points back at it.
-
-The suppression is narrow by construction — one rule, one file. Any other rule firing on
-`jpipe-glob.ts` is an ordinary finding; in particular the two `String.raw` suggestions (S7780) —
-on the escaped `}` in `globToRegExp` and the escaped `^` in `parseCharacterClass` — are **not**
-covered and remain open. The fidelity argument does not extend to them: `String.raw` produces an
-identical string, so the case for leaving them would rest on the port *reading* like the Java it
-mirrors, not on behaviour that must not change. That is a weaker claim than the one made here,
-and stretching this one to cover it would turn a specific exemption into a blanket one for the
-file.
 

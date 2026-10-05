@@ -7,89 +7,116 @@
 
 Both tools name the defects they find, and they named them independently.
 
-The compiler puts a bare kebab-case string in `Diagnostic.code()` — twenty of them, in two
-families sharing one field, as jpipe-compiler ADR-0016 has it: eleven constants in
-`DiagnosticCodes.java` that name failures (`unknown-model`, `invalid-support`), and nine
-validation rule names reaching the same field through `Violation.rule()` (jpipe-compiler ADR-0015)
-that name invariants in the positive (`conclusion-supported`, `no-duplicate-ids`). The extension
-consumes those codes: they arrive in the JSON diagnostic report and become the filter chips in the
-preview's Diagnostics tab.
+The compiler puts a bare kebab-case string in `Diagnostic.code()`, in two families sharing one
+field, as jpipe-compiler ADR-0016 has it: the constants in `DiagnosticCodes.java`, which name
+failures (`unknown-model`, `invalid-support`), and the validation rule names reaching the same
+field through `Violation.rule()` (jpipe-compiler ADR-0015), which name invariants in the positive
+(`conclusion-supported`, `no-duplicate-ids`). The extension consumes those codes: they arrive in
+the JSON diagnostic report and become the filter chips in the preview's Diagnostics tab.
 
-The language server had twenty codes of its own, and they differed from the compiler's twice over.
-They carried a `jpipe.` prefix, and they named the failure rather than the rule. So one defect —
-a conclusion nothing supports — read as `jpipe.conclusion-unsupported` in the Problems panel and
-as `conclusion-supported` in the preview, four inches apart in the same window. A user filtering
-on one found nothing under the other, and a bug report quoting one was not searchable against the
+The language server had codes of its own, and they differed from the compiler's twice over. They
+carried a `jpipe.` prefix, and they named the failure rather than the rule. So one defect — a
+conclusion nothing supports — read as `jpipe.conclusion-unsupported` in the Problems panel and as
+`conclusion-supported` in the preview, four inches apart in the same window. A user filtering on
+one found nothing under the other, and a bug report quoting one was not searchable against the
 other.
 
 The prefix earned nothing. Langium already sets `source` to the language id on every diagnostic
 it produces (`DefaultDocumentValidator.getSource()`), so VS Code was rendering
 `jpipe(jpipe.load-circular)`. And the compiler's own report schema constrains `code` to
-`^[a-z0-9]+(-[a-z0-9]+)*$` — a dot is not in that class, so the prefixed names were already
-lexically foreign to the vocabulary they sat beside.
+`^[a-z0-9]+(-[a-z0-9]+)*$` — a dot is not in that class, so the prefixed names were lexically
+foreign to the vocabulary they sat beside.
 
 ## Decision
 
 The two vocabularies are one. Where both tools check the same rule, **the compiler's name is
-canonical** and the extension adopts it verbatim; where only the extension checks something, it
-coins a name in the compiler's style. The `jpipe.` prefix is gone. A diagnostic code is now the
-same string in both tools, and `packages/language/src/jpipe-compiler-codes.ts` records which
-family each belongs to.
+canonical** and the extension uses it verbatim; where only the extension checks something, it
+coins a name in the compiler's style. Codes carry no prefix and match the compiler's schema
+pattern. A diagnostic code is the same string in both tools.
 
-## The correspondence, and how the coined names were chosen
+For a rule both tools enforce, **the message uses the compiler's wording too**, not only its
+code. Rules only the editor has keep the editor's own voice.
 
-Six codes are the compiler's, adopted:
+`packages/language/src/jpipe-compiler-codes.ts` vendors the compiler's codes and declares the
+ones this extension coins. `npm run check:codes` compares the vendored list with a sibling
+jpipe-compiler checkout, and `scripts/release.sh preflight` runs it.
 
-| was | is | note |
-|---|---|---|
-| `jpipe.duplicate-element-id` | `no-duplicate-ids` | exact |
-| `jpipe.template-without-support` | `has-abstract-support` | exact, inherited `@support` included on both sides |
-| `jpipe.missing-support-override` | `no-abstract-support` | same rule from the opposite vantage — the compiler checks it after the override commands run, we check it before expansion |
-| `jpipe.strategy-unsupported` | `strategy-supported` | exact |
-| `jpipe.strategy-bad-supporter` | `invalid-support` | **we implement a subset**: the compiler's code covers every ill-typed support pair, we check only the strategy side |
-| `jpipe.conclusion-unsupported` + `jpipe.conclusion-no-strategy` | `conclusion-supported` | two codes collapse into one — see below |
+## The vocabulary, rule by rule
 
-Thirteen are coined. Eight of those are the old name with nothing but the prefix removed. Five
-were reworded as well: `jpipe.empty-label` and `jpipe.empty-unit` became `no-empty-label` and
-`no-empty-unit`, `jpipe.duplicate-model-name` became `no-duplicate-model-names`,
-`jpipe.bad-support-override-type` became `support-override-type`, and `jpipe.load-circular` became
-`cyclic-load` to rhyme with the compiler's existing `cyclic-implements`.
+**Adopted from the compiler:**
+
+| Code | How the editor's check relates to the compiler's |
+|---|---|
+| `no-duplicate-ids` | exact |
+| `has-abstract-support` | exact, inherited `@support` included on both sides |
+| `no-abstract-support` | same rule from the opposite vantage — the compiler checks it after the override commands run, the editor before expansion |
+| `strategy-supported` | exact |
+| `invalid-support` | **a subset**: the compiler covers every ill-typed support pair, the editor only the strategy side |
+| `conclusion-supported` | one code over two checks — see below |
+| `conclusion-present` | inherited conclusions count; composed models are skipped — see below |
+| `single-conclusion` | exact, down to the anchor column |
+
+**Coined by the extension**, for one of three reasons. The distinction matters when the compiler
+next gains a rule, and `jpipe-compiler-codes.ts` keeps each code under its reason:
+
+- *The compiler does not check it at all:* `no-empty-label`, `unknown-config-key`,
+  `support-override-type`.
+- *The compiler checks it, but reports it as the `execution-error` catch-all,* so there is no name
+  to adopt: `no-duplicate-model-names`, `unknown-operator`, `operator-arity`,
+  `missing-config-key`, `unknown-unification-method`, `unknown-hook`.
+- *The compiler reports it as `FATAL`, and a fatal carries no code by policy*
+  (jpipe-compiler ADR-0016): the whole `load-*` family, `cyclic-load`, and `no-empty-unit`. There
+  is nothing upstream to adopt for these, by policy rather than by omission.
 
 Coining follows the compiler's own three habits rather than imposing a fourth: a rule the model
 must satisfy is phrased as the positive invariant (`no-empty-label`, after `no-duplicate-ids`); a
 name that failed to resolve joins the `unknown-*` family; a constrained property with no natural
 positive phrasing is named for the property (`operator-arity`, after `single-conclusion`).
+`cyclic-load` rhymes with the compiler's `cyclic-implements`.
 
-Two names were considered and rejected. `missing-config-key` was nearly renamed
-`config-key-present` for symmetry with `conclusion-present`, but its natural pair
-`unknown-config-key` has no positive phrasing, and splitting a pair to satisfy a rule is worse
-than the asymmetry; composition failures are execution-level, which is exactly where the compiler
-itself names failures. And `unknown-unification-method` was **not** folded into the compiler's
-`incompatible-unification`: that code means unification merged a strategy with an evidence, while
-this one means `unifyBy:` named a relation no registry has. Near neighbours, different rules.
+A coined name that the compiler later gains a rule for is renamed to the compiler's name.
 
-**The whole `load-*` family is coined, and always will be.** The compiler reports load failures as
-`FATAL`, and jpipe-compiler ADR-0016 states in as many words that a fatal carries no code. There
-is nothing upstream to adopt here — not yet, but by policy. Worth saying so a future reader does
-not go looking.
+**`conclusion-supported` covers two checks** — nothing supports the conclusion, or something does
+but no strategy does — because they are one rule to the compiler: for `evidence e; e supports c`
+it emits `invalid-support` when the relation fails to attach, then `conclusion-supported` from the
+completeness pass on the same input. Both payloads are `{ targetId }`, and `add-supporter.ts`
+branches on the AST node rather than the code, so one fix serves both. Both are errors
+(jpipe-vscode ADR-VSC-0023), so only the messages tell them apart, and `diagnostic-codes.test.ts`
+pins them as distinct.
 
-### The one collapse
+No other pair is collapsed. `load-unresolved` and `load-no-match` stay distinct: no compiler rule
+forces them together, and `fix-load-path.ts` registers only the first, since offering a corrected
+path is meaningless for a glob that matched nothing.
 
-`conclusion-unsupported` (a warning: nothing supports the conclusion) and `conclusion-no-strategy`
-(an error: something does, but no strategy does) are one rule to the compiler, and provably so —
-for `evidence e; e supports c` it emits `invalid-support` when the relation fails to attach, then
-`conclusion-supported` from the completeness pass on the same input. Both now carry
-`conclusion-supported`.
+**`conclusion-present` reads `getAllElements`**, because the compiler checks completeness after
+`implements` has inlined the parent's elements. **It skips composed models**:
+`justification K is assemble(J, T) { … }` has no body, its elements exist only once the operator
+has run, and `assemble` synthesises a conclusion from `conclusionLabel`. The compiler judges the
+result, and so cannot be predicted from the source text. No quick fix is offered — writing a
+conclusion means writing the claim the argument exists to make, which the editor cannot guess.
 
-The collapse cost nothing to dispatch. Both payloads were already `{ targetId }`, so no
-discriminant was needed, and `add-supporter.ts` branches on the AST node rather than on the code,
-so it reaches both branches unchanged. Severity is what still tells them apart, and two new cases
-in `diagnostic-codes.test.ts` assert exactly that, because nothing else in the suite would have
-noticed the collapse quietly losing a branch.
+**`single-conclusion` fires on every conclusion after the first**, anchored on the extra one's
+id, leaving the first unmarked — the anchor the compiler uses. The compiler keeps the first
+conclusion a model declares and discards every later one (`ActionListProvider.enterConclusion`
+returns without creating it), so it never asks whether a later conclusion is supported. The
+editor therefore does not report `conclusion-supported` on a later conclusion either.
 
-No other pair was collapsed. In particular `load-unresolved` and `load-no-match` stay distinct:
-no compiler rule forces them together, and `fix-load-path.ts` registers only the first, since
-offering a corrected path is meaningless for a glob that matched nothing.
+**Rules the editor does not check.** The compiler reports, and the editor is silent on:
+`sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`, `unresolved-override`,
+`cyclic-implements`, `implements-error`, `reference-into-template`, `incompatible-unification`,
+and `invalid-support` beyond strategies. `unknown-model` and `unknown-element` *are* covered, but
+under Langium's own `linking-error`, a vocabulary this repository does not own — the seam
+`add-missing-load.ts` keys on.
+
+**`unique-identifiers` is out of reach, not merely undone.** It is not `no-duplicate-ids`
+renamed: that rule covers element ids within a model, while `unique-identifiers` covers every
+identifier an *exported* model can be addressed by — the ids plus the aliases a merge leaves
+behind, since every id unified into an element keeps addressing it. A key landing on two elements
+gives a consumer no way to choose, and `jpipe-runner` discards the whole model rather than guess.
+Aliases are created only by `CompositionOperator` and `Unifier`, as `RegisterAlias` commands, so
+no `.jd` file names one and none exists until an operator has run. Checking the rule would mean
+executing unification in the language server — the boundary `conclusion-present` declines to
+cross for composed models. It is vendored to be filed, and its entry in `COMPILER_CODES` says so.
 
 ## Rationale
 
@@ -100,208 +127,82 @@ offering a corrected path is meaningless for a glob that matched nothing.
   The editor's job is to predict it — the same argument that makes the glob matcher a port rather
   than a library (jpipe-vscode ADR-VSC-0007). A vocabulary the editor invents for rules the
   compiler already names is the same divergence in a different place.
-- **Meeting in the middle was rejected.** Some extension names read better — `duplicate-element-id`
-  says more than `no-duplicate-ids`. Adopting them would mean renaming codes the compiler has
-  published in a schema-versioned report, breaking its consumers to improve ours. One repository
-  changing is the cheaper half of a symmetric-looking choice.
+- **Shared messages follow from shared codes.** A user searching a message should find one
+  explanation, which is the argument jpipe-vscode ADR-VSC-0007 makes about the glob errors. The
+  editor's habit of naming the kind (`Justification 'J' …`) stays right for its own rules; for a
+  shared one, the compiler's `Model 'J' …` wins.
+- **Meeting in the middle was rejected.** Some editor names read better — `duplicate-element-id`
+  says more than `no-duplicate-ids`. Adopting them would mean renaming codes the compiler publishes
+  in a schema-versioned report, breaking its consumers to improve ours.
 - **Keeping both vocabularies with a documented mapping was rejected.** It is the cheapest option
   and it fixes nothing the user can see: they still read two names, and the mapping is a document
   no build consults.
-- **The prefix was redundant, not merely verbose.** `source` already carries it, so dropping it
-  removes a duplication rather than removing information — and it is what makes the two sides
-  literally the same string, which is what a test can check.
-- **Renaming the TypeScript constants as well as their values** (`DuplicateElementId` →
-  `NoDuplicateIds`) doubles the diff. It is worth it: an identifier that no longer resembles its
-  code is a second vocabulary, free to drift from the first, and the whole point here is not
-  having two.
+- **The prefix was redundant, not merely verbose.** `source` already carries it, so leaving it off
+  removes a duplication rather than information — and it is what makes the two sides literally the
+  same string, which is what a test can check.
+- **The TypeScript constants are named after their codes** (`NoDuplicateIds` for
+  `no-duplicate-ids`). An identifier that does not resemble its code is a second vocabulary, free
+  to drift from the first.
+- **Two names were considered and rejected.** `missing-config-key` was nearly renamed
+  `config-key-present` for symmetry with `conclusion-present`, but its natural pair
+  `unknown-config-key` has no positive phrasing, and splitting a pair to satisfy a rule is worse
+  than the asymmetry. `unknown-unification-method` was **not** folded into the compiler's
+  `incompatible-unification`: that code means unification merged a strategy with an evidence,
+  while this one means `unifyBy:` named a relation no registry has.
+- **Suppressing `conclusion-supported` on a later conclusion withholds a true statement**, and the
+  justification is that the compiler's model does not contain the element the statement is about.
+  Reporting it answers "you have written two conclusions" with a remark about an element that was
+  never going to exist.
+- **Skipping composed models trades a miss for a false alarm, deliberately.** A composition whose
+  result lacks a conclusion is caught by the compiler and not the editor; judging the source text
+  would instead report an error on a model that builds. Silence about a real problem beats noise
+  about one that is not — the same trade jpipe-vscode ADR-VSC-0007 makes for globs.
+- **The vocabulary check runs at release, not in CI and not in `npm test`.** CI builds this
+  repository alone, so a CI gate could never run, and a gate that never runs gets deleted. In
+  `npm test`, an unrelated change would go red because of the state of a sibling checkout.
+  Fetching the compiler's sources over the network would gate the build on somebody else's
+  availability and still have to pick a version. A release is the one moment the answer has
+  consequences: it is when this repository decides which compiler it claims to work with.
+- **A generated vocabulary published by the compiler was rejected** for now. It needs release
+  plumbing that repository does not have, and the extension supports a *range* of compiler
+  versions, so pinning one version's vocabulary would fail against the others.
 
 ## Consequences
 
-- **The vocabulary is now a cross-repository contract with no shared build.**
-  `jpipe-compiler-codes.ts` vendors the compiler's twenty codes and declares our thirteen, and
-  `diagnostic-codes.test.ts` asserts the two lists partition our codes exactly, with no overlap and
-  no code left unplaced. That test cannot tell whether the vendored list is current — it does not
-  know what the compiler did. What it does is **force the question to be answered when a code is
+- **The vocabulary is a cross-repository contract with no shared build.** `diagnostic-codes.test.ts`
+  asserts that the vendored and coined lists partition this extension's codes exactly, with no
+  overlap and no code left unplaced, and that every code matches the schema pattern. It cannot
+  tell whether the vendored list is current. What it does is **force the question when a code is
   added**: the build fails until the author declares whether the compiler already names that rule,
   which is the decision that actually drifts.
-- **The vendored list goes stale silently when the compiler adds a rule.** `npm run
-  check:codes` re-derives it from a sibling checkout and diffs, but it is **deliberately not a CI
-  gate** — CI builds this repository alone, so the gate could never run, and a gate that never runs
-  gets deleted. Staleness is caught by a human running the script, or not at all. A generated
-  artifact published by the compiler would close this properly; it was rejected for now because it
-  needs release plumbing that repository does not have, and because the extension supports a
-  *range* of compiler versions, so pinning one version's vocabulary would fail against the others.
-- **A code shape check now exists**, matching the compiler's report schema pattern. It is what
-  makes the prefix drop permanent rather than a one-time edit.
-- **Codes are now ambiguous between sources, by design.** Nothing pooling an exported Problems
-  list with a compiler report can tell an LSP `conclusion-supported` from a compiler one by the
-  code alone. The discriminators are `source: 'jpipe'` on one side and the report envelope on the
+- **Between releases, the vendored list can go stale silently.** The release preflight is a
+  trigger, not a guarantee. A missing jpipe-compiler checkout makes it warn rather than fail,
+  because releasing from a machine without one is legitimate and a check that could not run must
+  never read as one that passed; a stale checkout still reports `ok`.
+- **`check:codes` finds compiler codes with two globs**, and errors only when a glob matches
+  nothing. A rule added to a file it already reads is caught; a validator outside
+  `model/validation/`, or a code declared away from `DiagnosticCodes`, would be missed in silence.
+  jpipe-compiler ADR-0016 requires every code to be a `DiagnosticCodes` constant, so the globs are
+  sound by upstream policy — and inherit that policy's fate.
+- **Some correctness here rests on compiler behaviour no test can see.** Suppressing
+  `conclusion-supported` on later conclusions is right only while the compiler discards them; if
+  it ever kept both, the editor would go quiet about a real problem. The comment in
+  `checkConclusionIncomingFromStrategy` names the assumption so that it is findable.
+- **Codes are ambiguous between sources, by design.** Nothing pooling an exported Problems list
+  with a compiler report can tell an LSP `conclusion-supported` from a compiler one by the code
+  alone. The discriminators are `source: 'jpipe'` on one side and the report envelope on the
   other.
-- **A user with `jpipe.load-unresolved` typed into the Problems panel filter sees it stop
-  matching.** No code value was a public contract otherwise — no setting names one, no
-  `codeDescription` exists, no suppression syntax puts one in a `.jd` file, and none appeared in
-  the README, the CHANGELOG or any earlier ADR.
-- **Immediately after an upgrade, a client may still hold diagnostics from the old server.**
-  `issueCodeOf` returns `undefined` for a `jpipe.`-prefixed code, so the lightbulb is quiet on
-  those problems until the document revalidates on the next keystroke. Degradation, not breakage.
-- **The dispatcher needed no change at all.** `jpipe-code-action-provider.ts` builds its
-  `MultiMap` from each fix's declared `codes` at runtime, so nineteen codes route exactly as twenty
-  did. That is the design in jpipe-vscode ADR-VSC-0004 paying for itself.
-- **Harmonizing the names did not harmonize the coverage, and this record should not be read as
-  claiming it did.** The compiler errors and the editor stays silent on `conclusion-present`,
-  `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`, `single-conclusion`,
-  `unresolved-override`, `cyclic-implements`, `implements-error`, `reference-into-template` and
-  `incompatible-unification`; `invalid-support` is implemented only for strategies. `unknown-model`
-  and `unknown-element` *are* covered, but under Langium's own `linking-error`, a vocabulary we do
-  not own — the seam `add-missing-load.ts` already keys on. Closing those gaps is separate work,
-  and this record's value is that each of them now has a name to be filed under.
-- **One finding belongs upstream, not here.** `ApplyOperator.java` and `Unifier.java` bake
-  `"[execution-error] "` into their exception *messages*, which jpipe-compiler ADR-0016 forbids
-  ("the code is data, not text"), so the human renderer prints the bracket twice. It is a
-  compiler-repo bug and it is good evidence for this record: a shared vocabulary drifted from its
-  own rule *inside a single repository*, which is why the one spanning two needs a check.
-
-## Amendment (2026-08-13): `conclusion-present` is now implemented
-
-The first of the gaps listed above is closed. `checkModelHasConclusion` reports a justification or
-template whose elements include no conclusion, as an **error** — the compiler refuses to build such
-a model, and this repository's rule is that a diagnostic is an error exactly when the build will
-actually fail (the reasoning already written into `checkConfigKeys`).
-
-Adding it cost one line in `JpipeIssue` and no thought at all about what to call it, which is the
-first evidence that this record earns its keep: `conclusion-present` was already in
-`COMPILER_CODES`, so the partition test went green without `jpipe-compiler-codes.ts` being touched.
-The name was not a decision to be made — it had already been made, upstream, and the vocabulary
-file said so.
-
-Two subtleties, both settled by reading the compiler rather than by choosing:
-
-- **Inherited conclusions count.** The compiler checks completeness *after* `implements` has
-  inlined the parent's elements, so the check reads `getAllElements`, not `getLocalElements`.
-- **Composed models are skipped.** `justification K is assemble(J, T) { … }` has no body; its
-  elements exist only once the operator has run, and `assemble` synthesises a conclusion from
-  `conclusionLabel`. The compiler judges the *result* and is satisfied. A first version of this
-  check judged the source text and reported an error on a model that builds — caught by an existing
-  fixture in `renaming.test.ts`, which is what that fixture's "nothing wrong with it" assertion is
-  for. The cost is accepted and is the right way round: a composition whose result genuinely lacks
-  a conclusion is caught by the compiler and not by the editor, and silence about a real problem
-  beats noise about one that is not (the same trade jpipe-vscode ADR-VSC-0007 makes for globs).
-
-No quick fix is offered. Writing a conclusion means writing the claim the argument exists to make,
-and that is the one thing in a `.jd` file the editor cannot guess.
-
-The remaining gaps are unchanged: `sub-conclusion-supported`, `acyclic-support`,
-`acyclic-implements`, `single-conclusion`, `unresolved-override`, `cyclic-implements`,
-`implements-error`, `reference-into-template`, `incompatible-unification`, and `invalid-support`
-beyond strategies.
-
-## Amendment (2026-08-13): `single-conclusion`, and a rule that removes a diagnostic
-
-The second gap is closed, and it is the more interesting one, because most of its value is in what
-the editor now *stops* saying.
-
-On the compiler's own `examples/invalid/005_multiple_conclusion.jd` the editor used to report that
-the second conclusion had no supporting strategy. That was true, and it was the wrong problem: the
-compiler keeps the first conclusion a model declares and **discards** every later one
-(`ActionListProvider.enterConclusion` returns without creating it), so it never asks whether the
-second is supported. It reports one error, `single-conclusion`, on the extra declaration. The
-editor was answering "you have written two conclusions" with a remark about an element that was
-never going to exist.
-
-So this amendment adds two things, and the second is not optional:
-
-- `checkSingleConclusion` reports every conclusion after the first, anchored on the extra's id so
-  the first is left unmarked — the shape `checkDuplicateElementIds` already uses, and the anchor
-  the compiler already uses.
-- `checkConclusionIncomingFromStrategy` now returns early for a conclusion that is not the first
-  in its model. Suppressing a true statement needs justifying, and the justification is that the
-  compiler's model does not contain the element the statement is about.
-
-The two outputs are now identical on that file, down to the column:
-
-```
-[ERROR] 10:15 [single-conclusion] Model 'j' declares multiple conclusions
-[ERROR] 21:15 [single-conclusion] Model 't' declares multiple conclusions
-```
-
-**Messages for shared rules copy the compiler's wording.** `conclusion-present` was written in the
-previous amendment as `Justification 'J' has no conclusion`, following the extension's local habit
-of naming the kind; it now reads `Model 'J' has no conclusion`, as the compiler words it. The
-extension's own checks keep their own voice — the habit is right for a rule only the editor has.
-For a rule both tools enforce, a user searching the message should find one explanation, which is
-the argument jpipe-vscode ADR-VSC-0007 already makes about the glob errors.
-
-**The cost is a coupling that nothing detects.** Suppressing `conclusion-supported` on later
-conclusions is correct only for as long as the compiler discards them. If it ever kept both and
-reported on both, the editor would go quiet about a real problem — the failure mode this record
-elsewhere calls the worse one, because it is invisible. No test can see across the repository
-boundary; the comment in `checkConclusionIncomingFromStrategy` names the assumption so that
-anyone changing that behaviour upstream has a chance of finding it.
-
-Remaining gaps: `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`,
-`unresolved-override`, `cyclic-implements`, `implements-error`, `reference-into-template`,
-`incompatible-unification`, and `invalid-support` beyond strategies.
-
-## Amendment (2026-08-15): `unique-identifiers`, a gap that cannot be closed here
-
-The staleness this record predicted happened, and the mechanism it provided caught it.
-`npm run check:codes` reported `+ unique-identifiers (the compiler has it; we do not)` — a rule
-jpipe-compiler added in v2.5.0, in `ConsistencyValidator`, alongside the three already vendored.
-It is now in `COMPILER_CODES`, and the SOURCE line moves to v2.5.0 (`0bb9332`). Nothing else in the
-three files changed since v2.4.0; the diff is that one rule.
-
-Worth noting how it was found. Not by the script being run on a schedule — it was run while
-verifying an unrelated fix, and it failed on `main` as well as on the branch. That is the "caught
-by a human running the script, or not at all" consequence above, behaving exactly as described: the
-gap existed from the day v2.5.0 was tagged until someone happened to look.
-
-**So `release.sh preflight` now runs it.** Not CI, which still cannot: the reasoning above is
-unchanged, and a gate that never runs still gets deleted. What changed is that "a human running the
-script" had no moment attached to it, and now it has the only moment where the answer has
-consequences — a release is exactly when this repository decides which compiler it claims to work
-with. It sits beside the SonarCloud gate, which is there for the same shape of reason, and borrows
-its escape: **a missing checkout warns rather than fails**, because releasing from a machine
-without jpipe-compiler beside this one is legitimate, and a check that could not run must never
-read as one that passed. That is a trigger, not a guarantee — a release cut from a machine with a
-stale checkout still sees `ok`, and between releases the vocabulary can drift as freely as before.
-
-Two things were considered and rejected. **Running it in `npm test`** would put the whole suite at
-the mercy of a sibling checkout's state, so an unrelated change would go red for a reason that has
-nothing to do with it — which is how the drift was found this time, and it cost a detour.
-**Fetching the compiler's sources over the network in CI** would gate the build on somebody else's
-availability and would still have to pick a version, which is the objection that sank the published
-artifact above.
-
-One residual weakness, recorded rather than fixed: the script finds codes by two globs, and errors
-only when a glob matches *nothing*. A rule added to a file it already reads is caught — this one
-was. A new validator outside `model/validation/`, or a code declared away from `DiagnosticCodes`,
-would be missed in silence. Every code site upstream is inside the globs today, and jpipe-compiler
-ADR-0016 requires that ("introducing a diagnostic code means adding a constant to
-`DiagnosticCodes`"), so the globs are sound by upstream policy rather than by luck — but they
-inherit that policy's fate.
-
-**It is not `no-duplicate-ids` renamed.** Both rules exist, and they check different things.
-`no-duplicate-ids` covers element ids within a model. `unique-identifiers` covers the identifiers
-an *exported* model can be addressed by, which is the ids plus the aliases a merge leaves behind:
-every id unified into an element keeps addressing that element, so a reference written before a
-composition still resolves after it. A key landing on two elements gives a consumer no way to
-choose, and `jpipe-runner` discards the whole model rather than guess.
-
-**This gap is of a different kind from the others listed above, and the list should not flatten
-it.** The rest — `sub-conclusion-supported`, `acyclic-support`, and the others — are rules the
-editor could implement and has not. This one it cannot. Aliases are created only by
-`CompositionOperator` and `Unifier`, which emit `RegisterAlias` commands when they merge elements;
-no `.jd` file names an alias, and no alias exists until an operator has run. Checking the rule would
-mean executing unification in the language server, which is the same boundary
-`checkModelHasConclusion` already declines to cross for composed models — their elements do not
-exist until the operator has run either.
-
-So it is vendored to be filed, not to be implemented, and its entry in `COMPILER_CODES` carries
-that reason inline. If the editor ever does evaluate compositions, this becomes reachable and the
-distinction stops mattering; until then, recording it as merely "not yet done" would misstate what
-is missing.
-
-Remaining gaps: `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`,
-`unresolved-override`, `cyclic-implements`, `implements-error`, `reference-into-template`,
-`incompatible-unification`, `invalid-support` beyond strategies, and — out of reach rather than
-undone — `unique-identifiers`.
+- **A code value is not otherwise a public contract.** No setting names one, no `codeDescription`
+  exists, and no suppression syntax puts one in a `.jd` file. `issueCodeOf` returns `undefined`
+  for a code it does not know, so a stale diagnostic simply gets no quick fix.
+- **Renaming or merging codes needs no dispatcher change.** `jpipe-code-action-provider.ts` builds
+  its `MultiMap` from each fix's declared `codes` at runtime — jpipe-vscode ADR-VSC-0004 paying for
+  itself.
+- **One vocabulary is not one coverage.** The rules the editor does not check are listed above,
+  and this record should not be read as claiming otherwise; its value there is that each gap has a
+  name to be filed under.
+- **One defect belongs upstream.** `ApplyOperator.java`, `Unifier.java` and `RefineOperator.java`
+  bake `"[execution-error] "` into their exception *messages*, which jpipe-compiler ADR-0016 forbids
+  ("the code is data, not text"), so the human renderer prints the bracket twice. A shared
+  vocabulary drifting from its own rule inside a single repository is the strongest argument for
+  checking the one that spans two.

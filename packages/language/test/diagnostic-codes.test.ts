@@ -224,7 +224,7 @@ describe('a model may claim only one conclusion', () => {
     });
 
     // Only the extras are discarded. A lone conclusion with no strategy is still the ordinary
-    // `conclusion-supported` warning, and suppressing it here would hide a real problem.
+    // `conclusion-supported` error, and suppressing it here would hide a real problem.
     test('a single unsupported conclusion is still reported', async () => {
         const document = await parse('justification J { conclusion c is "C" evidence e is "E"\n e supports c }');
         const codes = (document.diagnostics ?? []).map(d => issueCodeOf(d));

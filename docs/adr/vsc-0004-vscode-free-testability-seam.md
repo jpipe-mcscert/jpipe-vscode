@@ -25,10 +25,11 @@ Logic worth testing is pushed into modules that import neither `vscode` nor the 
 `vscode`-importing modules become thin adapters over them: they translate editor concepts into
 plain data, call down, and translate back.
 
-The seam modules today are `process-launcher.ts`, `release-selection.ts`,
-`compiler-invocation.ts`, `exclusion-paths.ts`, `preview-refresh.ts`, `render-failure.ts`,
-`diagnostic-model.ts`, `viewbox.ts` and `highlight.ts`. All are tested. The VS Code API is not
-mocked anywhere in the suite.
+Every module under `packages/extension/src/` that does not import `vscode` is such a seam, and
+is tested — `process-launcher.ts`, `release-selection.ts`, `compiler-invocation.ts`,
+`diagnostic-model.ts` and `viewbox.ts` among them. A type-only import (`import type * as vscode`)
+does not break the seam: it erases at compile time, so the module still loads under Vitest. The
+VS Code API is not mocked anywhere in the suite.
 
 `@vscode/test-cli` was considered and is **not** adopted.
 
@@ -49,15 +50,13 @@ mocked anywhere in the suite.
 ## Consequences
 
 - **Roughly half of the extension package has no automated coverage**, and cannot have any under
-  the current runner. Ten modules import `vscode` or are environment entry points:
-  `extension/main.ts`, `extension/logger.ts`, `extension/exclusions.ts`,
-  `image-generation/{image-generator, preview-provider, release-manager, preview-shell}.ts`,
-  `language/main.ts`, `webview/preview.ts` and `webview/minimap.ts`. This is the honest cost.
-- It follows that any coverage measurement introduced here must exclude those modules, or the
-  figure it reports is meaningless. The rule for that list is **uncoverable by construction, never
-  merely untested** — a module belongs on it because it cannot be loaded without a VS Code host or
-  a browser, not because covering it is inconvenient. That list will get its own record when
-  coverage is actually wired up.
+  the current runner: every module that imports `vscode` as a value, and the environment entry
+  points (`language/main.ts`, `webview/preview.ts`, `webview/minimap.ts`). This is the honest cost.
+- Coverage measurement must therefore exclude those modules, or the figure it reports is
+  meaningless. The rule for that list is **uncoverable by construction, never merely untested** —
+  a module belongs on it because it cannot be loaded without a VS Code host or a browser, not
+  because covering it is inconvenient. The list itself is the `coverage.exclude` array in
+  `packages/extension/vitest.config.ts`; jpipe-vscode ADR-VSC-0010 governs it.
 - The editor surface — decorations, menu `when`-clauses, command registration, the preview panel
   — is verified by hand in the Extension Development Host before a release. `scripts/release.sh`
   prints this as a manual checklist item precisely because CI never launches VS Code.
@@ -70,12 +69,3 @@ mocked anywhere in the suite.
   *source text* and cross-checks element ids against `preview.ts` and `preview.css`, because the
   module itself cannot be imported. It is a deliberate compromise, not a pattern to copy.
 
-## Amendment (2026-08-11): the directory names in Consequences have changed
-
-`image-generation/` was split into `compiler/` and `preview/` by
-jpipe-vscode ADR-VSC-0016. The modules this record names are the same ones; their paths are now
-`compiler/{image-generator, release-manager}.ts` and
-`preview/{preview-provider, preview-shell}.ts`.
-
-Nothing about the decision changes — the set of modules that cannot be loaded without a VS Code
-host is unaffected by which folder they sit in.

@@ -72,8 +72,6 @@ status becomes `Superseded by ADR-VSC-NNNN`.
   superseded or deprecated.
 - A record's text is not a history. Why a decision changed is found with `git log` on its file,
   so the commit that revises a record must explain the change.
-- Records that still carry `## Amendment` sections are folded into a single statement when they
-  are next revised.
 - Writing an ADR is now part of taking a structural decision, not a task for later. The cost is
   real: it is roughly an hour per record, and the batch that accompanies this one covers only the
   decisions already taken.
