@@ -116,9 +116,14 @@ required quality gate as any other (jpipe-vscode ADR-VSC-0009).
   onto it.
 - The held pins need reviewing by hand, and nothing will remind anyone. `@types/vscode` in
   particular is revisited whenever the minimum supported VS Code version is.
-- npm 10.9 crashes (`reading 'edgesOut'`) when moving `vitest` and `@vitest/coverage-v8` together
-  in place; npm 11 does not. If Dependabot's npm hits that defect, the `vitest` pull request fails
-  outright and the bump is done by hand.
+- **Grouping is necessary but not sufficient for the `vitest` packages.** Dependabot moves a
+  group's members one at a time, each with `npm install --force`, so the lockfile passes through a
+  state where the two disagree. It ends correctly only because both are declared once, at the
+  workspace root (jpipe-vscode ADR-VSC-0002); declared per workspace, the coverage plugin is
+  nested where `vitest` cannot load it. On a grouped `vitest` pull request, check that both sit
+  at the root of `node_modules` in the lockfile.
+- Dependabot picks its npm from `engines.npm` (it runs npm 11 here), not from Volta's pin, so its
+  lockfile may differ in layout from one produced locally. `npm ci` in CI is what checks it.
 - Adopting the `github-actions` ecosystem removes the premise on which jpipe-vscode ADR-VSC-0011
   declined commit-SHA pinning, namely that nothing would advance the SHAs. Adopting SHA pins is a
   separate change, applied to every action at once or not at all.

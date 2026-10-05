@@ -25,8 +25,13 @@ though it is not currently published to npm.
 
 The extension depends on it as an ordinary dependency pinned to an **exact version** —
 `"jpipe-language": "X.Y.Z"`, the repository's own current version — not `workspace:*` or a
-range. npm workspaces resolve that to the
-local package by symlink.
+range. npm workspaces resolve that to the local package by symlink.
+
+**Development tooling that both packages use is declared once, in the root `package.json`** —
+`typescript`, `@types/node`, `shx`, `vitest` and `@vitest/coverage-v8`. A package declares only
+what it alone uses (`langium-cli` in the language package; `esbuild`, `happy-dom`, `@types/vscode`
+in the extension). A workspace's scripts find root-declared binaries, since npm puts every
+ancestor's `node_modules/.bin` on their `PATH`.
 
 ## Rationale
 
@@ -45,6 +50,16 @@ local package by symlink.
   graph that makes the import unresolvable.
 - Two separate repositories were considered and rejected: the two halves version together, ship
   together, and are developed by the same people in the same change.
+- **Shared tooling is declared once because a root declaration has exactly one place to live.**
+  Declared in both workspaces, npm is free to install a copy inside each workspace's own
+  `node_modules`, and it does so whenever an update passes through a conflict. That breaks
+  `vitest` and its coverage provider, which pin each other's exact version: Dependabot moves the
+  members of its `vitest` group one at a time with `--force`, so the plugin's new major meets the
+  old `vitest` at the root, is nested in each workspace, and stays there after `vitest` follows.
+  Vitest loads its provider with a bare import from its own location at the root, which cannot
+  see into a workspace, so coverage fails with `Cannot find package '@vitest/coverage-v8'`.
+  Declared at the root, the same updates leave both packages side by side, and both workspaces
+  run the same version of the tools by construction rather than by keeping two ranges in step.
 
 ## Consequences
 
@@ -58,6 +73,10 @@ local package by symlink.
   `'jpipe-language'`, which resolves through the `exports` map to the built `out/index.js` rather
   than to source. Every CI job therefore builds before it tests, and the ordering is commented in
   the workflow.
+- **A package's manifest does not list all the tools its own scripts run.** `vitest run` in
+  `packages/language` works only inside the workspace, where the root's binaries are on the
+  `PATH`. That is acceptable while neither package is built or tested on its own; publishing
+  `jpipe-language` would not change it, since `devDependencies` are not installed for consumers.
 - Adding a capability to the language server that the extension must also know about — a custom
   LSP notification, say — crosses a package boundary and needs a deliberate contract on both
   sides.

@@ -36,6 +36,10 @@ updates:
       # the lockfile carries two vitest majors. Vitest only warns about the mismatch, so the
       # pull request still goes green (#92). This group comes first: a dependency joins the
       # first group it matches, and the minors would otherwise land in `dependencies`.
+      #
+      # Grouping alone is not enough. Dependabot still moves the members one at a time with
+      # `--force`, so both must be declared once in the ROOT package.json, or the plugin ends up
+      # nested in each workspace where vitest cannot load it (#94; ADR-VSC-0002).
       vitest:
         applies-to: version-updates
         update-types: [major, minor, patch]
