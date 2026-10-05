@@ -21,19 +21,23 @@ suite, a browser-sized download in CI, and a second test runner alongside Vitest
 
 ## Decision
 
-Logic worth testing is pushed into modules that import neither `vscode` nor the DOM. The
-`vscode`-importing modules become thin adapters over them: they translate editor concepts into
-plain data, call down, and translate back.
+Logic worth testing is pushed into modules that do not import `vscode`. The `vscode`-importing
+modules become thin adapters over them: they translate editor concepts into plain data, call
+down, and translate back.
 
 Every *logic* module under `packages/extension/src/` that does not import `vscode` is such a seam,
 and is tested — `process-launcher.ts`, `release-selection.ts`, `compiler-invocation.ts`,
 `diagnostic-model.ts` and `viewbox.ts` among them. Not importing `vscode` is necessary, not
-sufficient: three kinds of module import nothing from it and are still not seams. Environment
-entry points (`language/main.ts`, `webview/preview.ts`) run module-level side effects that need a
-language-server connection or the preview's document. The preview's DOM widgets
-(`webview/minimap.ts`) are adapters over the browser in the way the `vscode`-importing modules are
-adapters over the editor; their arithmetic is the seam (`viewbox.ts`). Type-only modules
-(`shared/preview-protocol.ts`) compile to nothing. A type-only import of `vscode`
+sufficient: two kinds of module import nothing from it and are still not seams. Environment entry
+points (`language/main.ts`, `webview/preview.ts`) run module-level side effects that need a
+language-server connection or the webview's `acquireVsCodeApi`. Type-only modules
+(`shared/preview-protocol.ts`) compile to nothing.
+
+**The DOM is not a barrier the way the editor is.** A document can be supplied where an
+extension host cannot, so webview code that needs one is tested against a real DOM: the file opts
+in with a `@vitest-environment happy-dom` annotation, and the rest of the suite stays in plain
+Node. `diagnostic-view.ts` and `minimap.ts` are tested this way. Only what happy-dom does not do —
+layout, pointer capture — is stubbed, at the element. A type-only import of `vscode`
 (`import type * as vscode`) does not break a seam: it erases at compile time, so the module still
 loads under Vitest. The VS Code API is not mocked anywhere in the suite.
 
@@ -56,9 +60,8 @@ loads under Vitest. The VS Code API is not mocked anywhere in the suite.
 ## Consequences
 
 - **Roughly half of the extension package has no automated coverage**, and cannot have any under
-  the current runner: every module that imports `vscode` as a value, the environment entry
-  points, and the DOM widgets over them — the modules named in the Decision. This is the honest
-  cost.
+  the current runner: every module that imports `vscode` as a value, and the environment entry
+  points. This is the honest cost.
 - Coverage measurement must therefore exclude those modules, or the figure it reports is
   meaningless. The rule for that list is **uncoverable by construction, never merely untested** —
   a module belongs on it because it cannot be loaded without a VS Code host or a browser, not
