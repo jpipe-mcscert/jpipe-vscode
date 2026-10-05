@@ -16,7 +16,7 @@
         "test:coverage": "npm run test:coverage --workspaces --if-present"
     },
     "devDependencies": {
-        "@types/node": "~22.20.2",
+        "@types/node": "~22.20.5",
         "shx": "~0.4.0",
         "typescript": "~5.9.3"
     },
