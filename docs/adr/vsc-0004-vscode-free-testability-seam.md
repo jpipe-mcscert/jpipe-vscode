@@ -25,11 +25,17 @@ Logic worth testing is pushed into modules that import neither `vscode` nor the 
 `vscode`-importing modules become thin adapters over them: they translate editor concepts into
 plain data, call down, and translate back.
 
-Every module under `packages/extension/src/` that does not import `vscode` is such a seam, and
-is tested — `process-launcher.ts`, `release-selection.ts`, `compiler-invocation.ts`,
-`diagnostic-model.ts` and `viewbox.ts` among them. A type-only import (`import type * as vscode`)
-does not break the seam: it erases at compile time, so the module still loads under Vitest. The
-VS Code API is not mocked anywhere in the suite.
+Every *logic* module under `packages/extension/src/` that does not import `vscode` is such a seam,
+and is tested — `process-launcher.ts`, `release-selection.ts`, `compiler-invocation.ts`,
+`diagnostic-model.ts` and `viewbox.ts` among them. Not importing `vscode` is necessary, not
+sufficient: three kinds of module import nothing from it and are still not seams. Environment
+entry points (`language/main.ts`, `webview/preview.ts`) run module-level side effects that need a
+language-server connection or the preview's document. The preview's DOM widgets
+(`webview/minimap.ts`) are adapters over the browser in the way the `vscode`-importing modules are
+adapters over the editor; their arithmetic is the seam (`viewbox.ts`). Type-only modules
+(`shared/preview-protocol.ts`) compile to nothing. A type-only import of `vscode`
+(`import type * as vscode`) does not break a seam: it erases at compile time, so the module still
+loads under Vitest. The VS Code API is not mocked anywhere in the suite.
 
 `@vscode/test-cli` was considered and is **not** adopted.
 
@@ -50,8 +56,9 @@ VS Code API is not mocked anywhere in the suite.
 ## Consequences
 
 - **Roughly half of the extension package has no automated coverage**, and cannot have any under
-  the current runner: every module that imports `vscode` as a value, and the environment entry
-  points (`language/main.ts`, `webview/preview.ts`, `webview/minimap.ts`). This is the honest cost.
+  the current runner: every module that imports `vscode` as a value, the environment entry
+  points, and the DOM widgets over them — the modules named in the Decision. This is the honest
+  cost.
 - Coverage measurement must therefore exclude those modules, or the figure it reports is
   meaningless. The rule for that list is **uncoverable by construction, never merely untested** —
   a module belongs on it because it cannot be loaded without a VS Code host or a browser, not
