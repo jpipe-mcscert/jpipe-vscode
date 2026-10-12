@@ -537,9 +537,9 @@
     "devDependencies": {
         "@types/vscode": "~1.91.0",
         "ajv": "~8.20.0",
-        "concurrently": "~10.0.5",
+        "concurrently": "~10.0.6",
         "esbuild": "~0.28.2",
-        "happy-dom": "~20.14.5"
+        "happy-dom": "~20.14.6"
     },
     "vsce": {
         "dependencies": false
