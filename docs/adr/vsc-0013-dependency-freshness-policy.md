@@ -53,8 +53,9 @@ A major outside the `vitest` group arrives as its own pull request.
 - **`@types/node`, `typescript`, `langium`, `langium-cli`: majors.** Each is pinned to something
   outside npm's control — the Node the project runs on, the language level the code targets, the
   generated AST (jpipe-vscode ADR-VSC-0006). Minors and patches flow.
-- **`vscode-languageserver`, `-protocol`, `-types`, `-textdocument` and `vscode-languageclient`:
-  majors and minors.** Patches flow.
+- **`vscode-languageserver` and `vscode-languageclient`: majors and minors.** Patches flow.
+- **`vscode-languageserver-protocol`, `-types` and `-textdocument`: every update.** Each is
+  pinned exactly by the server or client, so even a patch cannot dedupe.
 
 **Dependabot's secret store holds a `SONAR_TOKEN`,** so its pull requests pass through the same
 required quality gate as any other (jpipe-vscode ADR-VSC-0009).
@@ -93,7 +94,14 @@ required quality gate as any other (jpipe-vscode ADR-VSC-0009).
   `language/main.ts`. `npm install` and `npm dedupe` cannot resolve that; only a langium release
   can. `vscode-languageclient` is not a langium dependency, but it ships in lockstep with
   `vscode-languageserver`, pins `-protocol` and `-textdocument` exactly, and is used as a matched
-  pair with it across the two workspaces. Patches stay inside the ranges and dedupe normally.
+  pair with it across the two workspaces. Patches of the pair stay inside langium's ranges and
+  dedupe normally.
+- **`-protocol`, `-types` and `-textdocument` cannot move on their own.** The server and client
+  pin `-protocol` to an exact version, `-protocol` pins `-types` exactly, and the client pins
+  `-textdocument` exactly. A patch of any of the three that those pins do not name cannot dedupe:
+  npm nests a second copy under `packages/language` beside the one the server loads, and the
+  language server runs with two protocol stacks. The three are republished with every server
+  and client release and move with it, so holding them entirely costs nothing.
 - **The Sonar token is shared knowingly.** Dependabot runs with its own secret store; without the
   token, the required `Build and analyze` check fails on every automated pull request regardless
   of content. It is a project-analysis token on a public project, and the alternative — exempting
