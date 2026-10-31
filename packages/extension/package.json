@@ -539,7 +539,7 @@
         "ajv": "~8.20.0",
         "concurrently": "~10.0.6",
         "esbuild": "~0.28.2",
-        "happy-dom": "~20.14.5"
+        "happy-dom": "~21.0.4"
     },
     "vsce": {
         "dependencies": false
