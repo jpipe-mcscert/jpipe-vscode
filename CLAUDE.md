@@ -53,7 +53,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
       src/
         extension/              ← extension host. The only place `vscode` may be imported.
           main.ts               ← activate/deactivate: constructs and wires, nothing else
-          commands.ts           ← the 31 contributed commands, as a table (ADR-VSC-0017)
+          commands.ts           ← the 32 contributed commands, as a table (ADR-VSC-0017)
           exclusion-commands.ts ← the exclusion flows and their failure messages
           exclusions.ts         ← excluded-path manager, decorations, code lenses
           process-launcher.ts   ← Windows command resolution, cmd.exe escaping, running a program (tested)
@@ -70,6 +70,8 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             runner-invocation.ts ← which runner program, which arguments (tested)
             libraries-view.ts   ← the Libraries view; checkboxes = `jpipe.runner.libraries`
             run-model.ts        ← ▶: compile to JSON, launch the runner as a VS Code task
+            python-environment.ts ← can the selected Python run steps? which fix? (tested; ADR-VSC-0026)
+            environment.ts      ← reads the Python extension's selected interpreter, probes it, runs fixes
             new-library.ts      ← New Library… decisions: module name, folder, skeleton (tested)
             new-library-flow.ts ← its input box, file creation and checking
           preview/              ← the diagram panel (ADR-VSC-0016)
@@ -253,7 +255,7 @@ ADR-VSC-0004.
 
 ## VS Code Commands
 
-`packages/extension/package.json` is the source of truth — it declares **31** commands, with
+`packages/extension/package.json` is the source of truth — it declares **32** commands, with
 their menu placement and `when`-clauses. The ones worth knowing:
 
 | Command ID | Title |

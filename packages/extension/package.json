@@ -406,6 +406,11 @@
                 "title": "New Library…",
                 "category": "jPipe",
                 "icon": "$(add)"
+            },
+            {
+                "command": "jpipe.runner.fixEnvironment",
+                "title": "Set Up the Python Environment for Runs",
+                "category": "jPipe"
             }
         ],
         "submenus": [
@@ -479,6 +484,10 @@
                 },
                 {
                     "command": "jpipe.libraries.new",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.runner.fixEnvironment",
                     "when": "jpipe.activated"
                 }
             ],

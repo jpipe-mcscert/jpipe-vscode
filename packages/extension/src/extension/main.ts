@@ -11,6 +11,7 @@ import { registerCommands } from './commands.js';
 import { ModelsView } from './models-view/models-view.js';
 import { ElementsView } from './models-view/elements-view.js';
 import { LibrariesView } from './runner/libraries-view.js';
+import { RunnerEnvironment } from './runner/environment.js';
 import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 import { displayMessageOf, messageOf } from '../shared/errors.js';
 import { JpipeLogger } from './logger.js';
@@ -98,14 +99,15 @@ export function activate(context: vscode.ExtensionContext): void {
     void releaseManager.maybeNotifyUpdate(tag => installFromRelease({ releaseManager, logger }, tag));
 
     const modelsView = new ModelsView(client, exclusions, logger);
-    const librariesView = new LibrariesView(logger);
-    context.subscriptions.push(modelsView, librariesView, new ElementsView(client, modelsView, librariesView, logger));
+    const runnerEnvironment = new RunnerEnvironment(context, logger);
+    const librariesView = new LibrariesView(logger, runnerEnvironment);
+    context.subscriptions.push(modelsView, runnerEnvironment, librariesView, new ElementsView(client, modelsView, librariesView, logger));
     // The jPipe activity is contributed statically, so without this it would show in every
     // window of everyone who has the extension installed. Activation is what says this workspace
     // has models in it.
     void vscode.commands.executeCommand('setContext', 'jpipe.activated', true);
 
-    registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView });
+    registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment });
 }
 
 // This function is called when the extension is deactivated.

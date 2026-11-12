@@ -5,6 +5,8 @@ import { decodeWorkspacePath, encodeWorkspacePath } from '../workspace-paths.js'
 import { scanFile, type Step } from './library-scan.js';
 import { LIBRARIES_SETTING } from './runner-invocation.js';
 import type { LibraryStep } from './step-binding.js';
+import type { RunnerEnvironment } from './environment.js';
+import { fixLabel } from './python-environment.js';
 
 export const LIBRARIES_VIEW_ID = 'jpipe.libraries';
 
@@ -20,6 +22,16 @@ export interface Library {
     steps: Step[];
 }
 
+/** The row above the libraries saying why a run would not work yet, and offering the fix. */
+interface StatusRow {
+    status: true;
+}
+
+type Row = Library | StatusRow;
+
+const isStatus = (row: Row): row is StatusRow => 'status' in row;
+const STATUS_ROW: StatusRow = { status: true };
+
 /**
  * The jPipe activity's Libraries: every Python file of the workspace that declares jpipe-runner
  * steps, with a checkbox saying whether a run loads it.
@@ -29,7 +41,7 @@ export interface Library {
  * are shared exactly when the project commits its `.vscode/settings.json`. Nothing is checked
  * until someone checks it: a run never loads a library nobody chose.
  */
-export class LibrariesView implements vscode.TreeDataProvider<Library>, vscode.Disposable {
+export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Disposable {
     private readonly treeEmitter = new vscode.EventEmitter<undefined>();
     readonly onDidChangeTreeData = this.treeEmitter.event;
 
@@ -37,13 +49,13 @@ export class LibrariesView implements vscode.TreeDataProvider<Library>, vscode.D
     /** The libraries found, or which of them are checked, changed. */
     readonly onDidChange = this.changeEmitter.event;
 
-    private readonly view: vscode.TreeView<Library>;
+    private readonly view: vscode.TreeView<Row>;
     private readonly disposables: vscode.Disposable[] = [];
     private readonly libraries = new Map<string, Library>();
     private scanning: Promise<void> | undefined;
     private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
 
-    constructor(private readonly logger: JpipeLogger) {
+    constructor(private readonly logger: JpipeLogger, private readonly environment: RunnerEnvironment) {
         this.view = vscode.window.createTreeView(LIBRARIES_VIEW_ID, {
             treeDataProvider: this,
             manageCheckboxStateManually: true
@@ -63,9 +75,14 @@ export class LibrariesView implements vscode.TreeDataProvider<Library>, vscode.D
             vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration(`jpipe.${LIBRARIES_SETTING}`)) this.changed();
             }),
-            vscode.workspace.onDidChangeWorkspaceFolders(() => void this.rescanAll())
+            vscode.workspace.onDidChangeWorkspaceFolders(() => void this.rescanAll()),
+            environment.onDidChange(() => this.treeEmitter.fire(undefined))
         );
-        this.scanning = this.scanAll();
+        this.scanning = this.scanAll().then(() => {
+            // A workspace with step libraries is one that will want to run them: if its Python
+            // cannot, say so now, once, rather than at the first ▶.
+            if (this.libraries.size > 0) void environment.offer(false);
+        });
     }
 
     /** Look at every Python file again. */
@@ -126,9 +143,10 @@ export class LibrariesView implements vscode.TreeDataProvider<Library>, vscode.D
             .update(LIBRARIES_SETTING, entries, vscode.ConfigurationTarget.Workspace);
     }
 
-    private async applyCheckboxes(e: vscode.TreeCheckboxChangeEvent<Library>): Promise<void> {
+    private async applyCheckboxes(e: vscode.TreeCheckboxChangeEvent<Row>): Promise<void> {
         let entries = this.entries();
         for (const [library, state] of e.items) {
+            if (isStatus(library)) continue;
             const entry = encodeWorkspacePath(library.uri);
             if (!entry) continue;
             entries = entries.filter(existing => decodeWorkspacePath(existing)?.toString() !== library.uri.toString());
@@ -183,13 +201,17 @@ export class LibrariesView implements vscode.TreeDataProvider<Library>, vscode.D
             vscode.workspace.asRelativePath(a.uri).localeCompare(vscode.workspace.asRelativePath(b.uri)));
     }
 
-    async getChildren(library?: Library): Promise<Library[]> {
-        if (library) return [];
+    async getChildren(row?: Row): Promise<Row[]> {
+        if (row) return [];
         await this.scanning;
-        return this.sorted();
+        const libraries = this.sorted();
+        // Only above libraries: with none, the view's own explanation of what a library is shows.
+        return libraries.length > 0 && this.environment.message() ? [STATUS_ROW, ...libraries] : libraries;
     }
 
-    getTreeItem(library: Library): vscode.TreeItem {
+    getTreeItem(row: Row): vscode.TreeItem {
+        if (isStatus(row)) return this.statusItem();
+        const library = row;
         const item = new vscode.TreeItem(vscode.workspace.asRelativePath(library.uri), vscode.TreeItemCollapsibleState.None);
         item.id = library.uri.toString();
         item.resourceUri = library.uri;
@@ -200,6 +222,18 @@ export class LibrariesView implements vscode.TreeDataProvider<Library>, vscode.D
         item.description = `${count} step${count === 1 ? '' : 's'}`;
         item.tooltip = `${vscode.workspace.asRelativePath(library.uri)}\n${count} jpipe-runner step${count === 1 ? '' : 's'}`;
         item.command = { command: 'vscode.open', title: 'Open', arguments: [library.uri] };
+        return item;
+    }
+
+    private statusItem(): vscode.TreeItem {
+        const item = new vscode.TreeItem(this.environment.message() ?? '', vscode.TreeItemCollapsibleState.None);
+        item.id = 'jpipe.runner.status';
+        item.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('list.warningForeground'));
+        const label = fixLabel(this.environment.status);
+        if (label) {
+            item.tooltip = `${this.environment.message()}\nClick to ${label.toLowerCase()}.`;
+            item.command = { command: 'jpipe.runner.fixEnvironment', title: label };
+        }
         return item;
     }
 

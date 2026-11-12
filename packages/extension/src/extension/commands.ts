@@ -16,6 +16,7 @@ import { newModel } from './models-view/new-model-flow.js';
 import type { LibrariesView } from './runner/libraries-view.js';
 import { runModel } from './runner/run-model.js';
 import { newLibrary } from './runner/new-library-flow.js';
+import type { RunnerEnvironment } from './runner/environment.js';
 import { installFromRelease } from './compiler/managed-install.js';
 import { selectJarFile } from './compiler/jar-selection.js';
 import { accessMethodHeader } from './compiler/release-presentation.js';
@@ -48,6 +49,7 @@ export interface CommandDeps {
     releaseManager: ReleaseManager;
     modelsView: ModelsView;
     librariesView: LibrariesView;
+    runnerEnvironment: RunnerEnvironment;
 }
 
 /**
@@ -85,7 +87,7 @@ const CODE_ACTION_COMMANDS: ReadonlyArray<readonly [command: string, kind: strin
 ];
 
 export function registerCommands(deps: CommandDeps): void {
-    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView } = deps;
+    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment } = deps;
 
     /**
      * Where a new model goes is decided beside "the model in question": the row the command was
@@ -122,12 +124,13 @@ export function registerCommands(deps: CommandDeps): void {
 
         // ▶: the model of the Models row it was clicked on, or the one the cursor is in.
         vscode.commands.registerCommand('jpipe.run', (node?: TreeNode) =>
-            runModel({ context, logger, imageGenerator, libraries: librariesView, models: modelsView },
+            runModel({ context, logger, imageGenerator, libraries: librariesView, models: modelsView, environment: runnerEnvironment },
                 node?.type === 'model' ? node.model : undefined)),
         vscode.commands.registerCommand('jpipe.libraries.checkAll', () => librariesView.checkAll()),
         vscode.commands.registerCommand('jpipe.libraries.uncheckAll', () => librariesView.uncheckAll()),
         vscode.commands.registerCommand('jpipe.libraries.refresh', () => librariesView.rescanAll()),
         vscode.commands.registerCommand('jpipe.libraries.new', () => newLibrary(librariesView, modelsView)),
+        vscode.commands.registerCommand('jpipe.runner.fixEnvironment', () => runnerEnvironment.fix()),
         vscode.commands.registerCommand('jpipe.models.newJustification', (node?: TreeNode) =>
             newModel(modelsView.knownModels, { kind: 'justification', contextUri: contextOf(node) })),
         vscode.commands.registerCommand('jpipe.models.newTemplate', (node?: TreeNode) =>

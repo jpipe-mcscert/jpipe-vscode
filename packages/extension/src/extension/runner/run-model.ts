@@ -10,6 +10,8 @@ import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import { LIBRARIES_VIEW_ID, type LibrariesView } from './libraries-view.js';
 import { RUNNER_COMMAND_SETTING, cannotRun, resolveRunner, runnerArguments } from './runner-invocation.js';
+import type { RunnerEnvironment } from './environment.js';
+import { fixLabel, moduleInvocation, statusMessage } from './python-environment.js';
 
 /** The task type a run is launched as, contributed in `package.json`'s `taskDefinitions`. */
 export const RUN_TASK_TYPE = 'jpipe';
@@ -20,6 +22,7 @@ export interface RunDeps {
     imageGenerator: ImageGenerator;
     libraries: LibrariesView;
     models: ModelsView;
+    environment: RunnerEnvironment;
 }
 
 /**
@@ -72,14 +75,10 @@ export async function runModel(deps: RunDeps, target?: Model): Promise<void> {
     const compiled = await writeCompiled(deps.context, name, json);
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    const program = resolveRunner({
-        configured: vscode.workspace.getConfiguration('jpipe').get<string>(RUNNER_COMMAND_SETTING, '') ?? '',
-        folder: folder?.uri.fsPath,
-        platform: process.platform,
-        home: os.homedir(),
-        exists: file => fs.existsSync(file)
-    });
-    const args = runnerArguments(libraries.map(library => library.uri.fsPath), compiled);
+    const runnerArgs = runnerArguments(libraries.map(library => library.uri.fsPath), compiled);
+    const invocation = await chooseInvocation(deps, folder, runnerArgs);
+    if (!invocation) return;
+    const { program, args } = invocation;
     deps.logger.info(`Running ${name}: ${program} ${args.join(' ')} (in ${cwd})`);
 
     const task = new vscode.Task(
@@ -100,6 +99,45 @@ export async function runModel(deps: RunDeps, target?: Model): Promise<void> {
     } catch (err: unknown) {
         void vscode.window.showErrorMessage(`Could not start jpipe-runner: ${messageOf(err)}`);
     }
+}
+
+/**
+ * How to start the runner: the configured program if there is one; otherwise the Python VS Code
+ * uses, as `python -m jpipe_runner`, so the run and the editor agree on the environment
+ * (jpipe-vscode ADR-VSC-0026). When that Python cannot run step libraries, the fix is offered,
+ * and so is running anyway with whatever `jpipe-runner` the old search finds.
+ */
+async function chooseInvocation(
+    deps: RunDeps,
+    folder: vscode.WorkspaceFolder | undefined,
+    runnerArgs: string[]
+): Promise<{ program: string; args: string[] } | undefined> {
+    const configured = vscode.workspace.getConfiguration('jpipe').get<string>(RUNNER_COMMAND_SETTING, '') ?? '';
+    const search = () => ({
+        program: resolveRunner({
+            configured,
+            folder: folder?.uri.fsPath,
+            platform: process.platform,
+            home: os.homedir(),
+            exists: file => fs.existsSync(file)
+        }),
+        args: runnerArgs
+    });
+    if (configured.trim()) return search();
+
+    let status = await deps.environment.settled();
+    if (status.kind !== 'ready') {
+        const fix = fixLabel(status);
+        const anyway = 'Run Anyway';
+        const answer = await vscode.window.showWarningMessage(
+            statusMessage(status) ?? 'The selected Python cannot run step libraries.',
+            ...(fix ? [fix] : []), anyway);
+        if (answer === anyway) return search();
+        if (answer !== fix || !await deps.environment.fix()) return undefined;
+        status = await deps.environment.settled();
+        if (status.kind !== 'ready') return undefined;
+    }
+    return moduleInvocation(status.python, runnerArgs);
 }
 
 /** The document and model to run, or `undefined` after saying why there is none. */
