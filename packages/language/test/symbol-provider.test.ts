@@ -229,3 +229,34 @@ describe('Document symbol provider (loaded models)', () => {
         expect(symbols[1].children).toBeUndefined();
     });
 });
+
+describe('Document symbol provider (element labels)', () => {
+
+    test('an element carries its label as detail, unquoted', async () => {
+        const symbols = await getSymbols(`
+            justification J {
+                evidence e is "Tests pass"
+                strategy s is "Check \\"all\\" of them"
+                conclusion c is "Ready"
+                e supports s
+                s supports c
+            }
+        `);
+        const j = symbols[0].children!.find(c => c.name === 'J')!;
+        const byName = Object.fromEntries(j.children!.map(c => [c.name, c]));
+        expect(byName['e'].detail).toBe('Tests pass');
+        expect(byName['c'].detail).toBe('Ready');
+        // Whatever the value converter makes of escapes, the quotes around the label are gone.
+        expect(byName['s'].detail!.startsWith('"')).toBe(false);
+        // The model itself has no label to show.
+        expect(j.detail).toBeUndefined();
+    });
+
+    test('an element\'s selection range is its id, inside its range', async () => {
+        const source = `justification J {\n    evidence e1 is "Tests pass"\n    strategy s is "S"\n    conclusion c is "C"\n    e1 supports s\n    s supports c\n}\n`;
+        const symbols = await getSymbols(source);
+        const e1 = symbols[0].children!.find(c => c.name === 'J')!.children!.find(c => c.name === 'e1')!;
+        expect(e1.selectionRange).toEqual({ start: { line: 1, character: 13 }, end: { line: 1, character: 15 } });
+        expect(e1.range.start).toEqual({ line: 1, character: 4 });
+    });
+});
