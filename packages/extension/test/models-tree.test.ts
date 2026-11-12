@@ -262,7 +262,7 @@ describe('compositions', () => {
 
     test('a written model is drawn with its kind\'s icon', () => {
         expect(modelIcon(model('T', 'template'))).toBe('book');
-        expect(modelIcon(model('J', 'justification'))).toBe('symbol-ruler');
+        expect(modelIcon(model('J', 'justification'))).toBe('bookmark');
     });
 
     test('every operator the language server knows has its own icon', () => {

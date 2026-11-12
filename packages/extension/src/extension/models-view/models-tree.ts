@@ -390,7 +390,7 @@ export const UNKNOWN_OPERATOR_ICON = 'question';
  */
 export function modelIcon(model: Model): string {
     if (model.operator !== undefined) return OPERATOR_ICONS[model.operator] ?? UNKNOWN_OPERATOR_ICON;
-    return model.kind === 'template' ? 'book' : 'symbol-ruler';
+    return model.kind === 'template' ? 'book' : 'bookmark';
 }
 
 /**
