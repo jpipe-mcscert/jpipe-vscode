@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { findExcludingPath, formatEntry, isSameOrInside, parseEntry, shouldShowExclusionBanner, stripTrailingSlash } from './exclusion-paths.js';
+import { findExcludingPath, isSameOrInside, shouldShowExclusionBanner, stripTrailingSlash } from './exclusion-paths.js';
+import { decodeWorkspacePath, encodeWorkspacePath } from './workspace-paths.js';
 
 const SETTING = 'excludedPaths';
 /** Pre-1.4 name, still honoured so existing settings keep working. Never written to. */
@@ -12,8 +13,8 @@ const JD_EXTENSION = '.jd';
  *
  * An entry is either a directory or a single `.jd` file. Entries are stored relative to a
  * workspace root: `relative/path` in a single-root workspace, `rootName:relative/path` in a
- * multi-root one. This class is the only place that encodes and decodes that format, and the
- * only place that writes the setting.
+ * multi-root one, as `workspace-paths.ts` spells them. This class is the only place that writes
+ * the setting.
  */
 export class ExclusionManager implements vscode.Disposable {
     private readonly changeEmitter = new vscode.EventEmitter<void>();
@@ -83,7 +84,7 @@ export class ExclusionManager implements vscode.Disposable {
 
     /** Add `target` (a folder or a `.jd` file) to the setting. False when outside the workspace. */
     async addPath(target: vscode.Uri): Promise<boolean> {
-        const entry = this.encode(target);
+        const entry = encodeWorkspacePath(target);
         if (!entry) return false;
         const config = vscode.workspace.getConfiguration('jpipe');
         const current = config.get<string[]>(SETTING, []);
@@ -101,7 +102,7 @@ export class ExclusionManager implements vscode.Disposable {
     async removeResolved(target: vscode.Uri): Promise<boolean> {
         const wanted = stripTrailingSlash(target.toString());
         return this.removeMatching(entry => {
-            const resolved = this.decode(entry);
+            const resolved = decodeWorkspacePath(entry);
             return resolved?.toString() === wanted;
         });
     }
@@ -137,37 +138,12 @@ export class ExclusionManager implements vscode.Disposable {
         if (this.resolved === undefined) {
             const resolved: vscode.Uri[] = [];
             for (const entry of this.getEntries()) {
-                const uri = this.decode(entry);
+                const uri = decodeWorkspacePath(entry);
                 if (uri) resolved.push(uri);
             }
             this.resolved = resolved;
         }
         return this.resolved;
-    }
-
-    /** `rootName:relative/path` or `relative/path` → absolute URI. */
-    private decode(entry: string): vscode.Uri | undefined {
-        const parsed = parseEntry(entry);
-        if (!parsed) return undefined;
-        const roots = vscode.workspace.workspaceFolders ?? [];
-        // A bare entry can only be resolved when there is exactly one root to resolve it against.
-        let folder: vscode.WorkspaceFolder | undefined;
-        if (parsed.rootName !== undefined) {
-            folder = roots.find(f => f.name === parsed.rootName);
-        } else if (roots.length === 1) {
-            folder = roots[0];
-        }
-        if (!folder) return undefined;
-        return vscode.Uri.parse(stripTrailingSlash(vscode.Uri.joinPath(folder.uri, parsed.relativePath).toString()));
-    }
-
-    /** Absolute URI → `rootName:relative/path` or `relative/path`; undefined outside the workspace. */
-    private encode(target: vscode.Uri): string | undefined {
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(target);
-        if (!workspaceFolder) return undefined;
-        const roots = vscode.workspace.workspaceFolders ?? [];
-        const rel = vscode.workspace.asRelativePath(target, false).replaceAll('\\', '/');
-        return formatEntry(roots.length > 1 ? workspaceFolder.name : undefined, rel);
     }
 }
 

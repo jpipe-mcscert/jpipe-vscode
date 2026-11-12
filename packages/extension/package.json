@@ -72,6 +72,12 @@
                     "name": "Outline",
                     "when": "jpipe.activated",
                     "contextualTitle": "jPipe"
+                },
+                {
+                    "id": "jpipe.libraries",
+                    "name": "Libraries",
+                    "when": "jpipe.activated",
+                    "contextualTitle": "jPipe"
                 }
             ]
         },
@@ -79,6 +85,10 @@
             {
                 "view": "jpipe.models",
                 "contents": "No justification or template was found in this workspace.\n[New Justification](command:jpipe.models.newJustification)\n[New Template](command:jpipe.models.newTemplate)"
+            },
+            {
+                "view": "jpipe.libraries",
+                "contents": "No step library was found in this workspace. A step library is a Python file whose functions use the `@evidence` and `@strategy` decorators of jpipe-runner.\n[Learn how to write one](https://github.com/jpipe-mcscert/jpipe-runner/blob/main/docs/authoring.md)"
             }
         ],
         "colors": [
@@ -366,6 +376,30 @@
                 "title": "New Justification Implementing This Template…",
                 "category": "jPipe",
                 "icon": "$(add)"
+            },
+            {
+                "command": "jpipe.run",
+                "title": "Run Model",
+                "category": "jPipe",
+                "icon": "$(play)"
+            },
+            {
+                "command": "jpipe.libraries.checkAll",
+                "title": "Check All Libraries",
+                "category": "jPipe",
+                "icon": "$(check-all)"
+            },
+            {
+                "command": "jpipe.libraries.uncheckAll",
+                "title": "Uncheck All Libraries",
+                "category": "jPipe",
+                "icon": "$(clear-all)"
+            },
+            {
+                "command": "jpipe.libraries.refresh",
+                "title": "Refresh Libraries",
+                "category": "jPipe",
+                "icon": "$(refresh)"
             }
         ],
         "submenus": [
@@ -420,13 +454,34 @@
                 {
                     "command": "jpipe.models.newImplementation",
                     "when": "false"
+                },
+                {
+                    "command": "jpipe.run",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.libraries.checkAll",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.libraries.uncheckAll",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.libraries.refresh",
+                    "when": "jpipe.activated"
                 }
             ],
             "editor/title": [
                 {
-                    "command": "jpipe.vis.preview",
+                    "command": "jpipe.run",
                     "when": "resourceLangId == jpipe",
                     "group": "navigation@0"
+                },
+                {
+                    "command": "jpipe.vis.preview",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation@1"
                 }
             ],
             "editor/context": [
@@ -490,6 +545,21 @@
                     "command": "jpipe.models.refresh",
                     "when": "view == jpipe.models",
                     "group": "navigation@1"
+                },
+                {
+                    "command": "jpipe.libraries.checkAll",
+                    "when": "view == jpipe.libraries",
+                    "group": "navigation@0"
+                },
+                {
+                    "command": "jpipe.libraries.uncheckAll",
+                    "when": "view == jpipe.libraries",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "jpipe.libraries.refresh",
+                    "when": "view == jpipe.libraries",
+                    "group": "navigation@2"
                 }
             ],
             "view/item/context": [
@@ -522,6 +592,16 @@
                     "command": "jpipe.models.preview",
                     "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
                     "group": "2_view@1"
+                },
+                {
+                    "command": "jpipe.run",
+                    "when": "view == jpipe.models && viewItem == jpipe.model.justification",
+                    "group": "inline@0"
+                },
+                {
+                    "command": "jpipe.run",
+                    "when": "view == jpipe.models && viewItem == jpipe.model.justification",
+                    "group": "1_create@0"
                 }
             ],
             "jpipe.models.new": [
@@ -598,6 +678,21 @@
                         },
                         "default": [],
                         "markdownDescription": "Additional directories prepended to `PATH` when running the compiler, so external interpreters (e.g. `python3`, `dot`) can be found. Complements the built-in defaults."
+                    },
+                    "jpipe.runner.libraries": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "scope": "resource",
+                        "markdownDescription": "The step libraries a run loads: Python files, relative to the workspace root, each passed to jpipe-runner as `--library`. Check and uncheck them in the **Libraries** view of the jPipe activity, which keeps this list. Globs are not supported here."
+                    },
+                    "jpipe.runner.command": {
+                        "type": "string",
+                        "default": "",
+                        "scope": "machine-overridable",
+                        "markdownDescription": "The jpipe-runner program to run models with. Leave empty to use the one in the workspace's `.venv` or `venv`, or else `jpipe-runner` from `PATH`."
                     }
                 }
             },
@@ -732,6 +827,20 @@
                         ],
                         "default": "info",
                         "description": "Verbosity of the jPipe log channel (Output > jPipe). The language server log level (Output > jPipe Language Server) is set once at startup and requires a window reload to change."
+                    }
+                }
+            }
+        ],
+        "taskDefinitions": [
+            {
+                "type": "jpipe",
+                "required": [
+                    "model"
+                ],
+                "properties": {
+                    "model": {
+                        "type": "string",
+                        "description": "The justification to run with jpipe-runner."
                     }
                 }
             }

@@ -4,6 +4,8 @@ import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import { cursorAt, type Model } from './models-tree.js';
 import type { ModelsView } from './models-view.js';
+import type { LibrariesView } from '../runner/libraries-view.js';
+import { bindSteps, stepNote, type LibraryStep } from '../runner/step-binding.js';
 import {
     DOCUMENT_SYMBOL_REQUEST,
     ELEMENT_COLORS,
@@ -44,10 +46,13 @@ export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Di
     private timer: ReturnType<typeof setTimeout> | undefined;
     /** The id of the row last selected; see `ModelsView.selectedKey` for why it is kept here. */
     private selectedId: string | undefined;
+    /** The steps of the checked libraries implementing each element, by element id. */
+    private bindings = new Map<string, LibraryStep[]>();
 
     constructor(
         private readonly client: LanguageClient,
         models: ModelsView,
+        private readonly libraries: LibrariesView,
         private readonly logger: JpipeLogger
     ) {
         this.view = vscode.window.createTreeView(ELEMENTS_VIEW_ID, { treeDataProvider: this });
@@ -56,6 +61,11 @@ export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Di
         this.disposables.push(
             this.view,
             this.changeEmitter,
+            // Checking a library changes which elements have a step; the elements themselves do not.
+            libraries.onDidChange(() => {
+                this.bind();
+                this.changeEmitter.fire(undefined);
+            }),
             models.onDidChangeCurrentModel(model => {
                 this.model = model;
                 this.selectedId = undefined;
@@ -122,6 +132,13 @@ export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Di
             }
         }
         this.view.message = emptyMessage(model, this.elements);
+        this.bind();
+    }
+
+    private bind(): void {
+        this.bindings = this.model && this.elements
+            ? bindSteps(this.model.name, this.elements.map(e => e.id), this.libraries.checkedSteps())
+            : new Map();
     }
 
     async getChildren(element?: Element): Promise<Element[]> {
@@ -140,8 +157,13 @@ export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Di
         const item = new vscode.TreeItem(elementLabel(element), vscode.TreeItemCollapsibleState.None);
         item.id = element.id;
         item.iconPath = new vscode.ThemeIcon(ELEMENT_ICONS[element.kind], new vscode.ThemeColor(ELEMENT_COLORS[element.kind]));
+        const steps = this.bindings.get(element.id);
+        // Step functions in grey: what the runner will call for this element, once libraries are checked.
+        item.description = stepNote(element.kind, steps, this.libraries.checkedLibraries().length > 0);
         item.tooltip = `${element.kind === 'support' ? '@support' : element.kind} ${element.id}` +
-            (element.label ? `\n${element.label}` : '');
+            (element.label ? `\n${element.label}` : '') +
+            (steps ?? []).map(step =>
+                `\nImplemented by ${step.functionName ?? 'a step'} in ${vscode.workspace.asRelativePath(vscode.Uri.parse(step.libraryUri))}`).join('');
         if (this.model) {
             const { start, end } = cursorAt(element.selection);
             item.command = {

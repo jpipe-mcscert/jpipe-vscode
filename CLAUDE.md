@@ -53,7 +53,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
       src/
         extension/              ← extension host. The only place `vscode` may be imported.
           main.ts               ← activate/deactivate: constructs and wires, nothing else
-          commands.ts           ← the 26 contributed commands, as a table (ADR-VSC-0017)
+          commands.ts           ← the 30 contributed commands, as a table (ADR-VSC-0017)
           exclusion-commands.ts ← the exclusion flows and their failure messages
           exclusions.ts         ← excluded-path manager, decorations, code lenses
           process-launcher.ts   ← Windows command resolution, cmd.exe escaping, running a program (tested)
@@ -63,6 +63,13 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             release-manager.ts  ← settings/globalState adapter for managed installs
             release-download.ts ← HTTPS, allowlist, download and placement, vscode-free (tested)
             release-selection.ts ← semver precedence + host allowlist, vscode-free (tested)
+          workspace-paths.ts    ← `[root:]relative/path` setting entries ↔ URIs (exclusions, libraries)
+          runner/               ← running justifications with jpipe-runner (ADR-VSC-0025)
+            library-scan.ts     ← finds step libraries by reading Python, never importing it (tested)
+            step-binding.ts     ← the runner's id → element binding rules, for the Outline (tested)
+            runner-invocation.ts ← which runner program, which arguments (tested)
+            libraries-view.ts   ← the Libraries view; checkboxes = `jpipe.runner.libraries`
+            run-model.ts        ← ▶: compile to JSON, launch the runner as a VS Code task
           preview/              ← the diagram panel (ADR-VSC-0016)
             preview-provider.ts ← webview panel lifecycle, compile orchestration
             preview-shell.ts    ← the panel's HTML shell
@@ -244,7 +251,7 @@ ADR-VSC-0004.
 
 ## VS Code Commands
 
-`packages/extension/package.json` is the source of truth — it declares **26** commands, with
+`packages/extension/package.json` is the source of truth — it declares **30** commands, with
 their menu placement and `when`-clauses. The ones worth knowing:
 
 | Command ID | Title |
@@ -261,6 +268,8 @@ their menu placement and `when`-clauses. The ones worth knowing:
 | `jpipe.autoIndent` | Auto-indent and Align — delegates to `editor.action.formatDocument`, *not* a code action (ADR-VSC-0024) |
 | `jpipe.convertModelKind`, `jpipe.extractTemplate` | Model refactorings |
 | `jpipe.models.refresh` / `preview` / `newJustification` / `newTemplate` / `newImplementation` | Models view toolbar, inline and context actions |
+| `jpipe.run` | ▶ Run Model with jpipe-runner (editor title, Models inline) |
+| `jpipe.libraries.checkAll` / `uncheckAll` / `refresh` | Libraries view toolbar |
 
 The **Models view** (`jpipe.models`, in the `jpipe` activity-bar container) is built from
 *standard* LSP requests only — `workspace/symbol` (templates are `Interface`, justifications

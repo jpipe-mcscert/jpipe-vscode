@@ -46,6 +46,9 @@ export default defineConfig({
                 'src/extension/models-view/models-view.ts',
                 'src/extension/models-view/new-model-flow.ts',
                 'src/extension/models-view/elements-view.ts',
+                'src/extension/runner/libraries-view.ts',
+                'src/extension/runner/run-model.ts',
+                'src/extension/workspace-paths.ts',
                 'src/language/main.ts',
                 'src/webview/preview.ts',
                 // Types only — every export is a `type` or `interface`, so it compiles to
