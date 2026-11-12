@@ -72,7 +72,7 @@
         "viewsWelcome": [
             {
                 "view": "jpipe.models",
-                "contents": "No justification or template was found in this workspace.\nModels are the `justification` and `template` declarations in your `.jd` files; they appear here as soon as one is saved."
+                "contents": "No justification or template was found in this workspace.\n[New Justification](command:jpipe.models.newJustification)\n[New Template](command:jpipe.models.newTemplate)"
             }
         ],
         "colors": [
@@ -282,12 +282,35 @@
                 "title": "Open Diagram Preview",
                 "category": "jPipe",
                 "icon": "$(open-preview)"
+            },
+            {
+                "command": "jpipe.models.newJustification",
+                "title": "New Justification…",
+                "category": "jPipe",
+                "icon": "$(add)"
+            },
+            {
+                "command": "jpipe.models.newTemplate",
+                "title": "New Template…",
+                "category": "jPipe",
+                "icon": "$(add)"
+            },
+            {
+                "command": "jpipe.models.newImplementation",
+                "title": "New Justification Implementing This Template…",
+                "category": "jPipe",
+                "icon": "$(add)"
             }
         ],
         "submenus": [
             {
                 "id": "jpipe.submenu",
                 "label": "jPipe"
+            },
+            {
+                "id": "jpipe.models.new",
+                "label": "New Model",
+                "icon": "$(add)"
             }
         ],
         "menus": {
@@ -318,6 +341,18 @@
                 },
                 {
                     "command": "jpipe.models.preview",
+                    "when": "false"
+                },
+                {
+                    "command": "jpipe.models.newJustification",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.models.newTemplate",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.models.newImplementation",
                     "when": "false"
                 }
             ],
@@ -381,21 +416,56 @@
             ],
             "view/title": [
                 {
+                    "submenu": "jpipe.models.new",
+                    "when": "view == jpipe.models",
+                    "group": "navigation@0"
+                },
+                {
                     "command": "jpipe.models.refresh",
                     "when": "view == jpipe.models",
-                    "group": "navigation"
+                    "group": "navigation@1"
                 }
             ],
             "view/item/context": [
                 {
-                    "command": "jpipe.models.preview",
-                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
+                    "command": "jpipe.models.newJustification",
+                    "when": "view == jpipe.models && viewItem == jpipe.group.justifications",
                     "group": "inline"
+                },
+                {
+                    "command": "jpipe.models.newTemplate",
+                    "when": "view == jpipe.models && viewItem == jpipe.group.templates",
+                    "group": "inline"
+                },
+                {
+                    "command": "jpipe.models.newImplementation",
+                    "when": "view == jpipe.models && viewItem == jpipe.model.template",
+                    "group": "inline@0"
+                },
+                {
+                    "command": "jpipe.models.newImplementation",
+                    "when": "view == jpipe.models && viewItem == jpipe.model.template",
+                    "group": "1_create@1"
                 },
                 {
                     "command": "jpipe.models.preview",
                     "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
-                    "group": "navigation"
+                    "group": "inline@1"
+                },
+                {
+                    "command": "jpipe.models.preview",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
+                    "group": "2_view@1"
+                }
+            ],
+            "jpipe.models.new": [
+                {
+                    "command": "jpipe.models.newJustification",
+                    "group": "1_new@1"
+                },
+                {
+                    "command": "jpipe.models.newTemplate",
+                    "group": "1_new@2"
                 }
             ]
         },

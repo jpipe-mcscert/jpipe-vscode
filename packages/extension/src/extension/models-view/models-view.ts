@@ -162,7 +162,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
                 : vscode.TreeItemCollapsibleState.Expanded);
             item.id = node.id;
             item.description = String(node.children.length);
-            item.contextValue = 'jpipe.group';
+            item.contextValue = `jpipe.group.${node.id}`;
             return item;
         }
         return this.modelItem(node);
@@ -221,6 +221,17 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     private selectionOf(model: Model): vscode.Range {
         const { start, end } = model.selection;
         return new vscode.Range(start.line, start.character, end.line, end.character);
+    }
+
+    /** The models as of the last refresh. */
+    get knownModels(): readonly Model[] {
+        return this.models;
+    }
+
+    /** The model selected in the view, if a model row is selected. */
+    get selectedModel(): Model | undefined {
+        const node = this.view.selection[0];
+        return node?.type === 'model' ? node.model : undefined;
     }
 
     /** Open the file declaring `node`'s model with the cursor on its name. */
