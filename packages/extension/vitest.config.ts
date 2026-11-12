@@ -43,6 +43,7 @@ export default defineConfig({
                 'src/extension/preview/preview-provider.ts',
                 'src/extension/compiler/release-manager.ts',
                 'src/extension/preview/preview-shell.ts',
+                'src/extension/models-view/models-view.ts',
                 'src/language/main.ts',
                 'src/webview/preview.ts',
                 // Types only — every export is a `type` or `interface`, so it compiles to

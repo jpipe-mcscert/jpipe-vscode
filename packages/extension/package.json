@@ -49,6 +49,32 @@
                 "path": "syntaxes/jpipe.tmLanguage.json"
             }
         ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "jpipe",
+                    "title": "jPipe",
+                    "icon": "images/activity.svg"
+                }
+            ]
+        },
+        "views": {
+            "jpipe": [
+                {
+                    "id": "jpipe.models",
+                    "name": "Models",
+                    "when": "jpipe.activated",
+                    "icon": "images/activity.svg",
+                    "contextualTitle": "jPipe"
+                }
+            ]
+        },
+        "viewsWelcome": [
+            {
+                "view": "jpipe.models",
+                "contents": "No justification or template was found in this workspace.\nModels are the `justification` and `template` declarations in your `.jd` files; they appear here as soon as one is saved."
+            }
+        ],
         "semanticTokenTypes": [
             {
                 "id": "jpipe-load",
@@ -222,6 +248,18 @@
                 "title": "Extract Template from Justification",
                 "category": "jPipe",
                 "icon": "$(symbol-interface)"
+            },
+            {
+                "command": "jpipe.models.refresh",
+                "title": "Refresh Models",
+                "category": "jPipe",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "jpipe.models.preview",
+                "title": "Open Diagram Preview",
+                "category": "jPipe",
+                "icon": "$(open-preview)"
             }
         ],
         "submenus": [
@@ -250,6 +288,14 @@
                 },
                 {
                     "command": "jpipe.includeResource",
+                    "when": "false"
+                },
+                {
+                    "command": "jpipe.models.refresh",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.models.preview",
                     "when": "false"
                 }
             ],
@@ -309,6 +355,25 @@
                     "command": "jpipe.includeResource",
                     "when": "resourcePath in jpipe.excludedResourcePaths",
                     "group": "3_validation@1"
+                }
+            ],
+            "view/title": [
+                {
+                    "command": "jpipe.models.refresh",
+                    "when": "view == jpipe.models",
+                    "group": "navigation"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "jpipe.models.preview",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
+                    "group": "inline"
+                },
+                {
+                    "command": "jpipe.models.preview",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
+                    "group": "navigation"
                 }
             ]
         },

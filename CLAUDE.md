@@ -36,6 +36,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
         jpipe-import.ts         ← `load` statement resolution (BFS transitive imports)
         jpipe-completion.ts     ← smart completion provider
         jpipe-formatter.ts      ← Format Document / Selection (ADR-VSC-0024)
+        jpipe-type-hierarchy.ts ← `implements` as LSP type hierarchy; model kinds in workspace symbols
         jpipe-layout.ts         ← the house layout, pure over a document (what the formatter runs)
         jpipe-utils.ts          ← getAllElements / getLocalElements (AST helpers)
         jpipe-glob.ts           ← Java-NIO glob matcher for `load` patterns (ADR-VSC-0007)
@@ -51,7 +52,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
       src/
         extension/              ← extension host. The only place `vscode` may be imported.
           main.ts               ← activate/deactivate: constructs and wires, nothing else
-          commands.ts           ← the 20 contributed commands, as a table (ADR-VSC-0017)
+          commands.ts           ← the 23 contributed commands, as a table (ADR-VSC-0017)
           exclusion-commands.ts ← the exclusion flows and their failure messages
           exclusions.ts         ← excluded-path manager, decorations, code lenses
           process-launcher.ts   ← Windows command resolution, cmd.exe escaping, running a program (tested)
@@ -65,6 +66,9 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             preview-provider.ts ← webview panel lifecycle, compile orchestration
             preview-shell.ts    ← the panel's HTML shell
             preview-refresh.ts  ← cursor-move response, vscode-free (tested)
+          models-view/          ← the Models view in the jPipe activity
+            models-view.ts      ← TreeDataProvider, refresh triggers, follow-the-editor
+            models-tree.ts      ← requests + tree shape, vscode-free (tested)
         webview/                ← browser code. DOM only — no `vscode`, no node: (ADR-VSC-0003)
           preview.ts            ← preview controller (pan/zoom, message dispatch)
           diagnostic-view.ts    ← the diagnostics tables
@@ -204,7 +208,7 @@ packaging, so a red suite blocks the VSIX.
 
 ### `packages/language/test/`
 
-25 files, integration-style: they import `'jpipe-language'`, which resolves through the package's
+26 files, integration-style: they import `'jpipe-language'`, which resolves through the package's
 `exports` map to the **built** `out/index.js`, and drive the LSP through Langium's test helpers.
 `parsing.test.ts`, `linking.test.ts` and `validating.test.ts` are the core three; the rest cover
 completion, code actions, renaming, globs, layout, hovering, symbols and semantic tokens.
@@ -235,7 +239,7 @@ ADR-VSC-0004.
 
 ## VS Code Commands
 
-`packages/extension/package.json` is the source of truth — it declares **21** commands, with
+`packages/extension/package.json` is the source of truth — it declares **23** commands, with
 their menu placement and `when`-clauses. The ones worth knowing:
 
 | Command ID | Title |
@@ -251,6 +255,12 @@ their menu placement and `when`-clauses. The ones worth knowing:
 | `jpipe.organizeLoads`, `jpipe.sortElements` | Document refactorings (code actions) |
 | `jpipe.autoIndent` | Auto-indent and Align — delegates to `editor.action.formatDocument`, *not* a code action (ADR-VSC-0024) |
 | `jpipe.convertModelKind`, `jpipe.extractTemplate` | Model refactorings |
+| `jpipe.models.refresh` / `jpipe.models.preview` | Models view toolbar and inline actions |
+
+The **Models view** (`jpipe.models`, in the `jpipe` activity-bar container) is built from two
+*standard* LSP requests only — `workspace/symbol` (templates are `Interface`, justifications
+`Class`) and `typeHierarchy/subtypes` per template — so it needs no custom protocol. It is shown
+only when the `jpipe.activated` context key is set, i.e. after activation.
 
 The preview panel auto-refreshes on file save, highlights the node under the cursor (via LSP `textDocument/documentSymbol`), and has zoom controls (+/−/0 keys or toolbar buttons).
 

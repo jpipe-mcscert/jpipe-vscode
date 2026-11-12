@@ -10,6 +10,8 @@ import type { ExclusionManager } from './exclusions.js';
 import { ImageGenerator, ImageFormat } from './compiler/image-generator.js';
 import type { ReleaseManager } from './compiler/release-manager.js';
 import type { PreviewProvider } from './preview/preview-provider.js';
+import type { ModelsView } from './models-view/models-view.js';
+import type { ModelNode } from './models-view/models-tree.js';
 import { installFromRelease } from './compiler/managed-install.js';
 import { selectJarFile } from './compiler/jar-selection.js';
 import { accessMethodHeader } from './compiler/release-presentation.js';
@@ -40,6 +42,7 @@ export interface CommandDeps {
     imageGenerator: ImageGenerator;
     previewProvider: PreviewProvider;
     releaseManager: ReleaseManager;
+    modelsView: ModelsView;
 }
 
 /**
@@ -77,7 +80,7 @@ const CODE_ACTION_COMMANDS: ReadonlyArray<readonly [command: string, kind: strin
 ];
 
 export function registerCommands(deps: CommandDeps): void {
-    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager } = deps;
+    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView } = deps;
 
     /**
      * Run an export, and stay pending until it has finished.
@@ -102,6 +105,14 @@ export function registerCommands(deps: CommandDeps): void {
         }),
 
         vscode.commands.registerCommand('jpipe.vis.preview', () => previewProvider.openPreview()),
+
+        vscode.commands.registerCommand('jpipe.models.refresh', () => modelsView.refresh()),
+        // The preview draws the model under the cursor, so putting the cursor on it is the whole
+        // of choosing which one.
+        vscode.commands.registerCommand('jpipe.models.preview', async (node: ModelNode) => {
+            await modelsView.openModel(node);
+            await previewProvider.openPreview();
+        }),
 
         ...CODE_ACTION_COMMANDS.map(([command, kind, action]) =>
             vscode.commands.registerCommand(command, async () => {

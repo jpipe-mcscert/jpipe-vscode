@@ -1,5 +1,11 @@
 ## Changelog
 
+### v1.10.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Features:
+    - **Every model in the workspace, one click away.** The jPipe shield, the same one that marks `.jd` files, now sits in the activity bar. It opens a Models view listing every template and justification in the workspace, whatever file or folder it is in. Templates appear as a tree of what implements what, and justifications as one flat list, which is usually what you are looking for. Click a model to jump to it, or use the button beside it to open its diagram. The view follows your editor and selects the model your cursor is in. Models in files excluded from validation are marked the same way the Explorer marks those files. The shield only appears in workspaces that contain jPipe models
+    - **Show Type Hierarchy works on models.** Right-click a template or a justification and choose Show Type Hierarchy to see what it implements and what implements it, across every file in the workspace. Go to Symbol in Workspace (`⌘T` / `Ctrl+T`) now gives templates and justifications different icons, so you can tell them apart in the list
+
 ### v1.9.1 (2026-10-04)
 - Leader: Sébastien Mosser
   - Changes:
