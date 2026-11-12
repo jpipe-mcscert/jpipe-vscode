@@ -187,13 +187,10 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         // so they follow the theme and take the error tint below. Both stay legible at 16px, which
         // `law` (the scales of justice) did not.
         const icon = model.kind === 'template' ? 'book' : 'symbol-ruler';
-        if (node.errors === undefined) {
-            item.iconPath = new vscode.ThemeIcon(icon);
-            item.description = path;
-        } else {
-            item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor('list.errorForeground'));
-            item.description = `${node.errors} error${node.errors === 1 ? '' : 's'} · ${path}`;
-        }
+        item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(this.iconColor(node)));
+        item.description = node.errors === undefined
+            ? path
+            : `${node.errors} error${node.errors === 1 ? '' : 's'} · ${path}`;
         const kind = model.kind === 'template' ? 'Template' : 'Justification';
         item.tooltip = new vscode.MarkdownString(
             `**${kind}** \`${model.name}\`` +
@@ -207,6 +204,18 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
             arguments: [uri, { selection: this.selectionOf(model), preserveFocus: false }]
         };
         return item;
+    }
+
+    /**
+     * Red in Errors, greyed in Excluded, and otherwise the model kind's own colour. The two kind
+     * colours are contributed by the extension, so a theme or `workbench.colorCustomizations`
+     * can change them; by default they are the editor's interface and class colours, the ones
+     * the same models already wear in the Outline and Go to Symbol.
+     */
+    private iconColor(node: ModelNode): string {
+        if (node.errors !== undefined) return 'list.errorForeground';
+        if (node.parent.type === 'group' && node.parent.id === 'excluded') return 'disabledForeground';
+        return node.model.kind === 'template' ? 'jpipe.templateIconForeground' : 'jpipe.justificationIconForeground';
     }
 
     private selectionOf(model: Model): vscode.Range {

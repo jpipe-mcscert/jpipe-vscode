@@ -75,6 +75,28 @@
                 "contents": "No justification or template was found in this workspace.\nModels are the `justification` and `template` declarations in your `.jd` files; they appear here as soon as one is saved."
             }
         ],
+        "colors": [
+            {
+                "id": "jpipe.templateIconForeground",
+                "description": "Colour of the template icon in the jPipe Models view. Defaults to the colour the editor gives interfaces, which is how templates appear in the Outline and Go to Symbol.",
+                "defaults": {
+                    "dark": "symbolIcon.interfaceForeground",
+                    "light": "symbolIcon.interfaceForeground",
+                    "highContrast": "symbolIcon.interfaceForeground",
+                    "highContrastLight": "symbolIcon.interfaceForeground"
+                }
+            },
+            {
+                "id": "jpipe.justificationIconForeground",
+                "description": "Colour of the justification icon in the jPipe Models view. Defaults to the colour the editor gives classes, which is how justifications appear in the Outline and Go to Symbol.",
+                "defaults": {
+                    "dark": "symbolIcon.classForeground",
+                    "light": "symbolIcon.classForeground",
+                    "highContrast": "symbolIcon.classForeground",
+                    "highContrastLight": "symbolIcon.classForeground"
+                }
+            }
+        ],
         "semanticTokenTypes": [
             {
                 "id": "jpipe-load",
