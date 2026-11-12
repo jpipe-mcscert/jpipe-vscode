@@ -182,7 +182,10 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         // whose file jPipe is not validating without this view having to know about exclusions.
         item.resourceUri = uri;
         const path = vscode.workspace.asRelativePath(uri);
-        const icon = model.kind === 'template' ? 'symbol-interface' : 'symbol-class';
+        // A ruler for a template — the guide a model is drawn from — and the scales of justice for
+        // a justification, which weighs evidence towards a claim. Codicons rather than shipped
+        // SVGs, so they follow the theme and take the error tint below.
+        const icon = model.kind === 'template' ? 'symbol-ruler' : 'law';
         if (node.errors === undefined) {
             item.iconPath = new vscode.ThemeIcon(icon);
             item.description = path;
