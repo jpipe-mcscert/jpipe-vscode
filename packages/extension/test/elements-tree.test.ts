@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
+import manifest from '../package.json' with { type: 'json' };
 import {
+    ELEMENT_COLORS,
     ELEMENT_ICONS,
     elementAt,
     elementLabel,
@@ -94,6 +96,13 @@ describe('a row', () => {
 
     test('is just the id while the label is empty', () => {
         expect(elementLabel({ id: 'sub', label: '', kind: 'sub-conclusion', range: r(0), selection: r(0) })).toBe('sub');
+    });
+
+    test('has a colour for every kind, each one contributed by the manifest', () => {
+        // A colour id nobody contributes resolves to nothing, and the icon silently loses its colour.
+        const contributed = manifest.contributes.colors.map(c => c.id);
+        expect(Object.keys(ELEMENT_COLORS).sort()).toEqual(Object.keys(ELEMENT_ICONS).sort());
+        for (const id of Object.values(ELEMENT_COLORS)) expect(contributed).toContain(id);
     });
 
     test('has an icon for every kind', () => {

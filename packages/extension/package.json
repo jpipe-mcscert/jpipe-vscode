@@ -111,6 +111,56 @@
                     "highContrast": "symbolIcon.functionForeground",
                     "highContrastLight": "symbolIcon.functionForeground"
                 }
+            },
+            {
+                "id": "jpipe.conclusionIconForeground",
+                "description": "Colour of a conclusion's icon in the jPipe Outline. The diagram draws conclusions in grey; this defaults to the theme's icon colour.",
+                "defaults": {
+                    "dark": "icon.foreground",
+                    "light": "icon.foreground",
+                    "highContrast": "icon.foreground",
+                    "highContrastLight": "icon.foreground"
+                }
+            },
+            {
+                "id": "jpipe.subConclusionIconForeground",
+                "description": "Colour of a sub-conclusion's icon in the jPipe Outline. Defaults to the blue the diagram outlines sub-conclusions with.",
+                "defaults": {
+                    "dark": "#0072B2",
+                    "light": "#0072B2",
+                    "highContrast": "#0072B2",
+                    "highContrastLight": "#0072B2"
+                }
+            },
+            {
+                "id": "jpipe.strategyIconForeground",
+                "description": "Colour of a strategy's icon in the jPipe Outline. Defaults to the amber the diagram fills strategies with.",
+                "defaults": {
+                    "dark": "#F0C27F",
+                    "light": "#E69F00",
+                    "highContrast": "#F0C27F",
+                    "highContrastLight": "#E69F00"
+                }
+            },
+            {
+                "id": "jpipe.evidenceIconForeground",
+                "description": "Colour of an evidence's icon in the jPipe Outline. Defaults to the sky blue the diagram fills evidence with.",
+                "defaults": {
+                    "dark": "#9ECAE1",
+                    "light": "#56B4E9",
+                    "highContrast": "#9ECAE1",
+                    "highContrastLight": "#56B4E9"
+                }
+            },
+            {
+                "id": "jpipe.supportIconForeground",
+                "description": "Colour of an @support's icon in the jPipe Outline. The diagram leaves @support uncoloured; this defaults to the theme's muted text colour.",
+                "defaults": {
+                    "dark": "descriptionForeground",
+                    "light": "descriptionForeground",
+                    "highContrast": "descriptionForeground",
+                    "highContrastLight": "descriptionForeground"
+                }
             }
         ],
         "semanticTokenTypes": [

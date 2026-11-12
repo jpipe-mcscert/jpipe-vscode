@@ -6,6 +6,7 @@ import type { Model } from './models-tree.js';
 import type { ModelsView } from './models-view.js';
 import {
     DOCUMENT_SYMBOL_REQUEST,
+    ELEMENT_COLORS,
     ELEMENT_ICONS,
     elementAt,
     elementLabel,
@@ -138,7 +139,7 @@ export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Di
     getTreeItem(element: Element): vscode.TreeItem {
         const item = new vscode.TreeItem(elementLabel(element), vscode.TreeItemCollapsibleState.None);
         item.id = element.id;
-        item.iconPath = new vscode.ThemeIcon(ELEMENT_ICONS[element.kind]);
+        item.iconPath = new vscode.ThemeIcon(ELEMENT_ICONS[element.kind], new vscode.ThemeColor(ELEMENT_COLORS[element.kind]));
         item.tooltip = `${element.kind === 'support' ? '@support' : element.kind} ${element.id}` +
             (element.label ? `\n${element.label}` : '');
         if (this.model) {

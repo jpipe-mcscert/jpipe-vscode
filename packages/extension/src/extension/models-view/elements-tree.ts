@@ -93,10 +93,28 @@ export function elementLabel(element: Element): string {
 export const ELEMENT_ICONS: Readonly<Record<ElementKind, string>> = {
     conclusion: 'flag',
     'sub-conclusion': 'milestone',
-    strategy: 'lightbulb',
+    strategy: 'gear',
     evidence: 'file-text',
-    // An `@support` is a slot an implementation fills in.
-    support: 'circle-large-outline'
+    // An `@support` is abstract, filled in by whoever implements the template: a type parameter.
+    support: 'symbol-type-parameter'
+};
+
+/**
+ * The theme colour of each kind of element, contributed in `package.json`.
+ *
+ * The defaults are the diagram's: the compiler colours each kind from the Okabe-Ito palette, which
+ * stays distinguishable under every common colour-vision deficiency (jpipe-compiler ADR-0014), so
+ * an element has the same colour in the outline as in the preview. On a dark theme the icons take
+ * the diagram's fills as they are; on a light one, the darker base hues those fills were lightened
+ * from. The conclusion's grey and the `@support`'s absence of colour become the theme's own
+ * foreground and muted foreground.
+ */
+export const ELEMENT_COLORS: Readonly<Record<ElementKind, string>> = {
+    conclusion: 'jpipe.conclusionIconForeground',
+    'sub-conclusion': 'jpipe.subConclusionIconForeground',
+    strategy: 'jpipe.strategyIconForeground',
+    evidence: 'jpipe.evidenceIconForeground',
+    support: 'jpipe.supportIconForeground'
 };
 
 /** The element the cursor is in, if any. Elements never nest, so at most one contains it. */
