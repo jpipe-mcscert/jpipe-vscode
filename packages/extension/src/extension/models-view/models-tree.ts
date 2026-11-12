@@ -362,6 +362,17 @@ export function buildTree(models: readonly Model[], status: ModelStatus = NO_STA
     return [errors, templates, compositions, justifications, excluded].filter(group => group.children.length > 0);
 }
 
+/**
+ * Names held by more than one model. The view shows a model's file only on hover, except for
+ * these, whose rows would otherwise be indistinguishable — the rule editor tabs follow.
+ */
+export function ambiguousNames(models: readonly Model[]): Set<string> {
+    const seen = new Set<string>();
+    const repeated = new Set<string>();
+    for (const { name } of models) (seen.has(name) ? repeated : seen).add(name);
+    return repeated;
+}
+
 /** The icon of each operator jPipe knows. A test holds this in step with the language server's list. */
 export const OPERATOR_ICONS: Readonly<Record<string, string>> = {
     // Grafts one model onto an element of another: the refinement goes down into the base.

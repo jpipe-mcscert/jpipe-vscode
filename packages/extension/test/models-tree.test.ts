@@ -11,6 +11,7 @@ import {
     errorCounts,
     fetchModels,
     OPERATOR_ICONS,
+    ambiguousNames,
     keyOf,
     modelAtLine,
     modelIcon,
@@ -437,6 +438,18 @@ describe('errors and exclusions', () => {
         ], status([DRAFTS], { [APP]: [0] }));
         expect((nodeForModel(tree, keyOf(APP, 'Release'))!.parent as { id: string }).id).toBe('justifications');
         expect((nodeForModel(tree, keyOf(DRAFTS, 'Draft'))!.parent as { id: string }).id).toBe('excluded');
+    });
+});
+
+describe('which rows show their file', () => {
+
+    test('only models whose name another model shares', () => {
+        const names = ambiguousNames([
+            model('Release', 'justification', APP),
+            model('Release', 'justification', 'file:///w/other.jd'),
+            model('Signoff', 'template')
+        ]);
+        expect([...names]).toEqual(['Release']);
     });
 });
 

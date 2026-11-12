@@ -4,6 +4,7 @@ import type { JpipeLogger } from '../logger.js';
 import type { ExclusionManager } from '../exclusions.js';
 import { messageOf } from '../../shared/errors.js';
 import {
+    ambiguousNames,
     buildTree,
     fetchModels,
     modelAtLine,
@@ -49,6 +50,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     private readonly disposables: vscode.Disposable[] = [];
     private tree: GroupNode[] = [];
     private models: Model[] = [];
+    private ambiguous = new Set<string>();
     /** The load in progress, which `getChildren` waits on so the view shows progress, not emptiness. */
     private loading: Promise<void> | undefined;
     private stale = true;
@@ -115,6 +117,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         try {
             await this.client.start();
             this.models = await fetchModels((method, params) => this.client.sendRequest(method, params));
+            this.ambiguous = ambiguousNames(this.models);
             this.tree = buildTree(this.models, this.status());
             this.view.message = undefined;
         } catch (err: unknown) {
@@ -185,12 +188,13 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         const path = vscode.workspace.asRelativePath(uri);
         // Codicons rather than shipped SVGs, so they follow the theme and take the tints below.
         item.iconPath = new vscode.ThemeIcon(modelIcon(model), new vscode.ThemeColor(this.iconColor(node)));
+        // Kept short: the file and the operator are in the tooltip, and the icon already says
+        // which operator. The file shows here only when another model has the same name.
         const facts = [
             ...(node.errors === undefined ? [] : [`${node.errors} error${node.errors === 1 ? '' : 's'}`]),
-            ...(model.operator ? [model.operator] : []),
-            path
+            ...(this.ambiguous.has(model.name) ? [path] : [])
         ];
-        item.description = facts.join(' · ');
+        item.description = facts.length > 0 ? facts.join(' · ') : undefined;
         const kind = model.kind === 'template' ? 'Template' : 'Justification';
         item.tooltip = new vscode.MarkdownString(
             `**${kind}** \`${model.name}\`` +
