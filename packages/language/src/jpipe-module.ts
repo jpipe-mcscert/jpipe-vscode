@@ -13,6 +13,7 @@ import { JpipeSemanticTokenProvider } from './jpipe-semantic-token-provider.js';
 import { JpipeRenameProvider } from './jpipe-rename-provider.js';
 import { JpipeCodeActionProvider } from './jpipe-code-action-provider.js';
 import { JpipeFormatter } from './jpipe-formatter.js';
+import { JpipeNodeKindProvider, JpipeTypeHierarchyProvider } from './jpipe-type-hierarchy.js';
 import { JpipeLanguageServer } from './jpipe-language-server.js';
 import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 import { JpipeDocumentValidator } from './jpipe-document-validator.js';
@@ -44,12 +45,14 @@ export type JpipeServices = LangiumServices & JpipeAddedServices
 /**
  * Shared-service overrides.
  *
- * Only the language server itself, so that the code-action capability arrives with its kinds
- * attached rather than as a bare boolean.
+ * The language server itself, so that the code-action capability arrives with its kinds
+ * attached rather than as a bare boolean; and the node-kind provider, so that a template and a
+ * justification are told apart in workspace symbols.
  */
 const JpipeSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServices> = {
     lsp: {
-        LanguageServer: (services) => new JpipeLanguageServer(services)
+        LanguageServer: (services) => new JpipeLanguageServer(services),
+        NodeKindProvider: () => new JpipeNodeKindProvider()
     }
 };
 
@@ -78,6 +81,8 @@ function buildJpipeModule(
             HoverProvider:          (services) => new JpipeHoverProvider(services),
             SemanticTokenProvider:  (services) => new JpipeSemanticTokenProvider(services),
             RenameProvider:         (services) => new JpipeRenameProvider(services),
+            // Binding it is what advertises `typeHierarchyProvider`, as with the two below.
+            TypeHierarchyProvider:  (services) => new JpipeTypeHierarchyProvider(services),
             // Binding this is all it takes: `startLanguageServer` advertises
             // `codeActionProvider` from the presence of the service.
             CodeActionProvider:     (services) => new JpipeCodeActionProvider(services),
