@@ -4,8 +4,12 @@ import * as path from 'node:path';
 import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import { execFileText } from '../process-launcher.js';
+import { envWithPath } from '../compiler/image-generator.js';
 import {
+    NO_BASE_PYTHON,
     PROBE_SCRIPT,
+    basePythonCandidates,
+    chooseBasePython,
     createEnvironmentCommands,
     environmentStatus,
     fixLabel,
@@ -14,7 +18,9 @@ import {
     statusMessage,
     venvPython,
     type EnvironmentStatus,
-    type ProjectFacts
+    type ProjectFacts,
+    type PythonCommand,
+    type Probe
 } from './python-environment.js';
 
 /**
@@ -89,20 +95,38 @@ export class RunnerEnvironment implements vscode.Disposable {
         const folder = this.folder;
         const project = this.projectFacts(folder);
         const python = await this.selectedPython(folder, project);
-        let probe;
-        if (python) {
-            try {
-                const { stdout } = await execFileText(python, ['-c', PROBE_SCRIPT], {
-                    cwd: folder?.uri.fsPath, timeout: 15_000, windowsHide: true
-                });
-                probe = parseProbe(stdout);
-            } catch (err: unknown) {
-                this.logger.debug(`Could not ask ${python} about jpipe-runner: ${messageOf(err)}`);
-            }
-        }
+        const probe = python ? await this.probe({ program: python, args: [] }, folder) : undefined;
         this.current = environmentStatus(python, probe, project);
         this.logger.debug(`Runner environment: ${this.current.kind}${python ? ` (${python})` : ''}`);
         this.changeEmitter.fire();
+    }
+
+    /** Ask an interpreter what it is; `undefined` if it is not there or does not answer. */
+    private async probe(python: PythonCommand, folder: vscode.WorkspaceFolder | undefined): Promise<Probe | undefined> {
+        try {
+            const { stdout } = await execFileText(python.program, [...python.args, '-c', PROBE_SCRIPT], {
+                cwd: folder?.uri.fsPath, timeout: 15_000, windowsHide: true, env: envWithPath()
+            });
+            return parseProbe(stdout);
+        } catch (err: unknown) {
+            this.logger.debug(`Could not ask ${python.program} ${python.args.join(' ')} what it is: ${messageOf(err)}`);
+            return undefined;
+        }
+    }
+
+    /** The Python a new environment is made with: the selected one if recent enough, else the best found. */
+    private async basePython(selected: string, folder: vscode.WorkspaceFolder | undefined): Promise<PythonCommand | undefined> {
+        const answers = [];
+        for (const command of basePythonCandidates(selected, process.platform)) {
+            const probe = await this.probe(command, folder);
+            answers.push({ command, version: probe?.version });
+            const chosen = chooseBasePython(answers);
+            if (chosen) {
+                this.logger.info(`Creating the environment with ${[chosen.program, ...chosen.args].join(' ')} (Python ${probe?.version.join('.')})`);
+                return chosen;
+            }
+        }
+        return undefined;
     }
 
     private projectFacts(folder: vscode.WorkspaceFolder | undefined): ProjectFacts {
@@ -160,6 +184,7 @@ export class RunnerEnvironment implements vscode.Disposable {
     async fix(): Promise<boolean> {
         const status = await this.settled();
         const folder = this.folder;
+        this.logger.info(`Fixing the runner environment: ${status.kind}`);
         switch (status.kind) {
             case 'missing-runner': {
                 const { program, args } = installRunnerCommand(status.python);
@@ -171,10 +196,19 @@ export class RunnerEnvironment implements vscode.Disposable {
                 break;
             case 'no-environment': {
                 if (!folder) return false;
-                for (const { program, args } of createEnvironmentCommands(status.python, folder.uri.fsPath, process.platform)) {
-                    if (!await this.runStep('Create Python environment', program, args, folder)) break;
+                const base = await this.basePython(status.python, folder);
+                if (!base) {
+                    void vscode.window.showErrorMessage(NO_BASE_PYTHON);
+                    return false;
                 }
-                await this.select(venvPython(path.join(folder.uri.fsPath, '.venv'), process.platform), folder);
+                let created = true;
+                for (const step of createEnvironmentCommands(base, folder.uri.fsPath, process.platform)) {
+                    if (!await this.runStep(step.name, step.program, step.args, folder)) {
+                        created = false;
+                        break;
+                    }
+                }
+                if (created) await this.select(venvPython(path.join(folder.uri.fsPath, '.venv'), process.platform), folder);
                 break;
             }
             case 'managed':
@@ -188,37 +222,69 @@ export class RunnerEnvironment implements vscode.Disposable {
         return (await this.settled()).kind === 'ready';
     }
 
-    /** Make `python` the workspace folder's interpreter, through the Python extension when there is one. */
+    /**
+     * Make `python` the workspace folder's interpreter, through the Python extension when there is
+     * one. The extension may refuse an environment it has not discovered yet; then the user is
+     * asked to pick it, rather than left with an environment nothing uses.
+     */
     private async select(python: string, folder: vscode.WorkspaceFolder | undefined): Promise<void> {
-        if (!fs.existsSync(python)) return;
-        if (this.api) {
+        if (!fs.existsSync(python)) {
+            this.logger.error(`Cannot select ${python}: it does not exist.`);
+            return;
+        }
+        const ask = `Select ${python} as this workspace's Python interpreter, so the editor and runs use the same one.`;
+        if (!this.api) {
+            void vscode.window.showInformationMessage(ask);
+            return;
+        }
+        try {
             await this.api.updateActiveEnvironmentPath(python, folder?.uri);
-        } else {
-            void vscode.window.showInformationMessage(`Use ${python} as this workspace's Python interpreter so the editor and runs agree.`);
+            this.logger.info(`Selected ${python} as the workspace's Python interpreter.`);
+        } catch (err: unknown) {
+            this.logger.error(`The Python extension did not select ${python}: ${messageOf(err)}`);
+            const pick = 'Select Interpreter';
+            if (await vscode.window.showWarningMessage(ask, pick) === pick) {
+                await vscode.commands.executeCommand('python.setInterpreter');
+            }
         }
     }
 
-    /** One step, in a terminal the user can watch; resolves to whether it succeeded. */
+    /**
+     * One step, in a terminal the user can watch; resolves to whether it succeeded.
+     *
+     * Each step is its own task — its name is part of its identity — so a second step started as
+     * the first ends is not taken for the first one still running. The end is matched by that
+     * identity, and listened for before the task starts: a step that fails at once, a missing
+     * program say, can end before `executeTask` has even resolved. A task that ends without its
+     * process reporting an exit code never started, which is a failure too.
+     */
     private runStep(name: string, program: string, args: string[], folder: vscode.WorkspaceFolder | undefined): Promise<boolean> {
+        const definition = { type: 'jpipe', model: name };
         const task = new vscode.Task(
-            { type: 'jpipe', model: name },
+            definition,
             folder ?? vscode.TaskScope.Workspace,
             name,
             'jPipe',
-            new vscode.ProcessExecution(program, args, { cwd: folder?.uri.fsPath })
+            new vscode.ProcessExecution(program, args, { cwd: folder?.uri.fsPath, env: envWithPath() as Record<string, string> })
         );
         task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Shared, clear: false };
+        const ours = (e: { execution: vscode.TaskExecution }) =>
+            e.execution.task.source === 'jPipe' && e.execution.task.definition.model === name;
+        this.logger.info(`${name}: ${program} ${args.join(' ')}`);
         return new Promise(resolve => {
-            let execution: vscode.TaskExecution | undefined;
-            const subscription = vscode.tasks.onDidEndTaskProcess(e => {
-                if (e.execution !== execution) return;
-                subscription.dispose();
-                resolve(e.exitCode === 0);
-            });
-            vscode.tasks.executeTask(task).then(started => { execution = started; }, (err: unknown) => {
-                subscription.dispose();
+            let exitCode: number | undefined;
+            const finish = (ok: boolean) => {
+                subscriptions.forEach(s => s.dispose());
+                this.logger.info(`${name}: ${ok ? 'done' : `failed${exitCode !== undefined ? ` (exit code ${exitCode})` : ''}`}`);
+                resolve(ok);
+            };
+            const subscriptions = [
+                vscode.tasks.onDidEndTaskProcess(e => { if (ours(e)) exitCode = e.exitCode; }),
+                vscode.tasks.onDidEndTask(e => { if (ours(e)) finish(exitCode === 0); })
+            ];
+            vscode.tasks.executeTask(task).then(undefined, (err: unknown) => {
                 void vscode.window.showErrorMessage(`${name} could not start: ${messageOf(err)}`);
-                resolve(false);
+                finish(false);
             });
         });
     }

@@ -31,7 +31,10 @@ probed: its version, whether it is a virtual environment, whether it can find `j
 the fix that fits the project, which runs only when the user accepts it, in a visible terminal:
 install the runner into the selected environment; select the folder's own `.venv`; select the
 environment Pipenv or Poetry manages; or, when there is none, create `.venv` with Python's own
-`venv` module and install the runner into it. Declining is remembered for the workspace.
+`venv` module and install the runner into it. The environment is created with the selected Python
+when it is recent enough, and otherwise with the first Python 3.11 or newer found on the machine —
+a fresh folder on macOS selects `/usr/bin/python3`, which is 3.9, and an environment built from it
+could never hold the runner. Declining is remembered for the workspace.
 
 ## Rationale
 

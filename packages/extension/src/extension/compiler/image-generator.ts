@@ -61,8 +61,11 @@ function timeoutMs(config: vscode.WorkspaceConfiguration): number {
     return (typeof seconds === 'number' && seconds > 0 ? seconds : DEFAULT_TIMEOUT_SECONDS) * 1000;
 }
 
-/** PATH augmented so the compiler can find external interpreters (e.g. `python3`, `dot`). */
-function envWithPath(): NodeJS.ProcessEnv {
+/**
+ * PATH augmented so the compiler can find external interpreters (e.g. `python3`, `dot`).
+ * Exported for the runner, which looks for the same interpreters (`runner/environment.ts`).
+ */
+export function envWithPath(): NodeJS.ProcessEnv {
     const extra = vscode.workspace.getConfiguration('jpipe').get<string[]>('extraPath', []) ?? [];
     return buildPathEnv(process.env, extra, process.platform);
 }

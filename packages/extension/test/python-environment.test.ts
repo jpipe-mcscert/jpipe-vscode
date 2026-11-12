@@ -3,6 +3,8 @@ import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
     PROBE_SCRIPT,
+    basePythonCandidates,
+    chooseBasePython,
     createEnvironmentCommands,
     environmentStatus,
     fixLabel,
@@ -69,10 +71,14 @@ describe('the status', () => {
         expect(environmentStatus(PY, undefined, {}).kind).toBe('no-python');
     });
 
-    test('too old below 3.11, even with jpipe-runner somehow there', () => {
-        const status = environmentStatus(PY, probe({ version: [3, 10, 12], hasRunner: true }), {});
-        expect(status).toEqual({ kind: 'old-python', python: PY, version: '3.10.12' });
+    test('a project environment below 3.11 is too old, even with jpipe-runner somehow in it', () => {
+        const status = environmentStatus('/w/.venv/bin/python', probe({ version: [3, 10, 12], hasRunner: true, isVirtualEnv: true }), {});
+        expect(status).toEqual({ kind: 'old-python', python: '/w/.venv/bin/python', version: '3.10.12' });
         expect(environmentStatus(PY, probe({ version: [3, 11, 0], hasRunner: true }), {}).kind).toBe('ready');
+    });
+
+    test('an old system Python — macOS ships 3.9 — gets an environment created, not a version error', () => {
+        expect(environmentStatus('/usr/bin/python3', probe({ version: [3, 9, 6] }), {}).kind).toBe('no-environment');
     });
 
     test('a project environment without jpipe-runner gets it installed', () => {
@@ -95,7 +101,7 @@ describe('the status', () => {
     test('every status that needs doing says why, and every fixable one says how', () => {
         const statuses = [
             environmentStatus(undefined, undefined, {}),
-            environmentStatus(PY, probe({ version: [3, 9, 0] }), {}),
+            environmentStatus('/v/python', probe({ version: [3, 9, 0], isVirtualEnv: true }), {}),
             environmentStatus('/v/python', probe({ isVirtualEnv: true }), {}),
             environmentStatus(PY, probe(), { localVenvPython: '/w/.venv/bin/python' }),
             environmentStatus(PY, probe(), { manager: 'Poetry' }),
@@ -111,11 +117,27 @@ describe('the status', () => {
 
 describe('the commands', () => {
 
-    test('a new environment is .venv, made with the standard library, then given jpipe-runner', () => {
-        expect(createEnvironmentCommands('python3', '/w', 'darwin')).toEqual([
-            { program: 'python3', args: ['-m', 'venv', '.venv'] },
-            { program: path.join('/w', '.venv', 'bin', 'python'), args: ['-m', 'pip', 'install', 'jpipe-runner'] }
+    test('a new environment is .venv, made with the standard library, then given jpipe-runner, as two distinct steps', () => {
+        expect(createEnvironmentCommands({ program: 'python3.13', args: [] }, '/w', 'darwin')).toEqual([
+            { name: 'Create .venv', program: 'python3.13', args: ['-m', 'venv', '.venv'] },
+            { name: 'Install jpipe-runner', program: path.join('/w', '.venv', 'bin', 'python'), args: ['-m', 'pip', 'install', 'jpipe-runner'] }
         ]);
+        expect(createEnvironmentCommands({ program: 'py', args: ['-3.12'] }, 'C:\\w', 'win32')[0].args)
+            .toEqual(['-3.12', '-m', 'venv', '.venv']);
+    });
+
+    test('the base Python is looked for after the selected one, by name, and with the py launcher on Windows', () => {
+        expect(basePythonCandidates('/usr/bin/python3', 'darwin').map(c => c.program))
+            .toEqual(['/usr/bin/python3', 'python3', 'python3.14', 'python3.13', 'python3.12', 'python3.11']);
+        expect(basePythonCandidates(undefined, 'win32')[0]).toEqual({ program: 'py', args: ['-3'] });
+    });
+
+    test('the base Python is the first one recent enough', () => {
+        const old = { command: { program: '/usr/bin/python3', args: [] }, version: [3, 9, 6] };
+        const missing = { command: { program: 'python3.14', args: [] } };
+        const fine = { command: { program: 'python3.13', args: [] }, version: [3, 13, 1] };
+        expect(chooseBasePython([old, missing, fine])).toEqual(fine.command);
+        expect(chooseBasePython([old, missing])).toBeUndefined();
     });
 
     test('on Windows, a virtual environment keeps its Python in Scripts', () => {

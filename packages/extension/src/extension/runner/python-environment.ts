@@ -60,7 +60,7 @@ export type EnvironmentStatus =
     | { kind: 'ready'; python: string }
     /** No Python could be found at all. */
     | { kind: 'no-python' }
-    /** The selected Python is older than jpipe-runner supports. */
+    /** The selected Python is a project environment older than jpipe-runner supports. */
     | { kind: 'old-python'; python: string; version: string }
     /** The selected Python is a project environment without jpipe-runner: install it there. */
     | { kind: 'missing-runner'; python: string }
@@ -77,19 +77,55 @@ export type EnvironmentStatus =
  * A system Python with jpipe-runner installed is accepted: it runs. A project environment is only
  * proposed when there is none — the selected Python is not one, and nothing in the folder says
  * where one is. When something does, the answer is to use it rather than make another.
+ *
+ * The selected Python's own version only matters when it is a project environment: a system
+ * Python that is too old — macOS's own `/usr/bin/python3` is 3.9 — is not one to fix, it is one
+ * to create an environment beside, with a newer Python (`chooseBasePython`).
  */
 export function environmentStatus(python: string | undefined, probe: Probe | undefined, project: ProjectFacts): EnvironmentStatus {
     if (!python || !probe) return { kind: 'no-python' };
-    if (compareVersion(probe.version, MIN_PYTHON) < 0) {
-        return { kind: 'old-python', python, version: probe.version.join('.') };
+    const recentEnough = isRecentEnough(probe.version);
+    if (probe.hasRunner && recentEnough) return { kind: 'ready', python };
+    if (probe.isVirtualEnv) {
+        return recentEnough
+            ? { kind: 'missing-runner', python }
+            : { kind: 'old-python', python, version: probe.version.join('.') };
     }
-    if (probe.hasRunner) return { kind: 'ready', python };
-    if (probe.isVirtualEnv) return { kind: 'missing-runner', python };
     if (project.localVenvPython && path.normalize(project.localVenvPython) !== path.normalize(python)) {
         return { kind: 'unselected-venv', python, venvPython: project.localVenvPython };
     }
     if (project.manager) return { kind: 'managed', python, manager: project.manager };
     return { kind: 'no-environment', python };
+}
+
+export const isRecentEnough = (version: readonly number[]): boolean => compareVersion(version, MIN_PYTHON) >= 0;
+
+/** A program to try as the Python an environment is created with, and the arguments that select it. */
+export interface PythonCommand {
+    program: string;
+    args: string[];
+}
+
+/**
+ * Where to look for a Python to create an environment with, best first, after the selected one:
+ * the `python3` on `PATH`, then each minor version jpipe-runner supports by name — Homebrew, the
+ * python.org installer and most Linux distributions install them that way — and, on Windows, the
+ * `py` launcher, which knows every Python installed.
+ */
+export function basePythonCandidates(selected: string | undefined, platform: NodeJS.Platform): PythonCommand[] {
+    const minors = [14, 13, 12, 11];
+    const candidates: PythonCommand[] = selected ? [{ program: selected, args: [] }] : [];
+    if (platform === 'win32') {
+        candidates.push({ program: 'py', args: ['-3'] }, ...minors.map(m => ({ program: 'py', args: [`-3.${m}`] })), { program: 'python', args: [] });
+    } else {
+        candidates.push({ program: 'python3', args: [] }, ...minors.map(m => ({ program: `python3.${m}`, args: [] })));
+    }
+    return candidates;
+}
+
+/** The first candidate whose version is recent enough, given each one's version, if it answered. */
+export function chooseBasePython(candidates: ReadonlyArray<{ command: PythonCommand; version?: readonly number[] }>): PythonCommand | undefined {
+    return candidates.find(c => c.version !== undefined && isRecentEnough(c.version))?.command;
 }
 
 function compareVersion(version: readonly number[], minimum: readonly number[]): number {
@@ -104,7 +140,7 @@ export function statusMessage(status: EnvironmentStatus): string | undefined {
     switch (status.kind) {
         case 'ready': return undefined;
         case 'no-python': return 'No Python was found to run step libraries with. Install Python 3.11 or newer.';
-        case 'old-python': return `jpipe-runner needs Python ${MIN_PYTHON.join('.')} or newer; the selected Python is ${status.version}.`;
+        case 'old-python': return `jpipe-runner needs Python ${MIN_PYTHON.join('.')} or newer; the selected environment has Python ${status.version}.`;
         case 'missing-runner': return 'jpipe-runner is not installed in the selected Python environment.';
         case 'unselected-venv': return 'This folder has a virtual environment, but VS Code uses another Python.';
         case 'managed': return `${status.manager} manages this project's environment, but VS Code uses another Python.`;
@@ -131,14 +167,17 @@ export function venvPython(venvDir: string, platform: NodeJS.Platform): string {
         : path.join(venvDir, 'bin', 'python');
 }
 
-/** The commands that create `.venv` in `folder` with `basePython`, then install jpipe-runner in it. */
-export function createEnvironmentCommands(basePython: string, folder: string, platform: NodeJS.Platform): Array<{ program: string; args: string[] }> {
+/** The steps that create `.venv` in `folder` with `base`, then install jpipe-runner in it. */
+export function createEnvironmentCommands(base: PythonCommand, folder: string, platform: NodeJS.Platform): Array<{ name: string; program: string; args: string[] }> {
     const python = venvPython(path.join(folder, '.venv'), platform);
     return [
-        { program: basePython, args: ['-m', 'venv', '.venv'] },
-        { program: python, args: ['-m', 'pip', 'install', 'jpipe-runner'] }
+        { name: 'Create .venv', program: base.program, args: [...base.args, '-m', 'venv', '.venv'] },
+        { name: 'Install jpipe-runner', program: python, args: ['-m', 'pip', 'install', 'jpipe-runner'] }
     ];
 }
+
+/** Why no environment can be created, when no Python recent enough was found. */
+export const NO_BASE_PYTHON = `Creating an environment needs Python ${MIN_PYTHON.join('.')} or newer, and none was found. Install one (python.org, Homebrew, or your distribution), then try again.`;
 
 /** The command that installs jpipe-runner into the environment `python` belongs to. */
 export function installRunnerCommand(python: string): { program: string; args: string[] } {
