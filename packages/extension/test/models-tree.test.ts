@@ -16,6 +16,7 @@ import {
     modelAtLine,
     modelIcon,
     nodeForModel,
+    showsModel,
     type Model,
     type ModelNode,
     type ModelStatus,
@@ -468,6 +469,20 @@ describe('following the cursor', () => {
         [99, 'Second']
     ])('line %i is in %s', (line, expected) => {
         expect(modelAtLine(inFile, line)?.name).toBe(expected);
+    });
+
+    test('a selected row for the same model stays selected, wherever it is in the tree', () => {
+        const tree = buildTree([
+            model('Signoff', 'template'),
+            model('Release', 'justification', APP, 'Signoff')
+        ]);
+        // Release as a child of its template, not its row in the Justifications list.
+        const underTemplate = tree.find(g => g.id === 'templates')!.children[0].children[0];
+        expect(underTemplate.model.name).toBe('Release');
+        expect(showsModel(underTemplate, keyOf(APP, 'Release'))).toBe(true);
+        expect(showsModel(underTemplate, keyOf(LIB, 'Signoff'))).toBe(false);
+        expect(showsModel(tree[0], keyOf(APP, 'Release'))).toBe(false);
+        expect(showsModel(undefined, keyOf(APP, 'Release'))).toBe(false);
     });
 
     test('reveals a justification in the flat list, a template in the forest', () => {

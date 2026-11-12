@@ -10,6 +10,7 @@ import {
     modelAtLine,
     modelIcon,
     nodeForModel,
+    showsModel,
     type GroupNode,
     type Model,
     type ModelNode,
@@ -262,8 +263,9 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         const uri = editor.document.uri.toString();
         const inFile = this.models.filter(m => vscode.Uri.parse(m.uri).toString() === uri);
         const model = modelAtLine(inFile, editor.selection.active.line);
-        const node = model ? nodeForModel(this.tree, model.key) : undefined;
-        if (!node || this.view.selection[0]?.id === node.id) return;
+        if (!model || showsModel(this.view.selection[0], model.key)) return;
+        const node = nodeForModel(this.tree, model.key);
+        if (!node) return;
         try {
             await this.view.reveal(node, { select: true, focus: false, expand: false });
         } catch {

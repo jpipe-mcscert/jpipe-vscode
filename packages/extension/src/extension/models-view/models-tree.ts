@@ -409,6 +409,18 @@ export function modelAtLine(modelsInFile: readonly Model[], line: number): Model
 }
 
 /**
+ * Whether the selected row already stands for this model, wherever in the tree it is.
+ *
+ * A model can have several rows — under its template, among a composition's operands, in its own
+ * group — and clicking any of them opens its file. The editor then reports the cursor in that
+ * model, and revealing the model's usual row would move the selection away from the row just
+ * clicked. A row for the same model is as good as any other, so it is left selected.
+ */
+export function showsModel(selected: TreeNode | undefined, key: string): boolean {
+    return selected?.type === 'model' && selected.model.key === key;
+}
+
+/**
  * The node to reveal for a model: the place it always has. For a written justification that is
  * the flat Justifications list, for a template its place in the forest, for a composed
  * justification its own entry under Compositions, and for an excluded model the Excluded group.
