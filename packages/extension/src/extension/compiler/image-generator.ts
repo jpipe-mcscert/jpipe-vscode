@@ -116,13 +116,15 @@ export class ImageGenerator {
      * @param saveToFile If true, prompts user for save location
      * @param format Output format (defaults to SVG)
      * @param document Optional document to use instead of active editor
+     * @param outputFile Where the compiler writes its output, chosen by the caller: no prompt
      * @returns The generated content as a string (when not saving to file)
      */
     public async generate(
         saveToFile: boolean = false,
         format: ImageFormat = ImageFormat.SVG,
         document?: vscode.TextDocument,
-        forcedDiagramName?: string
+        forcedDiagramName?: string,
+        outputFile?: vscode.Uri
     ): Promise<string> {
         let editor = vscode.window.activeTextEditor;
 
@@ -158,7 +160,9 @@ export class ImageGenerator {
             '-f', format.toString().toUpperCase(),
         ];
 
-        if (saveToFile) {
+        if (outputFile) {
+            argv.push('-o', outputFile.fsPath);
+        } else if (saveToFile) {
             const outputPath = await this.promptForSaveLocation(document, diagramName, format);
             if (!outputPath) {
                 const e = new Error('Save cancelled') as Error & { cancelled?: boolean };

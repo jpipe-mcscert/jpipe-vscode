@@ -191,7 +191,7 @@ export function registerCommands(deps: CommandDeps): void {
             newModel(modelsView.knownModels, { kind: 'justification', template: node.model, contextUri: node.model.uri })),
         vscode.commands.registerCommand('jpipe.models.scaffoldLibrary', (node: ModelNode) =>
             scaffoldLibrary(librariesView, node.model,
-                document => imageGenerator.generate(false, ImageFormat.PYTHON, document, node.model.name))),
+                (document, file) => imageGenerator.generate(false, ImageFormat.PYTHON, document, node.model.name, file))),
 
         ...CODE_ACTION_COMMANDS.map(([command, kind, action]) =>
             vscode.commands.registerCommand(command, async () => {
