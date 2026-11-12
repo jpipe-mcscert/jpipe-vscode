@@ -126,24 +126,43 @@ export async function fetchModels(request: RequestFn): Promise<Model[]> {
 /** A row in the tree. */
 export type TreeNode = GroupNode | ModelNode;
 
+export type GroupId = 'errors' | 'templates' | 'justifications' | 'excluded';
+
 export interface GroupNode {
     type: 'group';
     /** Stable, so VS Code keeps the group's expanded state across refreshes. */
-    id: 'templates' | 'justifications';
+    id: GroupId;
     label: string;
     children: ModelNode[];
 }
 
 export interface ModelNode {
     type: 'model';
-    /** Unique within the tree: a justification can appear both under its template and in the flat list. */
+    /** Unique within the tree: a model can appear in more than one group. */
     id: string;
     model: Model;
     /** The name of the template this model implements, for display. */
     parentName?: string;
+    /** How many errors the model has; set on the nodes of the Errors group. */
+    errors?: number;
     children: ModelNode[];
     parent: TreeNode;
 }
+
+/**
+ * What the editor knows about a model's file that the language server's symbols do not say.
+ *
+ * Passed in rather than looked up, so that the grouping can be tested without diagnostics or
+ * settings to read.
+ */
+export interface ModelStatus {
+    /** Whether the file is excluded from jPipe validation. */
+    isExcluded(uri: string): boolean;
+    /** The zero-based start lines of the file's error diagnostics. */
+    errorLines(uri: string): readonly number[];
+}
+
+const NO_STATUS: ModelStatus = { isExcluded: () => false, errorLines: () => [] };
 
 const byName = (a: Model, b: Model): number =>
     a.name.localeCompare(b.name) || a.uri.localeCompare(b.uri);
@@ -153,31 +172,81 @@ const templatesFirst = (a: Model, b: Model): number =>
     (a.kind === b.kind ? 0 : a.kind === 'template' ? -1 : 1) || byName(a, b);
 
 /**
- * The two groups the view shows.
+ * How many errors each model has.
  *
- * **Templates** is the `implements` forest: a template whose parent is not in the workspace is a
- * root, and each template lists what implements it — templates first, then justifications.
- * **Justifications** is every justification, flat, which is the list most people come for. A
- * justification implementing a template therefore appears twice, which is what lets each group
- * answer its own question without the other.
+ * A diagnostic belongs to the model whose declaration it falls in, found the way the cursor's
+ * model is (`modelAtLine`). One above every model — on a `load` — belongs to all of the file's
+ * models: a load that does not resolve leaves each of them referring to things that are not
+ * there, so every one of them fails to build.
+ */
+export function errorCounts(models: readonly Model[], errorLines: (uri: string) => readonly number[]): Map<string, number> {
+    const byFile = new Map<string, Model[]>();
+    for (const model of models) {
+        const inFile = byFile.get(model.uri) ?? [];
+        inFile.push(model);
+        byFile.set(model.uri, inFile);
+    }
+    const counts = new Map<string, number>();
+    const add = (model: Model) => counts.set(model.key, (counts.get(model.key) ?? 0) + 1);
+    for (const [uri, inFile] of byFile) {
+        for (const line of errorLines(uri)) {
+            const owner = modelAtLine(inFile, line);
+            if (owner) add(owner);
+            else inFile.forEach(add);
+        }
+    }
+    return counts;
+}
+
+/**
+ * The groups the view shows, in this order:
+ *
+ * - **Errors** — every model that has an error, flat, with how many. An overlay, not a partition:
+ *   a model with errors stays in its own group too, because it is still part of the argument,
+ *   only broken. An error is something the build fails on (jpipe-vscode ADR-VSC-0023), so this is
+ *   the list of models that will not build. It comes first since, when it is there at all, it is
+ *   what needs doing.
+ * - **Templates** — the `implements` forest: a template whose parent is not shown here is a
+ *   root, and each template lists what implements it, templates first, then justifications.
+ * - **Justifications** — every justification, flat, which is the list most people come for. A
+ *   justification implementing a template therefore appears under both, which lets each group
+ *   answer its own question without the other.
+ * - **Excluded** — models in files excluded from validation, flat. A partition: they leave the
+ *   two groups above, because excluding a file says it is not part of the argument — counter-
+ *   examples, drafts, fixtures — and listing it among the real models would say the opposite.
+ *   They cannot be in Errors either, since nothing validates them.
  *
  * A cycle of templates is a modelling error the validator reports, but the tree must still be
- * finite: a template already on the current path is not descended into again. Templates that are
- * only reachable through such a cycle have no root, so they are listed as roots themselves rather
- * than vanishing from the view.
+ * finite: a template already on the current path is not descended into again. Templates only
+ * reachable through such a cycle have no root, so they are listed as roots themselves rather than
+ * vanishing from the view.
  *
- * Empty groups are left out, so a workspace with no templates shows only its justifications.
+ * Empty groups are left out, so a healthy workspace with no templates shows only its
+ * justifications.
  */
-export function buildTree(models: readonly Model[]): GroupNode[] {
+export function buildTree(models: readonly Model[], status: ModelStatus = NO_STATUS): GroupNode[] {
     const byKey = new Map(models.map(m => [m.key, m]));
+    const parentName = (m: Model) => m.parentKey ? byKey.get(m.parentKey)?.name : undefined;
+    const flat = (group: GroupNode, members: Model[]): ModelNode[] => members.map(model => ({
+        type: 'model' as const,
+        id: `${group.id}>${model.key}`,
+        model,
+        parentName: parentName(model),
+        children: [],
+        parent: group
+    }));
+
+    const excludedModels = models.filter(m => status.isExcluded(m.uri));
+    const included = models.filter(m => !status.isExcluded(m.uri));
+    const shown = new Set(included.map(m => m.key));
+
     const children = new Map<string, Model[]>();
-    for (const model of models) {
-        if (!model.parentKey || !byKey.has(model.parentKey)) continue;
+    for (const model of included) {
+        if (!model.parentKey || !shown.has(model.parentKey)) continue;
         const siblings = children.get(model.parentKey) ?? [];
         siblings.push(model);
         children.set(model.parentKey, siblings);
     }
-    const parentName = (m: Model) => m.parentKey ? byKey.get(m.parentKey)?.name : undefined;
 
     const templates: GroupNode = { type: 'group', id: 'templates', label: 'Templates', children: [] };
     const placed = new Set<string>();
@@ -195,9 +264,9 @@ export function buildTree(models: readonly Model[]): GroupNode[] {
         return node;
     };
 
-    const allTemplates = models.filter(m => m.kind === 'template').sort(byName);
+    const allTemplates = included.filter(m => m.kind === 'template').sort(byName);
     for (const template of allTemplates) {
-        if (template.parentKey && byKey.has(template.parentKey)) continue;
+        if (template.parentKey && shown.has(template.parentKey)) continue;
         templates.children.push(grow(template, templates, ['templates']));
     }
     for (const template of allTemplates) {
@@ -205,19 +274,17 @@ export function buildTree(models: readonly Model[]): GroupNode[] {
     }
 
     const justifications: GroupNode = { type: 'group', id: 'justifications', label: 'Justifications', children: [] };
-    justifications.children = models
-        .filter(m => m.kind === 'justification')
-        .sort(byName)
-        .map(model => ({
-            type: 'model' as const,
-            id: `justifications>${model.key}`,
-            model,
-            parentName: parentName(model),
-            children: [],
-            parent: justifications
-        }));
+    justifications.children = flat(justifications, included.filter(m => m.kind === 'justification').sort(byName));
 
-    return [templates, justifications].filter(group => group.children.length > 0);
+    const counts = errorCounts(included, status.errorLines);
+    const errors: GroupNode = { type: 'group', id: 'errors', label: 'Errors', children: [] };
+    errors.children = flat(errors, included.filter(m => counts.has(m.key)).sort(templatesFirst))
+        .map(node => ({ ...node, errors: counts.get(node.model.key) }));
+
+    const excluded: GroupNode = { type: 'group', id: 'excluded', label: 'Excluded', children: [] };
+    excluded.children = flat(excluded, excludedModels.sort(templatesFirst));
+
+    return [errors, templates, justifications, excluded].filter(group => group.children.length > 0);
 }
 
 /**
@@ -236,8 +303,10 @@ export function modelAtLine(modelsInFile: readonly Model[], line: number): Model
 }
 
 /**
- * The node to reveal for a model: its place in the flat Justifications list for a justification,
- * since that is where it always is; for a template, its one place in the forest.
+ * The node to reveal for a model: the place it always has. For a justification that is the flat
+ * Justifications list, for a template its one place in the forest, and for an excluded model the
+ * Excluded group. Errors is never the answer, since a model is only there for as long as it is
+ * broken.
  */
 export function nodeForModel(tree: readonly GroupNode[], key: string): ModelNode | undefined {
     const visit = (nodes: readonly ModelNode[]): ModelNode | undefined => {
@@ -248,7 +317,9 @@ export function nodeForModel(tree: readonly GroupNode[], key: string): ModelNode
         }
         return undefined;
     };
-    const justifications = tree.find(g => g.id === 'justifications');
-    const templates = tree.find(g => g.id === 'templates');
-    return visit(justifications?.children ?? []) ?? visit(templates?.children ?? []);
+    for (const id of ['justifications', 'templates', 'excluded'] as const) {
+        const found = visit(tree.find(g => g.id === id)?.children ?? []);
+        if (found) return found;
+    }
+    return undefined;
 }

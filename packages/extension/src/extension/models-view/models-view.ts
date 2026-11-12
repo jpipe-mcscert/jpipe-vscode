@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node';
 import type { JpipeLogger } from '../logger.js';
+import type { ExclusionManager } from '../exclusions.js';
 import { messageOf } from '../../shared/errors.js';
 import {
     buildTree,
@@ -10,6 +11,7 @@ import {
     type GroupNode,
     type Model,
     type ModelNode,
+    type ModelStatus,
     type TreeNode
 } from './models-tree.js';
 
@@ -33,6 +35,10 @@ const REFRESH_DELAY_MS = 500;
  * deleted or changed on disk, and edits to an open model. A refresh requested while the view is
  * hidden is only remembered, and made when the view is shown — there is no point keeping a tree
  * nobody is looking at up to date.
+ *
+ * The Errors and Excluded groups depend on things the server's symbols do not carry: the
+ * diagnostics it has published, and the exclusion setting. When only those change, the models
+ * already known are regrouped without asking the server again.
  */
 export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Disposable {
     private readonly changeEmitter = new vscode.EventEmitter<undefined>();
@@ -47,7 +53,11 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     private stale = true;
     private timer: ReturnType<typeof setTimeout> | undefined;
 
-    constructor(private readonly client: LanguageClient, private readonly logger: JpipeLogger) {
+    constructor(
+        private readonly client: LanguageClient,
+        private readonly exclusions: ExclusionManager,
+        private readonly logger: JpipeLogger
+    ) {
         this.view = vscode.window.createTreeView(MODELS_VIEW_ID, {
             treeDataProvider: this,
             showCollapseAll: true
@@ -68,6 +78,10 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
                 if (e.visible && this.stale) this.refresh();
                 else if (e.visible) void this.revealActiveModel();
             }),
+            vscode.languages.onDidChangeDiagnostics(e => {
+                if (e.uris.some(uri => uri.path.endsWith('.jd'))) this.regroup();
+            }),
+            exclusions.onDidChange(() => this.regroup()),
             vscode.window.onDidChangeActiveTextEditor(() => void this.revealActiveModel()),
             vscode.window.onDidChangeTextEditorSelection(e => {
                 if (e.textEditor === vscode.window.activeTextEditor) void this.revealActiveModel();
@@ -100,12 +114,29 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         try {
             await this.client.start();
             this.models = await fetchModels((method, params) => this.client.sendRequest(method, params));
-            this.tree = buildTree(this.models);
+            this.tree = buildTree(this.models, this.status());
             this.view.message = undefined;
         } catch (err: unknown) {
             this.logger.error(`Could not list the workspace's models: ${messageOf(err)}`);
             this.view.message = 'Could not list the models — see the jPipe output channel.';
         }
+    }
+
+    /** Rebuild the groups from the models already known — for a change the server's symbols do not see. */
+    private regroup(): void {
+        if (this.models.length === 0) return;
+        this.tree = buildTree(this.models, this.status());
+        this.changeEmitter.fire(undefined);
+    }
+
+    /** Only this extension's own diagnostics count: another linter's opinion of a `.jd` file is not a build failure. */
+    private status(): ModelStatus {
+        return {
+            isExcluded: uri => this.exclusions.isExcluded(vscode.Uri.parse(uri)),
+            errorLines: uri => (this.client.diagnostics?.get(vscode.Uri.parse(uri)) ?? [])
+                .filter(d => d.severity === vscode.DiagnosticSeverity.Error)
+                .map(d => d.range.start.line)
+        };
     }
 
     async getChildren(node?: TreeNode): Promise<TreeNode[]> {
@@ -125,7 +156,10 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
 
     getTreeItem(node: TreeNode): vscode.TreeItem {
         if (node.type === 'group') {
-            const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.Expanded);
+            // Excluded starts folded: it is there to be found, not to be read every time.
+            const item = new vscode.TreeItem(node.label, node.id === 'excluded'
+                ? vscode.TreeItemCollapsibleState.Collapsed
+                : vscode.TreeItemCollapsibleState.Expanded);
             item.id = node.id;
             item.description = String(node.children.length);
             item.contextValue = 'jpipe.group';
@@ -147,13 +181,20 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         // Set so that file decorations apply — notably the exclusion badge, which marks a model
         // whose file jPipe is not validating without this view having to know about exclusions.
         item.resourceUri = uri;
-        item.iconPath = new vscode.ThemeIcon(model.kind === 'template' ? 'symbol-interface' : 'symbol-class');
-        item.description = vscode.workspace.asRelativePath(uri);
+        const path = vscode.workspace.asRelativePath(uri);
+        const icon = model.kind === 'template' ? 'symbol-interface' : 'symbol-class';
+        if (node.errors === undefined) {
+            item.iconPath = new vscode.ThemeIcon(icon);
+            item.description = path;
+        } else {
+            item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor('list.errorForeground'));
+            item.description = `${node.errors} error${node.errors === 1 ? '' : 's'} · ${path}`;
+        }
         const kind = model.kind === 'template' ? 'Template' : 'Justification';
         item.tooltip = new vscode.MarkdownString(
             `**${kind}** \`${model.name}\`` +
             (node.parentName ? ` implements \`${node.parentName}\`` : '') +
-            `\n\n${vscode.workspace.asRelativePath(uri)}`
+            `\n\n${path}`
         );
         item.contextValue = `jpipe.model.${model.kind}`;
         item.command = {

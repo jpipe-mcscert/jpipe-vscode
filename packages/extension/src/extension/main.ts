@@ -95,7 +95,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // Opportunistic, throttled "newer version available" check (managed mode only).
     void releaseManager.maybeNotifyUpdate(tag => installFromRelease({ releaseManager, logger }, tag));
 
-    const modelsView = new ModelsView(client, logger);
+    const modelsView = new ModelsView(client, exclusions, logger);
     context.subscriptions.push(modelsView);
     // The jPipe activity is contributed statically, so without this it would show in every
     // window of everyone who has the extension installed. Activation is what says this workspace

@@ -5,12 +5,14 @@ import {
     TYPE_HIERARCHY_SUBTYPES_REQUEST,
     WORKSPACE_SYMBOL_REQUEST,
     buildTree,
+    errorCounts,
     fetchModels,
     keyOf,
     modelAtLine,
     nodeForModel,
     type Model,
     type ModelNode,
+    type ModelStatus,
     type RequestFn,
     type TreeNode,
     type WireTypeHierarchyItem,
@@ -200,6 +202,101 @@ describe('the tree', () => {
         expect(signoff.parent).toBe(tree[0]);
         expect(signoff.children[0].parent).toBe(signoff);
         expect(signoff.children[0].parentName).toBe('Signoff');
+    });
+});
+
+describe('errors and exclusions', () => {
+
+    /** A status where `excluded` files are excluded and `errors` maps a file to its error lines. */
+    function status(excluded: string[], errors: Record<string, number[]> = {}): ModelStatus {
+        return { isExcluded: uri => excluded.includes(uri), errorLines: uri => errors[uri] ?? [] };
+    }
+
+    const DRAFTS = 'file:///w/drafts/old.jd';
+
+    test('an error belongs to the model it falls in', () => {
+        const models = [
+            model('First', 'justification', APP, undefined, 2),
+            model('Second', 'justification', APP, undefined, 10)
+        ];
+        const counts = errorCounts(models, () => [3, 4, 12]);
+        expect(counts.get(keyOf(APP, 'First'))).toBe(2);
+        expect(counts.get(keyOf(APP, 'Second'))).toBe(1);
+    });
+
+    test('an error above every model — on a load — counts against each of them', () => {
+        const models = [
+            model('First', 'justification', APP, undefined, 2),
+            model('Second', 'justification', APP, undefined, 10)
+        ];
+        const counts = errorCounts(models, uri => uri === APP ? [0] : []);
+        expect(counts.get(keyOf(APP, 'First'))).toBe(1);
+        expect(counts.get(keyOf(APP, 'Second'))).toBe(1);
+    });
+
+    test('Errors comes first, lists broken models flat with their count, and leaves them in place', () => {
+        const tree = buildTree([
+            model('Signoff', 'template', LIB, undefined, 1),
+            model('Release', 'justification', APP, 'Signoff', 1),
+            model('Fine', 'justification', 'file:///w/fine.jd', undefined, 1)
+        ], status([], { [APP]: [2, 3], [LIB]: [1] }));
+        expect(labels(tree)).toEqual([
+            { Errors: ['Signoff', 'Release'] },
+            { Templates: [{ Signoff: ['Release'] }] },
+            { Justifications: ['Fine', 'Release'] }
+        ]);
+        expect(tree[0].children.map(n => n.errors)).toEqual([1, 2]);
+        // Only the Errors group carries a count.
+        expect(tree[2].children.every(n => n.errors === undefined)).toBe(true);
+    });
+
+    test('Excluded comes last and takes its models out of the other groups', () => {
+        const tree = buildTree([
+            model('Signoff', 'template'),
+            model('Release', 'justification', APP, 'Signoff'),
+            model('Draft', 'justification', DRAFTS, 'Signoff'),
+            model('OldTemplate', 'template', DRAFTS)
+        ], status([DRAFTS]));
+        expect(labels(tree)).toEqual([
+            { Templates: [{ Signoff: ['Release'] }] },
+            { Justifications: ['Release'] },
+            { Excluded: ['OldTemplate', 'Draft'] }
+        ]);
+        // Still knows what it implements, for its tooltip.
+        expect(tree[2].children.find(n => n.model.name === 'Draft')!.parentName).toBe('Signoff');
+    });
+
+    test('a template whose parent is excluded becomes a root', () => {
+        const tree = buildTree([
+            model('Base', 'template', DRAFTS),
+            { ...model('Strict', 'template'), parentKey: keyOf(DRAFTS, 'Base') }
+        ], status([DRAFTS]));
+        expect(labels(tree)).toEqual([{ Templates: ['Strict'] }, { Excluded: ['Base'] }]);
+    });
+
+    test('an excluded model is never in Errors', () => {
+        const tree = buildTree([model('Draft', 'justification', DRAFTS)], status([DRAFTS], { [DRAFTS]: [0] }));
+        expect(labels(tree)).toEqual([{ Excluded: ['Draft'] }]);
+    });
+
+    test('node ids stay distinct when a model is in Errors as well as its own group', () => {
+        const tree = buildTree([
+            model('Signoff', 'template'),
+            model('Release', 'justification', APP, 'Signoff')
+        ], status([], { [APP]: [0] }));
+        const ids: string[] = [];
+        const walk = (nodes: readonly TreeNode[]) => nodes.forEach(n => { ids.push(n.id); walk(n.children); });
+        walk(tree);
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    test('reveals a model in its own group, not in Errors; an excluded one in Excluded', () => {
+        const tree = buildTree([
+            model('Release', 'justification', APP),
+            model('Draft', 'justification', DRAFTS)
+        ], status([DRAFTS], { [APP]: [0] }));
+        expect((nodeForModel(tree, keyOf(APP, 'Release'))!.parent as { id: string }).id).toBe('justifications');
+        expect((nodeForModel(tree, keyOf(DRAFTS, 'Draft'))!.parent as { id: string }).id).toBe('excluded');
     });
 });
 

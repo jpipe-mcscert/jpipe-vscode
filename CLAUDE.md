@@ -259,8 +259,10 @@ their menu placement and `when`-clauses. The ones worth knowing:
 
 The **Models view** (`jpipe.models`, in the `jpipe` activity-bar container) is built from two
 *standard* LSP requests only — `workspace/symbol` (templates are `Interface`, justifications
-`Class`) and `typeHierarchy/subtypes` per template — so it needs no custom protocol. It is shown
-only when the `jpipe.activated` context key is set, i.e. after activation.
+`Class`) and `typeHierarchy/subtypes` per template — so it needs no custom protocol. Its Errors
+group (an overlay) comes from the client's own diagnostics, and its Excluded group (a partition)
+from `ExclusionManager`; changes to either regroup without a server round trip. It is shown only
+when the `jpipe.activated` context key is set, i.e. after activation.
 
 The preview panel auto-refreshes on file save, highlights the node under the cursor (via LSP `textDocument/documentSymbol`), and has zoom controls (+/−/0 keys or toolbar buttons).
 
