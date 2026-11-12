@@ -354,12 +354,6 @@
                 "icon": "$(refresh)"
             },
             {
-                "command": "jpipe.models.preview",
-                "title": "Open Diagram Preview",
-                "category": "jPipe",
-                "icon": "$(open-preview)"
-            },
-            {
                 "command": "jpipe.models.newJustification",
                 "title": "New Justification…",
                 "category": "jPipe",
@@ -411,6 +405,12 @@
                 "command": "jpipe.runner.fixEnvironment",
                 "title": "Set Up the Python Environment for Runs",
                 "category": "jPipe"
+            },
+            {
+                "command": "jpipe.models.scaffoldLibrary",
+                "title": "Scaffold Step Library…",
+                "category": "jPipe",
+                "icon": "$(file-code)"
             }
         ],
         "submenus": [
@@ -427,13 +427,18 @@
         "menus": {
             "explorer/context": [
                 {
+                    "submenu": "jpipe.submenu",
+                    "when": "resourceExtname == '.jd'",
+                    "group": "jpipe@1"
+                },
+                {
                     "command": "jpipe.excludeResource",
-                    "when": "(explorerResourceIsFolder || resourceExtname == '.jd') && resourcePath not in jpipe.excludedResourcePaths",
+                    "when": "explorerResourceIsFolder && resourcePath not in jpipe.excludedResourcePaths",
                     "group": "jpipe@1"
                 },
                 {
                     "command": "jpipe.includeResource",
-                    "when": "(explorerResourceIsFolder || resourceExtname == '.jd') && resourcePath in jpipe.excludedResourcePaths",
+                    "when": "explorerResourceIsFolder && resourcePath in jpipe.excludedResourcePaths",
                     "group": "jpipe@1"
                 }
             ],
@@ -449,10 +454,6 @@
                 {
                     "command": "jpipe.models.refresh",
                     "when": "jpipe.activated"
-                },
-                {
-                    "command": "jpipe.models.preview",
-                    "when": "false"
                 },
                 {
                     "command": "jpipe.models.newJustification",
@@ -489,6 +490,10 @@
                 {
                     "command": "jpipe.runner.fixEnvironment",
                     "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.models.scaffoldLibrary",
+                    "when": "false"
                 }
             ],
             "editor/title": [
@@ -545,12 +550,12 @@
                 },
                 {
                     "command": "jpipe.excludeResource",
-                    "when": "resourcePath not in jpipe.excludedResourcePaths",
+                    "when": "(view != jpipe.models && resourcePath not in jpipe.excludedResourcePaths) || (view == jpipe.models && viewItem =~ /^jpipe\\.model\\.[a-z]+$/)",
                     "group": "3_validation@1"
                 },
                 {
                     "command": "jpipe.includeResource",
-                    "when": "resourcePath in jpipe.excludedResourcePaths",
+                    "when": "(view != jpipe.models && resourcePath in jpipe.excludedResourcePaths) || (view == jpipe.models && viewItem =~ /\\.excluded$/)",
                     "group": "3_validation@1"
                 }
             ],
@@ -598,34 +603,39 @@
                     "group": "inline"
                 },
                 {
-                    "command": "jpipe.models.newImplementation",
-                    "when": "view == jpipe.models && viewItem == jpipe.model.template",
+                    "command": "jpipe.run",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.justification/",
                     "group": "inline@0"
                 },
                 {
                     "command": "jpipe.models.newImplementation",
-                    "when": "view == jpipe.models && viewItem == jpipe.model.template",
-                    "group": "1_create@1"
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.template/",
+                    "group": "inline@0"
                 },
                 {
-                    "command": "jpipe.models.preview",
+                    "command": "jpipe.vis.preview",
                     "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
                     "group": "inline@1"
                 },
                 {
-                    "command": "jpipe.models.preview",
+                    "command": "jpipe.run",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.justification/",
+                    "group": "1_model@0"
+                },
+                {
+                    "command": "jpipe.models.newImplementation",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.template/",
+                    "group": "1_model@1"
+                },
+                {
+                    "command": "jpipe.models.scaffoldLibrary",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.justification/",
+                    "group": "1_model@2"
+                },
+                {
+                    "submenu": "jpipe.submenu",
                     "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
-                    "group": "2_view@1"
-                },
-                {
-                    "command": "jpipe.run",
-                    "when": "view == jpipe.models && viewItem == jpipe.model.justification",
-                    "group": "inline@0"
-                },
-                {
-                    "command": "jpipe.run",
-                    "when": "view == jpipe.models && viewItem == jpipe.model.justification",
-                    "group": "1_create@0"
+                    "group": "2_jpipe@0"
                 }
             ],
             "jpipe.models.new": [

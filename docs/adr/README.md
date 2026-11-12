@@ -63,3 +63,4 @@ The compiler's records are at
 | [VSC-0024](vsc-0024-layout-is-a-formatter.md) | Laying a model out is a formatter, not a source action | 2026-08-14 | Accepted |
 | [VSC-0025](vsc-0025-step-libraries-are-read-not-imported.md) | Step libraries are found by reading them, never by importing them | 2026-11-11 | Accepted |
 | [VSC-0026](vsc-0026-runs-use-the-python-vs-code-uses.md) | Runs use the Python VS Code uses | 2026-11-11 | Accepted |
+| [VSC-0027](vsc-0027-one-jpipe-menu-everywhere.md) | One jPipe menu, wherever a model is right-clicked | 2026-11-11 | Accepted |

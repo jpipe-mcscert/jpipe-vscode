@@ -271,7 +271,7 @@ their menu placement and `when`-clauses. The ones worth knowing:
 | `jpipe.organizeLoads`, `jpipe.sortElements` | Document refactorings (code actions) |
 | `jpipe.autoIndent` | Auto-indent and Align — delegates to `editor.action.formatDocument`, *not* a code action (ADR-VSC-0024) |
 | `jpipe.convertModelKind`, `jpipe.extractTemplate` | Model refactorings |
-| `jpipe.models.refresh` / `preview` / `newJustification` / `newTemplate` / `newImplementation` | Models view toolbar, inline and context actions |
+| `jpipe.models.refresh` / `newJustification` / `newTemplate` / `newImplementation` / `scaffoldLibrary` | Models view toolbar, inline and context actions |
 | `jpipe.run` | ▶ Run Model with jpipe-runner (editor title, Models inline) |
 | `jpipe.libraries.new` / `checkAll` / `uncheckAll` / `refresh` | Libraries view toolbar |
 
@@ -283,6 +283,10 @@ composition (its operands) — so it needs no custom protocol. Its Errors
 group (an overlay) comes from the client's own diagnostics, and its Excluded group (a partition)
 from `ExclusionManager`; changes to either regroup without a server round trip. It is shown only
 when the `jpipe.activated` context key is set, i.e. after activation.
+
+Right-clicking a model shows **one** `jpipe.submenu` in the editor, on a `.jd` file in the Explorer,
+and on a Models row (ADR-VSC-0027, held by `test/menus.test.ts`). Its commands therefore take a
+tree node, an Explorer URI or nothing, and resolve it to a model (`targetOf` in `commands.ts`).
 
 The preview panel auto-refreshes on file save, highlights the node under the cursor (via LSP `textDocument/documentSymbol`), and has zoom controls (+/−/0 keys or toolbar buttons).
 

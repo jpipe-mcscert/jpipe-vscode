@@ -238,7 +238,9 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
             (model.operator ? ` — composed by \`${model.operator}\`` : '') +
             `\n\n${path}`
         );
-        item.contextValue = `jpipe.model.${model.kind}`;
+        // `.excluded` lets the shared jPipe submenu offer Include rather than Exclude on this row,
+        // which the editor decides from the file's path — a key a tree row does not set.
+        item.contextValue = `jpipe.model.${model.kind}${this.exclusions.isExcluded(uri) ? '.excluded' : ''}`;
         item.command = {
             command: 'vscode.open',
             title: 'Open',
@@ -283,10 +285,11 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         return node?.type === 'model' ? node.model : undefined;
     }
 
-    /** Open the file declaring `node`'s model with the cursor on its name. */
-    async openModel(node: ModelNode): Promise<void> {
-        await vscode.window.showTextDocument(vscode.Uri.parse(node.model.uri), {
-            selection: this.selectionOf(node.model)
+    /** Open the file declaring a model with the cursor on its name. */
+    async openModel(target: ModelNode | Model): Promise<void> {
+        const model = 'model' in target ? target.model : target;
+        await vscode.window.showTextDocument(vscode.Uri.parse(model.uri), {
+            selection: this.selectionOf(model)
         });
     }
 

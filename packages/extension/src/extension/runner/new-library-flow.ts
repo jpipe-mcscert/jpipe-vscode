@@ -1,16 +1,58 @@
 import * as vscode from 'vscode';
+import { messageOf } from '../../shared/errors.js';
 import { joinUri } from '../models-view/new-model.js';
+import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
 import { defaultLibraryName, libraryFileName, libraryFolder, librarySkeleton, moduleNameError } from './new-library.js';
 
 /**
- * New Library…, from the Libraries view: one input box for the module name, the target folder in
- * its prompt and changeable with its button, then the file is created, opened and checked — it was
- * created to be used, and an unchecked library is one the next run would quietly leave out.
+ * New Library…, from the Libraries view: a blank library, named after the model in question.
+ *
+ * One input box for the module name, the target folder in its prompt and changeable with its
+ * button, then the file is created, opened and checked — it was created to be used, and an
+ * unchecked library is one the next run would quietly leave out.
  */
 export async function newLibrary(libraries: LibrariesView, models: ModelsView): Promise<void> {
-    const model = models.currentModel;
+    const current = models.currentModel;
+    // A composition has no elements of its own to write steps for.
+    const model = current?.operator ? undefined : current;
+    await createLibrary(libraries, model, 'New Step Library', () => librarySkeleton(model?.name));
+}
+
+/**
+ * Scaffold Step Library…, from a justification's row in Models: the compiler writes a stub for
+ * every element (`jpipe -f python`, the same call as Download as Python), and the stubs become a
+ * new library, created as New Library… creates one.
+ *
+ * The model is compiled before anything is asked, so a model that does not compile says so at
+ * once rather than after a name has been typed for nothing.
+ */
+export async function scaffoldLibrary(
+    libraries: LibrariesView,
+    model: Model,
+    compile: (document: vscode.TextDocument) => Promise<string>
+): Promise<void> {
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(model.uri));
+    if (document.isDirty) await document.save();
+    let code: string;
+    try {
+        code = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Window, title: `Generating steps for ${model.name}…` },
+            () => compile(document));
+    } catch (err: unknown) {
+        void vscode.window.showErrorMessage(`Could not generate steps for ${model.name}: ${messageOf(err)}`);
+        return;
+    }
+    await createLibrary(libraries, model, `Scaffold Step Library for ${model.name}`, () => code);
+}
+
+async function createLibrary(
+    libraries: LibrariesView,
+    model: Model | undefined,
+    title: string,
+    contents: () => string
+): Promise<void> {
     let folder = libraryFolder(
         libraries.allLibraries().map(l => l.uri.toString()),
         model?.uri,
@@ -22,9 +64,9 @@ export async function newLibrary(libraries: LibrariesView, models: ModelsView): 
 
     const changeFolder: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('folder-opened'), tooltip: 'Change Folder…' };
     const input = vscode.window.createInputBox();
-    input.title = 'New Step Library';
+    input.title = title;
     input.placeholder = 'Python module name, e.g. release_steps';
-    input.value = defaultLibraryName(model?.operator ? undefined : model?.name);
+    input.value = defaultLibraryName(model?.name);
     input.valueSelection = [0, input.value.length];
     input.buttons = [changeFolder];
     input.ignoreFocusOut = true;
@@ -80,7 +122,7 @@ export async function newLibrary(libraries: LibrariesView, models: ModelsView): 
 
     const uri = vscode.Uri.parse(file);
     const edit = new vscode.WorkspaceEdit();
-    edit.createFile(uri, { overwrite: false, contents: new TextEncoder().encode(librarySkeleton(model?.operator ? undefined : model?.name)) });
+    edit.createFile(uri, { overwrite: false, contents: new TextEncoder().encode(contents()) });
     if (!await vscode.workspace.applyEdit(edit)) {
         void vscode.window.showErrorMessage(`Could not create ${vscode.workspace.asRelativePath(uri)}.`);
         return;
