@@ -263,14 +263,31 @@ function literalArguments(tokens: readonly Token[], open: number): string[] {
     return ids;
 }
 
-/** Every step `text` declares, in the order written. None means it is not a step library. */
+/** Every step `text` declares, in the order written. */
 export function scanLibrary(text: string): Step[] {
+    return scanFile(text).steps;
+}
+
+/**
+ * Whether `text` is a step library, and its steps.
+ *
+ * A file is one when it applies a step decorator, or imports one by name from `jpipe_runner`:
+ * a library just started, with its imports written and no step yet, is a library being written,
+ * and dropping it from the list until its first step would make it vanish the moment it is
+ * created. A file importing only `Pass` and `Fail`, or the module without applying a decorator
+ * from it, is a helper, and is not one.
+ */
+export function scanFile(text: string): { isLibrary: boolean; steps: Step[] } {
     // Nearly every Python file is not a step library; most never mention the module at all.
-    if (!text.includes(RUNNER_MODULE)) return [];
+    if (!text.includes(RUNNER_MODULE)) return { isLibrary: false, steps: [] };
     const lines = statements(tokenize(text));
     const imports = readImports(lines);
-    if (imports.decorators.size === 0 && imports.modules.size === 0) return [];
+    if (imports.decorators.size === 0 && imports.modules.size === 0) return { isLibrary: false, steps: [] };
+    const steps = stepsIn(lines, imports);
+    return { isLibrary: steps.length > 0 || imports.decorators.size > 0, steps };
+}
 
+function stepsIn(lines: readonly Token[][], imports: Imports): Step[] {
     const steps: Step[] = [];
     let pending: Step[] = [];
     for (const tokens of lines) {

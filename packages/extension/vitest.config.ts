@@ -48,6 +48,7 @@ export default defineConfig({
                 'src/extension/models-view/elements-view.ts',
                 'src/extension/runner/libraries-view.ts',
                 'src/extension/runner/run-model.ts',
+                'src/extension/runner/new-library-flow.ts',
                 'src/extension/workspace-paths.ts',
                 'src/language/main.ts',
                 'src/webview/preview.ts',

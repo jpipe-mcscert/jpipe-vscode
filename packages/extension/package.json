@@ -88,7 +88,7 @@
             },
             {
                 "view": "jpipe.libraries",
-                "contents": "No step library was found in this workspace. A step library is a Python file whose functions use the `@evidence` and `@strategy` decorators of jpipe-runner.\n[Learn how to write one](https://github.com/jpipe-mcscert/jpipe-runner/blob/main/docs/authoring.md)"
+                "contents": "No step library was found in this workspace. A step library is a Python file whose functions use the `@evidence` and `@strategy` decorators of jpipe-runner.\n[New Library](command:jpipe.libraries.new)\n[Learn how to write one](https://github.com/jpipe-mcscert/jpipe-runner/blob/main/docs/authoring.md)"
             }
         ],
         "colors": [
@@ -400,6 +400,12 @@
                 "title": "Refresh Libraries",
                 "category": "jPipe",
                 "icon": "$(refresh)"
+            },
+            {
+                "command": "jpipe.libraries.new",
+                "title": "New Library…",
+                "category": "jPipe",
+                "icon": "$(add)"
             }
         ],
         "submenus": [
@@ -469,6 +475,10 @@
                 },
                 {
                     "command": "jpipe.libraries.refresh",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.libraries.new",
                     "when": "jpipe.activated"
                 }
             ],
@@ -549,17 +559,22 @@
                 {
                     "command": "jpipe.libraries.checkAll",
                     "when": "view == jpipe.libraries",
-                    "group": "navigation@0"
+                    "group": "navigation@1"
                 },
                 {
                     "command": "jpipe.libraries.uncheckAll",
                     "when": "view == jpipe.libraries",
-                    "group": "navigation@1"
+                    "group": "navigation@2"
                 },
                 {
                     "command": "jpipe.libraries.refresh",
                     "when": "view == jpipe.libraries",
-                    "group": "navigation@2"
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "jpipe.libraries.new",
+                    "when": "view == jpipe.libraries",
+                    "group": "navigation@0"
                 }
             ],
             "view/item/context": [

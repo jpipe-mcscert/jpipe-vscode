@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import { decodeWorkspacePath, encodeWorkspacePath } from '../workspace-paths.js';
-import { scanLibrary, type Step } from './library-scan.js';
+import { scanFile, type Step } from './library-scan.js';
 import { LIBRARIES_SETTING } from './runner-invocation.js';
 import type { LibraryStep } from './step-binding.js';
 
@@ -14,7 +14,7 @@ export const LIBRARIES_VIEW_ID = 'jpipe.libraries';
  */
 const IGNORED = '**/{node_modules,.venv,venv,site-packages,__pycache__,.tox,.git,.mypy_cache,.pytest_cache}/**';
 
-/** A Python file declaring at least one step. */
+/** A Python file declaring steps, or importing the decorators to declare them. */
 export interface Library {
     uri: vscode.Uri;
     steps: Step[];
@@ -96,8 +96,8 @@ export class LibrariesView implements vscode.TreeDataProvider<Library>, vscode.D
     private async scan(uri: vscode.Uri): Promise<void> {
         try {
             const text = new TextDecoder('utf-8').decode(await vscode.workspace.fs.readFile(uri));
-            const steps = scanLibrary(text);
-            if (steps.length > 0) this.libraries.set(uri.toString(), { uri, steps });
+            const { isLibrary, steps } = scanFile(text);
+            if (isLibrary) this.libraries.set(uri.toString(), { uri, steps });
             else this.libraries.delete(uri.toString());
         } catch (err: unknown) {
             this.libraries.delete(uri.toString());
@@ -149,6 +149,19 @@ export class LibrariesView implements vscode.TreeDataProvider<Library>, vscode.D
 
     async uncheckAll(): Promise<void> {
         await this.write([]);
+    }
+
+    /** A library just created: list it now rather than when the file watcher gets to it, and check it. */
+    async add(uri: vscode.Uri): Promise<void> {
+        await this.scan(uri);
+        this.changed();
+        const entry = encodeWorkspacePath(uri);
+        if (entry && !this.checkedUris().has(uri.toString())) await this.write([...this.entries(), entry]);
+    }
+
+    /** Every library found, checked or not. */
+    allLibraries(): Library[] {
+        return this.sorted();
     }
 
     /** The checked libraries that exist and still declare steps, in path order. */

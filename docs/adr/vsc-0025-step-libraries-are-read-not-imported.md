@@ -27,9 +27,12 @@ the table:
 
 Step libraries are found by reading their text in the extension host (`runner/library-scan.ts`).
 No Python file is imported, executed or handed to an interpreter to be listed. A file is a step
-library when it applies at least one step decorator bound by an import from `jpipe_runner`:
+library when it applies a step decorator bound by an import from `jpipe_runner` —
 `from jpipe_runner import evidence [as alias]`, a star import, or `import jpipe_runner [as alias]`
-followed by `@alias.evidence(…)`. Element ids are the decorator's positional string literals.
+followed by `@alias.evidence(…)` — or when it imports a step decorator by name without applying it
+yet, which is what a library just created looks like. Importing only `Pass` and `Fail`, or the
+module alone, makes a helper, not a library. Element ids are the decorator's positional string
+literals.
 
 ## Rationale
 

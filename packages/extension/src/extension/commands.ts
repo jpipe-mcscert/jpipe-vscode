@@ -15,6 +15,7 @@ import type { ModelNode, TreeNode } from './models-view/models-tree.js';
 import { newModel } from './models-view/new-model-flow.js';
 import type { LibrariesView } from './runner/libraries-view.js';
 import { runModel } from './runner/run-model.js';
+import { newLibrary } from './runner/new-library-flow.js';
 import { installFromRelease } from './compiler/managed-install.js';
 import { selectJarFile } from './compiler/jar-selection.js';
 import { accessMethodHeader } from './compiler/release-presentation.js';
@@ -126,6 +127,7 @@ export function registerCommands(deps: CommandDeps): void {
         vscode.commands.registerCommand('jpipe.libraries.checkAll', () => librariesView.checkAll()),
         vscode.commands.registerCommand('jpipe.libraries.uncheckAll', () => librariesView.uncheckAll()),
         vscode.commands.registerCommand('jpipe.libraries.refresh', () => librariesView.rescanAll()),
+        vscode.commands.registerCommand('jpipe.libraries.new', () => newLibrary(librariesView, modelsView)),
         vscode.commands.registerCommand('jpipe.models.newJustification', (node?: TreeNode) =>
             newModel(modelsView.knownModels, { kind: 'justification', contextUri: contextOf(node) })),
         vscode.commands.registerCommand('jpipe.models.newTemplate', (node?: TreeNode) =>

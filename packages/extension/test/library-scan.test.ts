@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { scanLibrary } from '../src/extension/runner/library-scan.js';
+import { scanFile, scanLibrary } from '../src/extension/runner/library-scan.js';
 
 /**
  * Recognising a jpipe-runner step library from its text.
@@ -171,5 +171,25 @@ EXAMPLE = '@evidence("j:in_a_string")'
     test('an unterminated string does not swallow the rest of the file', () => {
         expect(steps('from jpipe_runner import evidence\nx = "oops\n@evidence("j:e")\ndef e(): ...\n'))
             .toEqual([['evidence', ['j:e'], 'e']]);
+    });
+});
+
+describe('a library being written', () => {
+
+    test('importing a step decorator is enough, before its first step', () => {
+        expect(scanFile('from jpipe_runner import Fail, Outcome, Pass, evidence, strategy\n'))
+            .toEqual({ isLibrary: true, steps: [] });
+    });
+
+    test('importing only outcomes is a helper, not a library', () => {
+        expect(scanFile('from jpipe_runner import Pass, Fail\n').isLibrary).toBe(false);
+    });
+
+    test('importing the module without applying a decorator is a helper too', () => {
+        expect(scanFile('import jpipe_runner\nprint(jpipe_runner.__version__)\n').isLibrary).toBe(false);
+    });
+
+    test('a decorator mentioned only in a comment does not make a library', () => {
+        expect(scanFile('# from jpipe_runner import evidence\n').isLibrary).toBe(false);
     });
 });
