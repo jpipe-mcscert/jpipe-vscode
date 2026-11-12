@@ -7,6 +7,7 @@ import {
     buildTree,
     fetchModels,
     modelAtLine,
+    modelIcon,
     nodeForModel,
     type GroupNode,
     type Model,
@@ -182,12 +183,8 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         // whose file jPipe is not validating without this view having to know about exclusions.
         item.resourceUri = uri;
         const path = vscode.workspace.asRelativePath(uri);
-        // A book for a template — the reference a model is written from — and a ruler for a
-        // justification, the argument measured out against it. Codicons rather than shipped SVGs,
-        // so they follow the theme and take the error tint below. Both stay legible at 16px, which
-        // `law` (the scales of justice) did not.
-        const icon = model.kind === 'template' ? 'book' : 'symbol-ruler';
-        item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(this.iconColor(node)));
+        // Codicons rather than shipped SVGs, so they follow the theme and take the tints below.
+        item.iconPath = new vscode.ThemeIcon(modelIcon(model), new vscode.ThemeColor(this.iconColor(node)));
         const facts = [
             ...(node.errors === undefined ? [] : [`${node.errors} error${node.errors === 1 ? '' : 's'}`]),
             ...(model.operator ? [model.operator] : []),
@@ -211,14 +208,17 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     }
 
     /**
-     * Red in Errors, greyed in Excluded, and otherwise the model kind's own colour. The two kind
-     * colours are contributed by the extension, so a theme or `workbench.colorCustomizations`
-     * can change them; by default they are the editor's interface and class colours, the ones
-     * the same models already wear in the Outline and Go to Symbol.
+     * Red in Errors, greyed in Excluded, and otherwise the model's own colour: one for templates,
+     * one for justifications, one for compositions. All three are contributed by the extension, so
+     * a theme or `workbench.colorCustomizations` can change them. By default templates and
+     * justifications wear the editor's interface and class colours, as they do in the Outline and
+     * Go to Symbol, and compositions its function colour — an operator applied to models being a
+     * call, which is how Show Call Hierarchy presents them.
      */
     private iconColor(node: ModelNode): string {
         if (node.errors !== undefined) return 'list.errorForeground';
         if (node.parent.type === 'group' && node.parent.id === 'excluded') return 'disabledForeground';
+        if (node.model.operator !== undefined) return 'jpipe.compositionIconForeground';
         return node.model.kind === 'template' ? 'jpipe.templateIconForeground' : 'jpipe.justificationIconForeground';
     }
 

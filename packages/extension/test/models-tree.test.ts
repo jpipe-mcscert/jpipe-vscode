@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { knownOperatorNames } from 'jpipe-language';
 import {
     CALL_HIERARCHY_OUTGOING_REQUEST,
     PREPARE_CALL_HIERARCHY_REQUEST,
@@ -9,8 +10,10 @@ import {
     buildTree,
     errorCounts,
     fetchModels,
+    OPERATOR_ICONS,
     keyOf,
     modelAtLine,
+    modelIcon,
     nodeForModel,
     type Model,
     type ModelNode,
@@ -205,18 +208,65 @@ describe('compositions', () => {
         const { request } = server(symbols, {}, table);
         const tree = buildTree(await fetchModels(request));
         expect(labels(tree)).toEqual([
-            { Justifications: ['Build', 'Inner', 'Outer', 'Tests'] },
             { Compositions: [
                 { Inner: ['Tests', 'Build'] },
                 { Outer: [{ Inner: ['Tests', 'Build'] }, 'Build'] }
-            ] }
+            ] },
+            // Composed justifications are not repeated among the written ones.
+            { Justifications: ['Build', 'Tests'] }
         ]);
     });
 
     test('stays finite when compositions use each other', () => {
         const a = { ...model('A', 'justification'), operator: 'assemble', operands: [keyOf(LIB, 'B')] };
         const b = { ...model('B', 'justification'), operator: 'assemble', operands: [keyOf(LIB, 'A')] };
-        expect(labels(buildTree([a, b]))[1]).toEqual({ Compositions: [{ A: ['B'] }, { B: ['A'] }] });
+        expect(labels(buildTree([a, b]))[0]).toEqual({ Compositions: [{ A: ['B'] }, { B: ['A'] }] });
+    });
+
+    test('the group sits between Templates and Justifications', () => {
+        const tree = buildTree([
+            model('Signoff', 'template'),
+            model('Written', 'justification', APP),
+            { ...model('Release', 'justification', APP), operator: 'assemble', operands: [] }
+        ]);
+        expect(tree.map(g => g.id)).toEqual(['templates', 'compositions', 'justifications']);
+    });
+
+    test('a composed template stays in the Templates forest, where its implementers are', () => {
+        const bundle = { ...model('Bundle', 'template'), operator: 'assemble', operands: [] };
+        const tree = buildTree([bundle, model('Release', 'justification', APP, 'Bundle')]);
+        expect(labels(tree)).toEqual([
+            { Templates: [{ Bundle: ['Release'] }] },
+            { Compositions: ['Bundle'] },
+            { Justifications: ['Release'] }
+        ]);
+    });
+
+    test('a composed justification is revealed at its own entry, not among another\'s operands', () => {
+        const inner = { ...model('Inner', 'justification', APP), operator: 'assemble', operands: [] };
+        // `Alpha` sorts first and lists `Inner` among its operands; depth first would stop there.
+        const alpha = { ...model('Alpha', 'justification', APP), operator: 'refine', operands: [inner.key] };
+        const tree = buildTree([alpha, inner]);
+        const node = nodeForModel(tree, inner.key)!;
+        expect(node.parent).toBe(tree.find(g => g.id === 'compositions'));
+    });
+
+    test.each([
+        ['refine', 'arrow-circle-down'],
+        ['assemble', 'layers'],
+        ['asemble', 'question']
+    ])('a %s composition is drawn with %s', (operator, icon) => {
+        expect(modelIcon({ ...model('X', 'justification'), operator })).toBe(icon);
+    });
+
+    test('a written model is drawn with its kind\'s icon', () => {
+        expect(modelIcon(model('T', 'template'))).toBe('book');
+        expect(modelIcon(model('J', 'justification'))).toBe('symbol-ruler');
+    });
+
+    test('every operator the language server knows has its own icon', () => {
+        // A new operator would otherwise be drawn as unknown, which is to say as a mistake.
+        expect(Object.keys(OPERATOR_ICONS).sort()).toEqual([...knownOperatorNames()].sort());
     });
 
     test('an excluded composition is only under Excluded', () => {

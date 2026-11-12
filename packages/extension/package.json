@@ -95,6 +95,16 @@
                     "highContrast": "symbolIcon.classForeground",
                     "highContrastLight": "symbolIcon.classForeground"
                 }
+            },
+            {
+                "id": "jpipe.compositionIconForeground",
+                "description": "Colour of a composition's icon in the jPipe Models view: a model built by an operator such as assemble or refine. Defaults to the colour the editor gives functions.",
+                "defaults": {
+                    "dark": "symbolIcon.functionForeground",
+                    "light": "symbolIcon.functionForeground",
+                    "highContrast": "symbolIcon.functionForeground",
+                    "highContrastLight": "symbolIcon.functionForeground"
+                }
             }
         ],
         "semanticTokenTypes": [

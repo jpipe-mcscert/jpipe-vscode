@@ -256,13 +256,16 @@ export function errorCounts(models: readonly Model[], errorLines: (uri: string) 
  *   what needs doing.
  * - **Templates** — the `implements` forest: a template whose parent is not shown here is a
  *   root, and each template lists what implements it, templates first, then justifications.
- * - **Justifications** — every justification, flat, which is the list most people come for. A
- *   justification implementing a template therefore appears under both, which lets each group
- *   answer its own question without the other.
  * - **Compositions** — every model made by an operator, each listing the models it is made of,
- *   in the order written. An overlay, like Errors: a composed justification is still a
- *   justification. An operand that is itself a composition lists its own operands in turn, down
- *   to the written models; a composition already on the path is not descended into again.
+ *   in the order written. Placed under Templates since both are about how models are built from
+ *   other models. A composed justification is listed here and not under Justifications: it is
+ *   produced, not written, and that is the first thing to know about it. A composed template stays
+ *   in the Templates forest as well, since other models may implement it and that is where they
+ *   are listed. An operand that is itself a composition lists its own operands in turn, down to
+ *   the written models; a composition already on the path is not descended into again.
+ * - **Justifications** — every justification written by hand, flat, which is the list most
+ *   people come for. A justification implementing a template therefore appears under both, which
+ *   lets each group answer its own question without the other.
  * - **Excluded** — models in files excluded from validation, flat. A partition: they leave the
  *   two groups above, because excluding a file says it is not part of the argument — counter-
  *   examples, drafts, fixtures — and listing it among the real models would say the opposite.
@@ -326,7 +329,8 @@ export function buildTree(models: readonly Model[], status: ModelStatus = NO_STA
     }
 
     const justifications: GroupNode = { type: 'group', id: 'justifications', label: 'Justifications', children: [] };
-    justifications.children = flat(justifications, included.filter(m => m.kind === 'justification').sort(byName));
+    justifications.children = flat(justifications,
+        included.filter(m => m.kind === 'justification' && m.operator === undefined).sort(byName));
 
     const counts = errorCounts(included, status.errorLines);
     const errors: GroupNode = { type: 'group', id: 'errors', label: 'Errors', children: [] };
@@ -355,7 +359,27 @@ export function buildTree(models: readonly Model[], status: ModelStatus = NO_STA
     const excluded: GroupNode = { type: 'group', id: 'excluded', label: 'Excluded', children: [] };
     excluded.children = flat(excluded, excludedModels.sort(templatesFirst));
 
-    return [errors, templates, justifications, compositions, excluded].filter(group => group.children.length > 0);
+    return [errors, templates, compositions, justifications, excluded].filter(group => group.children.length > 0);
+}
+
+/** The icon of each operator jPipe knows. A test holds this in step with the language server's list. */
+export const OPERATOR_ICONS: Readonly<Record<string, string>> = {
+    // Grafts one model onto an element of another: the refinement goes down into the base.
+    refine: 'arrow-circle-down',
+    // Stacks several models under a new conclusion.
+    assemble: 'layers'
+};
+
+/** For an operator the language server does not know — a typo, or one from a newer compiler. */
+export const UNKNOWN_OPERATOR_ICON = 'question';
+
+/**
+ * The codicon a model is drawn with: its operator's, if it is a composition, otherwise its kind's.
+ * A composed model looks the same in every group it appears in.
+ */
+export function modelIcon(model: Model): string {
+    if (model.operator !== undefined) return OPERATOR_ICONS[model.operator] ?? UNKNOWN_OPERATOR_ICON;
+    return model.kind === 'template' ? 'book' : 'symbol-ruler';
 }
 
 /**
@@ -374,23 +398,21 @@ export function modelAtLine(modelsInFile: readonly Model[], line: number): Model
 }
 
 /**
- * The node to reveal for a model: the place it always has. For a justification that is the flat
- * Justifications list, for a template its one place in the forest, and for an excluded model the
- * Excluded group. Errors is never the answer, since a model is only there for as long as it is
- * broken.
+ * The node to reveal for a model: the place it always has. For a written justification that is
+ * the flat Justifications list, for a template its place in the forest, for a composed
+ * justification its own entry under Compositions, and for an excluded model the Excluded group.
+ * Errors is never the answer, since a model is only there for as long as it is broken.
+ *
+ * Each group is searched breadth first, so a model's own row wins over the places it appears as
+ * someone else's child — a composition's entry rather than its appearance among another's operands.
  */
 export function nodeForModel(tree: readonly GroupNode[], key: string): ModelNode | undefined {
-    const visit = (nodes: readonly ModelNode[]): ModelNode | undefined => {
-        for (const node of nodes) {
+    for (const id of ['justifications', 'templates', 'compositions', 'excluded'] as const) {
+        const queue: ModelNode[] = [...(tree.find(g => g.id === id)?.children ?? [])];
+        for (let node = queue.shift(); node; node = queue.shift()) {
             if (node.model.key === key) return node;
-            const found = visit(node.children);
-            if (found) return found;
+            queue.push(...node.children);
         }
-        return undefined;
-    };
-    for (const id of ['justifications', 'templates', 'excluded'] as const) {
-        const found = visit(tree.find(g => g.id === id)?.children ?? []);
-        if (found) return found;
     }
     return undefined;
 }
