@@ -188,13 +188,17 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         // `law` (the scales of justice) did not.
         const icon = model.kind === 'template' ? 'book' : 'symbol-ruler';
         item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(this.iconColor(node)));
-        item.description = node.errors === undefined
-            ? path
-            : `${node.errors} error${node.errors === 1 ? '' : 's'} · ${path}`;
+        const facts = [
+            ...(node.errors === undefined ? [] : [`${node.errors} error${node.errors === 1 ? '' : 's'}`]),
+            ...(model.operator ? [model.operator] : []),
+            path
+        ];
+        item.description = facts.join(' · ');
         const kind = model.kind === 'template' ? 'Template' : 'Justification';
         item.tooltip = new vscode.MarkdownString(
             `**${kind}** \`${model.name}\`` +
             (node.parentName ? ` implements \`${node.parentName}\`` : '') +
+            (model.operator ? ` — composed by \`${model.operator}\`` : '') +
             `\n\n${path}`
         );
         item.contextValue = `jpipe.model.${model.kind}`;

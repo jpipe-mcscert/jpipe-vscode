@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
+    CALL_HIERARCHY_OUTGOING_REQUEST,
+    PREPARE_CALL_HIERARCHY_REQUEST,
     SYMBOL_KIND_CLASS,
     SYMBOL_KIND_INTERFACE,
     TYPE_HIERARCHY_SUBTYPES_REQUEST,
@@ -47,12 +49,41 @@ function model(name: string, kind: Model['kind'], uri = LIB, parent?: string, li
     };
 }
 
-/** A fake server answering from a symbol list and a template → subtypes table. */
-function server(symbols: WireWorkspaceSymbol[], subtypes: Record<string, WireWorkspaceSymbol[]>) {
+const asItem = (s: WireWorkspaceSymbol, detail?: string): WireTypeHierarchyItem => ({
+    name: s.name, kind: s.kind, uri: s.location.uri,
+    range: s.location.range!, selectionRange: s.location.range!,
+    ...(detail ? { detail } : {})
+});
+
+/**
+ * A fake server answering from a symbol list, a template → subtypes table, and a composition
+ * table: model name → its operator and operand names, in the order written.
+ */
+function server(
+    symbols: WireWorkspaceSymbol[],
+    subtypes: Record<string, WireWorkspaceSymbol[]>,
+    compositions: Record<string, { operator: string; operands: string[] }> = {}
+) {
     const calls: Array<{ method: string; params: unknown }> = [];
+    const byPosition = (uri: string, line: number) =>
+        symbols.find(s => s.location.uri === uri && s.location.range!.start.line === line);
     const request: RequestFn = async (method, params) => {
         calls.push({ method, params });
         if (method === WORKSPACE_SYMBOL_REQUEST) return symbols;
+        if (method === PREPARE_CALL_HIERARCHY_REQUEST) {
+            const { textDocument, position } = params as { textDocument: { uri: string }; position: { line: number } };
+            const found = byPosition(textDocument.uri, position.line);
+            return found ? [asItem(found, compositions[found.name]?.operator)] : null;
+        }
+        if (method === CALL_HIERARCHY_OUTGOING_REQUEST) {
+            const item = (params as { item: WireTypeHierarchyItem }).item;
+            const operands = compositions[item.name]?.operands ?? [];
+            // Answered out of order on purpose: the view must sort by where each is written.
+            return operands.map((name, i) => ({
+                to: asItem(symbols.find(s => s.name === name)!, compositions[name]?.operator),
+                fromRanges: [{ start: { line: 9, character: 20 + 10 * i }, end: { line: 9, character: 25 + 10 * i } }]
+            })).reverse();
+        }
         if (method === TYPE_HIERARCHY_SUBTYPES_REQUEST) {
             const item = (params as { item: WireTypeHierarchyItem }).item;
             if (item.name === 'Broken') throw new Error('no such node');
@@ -73,13 +104,18 @@ const labels = (nodes: readonly TreeNode[]): unknown[] => nodes.map(n =>
 
 describe('fetching the models', () => {
 
-    test('asks for every symbol, then for the subtypes of each template only', async () => {
+    test('asks for every symbol, the subtypes of each template, and whether each model is composed', async () => {
         const { request, calls } = server([
             symbol('Signoff', SYMBOL_KIND_INTERFACE, LIB),
             symbol('Release', SYMBOL_KIND_CLASS, APP)
         ], {});
         await fetchModels(request);
-        expect(calls.map(c => c.method)).toEqual([WORKSPACE_SYMBOL_REQUEST, TYPE_HIERARCHY_SUBTYPES_REQUEST]);
+        expect(calls.map(c => c.method)).toEqual([
+            WORKSPACE_SYMBOL_REQUEST,
+            TYPE_HIERARCHY_SUBTYPES_REQUEST,
+            PREPARE_CALL_HIERARCHY_REQUEST,
+            PREPARE_CALL_HIERARCHY_REQUEST
+        ]);
         expect(calls[0].params).toEqual({ query: '' });
         // The item is built from the symbol: its range is the name, which is where the server
         // looks for the declaration.
@@ -133,6 +169,60 @@ describe('fetching the models', () => {
 
     test('a server with nothing to say yields no models', async () => {
         expect(await fetchModels(async () => null)).toEqual([]);
+    });
+});
+
+describe('compositions', () => {
+
+    const symbols = [
+        symbol('Build', SYMBOL_KIND_CLASS, LIB, 1),
+        symbol('Tests', SYMBOL_KIND_CLASS, LIB, 2),
+        symbol('Inner', SYMBOL_KIND_CLASS, APP, 3),
+        symbol('Outer', SYMBOL_KIND_CLASS, APP, 4)
+    ];
+    const table = {
+        Inner: { operator: 'assemble', operands: ['Tests', 'Build'] },
+        Outer: { operator: 'refine', operands: ['Inner', 'Build'] }
+    };
+
+    test('only compositions are asked for their operands', async () => {
+        const { request, calls } = server(symbols, {}, table);
+        await fetchModels(request);
+        const asked = calls.filter(c => c.method === CALL_HIERARCHY_OUTGOING_REQUEST)
+            .map(c => (c.params as { item: WireTypeHierarchyItem }).item.name).sort();
+        expect(asked).toEqual(['Inner', 'Outer']);
+    });
+
+    test('a composition knows its operator and its operands in the order written', async () => {
+        const { request } = server(symbols, {}, table);
+        const byName = Object.fromEntries((await fetchModels(request)).map(m => [m.name, m]));
+        expect(byName['Inner'].operator).toBe('assemble');
+        expect(byName['Inner'].operands).toEqual([keyOf(LIB, 'Tests'), keyOf(LIB, 'Build')]);
+        expect(byName['Build'].operator).toBeUndefined();
+    });
+
+    test('the group lists each composition with its operands, nested compositions expanded', async () => {
+        const { request } = server(symbols, {}, table);
+        const tree = buildTree(await fetchModels(request));
+        expect(labels(tree)).toEqual([
+            { Justifications: ['Build', 'Inner', 'Outer', 'Tests'] },
+            { Compositions: [
+                { Inner: ['Tests', 'Build'] },
+                { Outer: [{ Inner: ['Tests', 'Build'] }, 'Build'] }
+            ] }
+        ]);
+    });
+
+    test('stays finite when compositions use each other', () => {
+        const a = { ...model('A', 'justification'), operator: 'assemble', operands: [keyOf(LIB, 'B')] };
+        const b = { ...model('B', 'justification'), operator: 'assemble', operands: [keyOf(LIB, 'A')] };
+        expect(labels(buildTree([a, b]))[1]).toEqual({ Compositions: [{ A: ['B'] }, { B: ['A'] }] });
+    });
+
+    test('an excluded composition is only under Excluded', () => {
+        const draft = { ...model('Draft', 'justification', 'file:///w/drafts/d.jd'), operator: 'assemble', operands: [] };
+        const tree = buildTree([draft], { isExcluded: uri => uri.includes('drafts'), errorLines: () => [] });
+        expect(labels(tree)).toEqual([{ Excluded: ['Draft'] }]);
     });
 });
 

@@ -36,6 +36,44 @@ export function modelSymbolKind(type: string): SymbolKind | undefined {
     return undefined;
 }
 
+/** The shape both hierarchies use for an item: `TypeHierarchyItem` and `CallHierarchyItem` agree on it. */
+export interface ModelItem {
+    name: string;
+    kind: SymbolKind;
+    detail?: string;
+    uri: string;
+    range: TypeHierarchyItem['range'];
+    selectionRange: TypeHierarchyItem['range'];
+}
+
+/**
+ * A model as a hierarchy item, or `undefined` for anything that is not a named model.
+ *
+ * Placed in the document that owns the node, never the one that asked: Langium's default uses
+ * the requesting document's URI, which is wrong as soon as the declaration lives elsewhere —
+ * preparing on `implements T` with `T` loaded from another file would hand back an item pointing
+ * at the right range of the wrong file.
+ *
+ * A composition's `detail` is its operator, so both hierarchy views show `Release  assemble`, and
+ * the Models view can tell a composed model from a written one with the item alone.
+ */
+export function modelItem(node: AstNode, names: NameProvider): ModelItem | undefined {
+    const kind = modelSymbolKind(node.$type);
+    if (kind === undefined || (!isJustification(node) && !isTemplate(node))) return undefined;
+    const name = names.getName(node);
+    const nameNode = names.getNameNode(node);
+    const { document } = getDocumentAndUnit(node);
+    if (!name || !nameNode || !node.$cstNode || !document) return undefined;
+    return {
+        name,
+        kind,
+        ...(node.composition?.operator ? { detail: node.composition.operator } : {}),
+        uri: document.uri.toString(),
+        range: node.$cstNode.range,
+        selectionRange: nameNode.range
+    };
+}
+
 /**
  * Gives models their kind in `workspace/symbol` (Go to Symbol in Workspace).
  *
@@ -63,12 +101,7 @@ export class JpipeTypeHierarchyProvider extends AbstractTypeHierarchyProvider {
         this.refs = services.references.References;
     }
 
-    /**
-     * Langium's version labels the item with the *requesting* document's URI, which is wrong as
-     * soon as the declaration lives elsewhere — preparing on `implements T` with `T` loaded from
-     * another file would hand back an item pointing at the right range of the wrong file. The
-     * document argument is ignored, and each item placed in the document that owns its node.
-     */
+    /** The document argument is ignored: see `modelItem`. */
     protected override getTypeHierarchyItems(targetNode: AstNode): TypeHierarchyItem[] | undefined {
         const item = this.itemFor(targetNode);
         return item ? [item] : undefined;
@@ -105,18 +138,6 @@ export class JpipeTypeHierarchyProvider extends AbstractTypeHierarchyProvider {
     }
 
     private itemFor(node: AstNode): TypeHierarchyItem | undefined {
-        const kind = modelSymbolKind(node.$type);
-        if (kind === undefined) return undefined;
-        const name = this.names.getName(node);
-        const nameNode = this.names.getNameNode(node);
-        const { document } = getDocumentAndUnit(node);
-        if (!name || !nameNode || !node.$cstNode || !document) return undefined;
-        return {
-            name,
-            kind,
-            uri: document.uri.toString(),
-            range: node.$cstNode.range,
-            selectionRange: nameNode.range
-        };
+        return modelItem(node, this.names);
     }
 }

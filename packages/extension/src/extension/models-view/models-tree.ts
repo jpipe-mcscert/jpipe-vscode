@@ -5,10 +5,12 @@
  * (jpipe-vscode ADR-VSC-0004): which requests to make, how their answers become a tree, and which
  * model the cursor is in. `models-view.ts` only puts the result on screen.
  *
- * The server is asked two standard questions and nothing else. `workspace/symbol` lists every
- * model, already labelled template or justification. `typeHierarchy/subtypes`, asked of each
- * template, says what implements it. No custom protocol: the same two answers drive the editor's
- * Go to Symbol in Workspace and Show Type Hierarchy.
+ * The server is asked standard questions and nothing else. `workspace/symbol` lists every model,
+ * already labelled template or justification. `typeHierarchy/subtypes`, asked of each template,
+ * says what implements it. `textDocument/prepareCallHierarchy`, asked of each model, says whether
+ * it is a composition — its item's `detail` is the operator — and `callHierarchy/outgoingCalls`,
+ * asked of each composition, lists its operands. No custom protocol: the same answers drive the
+ * editor's Go to Symbol in Workspace, Show Type Hierarchy and Show Call Hierarchy.
  */
 
 /** The LSP `SymbolKind`s the server gives models (see `modelSymbolKind` in jpipe-language). */
@@ -17,6 +19,8 @@ export const SYMBOL_KIND_INTERFACE = 11;
 
 export const WORKSPACE_SYMBOL_REQUEST = 'workspace/symbol';
 export const TYPE_HIERARCHY_SUBTYPES_REQUEST = 'typeHierarchy/subtypes';
+export const PREPARE_CALL_HIERARCHY_REQUEST = 'textDocument/prepareCallHierarchy';
+export const CALL_HIERARCHY_OUTGOING_REQUEST = 'callHierarchy/outgoingCalls';
 
 /**
  * The parts of the LSP shapes this needs, declared structurally: the values arrive as plain JSON,
@@ -35,9 +39,18 @@ export interface WireWorkspaceSymbol {
 export interface WireTypeHierarchyItem {
     name: string;
     kind: number;
+    detail?: string;
     uri: string;
     range: Range;
     selectionRange: Range;
+}
+
+/** A call hierarchy item has the same shape. */
+export type WireCallHierarchyItem = WireTypeHierarchyItem;
+
+export interface WireOutgoingCall {
+    to: WireCallHierarchyItem;
+    fromRanges: Range[];
 }
 
 /** Sends one request to the language server. */
@@ -56,6 +69,10 @@ export interface Model {
     selection: Range;
     /** The key of the template this model implements, if that template is in the workspace. */
     parentKey?: string;
+    /** The operator, for a model that is a composition: `assemble`, `refine`… */
+    operator?: string;
+    /** A composition's operands, as keys, in the order written. */
+    operands?: string[];
 }
 
 export const keyOf = (uri: string, name: string): string => `${uri}#${name}`;
@@ -120,13 +137,44 @@ export async function fetchModels(request: RequestFn): Promise<Model[]> {
             if (model) model.parentKey = template.key;
         }
     });
+
+    await Promise.all([...models.values()].map(model => readComposition(request, model)));
     return [...models.values()];
+}
+
+/**
+ * Whether `model` is a composition, and if so of what.
+ *
+ * Asked of every model, since nothing else says which are compositions; a model the server cannot
+ * place, or a written one, is simply left without an operator.
+ */
+async function readComposition(request: RequestFn, model: Model): Promise<void> {
+    try {
+        const items = (await request(PREPARE_CALL_HIERARCHY_REQUEST, {
+            textDocument: { uri: model.uri },
+            position: model.selection.start
+        }) ?? []) as WireCallHierarchyItem[];
+        const item = items[0];
+        if (!item?.detail) return;
+        model.operator = item.detail;
+        const calls = (await request(CALL_HIERARCHY_OUTGOING_REQUEST, { item }) ?? []) as WireOutgoingCall[];
+        model.operands = [...calls]
+            .sort((a, b) => compareRanges(a.fromRanges[0], b.fromRanges[0]))
+            .map(call => keyOf(call.to.uri, call.to.name));
+    } catch {
+        // Not a composition as far as the view can tell; the rest of the view stands.
+    }
+}
+
+function compareRanges(a: Range | undefined, b: Range | undefined): number {
+    if (!a || !b) return 0;
+    return a.start.line - b.start.line || a.start.character - b.start.character;
 }
 
 /** A row in the tree. */
 export type TreeNode = GroupNode | ModelNode;
 
-export type GroupId = 'errors' | 'templates' | 'justifications' | 'excluded';
+export type GroupId = 'errors' | 'templates' | 'justifications' | 'compositions' | 'excluded';
 
 export interface GroupNode {
     type: 'group';
@@ -211,6 +259,10 @@ export function errorCounts(models: readonly Model[], errorLines: (uri: string) 
  * - **Justifications** — every justification, flat, which is the list most people come for. A
  *   justification implementing a template therefore appears under both, which lets each group
  *   answer its own question without the other.
+ * - **Compositions** — every model made by an operator, each listing the models it is made of,
+ *   in the order written. An overlay, like Errors: a composed justification is still a
+ *   justification. An operand that is itself a composition lists its own operands in turn, down
+ *   to the written models; a composition already on the path is not descended into again.
  * - **Excluded** — models in files excluded from validation, flat. A partition: they leave the
  *   two groups above, because excluding a file says it is not part of the argument — counter-
  *   examples, drafts, fixtures — and listing it among the real models would say the opposite.
@@ -281,10 +333,29 @@ export function buildTree(models: readonly Model[], status: ModelStatus = NO_STA
     errors.children = flat(errors, included.filter(m => counts.has(m.key)).sort(templatesFirst))
         .map(node => ({ ...node, errors: counts.get(node.model.key) }));
 
+    const compositions: GroupNode = { type: 'group', id: 'compositions', label: 'Compositions', children: [] };
+    const compose = (model: Model, parent: TreeNode, path: readonly string[]): ModelNode => {
+        const node: ModelNode = {
+            type: 'model', id: [...path, model.key].join('>'), model,
+            parentName: parentName(model), children: [], parent
+        };
+        if (!path.includes(model.key)) {
+            node.children = (model.operands ?? [])
+                .map(key => byKey.get(key))
+                .filter((operand): operand is Model => operand !== undefined && !path.includes(operand.key))
+                .map(operand => compose(operand, node, [...path, model.key]));
+        }
+        return node;
+    };
+    compositions.children = included
+        .filter(m => m.operator !== undefined)
+        .sort(templatesFirst)
+        .map(model => compose(model, compositions, ['compositions']));
+
     const excluded: GroupNode = { type: 'group', id: 'excluded', label: 'Excluded', children: [] };
     excluded.children = flat(excluded, excludedModels.sort(templatesFirst));
 
-    return [errors, templates, justifications, excluded].filter(group => group.children.length > 0);
+    return [errors, templates, justifications, compositions, excluded].filter(group => group.children.length > 0);
 }
 
 /**
