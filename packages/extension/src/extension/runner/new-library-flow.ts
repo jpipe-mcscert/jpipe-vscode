@@ -4,7 +4,7 @@ import { joinUri } from '../models-view/new-model.js';
 import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
-import { defaultLibraryName, libraryFileName, libraryFolder, librarySkeleton, moduleNameError } from './new-library.js';
+import { defaultLibraryName, libraryFileName, libraryFolder, librarySkeleton, moduleNameError, withoutGeneratedHeader } from './new-library.js';
 
 /**
  * New Library…, from the Libraries view: a blank library, named after the model in question.
@@ -44,7 +44,7 @@ export async function scaffoldLibrary(
         void vscode.window.showErrorMessage(`Could not generate steps for ${model.name}: ${messageOf(err)}`);
         return;
     }
-    await createLibrary(libraries, model, `Scaffold Step Library for ${model.name}`, () => code);
+    await createLibrary(libraries, model, `Scaffold Step Library for ${model.name}`, () => withoutGeneratedHeader(code));
 }
 
 async function createLibrary(
