@@ -211,7 +211,7 @@ packaging, so a red suite blocks the VSIX.
 
 ### `packages/language/test/`
 
-26 files, integration-style: they import `'jpipe-language'`, which resolves through the package's
+27 files, integration-style: they import `'jpipe-language'`, which resolves through the package's
 `exports` map to the **built** `out/index.js`, and drive the LSP through Langium's test helpers.
 `parsing.test.ts`, `linking.test.ts` and `validating.test.ts` are the core three; the rest cover
 completion, code actions, renaming, globs, layout, hovering, symbols and semantic tokens.
