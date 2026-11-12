@@ -66,6 +66,12 @@
                     "when": "jpipe.activated",
                     "icon": "images/activity.svg",
                     "contextualTitle": "jPipe"
+                },
+                {
+                    "id": "jpipe.elements",
+                    "name": "Outline",
+                    "when": "jpipe.activated",
+                    "contextualTitle": "jPipe"
                 }
             ]
         },

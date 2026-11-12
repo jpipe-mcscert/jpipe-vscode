@@ -72,6 +72,8 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             models-tree.ts      ← requests + tree shape, vscode-free (tested)
             new-model.ts        ← New Justification/Template decisions, vscode-free (tested)
             new-model-flow.ts   ← the name input box and the edits it makes
+            elements-view.ts    ← the activity's Outline: elements of the model selected in Models
+            elements-tree.ts    ← which symbols are that model's own elements, vscode-free (tested)
         webview/                ← browser code. DOM only — no `vscode`, no node: (ADR-VSC-0003)
           preview.ts            ← preview controller (pan/zoom, message dispatch)
           diagnostic-view.ts    ← the diagnostics tables

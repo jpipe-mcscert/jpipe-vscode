@@ -9,6 +9,7 @@ import { installFromRelease } from './compiler/managed-install.js';
 import { ExclusionManager, ExclusionDecorationProvider, ExclusionCodeLensProvider } from './exclusions.js';
 import { registerCommands } from './commands.js';
 import { ModelsView } from './models-view/models-view.js';
+import { ElementsView } from './models-view/elements-view.js';
 import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 import { displayMessageOf, messageOf } from '../shared/errors.js';
 import { JpipeLogger } from './logger.js';
@@ -96,7 +97,7 @@ export function activate(context: vscode.ExtensionContext): void {
     void releaseManager.maybeNotifyUpdate(tag => installFromRelease({ releaseManager, logger }, tag));
 
     const modelsView = new ModelsView(client, exclusions, logger);
-    context.subscriptions.push(modelsView);
+    context.subscriptions.push(modelsView, new ElementsView(client, modelsView, logger));
     // The jPipe activity is contributed statically, so without this it would show in every
     // window of everyone who has the extension installed. Activation is what says this workspace
     // has models in it.

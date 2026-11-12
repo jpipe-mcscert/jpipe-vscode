@@ -48,6 +48,14 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     private readonly changeEmitter = new vscode.EventEmitter<undefined>();
     readonly onDidChangeTreeData = this.changeEmitter.event;
 
+    private readonly currentModelEmitter = new vscode.EventEmitter<Model>();
+    /**
+     * The model in question changed: a different model's row was selected, by a click or by the
+     * view following the editor. A group row changes nothing, so the last model stays current.
+     */
+    readonly onDidChangeCurrentModel = this.currentModelEmitter.event;
+    private current: Model | undefined;
+
     private readonly view: vscode.TreeView<TreeNode>;
     private readonly disposables: vscode.Disposable[] = [];
     private tree: GroupNode[] = [];
@@ -81,6 +89,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         this.disposables.push(
             this.view,
             this.changeEmitter,
+            this.currentModelEmitter,
             watcher,
             watcher.onDidCreate(() => this.scheduleRefresh()),
             watcher.onDidDelete(() => this.scheduleRefresh()),
@@ -92,6 +101,10 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
                 // An empty selection is what a refresh in progress looks like; keep the last answer.
                 const [node] = e.selection;
                 if (node) this.selectedKey = node.type === 'model' ? node.model.key : undefined;
+                if (node?.type === 'model' && node.model.key !== this.current?.key) {
+                    this.current = node.model;
+                    this.currentModelEmitter.fire(node.model);
+                }
             }),
             this.view.onDidChangeVisibility(e => {
                 if (e.visible && this.stale) this.refresh();
@@ -256,6 +269,11 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     /** The models as of the last refresh. */
     get knownModels(): readonly Model[] {
         return this.models;
+    }
+
+    /** The model last selected in the view, if any. */
+    get currentModel(): Model | undefined {
+        return this.current;
     }
 
     /** The model selected in the view, if a model row is selected. */
