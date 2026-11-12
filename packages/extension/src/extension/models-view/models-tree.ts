@@ -83,6 +83,18 @@ function kindOf(symbolKind: number): ModelKind | undefined {
     return undefined;
 }
 
+/**
+ * Where the cursor goes when a row is clicked: the start of the name, not the name selected.
+ *
+ * Selecting it would have the editor highlight every other occurrence of the same text — an
+ * element id is short and repeated in every relation, so that lights up half the model. A cursor
+ * at the start of the name is what the Explorer's Outline does, and leaves the editor's own
+ * reference highlighting to mark the uses that really are this element.
+ */
+export function cursorAt(range: Range): Range {
+    return { start: range.start, end: range.start };
+}
+
 const ZERO: Range = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
 
 /**

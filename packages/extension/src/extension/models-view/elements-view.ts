@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node';
 import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
-import type { Model } from './models-tree.js';
+import { cursorAt, type Model } from './models-tree.js';
 import type { ModelsView } from './models-view.js';
 import {
     DOCUMENT_SYMBOL_REQUEST,
@@ -143,7 +143,7 @@ export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Di
         item.tooltip = `${element.kind === 'support' ? '@support' : element.kind} ${element.id}` +
             (element.label ? `\n${element.label}` : '');
         if (this.model) {
-            const { start, end } = element.selection;
+            const { start, end } = cursorAt(element.selection);
             item.command = {
                 command: 'vscode.open',
                 title: 'Open',

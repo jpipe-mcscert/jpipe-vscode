@@ -12,6 +12,7 @@ import {
     fetchModels,
     OPERATOR_ICONS,
     ambiguousNames,
+    cursorAt,
     keyOf,
     modelAtLine,
     modelIcon,
@@ -452,6 +453,14 @@ describe('which rows show their file', () => {
             model('Signoff', 'template')
         ]);
         expect([...names]).toEqual(['Release']);
+    });
+});
+
+describe('clicking a row', () => {
+
+    test('puts the cursor at the start of the name rather than selecting it', () => {
+        // A selection would have the editor highlight every occurrence of the same text.
+        expect(cursorAt(range(4))).toEqual({ start: { line: 4, character: 9 }, end: { line: 4, character: 9 } });
     });
 });
 

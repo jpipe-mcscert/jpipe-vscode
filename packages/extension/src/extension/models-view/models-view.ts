@@ -5,6 +5,7 @@ import type { ExclusionManager } from '../exclusions.js';
 import { messageOf } from '../../shared/errors.js';
 import {
     ambiguousNames,
+    cursorAt,
     buildTree,
     fetchModels,
     modelAtLine,
@@ -262,7 +263,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     }
 
     private selectionOf(model: Model): vscode.Range {
-        const { start, end } = model.selection;
+        const { start, end } = cursorAt(model.selection);
         return new vscode.Range(start.line, start.character, end.line, end.character);
     }
 
