@@ -409,6 +409,21 @@ export function modelAtLine(modelsInFile: readonly Model[], line: number): Model
 }
 
 /**
+ * Everything about a tree that would show on screen, as one string: two trees with the same
+ * signature render identically, so replacing one with the other is not worth a refresh.
+ */
+export function treeSignature(tree: readonly GroupNode[]): string {
+    const parts: string[] = [];
+    const walk = (nodes: readonly TreeNode[]) => nodes.forEach(node => {
+        parts.push(node.type === 'model' ? `${node.id}:${node.errors ?? ''}:${node.model.operator ?? ''}` : node.id);
+        walk(node.children);
+        parts.push(')');
+    });
+    walk(tree);
+    return parts.join('|');
+}
+
+/**
  * Whether the selected row already stands for this model, wherever in the tree it is.
  *
  * A model can have several rows — under its template, among a composition's operands, in its own

@@ -17,6 +17,7 @@ import {
     modelIcon,
     nodeForModel,
     showsModel,
+    treeSignature,
     type Model,
     type ModelNode,
     type ModelStatus,
@@ -483,6 +484,16 @@ describe('following the cursor', () => {
         expect(showsModel(underTemplate, keyOf(LIB, 'Signoff'))).toBe(false);
         expect(showsModel(tree[0], keyOf(APP, 'Release'))).toBe(false);
         expect(showsModel(undefined, keyOf(APP, 'Release'))).toBe(false);
+    });
+
+    test('re-publishing the same diagnostics changes nothing worth a refresh', () => {
+        const models = [model('Signoff', 'template'), model('Release', 'justification', APP, 'Signoff')];
+        const clean = { isExcluded: () => false, errorLines: () => [] };
+        const broken = { isExcluded: () => false, errorLines: (uri: string) => uri === APP ? [0] : [] };
+        expect(treeSignature(buildTree(models, clean))).toBe(treeSignature(buildTree(models, clean)));
+        expect(treeSignature(buildTree(models, broken))).not.toBe(treeSignature(buildTree(models, clean)));
+        const twoErrors = { isExcluded: () => false, errorLines: (uri: string) => uri === APP ? [0, 1] : [] };
+        expect(treeSignature(buildTree(models, twoErrors))).not.toBe(treeSignature(buildTree(models, broken)));
     });
 
     test('reveals a justification in the flat list, a template in the forest', () => {

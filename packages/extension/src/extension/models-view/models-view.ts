@@ -11,6 +11,7 @@ import {
     modelIcon,
     nodeForModel,
     showsModel,
+    treeSignature,
     type GroupNode,
     type Model,
     type ModelNode,
@@ -52,6 +53,15 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     private tree: GroupNode[] = [];
     private models: Model[] = [];
     private ambiguous = new Set<string>();
+    /**
+     * The model of the row last selected, kept here rather than read from `view.selection`.
+     *
+     * After a full refresh VS Code resolves the selection only once it has fetched the selected
+     * row again, top level first, so for a while a nested row — a model under its template, an
+     * operand under its composition — reads as no selection at all. Following the editor in that
+     * window would move the selection off the row just clicked.
+     */
+    private selectedKey: string | undefined;
     /** The load in progress, which `getChildren` waits on so the view shows progress, not emptiness. */
     private loading: Promise<void> | undefined;
     private stale = true;
@@ -77,6 +87,11 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
             watcher.onDidChange(() => this.scheduleRefresh()),
             vscode.workspace.onDidChangeTextDocument(e => {
                 if (e.document.languageId === 'jpipe' && e.contentChanges.length > 0) this.scheduleRefresh();
+            }),
+            this.view.onDidChangeSelection(e => {
+                // An empty selection is what a refresh in progress looks like; keep the last answer.
+                const [node] = e.selection;
+                if (node) this.selectedKey = node.type === 'model' ? node.model.key : undefined;
             }),
             this.view.onDidChangeVisibility(e => {
                 if (e.visible && this.stale) this.refresh();
@@ -128,9 +143,15 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     }
 
     /** Rebuild the groups from the models already known — for a change the server's symbols do not see. */
+    /**
+     * Diagnostics are published again on every open and every edit, most often unchanged. A full
+     * refresh costs the view its rows for a moment, so it is only made when the groups differ.
+     */
     private regroup(): void {
         if (this.models.length === 0) return;
-        this.tree = buildTree(this.models, this.status());
+        const tree = buildTree(this.models, this.status());
+        if (treeSignature(tree) === treeSignature(this.tree)) return;
+        this.tree = tree;
         this.changeEmitter.fire(undefined);
     }
 
@@ -263,7 +284,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         const uri = editor.document.uri.toString();
         const inFile = this.models.filter(m => vscode.Uri.parse(m.uri).toString() === uri);
         const model = modelAtLine(inFile, editor.selection.active.line);
-        if (!model || showsModel(this.view.selection[0], model.key)) return;
+        if (!model || this.selectedKey === model.key || showsModel(this.view.selection[0], model.key)) return;
         const node = nodeForModel(this.tree, model.key);
         if (!node) return;
         try {
