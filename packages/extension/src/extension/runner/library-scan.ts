@@ -34,6 +34,8 @@ type Token =
     | { type: 'string'; value: string; formatted: boolean; line: number }
     | { type: 'op'; value: string; line: number }
     | { type: 'newline'; line: number };
+type NameToken = Extract<Token, { type: 'name' }>;
+type StringToken = Extract<Token, { type: 'string' }>;
 
 const OPENERS = new Set(['(', '[', '{']);
 const CLOSERS = new Set([')', ']', '}']);
@@ -165,7 +167,7 @@ function statements(tokens: readonly Token[]): Token[][] {
     return result;
 }
 
-const isName = (t: Token | undefined, value?: string): t is Extract<Token, { type: 'name' }> =>
+const isName = (t: Token | undefined, value?: string): t is NameToken =>
     t?.type === 'name' && (value === undefined || t.value === value);
 const isOp = (t: Token | undefined, value: string) => t?.type === 'op' && t.value === value;
 
@@ -183,8 +185,9 @@ function readImports(lines: readonly Token[][]): Imports {
                 const imported = names[i];
                 if (!isName(imported)) continue;
                 let local = imported.value;
-                if (isName(names[i + 1], 'as') && isName(names[i + 2])) {
-                    local = (names[i + 2] as Extract<Token, { type: 'name' }>).value;
+                const alias = names[i + 2];
+                if (isName(names[i + 1], 'as') && isName(alias)) {
+                    local = alias.value;
                     i += 2;
                 }
                 if (isStepKind(imported.value)) imports.decorators.set(local, imported.value);
@@ -199,8 +202,9 @@ function readImports(lines: readonly Token[][]): Imports {
                 let end = i + 1;
                 while (isOp(tokens[end], '.') && isName(tokens[end + 1])) end += 2;
                 const dotted = end > i + 1;
-                if (isName(tokens[end], 'as') && isName(tokens[end + 1])) {
-                    if (!dotted) imports.modules.add((tokens[end + 1] as Extract<Token, { type: 'name' }>).value);
+                const alias = tokens[end + 1];
+                if (isName(tokens[end], 'as') && isName(alias)) {
+                    if (!dotted) imports.modules.add(alias.value);
                 } else {
                     imports.modules.add(RUNNER_MODULE);
                 }
@@ -239,7 +243,7 @@ function literalArguments(tokens: readonly Token[], open: number): string[] {
     let depth = 0;
     let argument: Token[] = [];
     const flush = () => {
-        const strings = argument.filter((t): t is Extract<Token, { type: 'string' }> => t.type === 'string');
+        const strings = argument.filter((t): t is StringToken => t.type === 'string');
         // Adjacent literals are one string to Python: "release:" "e1".
         if (argument.length > 0 && strings.length === argument.length && strings.every(s => !s.formatted)) {
             ids.push(strings.map(s => s.value).join(''));
@@ -299,9 +303,9 @@ function stepsIn(lines: readonly Token[][], imports: Imports): Step[] {
             continue;
         }
         const def = isName(tokens[0], 'async') ? 1 : 0;
-        if (isName(tokens[def], 'def') && isName(tokens[def + 1])) {
-            const name = (tokens[def + 1] as Extract<Token, { type: 'name' }>).value;
-            steps.push(...pending.map(step => ({ ...step, functionName: name })));
+        const functionName = tokens[def + 1];
+        if (isName(tokens[def], 'def') && isName(functionName)) {
+            steps.push(...pending.map(step => ({ ...step, functionName: functionName.value })));
         } else {
             steps.push(...pending);
         }

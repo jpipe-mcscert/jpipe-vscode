@@ -4,6 +4,7 @@ import type { Model } from './models-tree.js';
 import {
     appendSeparator,
     chooseFolder,
+    dirnameOf,
     fileNameFor,
     joinUri,
     loadInsertionLine,
@@ -109,15 +110,12 @@ function askName(
         const inTarget = models.filter(m => m.uri === file).map(m => m.name);
         const elsewhere = models.filter(m => m.uri !== file).map(m => m.name);
         let error = nameError(name, inTarget);
-        if (!error && target.mode === 'new' && await exists(file)) {
+        if (!error && target.mode === 'new' && await fileExists(file)) {
             error = `${relative(file)} already exists. Choose another name, or add to it with the file button.`;
         }
         if (mine !== generation) return;
         blocked = error !== undefined;
-        const warning = error ? undefined : nameWarning(name, elsewhere);
-        input.validationMessage = error && name.length > 0
-            ? { message: error, severity: vscode.InputBoxValidationSeverity.Error }
-            : warning ? { message: warning, severity: vscode.InputBoxValidationSeverity.Warning } : undefined;
+        input.validationMessage = validationOf(name, error, elsewhere);
     };
 
     return new Promise(resolve => {
@@ -147,10 +145,23 @@ function askName(
     });
 }
 
+/** What the box says under the name: the error blocking it, else a warning, else nothing. */
+function validationOf(
+    name: string,
+    error: string | undefined,
+    namesElsewhere: readonly string[]
+): vscode.InputBoxValidationMessage | undefined {
+    if (error) {
+        return name.length > 0 ? { message: error, severity: vscode.InputBoxValidationSeverity.Error } : undefined;
+    }
+    const warning = nameWarning(name, namesElsewhere);
+    return warning ? { message: warning, severity: vscode.InputBoxValidationSeverity.Warning } : undefined;
+}
+
 /** The target a box button leads to, or `undefined` if its picker was dismissed. */
 async function pickTarget(button: vscode.QuickInputButton, current: Target): Promise<Target | undefined> {
     if (button === NEW_FILE) {
-        return { mode: 'new', folder: current.mode === 'existing' ? current.file.slice(0, current.file.lastIndexOf('/')) : current.folder };
+        return { mode: 'new', folder: current.mode === 'existing' ? dirnameOf(current.file) : current.folder };
     }
     if (button === CHANGE_FOLDER) {
         const picked = await vscode.window.showOpenDialog({
@@ -173,7 +184,8 @@ async function pickTarget(button: vscode.QuickInputButton, current: Target): Pro
     return picked ? { mode: 'existing', file: picked.uri.toString() } : undefined;
 }
 
-async function exists(uri: string): Promise<boolean> {
+/** Whether something is at `uri`. Shared with New Library…, which asks the same question. */
+export async function fileExists(uri: string): Promise<boolean> {
     try {
         await vscode.workspace.fs.stat(vscode.Uri.parse(uri));
         return true;

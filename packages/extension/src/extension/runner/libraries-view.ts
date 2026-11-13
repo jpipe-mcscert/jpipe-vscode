@@ -211,17 +211,18 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
 
     getTreeItem(row: Row): vscode.TreeItem {
         if (isStatus(row)) return this.statusItem();
-        const library = row;
-        const item = new vscode.TreeItem(vscode.workspace.asRelativePath(library.uri), vscode.TreeItemCollapsibleState.None);
-        item.id = library.uri.toString();
-        item.resourceUri = library.uri;
-        item.checkboxState = this.checkedUris().has(library.uri.toString())
+        const { uri, steps } = row;
+        const path = vscode.workspace.asRelativePath(uri);
+        const item = new vscode.TreeItem(path, vscode.TreeItemCollapsibleState.None);
+        item.id = uri.toString();
+        item.resourceUri = uri;
+        item.checkboxState = this.checkedUris().has(uri.toString())
             ? vscode.TreeItemCheckboxState.Checked
             : vscode.TreeItemCheckboxState.Unchecked;
-        const count = library.steps.length;
-        item.description = `${count} step${count === 1 ? '' : 's'}`;
-        item.tooltip = `${vscode.workspace.asRelativePath(library.uri)}\n${count} jpipe-runner step${count === 1 ? '' : 's'}`;
-        item.command = { command: 'vscode.open', title: 'Open', arguments: [library.uri] };
+        const plural = steps.length === 1 ? '' : 's';
+        item.description = `${steps.length} step${plural}`;
+        item.tooltip = `${path}\n${steps.length} jpipe-runner step${plural}`;
+        item.command = { command: 'vscode.open', title: 'Open', arguments: [uri] };
         return item;
     }
 

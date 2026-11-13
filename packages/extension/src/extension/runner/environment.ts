@@ -35,6 +35,13 @@ interface PythonEnvironmentsApi {
     onDidChangeActiveEnvironmentPath: vscode.Event<unknown>;
 }
 
+/** The tool managing the environment of the project at `root`, from the file it keeps there. */
+function environmentManager(root: string): ProjectFacts['manager'] {
+    if (fs.existsSync(path.join(root, 'Pipfile'))) return 'Pipenv';
+    if (fs.existsSync(path.join(root, 'poetry.lock'))) return 'Poetry';
+    return undefined;
+}
+
 const PYTHON_EXTENSION = 'ms-python.python';
 /** Remembers "Not now" for this workspace, so opening it does not ask again. */
 const DECLINED_KEY = 'jpipe.runner.environmentDeclined';
@@ -135,9 +142,7 @@ export class RunnerEnvironment implements vscode.Disposable {
         const localVenvPython = ['.venv', 'venv']
             .map(dir => venvPython(path.join(root, dir), process.platform))
             .find(file => fs.existsSync(file));
-        const manager = fs.existsSync(path.join(root, 'Pipfile')) ? 'Pipenv' as const
-            : fs.existsSync(path.join(root, 'poetry.lock')) ? 'Poetry' as const
-            : undefined;
+        const manager = environmentManager(root);
         return { ...(localVenvPython ? { localVenvPython } : {}), ...(manager ? { manager } : {}) };
     }
 
@@ -201,14 +206,8 @@ export class RunnerEnvironment implements vscode.Disposable {
                     void vscode.window.showErrorMessage(NO_BASE_PYTHON);
                     return false;
                 }
-                let created = true;
-                for (const step of createEnvironmentCommands(base, folder.uri.fsPath, process.platform)) {
-                    if (!await this.runStep(step.name, step.program, step.args, folder)) {
-                        created = false;
-                        break;
-                    }
-                }
-                if (created) await this.select(venvPython(path.join(folder.uri.fsPath, '.venv'), process.platform), folder);
+                const steps = createEnvironmentCommands(base, folder.uri.fsPath, process.platform);
+                if (await this.runSteps(steps, folder)) await this.select(venvPython(path.join(folder.uri.fsPath, '.venv'), process.platform), folder);
                 break;
             }
             case 'managed':
@@ -247,6 +246,17 @@ export class RunnerEnvironment implements vscode.Disposable {
                 await vscode.commands.executeCommand('python.setInterpreter');
             }
         }
+    }
+
+    /** Each step in turn, stopping at the first that fails; resolves to whether all succeeded. */
+    private async runSteps(
+        steps: ReadonlyArray<{ name: string; program: string; args: string[] }>,
+        folder: vscode.WorkspaceFolder
+    ): Promise<boolean> {
+        for (const step of steps) {
+            if (!await this.runStep(step.name, step.program, step.args, folder)) return false;
+        }
+        return true;
     }
 
     /**

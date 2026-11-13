@@ -156,8 +156,9 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
         }
     }
 
-    /** Rebuild the groups from the models already known — for a change the server's symbols do not see. */
     /**
+     * Rebuild the groups from the models already known — for a change the server's symbols do not see.
+     *
      * Diagnostics are published again on every open and every edit, most often unchanged. A full
      * refresh costs the view its rows for a moment, so it is only made when the groups differ.
      */

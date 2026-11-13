@@ -103,7 +103,7 @@ export class JpipeTypeHierarchyProvider extends AbstractTypeHierarchyProvider {
 
     /** The document argument is ignored: see `modelItem`. */
     protected override getTypeHierarchyItems(targetNode: AstNode): TypeHierarchyItem[] | undefined {
-        const item = this.itemFor(targetNode);
+        const item = modelItem(targetNode, this.names);
         return item ? [item] : undefined;
     }
 
@@ -111,7 +111,7 @@ export class JpipeTypeHierarchyProvider extends AbstractTypeHierarchyProvider {
     protected override getSupertypes(node: AstNode): TypeHierarchyItem[] | undefined {
         if (!isJustification(node) && !isTemplate(node)) return undefined;
         const parent = node.parent?.ref;
-        const item = parent ? this.itemFor(parent) : undefined;
+        const item = parent ? modelItem(parent, this.names) : undefined;
         return item ? [item] : undefined;
     }
 
@@ -131,13 +131,9 @@ export class JpipeTypeHierarchyProvider extends AbstractTypeHierarchyProvider {
             if (!document) continue;
             const source = this.locator.getAstNode(document.parseResult.value, ref.sourcePath);
             if (!isJustification(source) && !isTemplate(source)) continue;
-            const item = this.itemFor(source);
+            const item = modelItem(source, this.names);
             if (item) items.push(item);
         }
         return items.length > 0 ? items : undefined;
-    }
-
-    private itemFor(node: AstNode): TypeHierarchyItem | undefined {
-        return modelItem(node, this.names);
     }
 }

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { messageOf } from '../../shared/errors.js';
 import { joinUri } from '../models-view/new-model.js';
 import type { Model } from '../models-view/models-tree.js';
+import { fileExists } from '../models-view/new-model-flow.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
 import { defaultLibraryName, libraryFileName, libraryFolder, librarySkeleton, moduleNameError } from './new-library.js';
@@ -82,10 +83,11 @@ async function createLibrary(
     const refresh = async () => {
         const mine = ++generation;
         const file = target();
-        input.prompt = `Creates ${vscode.workspace.asRelativePath(vscode.Uri.parse(file))}`;
+        const relative = vscode.workspace.asRelativePath(vscode.Uri.parse(file));
+        input.prompt = `Creates ${relative}`;
         let error = moduleNameError(input.value);
-        if (!error && await exists(file)) {
-            error = `${vscode.workspace.asRelativePath(vscode.Uri.parse(file))} already exists. Choose another name.`;
+        if (!error && await fileExists(file)) {
+            error = `${relative} already exists. Choose another name.`;
         }
         if (mine !== generation) return;
         blocked = error !== undefined;
@@ -131,13 +133,4 @@ async function createLibrary(
     const editor = await vscode.window.showTextDocument(uri, { preview: false });
     const end = editor.document.lineAt(editor.document.lineCount - 1).range.end;
     editor.selection = new vscode.Selection(end, end);
-}
-
-async function exists(uri: string): Promise<boolean> {
-    try {
-        await vscode.workspace.fs.stat(vscode.Uri.parse(uri));
-        return true;
-    } catch {
-        return false;
-    }
 }

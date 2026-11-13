@@ -20,9 +20,14 @@ import type { LangiumServices } from 'langium/lsp';
 import { isJustification, isParamsDecl, isTemplate } from './generated/ast.js';
 import { modelItem, type ModelItem } from './jpipe-type-hierarchy.js';
 
+interface CallGroup {
+    item: ModelItem;
+    fromRanges: Range[];
+}
+
 /** Calls grouped by the model at the far end, in first-seen order. */
 class CallGroups {
-    private readonly groups = new Map<string, { item: ModelItem; fromRanges: Range[] }>();
+    private readonly groups = new Map<string, CallGroup>();
 
     add(item: ModelItem, from: Range): void {
         const key = `${item.uri}#${item.name}`;
@@ -31,7 +36,7 @@ class CallGroups {
         this.groups.set(key, group);
     }
 
-    values() {
+    values(): CallGroup[] {
         return [...this.groups.values()];
     }
 }

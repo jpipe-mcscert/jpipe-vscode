@@ -139,7 +139,7 @@ function compareVersion(version: readonly number[], minimum: readonly number[]):
 export function statusMessage(status: EnvironmentStatus): string | undefined {
     switch (status.kind) {
         case 'ready': return undefined;
-        case 'no-python': return 'No Python was found to run step libraries with. Install Python 3.11 or newer.';
+        case 'no-python': return `No Python was found to run step libraries with. Install Python ${MIN_PYTHON.join('.')} or newer.`;
         case 'old-python': return `jpipe-runner needs Python ${MIN_PYTHON.join('.')} or newer; the selected environment has Python ${status.version}.`;
         case 'missing-runner': return 'jpipe-runner is not installed in the selected Python environment.';
         case 'unselected-venv': return 'This folder has a virtual environment, but VS Code uses another Python.';
@@ -153,8 +153,8 @@ export function fixLabel(status: EnvironmentStatus): string | undefined {
     switch (status.kind) {
         case 'missing-runner': return 'Install jpipe-runner';
         case 'unselected-venv': return 'Use the Folder\'s Environment';
-        case 'managed': return 'Select Interpreter';
         case 'no-environment': return 'Create Environment';
+        case 'managed':
         case 'old-python': return 'Select Interpreter';
         default: return undefined;
     }
@@ -172,7 +172,7 @@ export function createEnvironmentCommands(base: PythonCommand, folder: string, p
     const python = venvPython(path.join(folder, '.venv'), platform);
     return [
         { name: 'Create .venv', program: base.program, args: [...base.args, '-m', 'venv', '.venv'] },
-        { name: 'Install jpipe-runner', program: python, args: ['-m', 'pip', 'install', 'jpipe-runner'] }
+        { name: 'Install jpipe-runner', ...installRunnerCommand(python) }
     ];
 }
 

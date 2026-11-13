@@ -127,10 +127,11 @@ export function registerCommands(deps: CommandDeps): void {
         if (!(arg instanceof vscode.Uri)) return 'editor';
         if (vscode.window.activeTextEditor?.document.uri.toString() === arg.toString()) return 'editor';
         const inFile = modelsView.knownModels.filter(m => vscode.Uri.parse(m.uri).toString() === arg.toString());
-        if (inFile.length <= 1) {
-            if (inFile.length === 0) void vscode.window.showWarningMessage(`${vscode.workspace.asRelativePath(arg)} declares no model.`);
-            return inFile[0];
+        if (inFile.length === 0) {
+            void vscode.window.showWarningMessage(`${vscode.workspace.asRelativePath(arg)} declares no model.`);
+            return undefined;
         }
+        if (inFile.length === 1) return inFile[0];
         const picked = await vscode.window.showQuickPick(
             inFile.map(model => ({ label: model.name, description: model.kind, model })),
             { title: `Which model of ${vscode.workspace.asRelativePath(arg)}?` });
@@ -175,9 +176,9 @@ export function registerCommands(deps: CommandDeps): void {
         vscode.commands.registerCommand('jpipe.models.refresh', () => modelsView.refresh()),
 
         // ▶: the model of the Models row it was clicked on, or the one the cursor is in.
-        vscode.commands.registerCommand('jpipe.run', (node?: TreeNode) =>
+        vscode.commands.registerCommand('jpipe.run', (arg?: unknown) =>
             runModel({ context, logger, imageGenerator, libraries: librariesView, models: modelsView, environment: runnerEnvironment },
-                node?.type === 'model' ? node.model : undefined)),
+                modelOf(arg)?.model)),
         vscode.commands.registerCommand('jpipe.libraries.checkAll', () => librariesView.checkAll()),
         vscode.commands.registerCommand('jpipe.libraries.uncheckAll', () => librariesView.uncheckAll()),
         vscode.commands.registerCommand('jpipe.libraries.refresh', () => librariesView.rescanAll()),

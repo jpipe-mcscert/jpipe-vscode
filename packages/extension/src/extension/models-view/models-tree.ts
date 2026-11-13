@@ -227,9 +227,11 @@ const NO_STATUS: ModelStatus = { isExcluded: () => false, errorLines: () => [] }
 const byName = (a: Model, b: Model): number =>
     a.name.localeCompare(b.name) || a.uri.localeCompare(b.uri);
 
+const kindRank = (model: Model): number => model.kind === 'template' ? 0 : 1;
+
 /** Templates before justifications, then by name. */
 const templatesFirst = (a: Model, b: Model): number =>
-    (a.kind === b.kind ? 0 : a.kind === 'template' ? -1 : 1) || byName(a, b);
+    kindRank(a) - kindRank(b) || byName(a, b);
 
 /**
  * How many errors each model has.
@@ -294,14 +296,17 @@ export function errorCounts(models: readonly Model[], errorLines: (uri: string) 
 export function buildTree(models: readonly Model[], status: ModelStatus = NO_STATUS): GroupNode[] {
     const byKey = new Map(models.map(m => [m.key, m]));
     const parentName = (m: Model) => m.parentKey ? byKey.get(m.parentKey)?.name : undefined;
-    const flat = (group: GroupNode, members: Model[]): ModelNode[] => members.map(model => ({
-        type: 'model' as const,
-        id: `${group.id}>${model.key}`,
+    /** A row for `model`, its id the path of keys leading to it. */
+    const nodeFor = (model: Model, parent: TreeNode, path: readonly string[]): ModelNode => ({
+        type: 'model',
+        id: [...path, model.key].join('>'),
         model,
         parentName: parentName(model),
         children: [],
-        parent: group
-    }));
+        parent
+    });
+    const flat = (group: GroupNode, members: Model[]): ModelNode[] =>
+        members.map(model => nodeFor(model, group, [group.id]));
 
     const excludedModels = models.filter(m => status.isExcluded(m.uri));
     const included = models.filter(m => !status.isExcluded(m.uri));
@@ -320,8 +325,7 @@ export function buildTree(models: readonly Model[], status: ModelStatus = NO_STA
 
     const grow = (model: Model, parent: TreeNode, path: readonly string[]): ModelNode => {
         placed.add(model.key);
-        const id = [...path, model.key].join('>');
-        const node: ModelNode = { type: 'model', id, model, parentName: parentName(model), children: [], parent };
+        const node = nodeFor(model, parent, path);
         if (model.kind === 'template' && !path.includes(model.key)) {
             node.children = (children.get(model.key) ?? [])
                 .filter(child => !path.includes(child.key) && child.key !== model.key)
@@ -351,10 +355,7 @@ export function buildTree(models: readonly Model[], status: ModelStatus = NO_STA
 
     const compositions: GroupNode = { type: 'group', id: 'compositions', label: 'Compositions', children: [] };
     const compose = (model: Model, parent: TreeNode, path: readonly string[]): ModelNode => {
-        const node: ModelNode = {
-            type: 'model', id: [...path, model.key].join('>'), model,
-            parentName: parentName(model), children: [], parent
-        };
+        const node = nodeFor(model, parent, path);
         if (!path.includes(model.key)) {
             node.children = (model.operands ?? [])
                 .map(key => byKey.get(key))
