@@ -13,3 +13,4 @@ syntaxes/
 **/*.tsbuildinfo
 **/*.vsix
 .DS_Store
+.claude/
