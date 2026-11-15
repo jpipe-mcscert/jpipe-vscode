@@ -39,6 +39,15 @@ Records here are prefixed `VSC` (`ADR-VSC-0004`). The compiler
 its own from `0001`, and both are cited from this repository's source — so when citing one, name
 the repository.
 
+### How are branches and pull requests organised?
+
+As in every jPipe repository, following the organisation's
+[contributing guide](https://github.com/jpipe-mcscert/.github/blob/main/CONTRIBUTING.md): `main`
+holds released code, `dev` is the integration branch and the default branch, and work branches
+are cut from `dev` and come back to it by pull request. A release is a pull request from `dev`
+into `main` (see [How to cut a release?](#how-to-cut-a-release) below, and
+[ADR-VSC-0030](docs/adr/vsc-0030-dev-integrates-main-holds-releases.md)).
+
 ### What has to be green before a pull request merges?
 
 Two checks, both required on `main`:
@@ -134,9 +143,10 @@ Releases are driven by `scripts/release.sh`, which mirrors the script of the sam
 [jpipe-compiler](https://github.com/jpipe-mcscert/jpipe-compiler). It has two verbs, and
 **neither one tags, pushes or publishes** — those stay deliberate, human steps.
 
-#### 1. Prepare, on `main`
+#### 1. Prepare, on a branch cut from `dev`
 
 ```
+mosser@azrael jpipe-vscode % git switch -c chore/release-1.4.0 origin/dev
 mosser@azrael jpipe-vscode % ./scripts/release.sh prepare 1.4.0
 ```
 
@@ -144,11 +154,23 @@ This sets the version in all four places it has to agree — the three `package.
 plus the `jpipe-language` dependency inside `packages/extension/package.json` — reconciles
 `package-lock.json`, flips the changelog's `### v1.4.0 (Unreleased)` heading to today's
 date, runs the build and both test suites, and commits the result as
-`chore(release): 1.4.0`. It refuses to start if the tree is dirty, you are not on an
-up-to-date `main`, the tag already exists, or the changelog has no entries under the
-version you named.
+`chore(release): 1.4.0`. It refuses to start if the tree is dirty, you are on `main` or
+`dev`, the branch does not contain the current `dev`, the tag already exists, or the
+changelog has no entries under the version you named.
 
 Add `--dry-run` to see the changes without writing anything.
+
+A **hotfix**, a fix to the released version that cannot wait for what `dev` holds, is prepared
+with `--hotfix` on a fix branch cut from `main`:
+
+```
+mosser@azrael jpipe-vscode % git switch -c fix/broken-export origin/main
+mosser@azrael jpipe-vscode % ./scripts/release.sh prepare --hotfix 1.4.1
+```
+
+The branch must then contain the current `main`, not `dev`, and is refused if it carries `dev`'s
+unreleased work. It skips step 2: its pull request goes straight into `main`, and `main` is merged
+back into `dev` after the tag.
 
 The four-location dance is the reason this is a script rather than a command: `npm version`
 handles three of them, but only with `--no-workspaces-update`, because otherwise npm tries
@@ -156,10 +178,15 @@ to resolve the still-old `jpipe-language` dependency against the registry and fa
 `404` — that package is workspace-local and never published. The dependency and the
 lockfile then have to be brought into line separately, in that order.
 
-#### 2. Preflight, before tagging
+#### 2. Merge into `dev`, then `dev` into `main`
+
+Push the branch and open a pull request into `dev`. Once it has merged, open the release pull
+request from `dev` into `main`. Both go through the checks above, and a maintainer merges them.
+
+#### 3. Preflight, on `main`
 
 ```
-mosser@azrael jpipe-vscode % git push
+mosser@azrael jpipe-vscode % git switch main && git pull --ff-only
 mosser@azrael jpipe-vscode % ./scripts/release.sh preflight 1.4.0
 ```
 
@@ -179,7 +206,7 @@ the same reason and with the same escape: CI has no such checkout, so this is th
 comparison can run, and a missing checkout warns rather than fails. Point it elsewhere with
 `npm run check:codes -- /path/to/jpipe-compiler`.
 
-#### 3. Tag
+#### 4. Tag
 
 ```
 mosser@azrael jpipe-vscode % git tag v1.4.0 && git push origin v1.4.0

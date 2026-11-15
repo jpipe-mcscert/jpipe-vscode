@@ -199,11 +199,20 @@ vsce publish
 
 ---
 
+## Branches and pull requests
+
+This repository follows the jPipe workflow in the organisation's [contributing guide](https://github.com/jpipe-mcscert/.github/blob/main/CONTRIBUTING.md), including its rules for AI assistants: `main` holds releases, `dev` is the integration and default branch, work branches are cut from `dev` and return to it by pull request (jpipe-vscode ADR-VSC-0030). What is specific here:
+
+- **CI:** `build.yml` (job `build`) runs on pushes to `main` and `dev` and on every pull request; `sonar.yml` (job `Build and analyze`, SonarQube Cloud with the gate waited on) runs on every pull request and on pushes to `main`. Both jobs are required checks on `main`; the README's "What has to be green before a pull request merges?" has the details, including why pull requests from forks cannot be analysed.
+- **Releases:** `scripts/release.sh prepare X.Y.Z` runs on a work branch cut from `dev` (it refuses `main` and `dev`); that branch goes into `dev` by pull request, then `dev` into `main` by the release pull request. A maintainer then runs `scripts/release.sh preflight X.Y.Z` on `main` and pushes the `vX.Y.Z` tag, which `release.yml` turns into a GitHub Release and a Marketplace publish — it refuses a tag that is not on `main`. A hotfix is prepared with `prepare --hotfix X.Y.Z` on a fix branch cut from `main`, and goes into `main` by its own pull request. See "How to cut a release?" in the README and jpipe-vscode ADR-VSC-0008.
+
+---
+
 ## Changelog Maintenance
 
-`CHANGELOG.md` is the source of truth for what shipped in each version. **Keep it current whenever a feature or fix is merged to `main`.**
+`CHANGELOG.md` is the source of truth for what shipped in each version. **Keep it current: write the entry in the change that makes it, not at release time.**
 
-- Every user-facing change (feature, bug fix, or documentation) merged to `main` must have a corresponding entry.
+- Every user-facing change (feature, bug fix, or documentation) must have a corresponding entry by the time it is merged into `dev`.
 - Accumulate changes under a top `### vX.Y.Z (Unreleased)` heading while work is in flight. Closing the section out is `scripts/release.sh prepare X.Y.Z`'s job — don't date the heading by hand.
 - Follow the existing structure: `Leader:` line, then `Features:` / `Bug Fixes:` / `Documentation:` sub-lists. Prefix each item with the affected area in bold (e.g. **Language Server:**, **Extension:**, **Grammar:**, **CI/CD:**). Reference the closed issue/PR where relevant.
 - The version lives in **four** places that must agree — the three `package.json` files (root, `packages/extension`, `packages/language`) *and* the `jpipe-language` dependency inside `packages/extension/package.json`. `scripts/release.sh prepare` sets all four and reconciles the lockfile; see "How to cut a release?" in the README for why doing it by hand is fiddly.

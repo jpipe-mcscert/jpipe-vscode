@@ -48,7 +48,7 @@ The compiler's records are at
 | [VSC-0009](vsc-0009-sonarcloud-as-mandatory-quality-gate.md) | SonarQube Cloud as a mandatory quality gate | 2026-08-10 | Accepted |
 | [VSC-0010](vsc-0010-coverage-measurement-and-honest-exclusions.md) | Coverage measurement, and honest exclusions | 2026-08-10 | Accepted |
 | [VSC-0011](vsc-0011-github-actions-pinning-policy.md) | GitHub Actions are pinned by major tag | 2026-08-10 | Accepted |
-| [VSC-0012](vsc-0012-single-branch-main-with-admin-bypass.md) | A single `main` branch, protected but bypassable by admins | 2026-08-11 | Accepted |
+| [VSC-0012](vsc-0012-single-branch-main-with-admin-bypass.md) | A single `main` branch, protected but bypassable by admins | 2026-08-11 | Superseded by [VSC-0030](vsc-0030-dev-integrates-main-holds-releases.md) |
 | [VSC-0013](vsc-0013-dependency-freshness-policy.md) | Dependency freshness, and a lockfile CI actually honours | 2026-08-11 | Accepted |
 | [VSC-0014](vsc-0014-typescript-strictness-ratchet.md) | TypeScript strictness is a ratchet, and three notches were free | 2026-08-11 | Accepted |
 | [VSC-0015](vsc-0015-error-narrowing-convention.md) | Thrown values are narrowed, never widened to `any` | 2026-08-11 | Accepted |
@@ -66,3 +66,4 @@ The compiler's records are at
 | [VSC-0027](vsc-0027-one-jpipe-menu-everywhere.md) | The same jPipe items, wherever a model is right-clicked | 2026-11-11 | Accepted |
 | [VSC-0028](vsc-0028-settings-groups-are-named-as-a-path.md) | Settings groups are named as a path | 2026-11-13 | Accepted |
 | [VSC-0029](vsc-0029-a-run-is-read-from-its-json-report.md) | A run is read from the runner's JSON report, and listed, not drawn as a tree | 2026-11-14 | Accepted |
+| [VSC-0030](vsc-0030-dev-integrates-main-holds-releases.md) | `dev` integrates, `main` holds releases | 2026-11-15 | Accepted |
