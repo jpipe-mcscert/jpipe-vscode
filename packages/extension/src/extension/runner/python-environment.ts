@@ -257,9 +257,7 @@ export function environmentStatus(
     // neither its release nor the machine's has a say.
     if (localSource !== undefined) {
         const wanted: EnvironmentStatus = { kind: 'runner-source', python, ...managed, wanted: localSource };
-        if (probe.localSource === undefined || !sameDirectory(probe.localSource, localSource)) return wanted;
-        const stale = staleInstall(probe.runnerVersion, declaredLocal);
-        return stale ? { ...wanted, stale } : selected;
+        return localRunnerStatus(probe, localSource, declaredLocal, wanted) ?? selected;
     }
     // One installed by hand in a managed project is the user's arrangement with their tool.
     if (probe.localSource !== undefined && !manager) return { kind: 'runner-source', python, installed: probe.localSource };
@@ -268,6 +266,22 @@ export function environmentStatus(
         return { kind: 'missing-runner', python, ...managed, outdated: probe.runnerVersion };
     }
     return selected;
+}
+
+/**
+ * What is wrong with an environment asked to run the local copy at `localSource`, as a variation
+ * on `wanted`: it runs something else, or an install of the copy that has fallen behind it.
+ * `undefined` when it runs the copy as it stands.
+ */
+function localRunnerStatus(
+    probe: Probe,
+    localSource: string,
+    declaredLocal: string | undefined,
+    wanted: EnvironmentStatus
+): EnvironmentStatus | undefined {
+    if (probe.localSource === undefined || !sameDirectory(probe.localSource, localSource)) return wanted;
+    const stale = staleInstall(probe.runnerVersion, declaredLocal);
+    return stale ? { ...wanted, stale } : undefined;
 }
 
 /**
