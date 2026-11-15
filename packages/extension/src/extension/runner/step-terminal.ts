@@ -54,7 +54,7 @@ export function runInTerminal(
                     stream?.on('data', (chunk: Buffer) => show(decoder.decode(chunk, { stream: true })));
                 }
                 child.on('error', err => end(undefined, `${name} could not start: ${messageOf(err)}`));
-                child.on('close', code => end(code ?? undefined, code === 0 ? undefined : `${name} failed${code === null ? '' : ` (exit code ${code})`}.`));
+                child.on('close', code => end(code ?? undefined, failure(name, code)));
             },
             close: () => {
                 child?.kill();
@@ -75,4 +75,10 @@ export function runInTerminal(
             end(undefined);
         });
     });
+}
+
+/** What to say of a step that ended with `code`, or nothing when it succeeded. */
+function failure(name: string, code: number | null): string | undefined {
+    if (code === 0) return undefined;
+    return code === null ? `${name} failed.` : `${name} failed (exit code ${code}).`;
 }

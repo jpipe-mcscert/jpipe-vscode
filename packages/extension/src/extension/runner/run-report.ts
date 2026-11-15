@@ -284,6 +284,15 @@ function diagnosticRow(id: string, diagnostic: ReportDiagnostic): ResultRow {
     };
 }
 
+/** A file a step observed: one that could be read opens with a click. */
+function artifactRow(id: string, a: Artifact): ResultRow {
+    if (!a.reachable) {
+        return { id, label: a.path, description: 'could not be read', icon: 'missing-file', children: [] };
+    }
+    const description = a.size === null ? 'observed' : `observed · ${fileSize(a.size)}`;
+    return { id, label: a.path, description, icon: 'file', children: [], open: { path: a.path } };
+}
+
 function elementRow(e: ReportElement, report: RunReport): ResultRow {
     const id = `element/${e.id}`;
     const labelOf = (other: string): string => report.elements.find(x => x.id === other)?.label || other;
@@ -306,23 +315,18 @@ function elementRow(e: ReportElement, report: RunReport): ResultRow {
     }
     // What was observed when its step ran; what would be, when it did not.
     if (e.ran) {
-        children.push(...e.artifacts.map((a, i): ResultRow => ({
-            id: `${id}/artifact${i}`,
-            label: a.path,
-            description: a.reachable ? `observed${a.size === null ? '' : ` · ${fileSize(a.size)}`}` : 'could not be read',
-            icon: a.reachable ? 'file' : 'missing-file',
-            children: [],
-            ...(a.reachable ? { open: { path: a.path } } : {})
-        })));
+        children.push(...e.artifacts.map((a, i) => artifactRow(`${id}/artifact${i}`, a)));
     } else {
         children.push(...e.observes.map((path, i): ResultRow =>
             ({ id: `${id}/observes${i}`, label: path, description: 'observes', icon: 'file', children: [] })));
     }
-    children.push(...e.consumes.map((name, i): ResultRow =>
-        ({ id: `${id}/consumes${i}`, label: name, description: 'consumes', icon: 'consumes', children: [] })));
-    children.push(...e.produced.map(([name, value]): ResultRow =>
-        ({ id: `${id}/produced/${name}`, label: `${name} = ${value}`, description: 'produced', icon: 'value', children: [] })));
-    children.push(...e.supports.map(link('supports', 'supports')));
+    children.push(
+        ...e.consumes.map((name, i): ResultRow =>
+            ({ id: `${id}/consumes${i}`, label: name, description: 'consumes', icon: 'consumes', children: [] })),
+        ...e.produced.map(([name, value]): ResultRow =>
+            ({ id: `${id}/produced/${name}`, label: `${name} = ${value}`, description: 'produced', icon: 'value', children: [] })),
+        ...e.supports.map(link('supports', 'supports'))
+    );
 
     const note = e.blockedBy.length > 0 ? `stopped by ${e.blockedBy.map(labelOf).join(', ')}` : e.reason;
     return {

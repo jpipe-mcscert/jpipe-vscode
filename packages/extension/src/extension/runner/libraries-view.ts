@@ -84,6 +84,10 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
                 this.treeEmitter.fire(undefined);
             })
         );
+    }
+
+    /** Look for libraries for the first time. Called once, as the extension activates. */
+    start(): void {
         this.scanning = this.scanAll();
     }
 

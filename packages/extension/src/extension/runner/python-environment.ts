@@ -41,7 +41,13 @@ export const GLOBAL_RUNNER_VERSION: Command = { program: 'jpipe-runner', args: [
 
 /** The release in what `jpipe-runner --version` prints (`jpipe-runner 4.0.0`), if it is one. */
 export function parseRunnerVersion(stdout: string): string | undefined {
-    return /(?:^|\s)v?(\d+\.\d+(?:\.\d+)?[\w.]*)\s*$/m.exec(stdout.trim())?.[1];
+    // The last word of a line, with or without a `v` in front.
+    for (const line of stdout.trim().split('\n')) {
+        const last = line.trim().split(/\s+/).pop() ?? '';
+        const version = last.startsWith('v') ? last.slice(1) : last;
+        if (/^\d+\.\d[\w.]*$/.test(version)) return version;
+    }
+    return undefined;
 }
 
 /**
@@ -179,8 +185,8 @@ export function detectManager(has: (file: string) => boolean, read: (file: strin
     if (has('poetry.lock')) return 'Poetry';
     if (has('uv.lock')) return 'uv';
     const pyproject = has('pyproject.toml') ? read('pyproject.toml') ?? '' : '';
-    if (/^\s*\[tool\.poetry[\].]/m.test(pyproject)) return 'Poetry';
-    if (/^\s*\[tool\.uv[\].]/m.test(pyproject)) return 'uv';
+    if (/^[ \t]*\[tool\.poetry[\].]/m.test(pyproject)) return 'Poetry';
+    if (/^[ \t]*\[tool\.uv[\].]/m.test(pyproject)) return 'uv';
     return undefined;
 }
 
@@ -250,15 +256,10 @@ export function environmentStatus(
     // A local runner, for working on the runner itself: the checkout is run as it stands, so
     // neither its release nor the machine's has a say.
     if (localSource !== undefined) {
-        if (probe.localSource === undefined || !sameDirectory(probe.localSource, localSource)) {
-            return { kind: 'runner-source', python, ...managed, wanted: localSource };
-        }
-        // The code of a local copy is run as it stands, but what the environment knows about it
-        // — its version, its dependencies, its commands — was written down when it was installed.
-        // A copy whose version has moved since is to be installed again.
-        return probe.runnerVersion !== undefined && declaredLocal !== undefined && probe.runnerVersion !== declaredLocal
-            ? { kind: 'runner-source', python, ...managed, wanted: localSource, stale: { recorded: probe.runnerVersion, declared: declaredLocal } }
-            : selected;
+        const wanted: EnvironmentStatus = { kind: 'runner-source', python, ...managed, wanted: localSource };
+        if (probe.localSource === undefined || !sameDirectory(probe.localSource, localSource)) return wanted;
+        const stale = staleInstall(probe.runnerVersion, declaredLocal);
+        return stale ? { ...wanted, stale } : selected;
     }
     // One installed by hand in a managed project is the user's arrangement with their tool.
     if (probe.localSource !== undefined && !manager) return { kind: 'runner-source', python, installed: probe.localSource };
@@ -267,6 +268,18 @@ export function environmentStatus(
         return { kind: 'missing-runner', python, ...managed, outdated: probe.runnerVersion };
     }
     return selected;
+}
+
+/**
+ * How a local copy's install has fallen behind the copy, if it has.
+ *
+ * The code of a local copy is run as it stands, but what the environment knows about it — its
+ * version, its dependencies, its commands — was written down when it was installed. A copy whose
+ * version has moved since is to be installed again.
+ */
+function staleInstall(recorded: string | undefined, declared: string | undefined): { recorded: string; declared: string } | undefined {
+    if (recorded === undefined || declared === undefined || recorded === declared) return undefined;
+    return { recorded, declared };
 }
 
 /**
@@ -327,31 +340,43 @@ export function environmentReport(facts: EnvironmentFacts, places: { folder?: st
     const short = (file: string) => shortPath(file, places);
     const local = probe?.localSource;
     const lines: string[] = [];
-    if (!environment.python) {
-        lines.push(`Environment: none yet${environment.manager ? ` (${environment.manager} project)` : ''}`);
-    } else {
+    if (environment.python) {
         // `.venv/bin/python` is the environment `.venv`.
-        lines.push(`Environment: ${short(path.dirname(path.dirname(environment.python)))}${environment.manager ? ` (${environment.manager})` : ''}`);
-        lines.push(`Python: ${probe ? probe.version.join('.') : 'does not answer'}`);
-        if (!probe?.hasRunner) lines.push('jpipe-runner: not installed');
-        else {
-            // The version first, always: a local copy has one too, and it is what a report is read for.
-            lines.push(`jpipe-runner: ${probe.runnerVersion ?? 'installed'}${local ? ' (local copy)' : ''}`);
-            if (local) lines.push(`  ${short(local)}`);
-            if (local && facts.declaredLocal && facts.declaredLocal !== probe.runnerVersion) {
-                lines.push(`  now ${facts.declaredLocal}: reinstall it`);
-            }
-        }
+        const where = short(path.dirname(path.dirname(environment.python)));
+        lines.push(
+            environment.manager ? `Environment: ${where} (${environment.manager})` : `Environment: ${where}`,
+            `Python: ${probe ? probe.version.join('.') : 'does not answer'}`,
+            ...runnerLines(probe, facts.declaredLocal, short)
+        );
+    } else {
+        lines.push(environment.manager ? `Environment: none yet (${environment.manager} project)` : 'Environment: none yet');
     }
-    if (facts.editorPython === null) lines.push('Editor: no Python extension');
-    else if (facts.editorFollows) lines.push('Editor: uses this environment');
-    else lines.push('Editor: uses another Python', `  ${facts.editorPython ? short(facts.editorPython) : 'none selected'}`);
+    lines.push(...editorLines(facts, short));
     // Only what the lines above do not already say.
     if (facts.localSource && (!local || !sameDirectory(local, facts.localSource))) {
         lines.push('Settings ask for a local copy', `  ${short(facts.localSource)}`);
     }
     if (facts.machineRunner) lines.push(`Also on this computer: ${facts.machineRunner}`);
     return lines.join('\n');
+}
+
+/** The report's lines about the jpipe-runner an environment has. */
+function runnerLines(probe: Probe | undefined, declaredLocal: string | undefined, short: (file: string) => string): string[] {
+    if (!probe?.hasRunner) return ['jpipe-runner: not installed'];
+    // The version first, always: a local copy has one too, and it is what a report is read for.
+    const version = probe.runnerVersion ?? 'installed';
+    const local = probe.localSource;
+    if (!local) return [`jpipe-runner: ${version}`];
+    const lines = [`jpipe-runner: ${version} (local copy)`, `  ${short(local)}`];
+    if (declaredLocal && declaredLocal !== probe.runnerVersion) lines.push(`  now ${declaredLocal}: reinstall it`);
+    return lines;
+}
+
+/** The report's lines about the interpreter the editor uses. */
+function editorLines(facts: EnvironmentFacts, short: (file: string) => string): string[] {
+    if (facts.editorPython === null) return ['Editor: no Python extension'];
+    if (facts.editorFollows) return ['Editor: uses this environment'];
+    return ['Editor: uses another Python', `  ${facts.editorPython ? short(facts.editorPython) : 'none selected'}`];
 }
 
 /** The interpreter a run can use: the workspace's, once it can run libraries, selected or not. */
@@ -417,11 +442,7 @@ export function statusMessage(status: EnvironmentStatus): string | undefined {
         case 'missing-runner': return status.outdated
             ? `This workspace's Python environment has jpipe-runner ${status.outdated}; step libraries need ${MIN_RUNNER.join('.')} or newer.`
             : 'jpipe-runner is not installed in this workspace\'s Python environment.';
-        case 'runner-source': return status.stale
-            ? `Your local jpipe-runner is now ${status.stale.declared}, but this workspace's Python environment still has it as ${status.stale.recorded}, as it was when installed. Runs use its current code; its version and dependencies are the old ones.`
-            : status.wanted
-            ? `This workspace's Python environment does not run the local jpipe-runner named in the settings (${status.wanted}).`
-            : `This workspace's Python environment runs a local jpipe-runner (${status.installed}), and the settings no longer name one.`;
+        case 'runner-source': return runnerSourceMessage(status);
         case 'no-local-source': return `The local jpipe-runner named in the settings is not a Python project on this computer: ${status.path}`;
         case 'no-environment': return 'This workspace has no Python environment of its own.';
     }
@@ -455,6 +476,15 @@ export interface RequirementChange {
     change: 'create' | 'add' | 'replace';
 }
 
+function runnerSourceMessage(status: Extract<EnvironmentStatus, { kind: 'runner-source' }>): string {
+    if (status.stale) {
+        return `Your local jpipe-runner is now ${status.stale.declared}, but this workspace's Python environment still has it as ${status.stale.recorded}, as it was when installed. Runs use its current code; its version and dependencies are the old ones.`;
+    }
+    return status.wanted
+        ? `This workspace's Python environment does not run the local jpipe-runner named in the settings (${status.wanted}).`
+        : `This workspace's Python environment runs a local jpipe-runner (${status.installed}), and the settings no longer name one.`;
+}
+
 /**
  * What accepting the fix for `status` changes, said before anything is done so it can be refused:
  * a short list of what jPipe will do, each line naming a folder or a file of the user's, and a
@@ -464,41 +494,48 @@ export interface RequirementChange {
 export function fixConsequences(status: EnvironmentStatus, requirement?: RequirementChange, nickname?: string, localSource?: string): string | undefined {
     const recorded = recordedStep(requirement);
     switch (status.kind) {
-        case 'no-environment':
+        case 'no-environment': {
+            const created = 'Create a Python environment for this workspace, in a new .venv folder';
             return fixPlan([
-                `Create a Python environment for this workspace, in a new .venv folder${nickname ? `, shown as “${nickname}” in VS Code and in your terminal` : ''}`,
+                nickname ? `${created}, shown as “${nickname}” in VS Code and in your terminal` : created,
                 localSource ? `Install jpipe-runner in it, from your local copy (${localSource})` : 'Install jpipe-runner in it',
                 recorded
             ], 'Nothing else in this folder is changed.');
-        case 'missing-runner':
-            if (status.manager) {
-                return fixPlan([
-                    `Ask ${status.manager} to add jpipe-runner to this project`,
-                    status.python ? undefined : `Let ${status.manager} create the project's environment, which does not exist yet`
-                ], `${status.manager} will update ${MANAGER_FILES[status.manager]}.`);
-            }
-            return fixPlan([
-                'Install jpipe-runner in this workspace\'s Python environment',
-                recorded
-            ], recorded ? 'No other file of your project is changed.' : 'None of your project files is changed.');
-        case 'runner-source':
-            if (status.wanted) {
-                const overridden = status.manager
-                    ? ` ${status.manager} does not know about it, and may put its own back the next time it installs.`
-                    : '';
-                return fixPlan([
-                    status.stale
-                        ? `Install your local jpipe-runner (${status.wanted}) again in this workspace's Python environment, so that it is ${status.stale.declared} there too, with its current dependencies`
-                        : `Install jpipe-runner in this workspace's Python environment, from your local copy (${status.wanted})`
-                ], `None of your project files is changed.${overridden}`);
-            }
-            return fixPlan([
-                'Remove the local jpipe-runner from this workspace\'s Python environment',
-                'Install the published jpipe-runner in its place'
-            ], 'None of your project files is changed.');
-        default:
-            return undefined;
+        }
+        case 'missing-runner': return addRunnerConsequences(status, recorded);
+        case 'runner-source': return runnerSourceConsequences(status);
+        default: return undefined;
     }
+}
+
+function addRunnerConsequences(status: Extract<EnvironmentStatus, { kind: 'missing-runner' }>, recorded: string | undefined): string {
+    if (status.manager) {
+        return fixPlan([
+            `Ask ${status.manager} to add jpipe-runner to this project`,
+            status.python ? undefined : `Let ${status.manager} create the project's environment, which does not exist yet`
+        ], `${status.manager} will update ${MANAGER_FILES[status.manager]}.`);
+    }
+    return fixPlan([
+        'Install jpipe-runner in this workspace\'s Python environment',
+        recorded
+    ], recorded ? 'No other file of your project is changed.' : 'None of your project files is changed.');
+}
+
+function runnerSourceConsequences(status: Extract<EnvironmentStatus, { kind: 'runner-source' }>): string {
+    if (!status.wanted) {
+        return fixPlan([
+            'Remove the local jpipe-runner from this workspace\'s Python environment',
+            'Install the published jpipe-runner in its place'
+        ], 'None of your project files is changed.');
+    }
+    const overridden = status.manager
+        ? ` ${status.manager} does not know about it, and may put its own back the next time it installs.`
+        : '';
+    return fixPlan([
+        status.stale
+            ? `Install your local jpipe-runner (${status.wanted}) again in this workspace's Python environment, so that it is ${status.stale.declared} there too, with its current dependencies`
+            : `Install jpipe-runner in this workspace's Python environment, from your local copy (${status.wanted})`
+    ], `None of your project files is changed.${overridden}`);
 }
 
 /** A fix's plan as the dialog shows it: what jPipe will do, a line per step, then what it leaves alone. */

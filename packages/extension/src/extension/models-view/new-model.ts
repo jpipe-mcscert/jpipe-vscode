@@ -54,7 +54,7 @@ export function nameWarning(name: string, namesElsewhere: readonly string[]): st
 export function kebabCase(name: string): string {
     return name
         .replace(/([a-z\d])([A-Z])/g, '$1-$2')
-        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+        .replace(/([A-Z])(?=[A-Z][a-z])/g, '$1-')
         .replace(/_+/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '')
@@ -70,7 +70,9 @@ export function dirnameOf(uri: string): string {
 }
 
 export function joinUri(folder: string, file: string): string {
-    return `${folder.replace(/\/+$/, '')}/${file}`;
+    let end = folder.length;
+    while (end > 0 && folder[end - 1] === '/') end--;
+    return `${folder.slice(0, end)}/${file}`;
 }
 
 /** What `chooseFolder` decides from. */
@@ -159,7 +161,7 @@ export const loadLine = (path: string): string => `load "${path}"`;
  */
 export function loadsFile(text: string, fileUri: string, targetUri: string): boolean {
     const folder = dirnameOf(fileUri);
-    for (const match of text.matchAll(/^\s*load\s+"([^"]*)"/gm)) {
+    for (const match of text.matchAll(/^[ \t]*load[ \t]+"([^"\n]*)"/gm)) {
         const path = match[1];
         if (/[*?[{]/.test(path)) continue;
         const resolved = path.startsWith('/') ? `file://${path}` : new URL(path, `${folder}/`).toString();

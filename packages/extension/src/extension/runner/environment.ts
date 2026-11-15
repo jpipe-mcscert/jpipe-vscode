@@ -119,6 +119,26 @@ function sameInterpreter(a: string, b: string): boolean {
     }
 }
 
+/** What a check found, in one line, for the log. */
+function checkSummary(kind: string, facts: EnvironmentFacts, requirement: string): string {
+    const { environment, probe } = facts;
+    let workspace = `${kind}; the workspace's is ${environment.python ?? 'not there yet'}`;
+    if (environment.manager) workspace += ` (${environment.manager})`;
+    if (probe) workspace += `, jpipe-runner ${runnerSummary(probe)}`;
+    const parts = [workspace];
+    if (facts.localSource) parts.push(`the settings name the local jpipe-runner ${facts.localSource}`);
+    // `null` is an editor with no Python extension, which has no interpreter to name.
+    if (facts.editorPython !== null) parts.push(`the editor uses ${facts.editorPython ?? 'none'}`);
+    parts.push(`this machine's jpipe-runner is ${facts.machineRunner ?? 'not installed'}, so pip installs ${requirement}`);
+    return `Runner environment: ${parts.join('; ')}`;
+}
+
+function runnerSummary(probe: Probe): string {
+    if (!probe.hasRunner) return 'not found';
+    const version = probe.runnerVersion ?? 'found';
+    return probe.localSource ? `${version} from ${probe.localSource}` : version;
+}
+
 /** A requirements file as a fix would leave it. */
 interface RequirementEdit extends RequirementChange {
     path: string;
@@ -141,7 +161,7 @@ export class RunnerEnvironment implements vscode.Disposable {
     private current: EnvironmentStatus = { kind: 'checking' };
     /** Whether the editor's own complaint about `jpipe_runner` has been answered in this window. */
     private answeredEditor = false;
-    private checking: Promise<void>;
+    private checking: Promise<void> = Promise.resolve();
     /** Whether a check is waiting for the one under way to end. */
     private queued = false;
     private api: PythonEnvironmentsApi | undefined;
@@ -152,14 +172,6 @@ export class RunnerEnvironment implements vscode.Disposable {
     private facts: EnvironmentFacts = { environment: {} };
 
     constructor(private readonly context: vscode.ExtensionContext, private readonly logger: JpipeLogger) {
-        const first = (): Promise<void> => this.checked();
-        this.checking = this.connect().then(first, first);
-        // The editor may have flagged the import before this extension was listening: Pylance
-        // does not wait for us. Look at what is already there once the first check is in.
-        void this.checking.then(() => {
-            const flagged = vscode.languages.getDiagnostics().find(([uri]) => this.flagsRunnerImport(uri));
-            if (flagged) void this.answerEditor(flagged[0]);
-        });
         this.disposables.push(
             vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration('jpipe.runner') && !e.affectsConfiguration('jpipe.runner.libraries')) this.recheck();
@@ -265,19 +277,28 @@ export class RunnerEnvironment implements vscode.Disposable {
         }
     }
 
+    /** Look at the workspace for the first time. Called once, as the extension activates. */
+    start(): void {
+        const first = (): Promise<void> => this.checked();
+        this.checking = this.connect().then(first, first);
+        // The editor may have flagged the import before this extension was listening: Pylance
+        // does not wait for us. Look at what is already there once the first check is in.
+        void this.checking.then(() => {
+            const flagged = vscode.languages.getDiagnostics().find(([uri]) => this.flagsRunnerImport(uri));
+            if (flagged) void this.answerEditor(flagged[0]);
+        });
+    }
+
     get status(): EnvironmentStatus {
         return this.current;
     }
 
     /** The status once the check in progress, if any, is done. */
     async settled(): Promise<EnvironmentStatus> {
+        const awaited = this.checking;
+        await awaited;
         // A check asked for while waiting is the one whose answer is wanted.
-        let awaited: Promise<void>;
-        do {
-            awaited = this.checking;
-            await awaited;
-        } while (awaited !== this.checking);
-        return this.current;
+        return awaited === this.checking ? this.current : this.settled();
     }
 
     private get folder(): vscode.WorkspaceFolder | undefined {
@@ -437,20 +458,8 @@ export class RunnerEnvironment implements vscode.Disposable {
         const machineRelease = await this.machineRunnerRelease(folder);
         this.requirement = runnerRequirement(machineRelease);
         const probe = environment.python ? await this.probe({ program: environment.python, args: [] }, folder) : undefined;
-        const selectInEditor = this.setting(SELECT_IN_EDITOR_SETTING, true);
-        let selected = await this.selectedPython(folder);
-        let editor = this.selection(environment.python, selected);
-        // Seamless: the workspace has an environment, so the editor uses it. Done once per
-        // environment, so an interpreter the user picks afterwards is not fought over.
-        if (environment.python && probe && editor === 'other' && selectInEditor
-            && this.context.workspaceState.get<string>(SELECTED_KEY) !== environment.python) {
-            this.logger.info(`The editor uses ${selected ?? 'no interpreter'}, which is not this workspace's environment.`);
-            await this.select(environment.python, folder);
-            selected = await this.selectedPython(folder);
-            editor = this.selection(environment.python, selected);
-        }
-        // With the editor left to the user, which interpreter it uses is not ours to report on.
-        if (!selectInEditor) editor = 'none';
+        // The editor follows an environment that answers; one that does not is left alone.
+        const { selected, editor } = await this.editorSelection(probe ? environment.python : undefined, folder);
         const declaredLocal = localSource ? this.declaredLocal(localSource) : undefined;
         const status = environmentStatus(environment, probe, editor, localSource, declaredLocal);
         this.facts = {
@@ -462,12 +471,30 @@ export class RunnerEnvironment implements vscode.Disposable {
             ...(localSource ? { localSource } : {}),
             ...(declaredLocal ? { declaredLocal } : {})
         };
-        this.conclude(status, `Runner environment: ${status.kind}; the workspace's is ${environment.python ?? 'not there yet'}`
-            + (environment.manager ? ` (${environment.manager})` : '')
-            + (probe ? `, jpipe-runner ${probe.hasRunner ? probe.runnerVersion ?? 'found' : 'not found'}${probe.localSource ? ` from ${probe.localSource}` : ''}` : '')
-            + (localSource ? `; the settings name the local jpipe-runner ${localSource}` : '')
-            + (this.canSelect ? `; the editor uses ${selected ?? 'none'}` : '')
-            + `; this machine's jpipe-runner is ${machineRelease ?? 'not installed'}, so pip installs ${this.requirement}`);
+        this.conclude(status, checkSummary(status.kind, this.facts, this.requirement));
+    }
+
+    /**
+     * The interpreter the editor uses, and how it stands to the workspace's (`python`, when it
+     * has one that answers), once the editor has been pointed at it if that is ours to do.
+     */
+    private async editorSelection(
+        python: string | undefined,
+        folder: vscode.WorkspaceFolder | undefined
+    ): Promise<{ selected: string | undefined; editor: EditorSelection }> {
+        const selected = await this.selectedPython(folder);
+        // With the editor left to the user, which interpreter it uses is not ours to report on.
+        if (!this.setting(SELECT_IN_EDITOR_SETTING, true)) return { selected, editor: 'none' };
+        const editor = this.selection(python, selected);
+        // Seamless: the workspace has an environment, so the editor uses it. Done once per
+        // environment, so an interpreter the user picks afterwards is not fought over.
+        if (!python || editor !== 'other' || this.context.workspaceState.get<string>(SELECTED_KEY) === python) {
+            return { selected, editor };
+        }
+        this.logger.info(`The editor uses ${selected ?? 'no interpreter'}, which is not this workspace's environment.`);
+        await this.select(python, folder);
+        const now = await this.selectedPython(folder);
+        return { selected: now, editor: this.selection(python, now) };
     }
 
     /** The release of the jpipe-runner installed on the machine, outside any environment, if there is one. */
@@ -636,39 +663,60 @@ export class RunnerEnvironment implements vscode.Disposable {
     private async apply(status: EnvironmentStatus, folder: vscode.WorkspaceFolder | undefined, requirement: RequirementEdit | undefined): Promise<void> {
         switch (status.kind) {
             case 'missing-runner':
-                if (status.manager) {
-                    if (folder) await this.addWithManager(status.manager, folder);
-                } else if (status.python) {
-                    const install = { name: 'Install jpipe-runner', ...installRunnerCommand(status.python, this.requirement) };
-                    if (await this.runStep(install, folder)) this.write(requirement);
-                }
+                await this.addRunner(status, folder, requirement);
                 break;
             case 'runner-source':
-                if (status.wanted) {
-                    const install = { name: `${status.stale ? 'Reinstall' : 'Install'} the local jpipe-runner`, ...installRunnerCommand(status.python, { local: status.wanted }) };
-                    await this.runStep(install, folder);
-                } else if (folder) {
-                    await this.runSteps(restorePublishedCommands(status.python, this.requirement), folder);
-                }
+                await this.changeRunnerSource(status, folder);
                 break;
             case 'unselected':
                 // Asked for, so done again even if the user had moved the editor elsewhere since.
                 await this.select(status.python, folder);
                 break;
-            case 'no-environment': {
-                if (!folder) return;
-                const base = await this.basePython(folder);
-                if (!base) {
-                    void vscode.window.showErrorMessage(NO_BASE_PYTHON);
-                    return;
-                }
-                const steps = createEnvironmentCommands(base, folder.uri.fsPath, process.platform, this.localSource ? { local: this.localSource } : this.requirement, environmentNickname(folder.name));
-                if (await this.runSteps(steps, folder)) this.write(requirement);
+            case 'no-environment':
+                if (folder) await this.createEnvironment(folder, requirement);
                 break;
-            }
             default:
                 break;
         }
+    }
+
+    /** Add the runner to an environment that lacks it: through the project's manager, else with pip. */
+    private async addRunner(
+        status: Extract<EnvironmentStatus, { kind: 'missing-runner' }>,
+        folder: vscode.WorkspaceFolder | undefined,
+        requirement: RequirementEdit | undefined
+    ): Promise<void> {
+        if (status.manager) {
+            if (folder) await this.addWithManager(status.manager, folder);
+        } else if (status.python) {
+            const install = { name: 'Install jpipe-runner', ...installRunnerCommand(status.python, this.requirement) };
+            if (await this.runStep(install, folder)) this.write(requirement);
+        }
+    }
+
+    /** Install the local runner the settings name, or put a published one back in its place. */
+    private async changeRunnerSource(
+        status: Extract<EnvironmentStatus, { kind: 'runner-source' }>,
+        folder: vscode.WorkspaceFolder | undefined
+    ): Promise<void> {
+        if (status.wanted) {
+            const verb = status.stale ? 'Reinstall' : 'Install';
+            await this.runStep({ name: `${verb} the local jpipe-runner`, ...installRunnerCommand(status.python, { local: status.wanted }) }, folder);
+        } else if (folder) {
+            await this.runSteps(restorePublishedCommands(status.python, this.requirement), folder);
+        }
+    }
+
+    /** Give a workspace that has none an environment of its own, with the runner in it. */
+    private async createEnvironment(folder: vscode.WorkspaceFolder, requirement: RequirementEdit | undefined): Promise<void> {
+        const base = await this.basePython(folder);
+        if (!base) {
+            void vscode.window.showErrorMessage(NO_BASE_PYTHON);
+            return;
+        }
+        const runner = this.localSource ? { local: this.localSource } : this.requirement;
+        const steps = createEnvironmentCommands(base, folder.uri.fsPath, process.platform, runner, environmentNickname(folder.name));
+        if (await this.runSteps(steps, folder)) this.write(requirement);
     }
 
     /**
@@ -770,7 +818,9 @@ export class RunnerEnvironment implements vscode.Disposable {
     private async runStep(step: FixStep, folder: vscode.WorkspaceFolder | undefined): Promise<boolean> {
         this.logger.info(`${step.name}: ${step.program} ${step.args.join(' ')}`);
         const { ok, exitCode } = await runInTerminal(step, { folder, env: this.processEnv() });
-        this.logger.info(`${step.name}: ${ok ? 'done' : `failed${exitCode === undefined ? '' : ` (exit code ${exitCode})`}`}`);
+        let outcome = 'done';
+        if (!ok) outcome = exitCode === undefined ? 'failed' : `failed (exit code ${exitCode})`;
+        this.logger.info(`${step.name}: ${outcome}`);
         return ok;
     }
 

@@ -83,8 +83,9 @@ export function stepNote(
     anyLibraryChecked: boolean
 ): string | undefined {
     if (!anyLibraryChecked) return undefined;
-    if (steps && steps.length > 1) return `${steps.length} steps`;
-    if (steps && steps.length === 1) return undefined;
+    const count = steps?.length ?? 0;
+    if (count > 1) return `${count} steps`;
+    if (count === 1) return undefined;
     return REQUIRED.has(elementKind) ? 'no step' : undefined;
 }
 

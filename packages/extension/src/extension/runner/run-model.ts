@@ -28,6 +28,43 @@ export interface RunDeps {
     results: ResultsView;
 }
 
+/** Save the model and the libraries a run loads: the compiler and the runner read files, not editors. */
+async function saveInputs(document: vscode.TextDocument, libraries: readonly vscode.Uri[]): Promise<void> {
+    if (document.isDirty) await document.save();
+    const loaded = new Set(libraries.map(uri => uri.toString()));
+    await Promise.all(vscode.workspace.textDocuments
+        .filter(open => open.isDirty && loaded.has(open.uri.toString()))
+        .map(open => open.save()));
+}
+
+/**
+ * Compile `name` to the JSON the runner reads, and name the file the runner's report goes to.
+ * `undefined` when the model does not compile, which the user has then been told.
+ *
+ * The compiler writes the file itself: what it prints is for a reader, banner included, and is
+ * not the JSON.
+ */
+async function compile(
+    deps: RunDeps,
+    document: vscode.TextDocument,
+    name: string
+): Promise<{ compiled: vscode.Uri; report: vscode.Uri } | undefined> {
+    try {
+        const compiled = await runFile(deps.context, `${name}.json`);
+        const report = await runFile(deps.context, `${name}.report.json`);
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Window, title: `Compiling ${name}…` },
+            () => deps.imageGenerator.generate(false, ImageFormat.JSON, document, name, compiled));
+        return { compiled, report };
+    } catch (err: unknown) {
+        const problems = 'Show Problems';
+        const answer = await vscode.window.showErrorMessage(
+            `${name} could not be compiled, so it cannot be run: ${messageOf(err)}`, problems);
+        if (answer === problems) await vscode.commands.executeCommand('workbench.actions.view.problems');
+        return undefined;
+    }
+}
+
 /**
  * Run a justification with jpipe-runner: the ▶ button.
  *
@@ -64,30 +101,10 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
         return;
     }
 
-    // The compiler and the runner read files, not editors.
-    if (document.isDirty) await document.save();
-    const loaded = new Set(libraries.map(library => library.uri.toString()));
-    await Promise.all(vscode.workspace.textDocuments
-        .filter(open => open.isDirty && loaded.has(open.uri.toString()))
-        .map(open => open.save()));
-
-    // The compiler writes the file itself: what it prints is for a reader, banner included, and
-    // is not the JSON.
-    let compiled: vscode.Uri;
-    let report: vscode.Uri;
-    try {
-        compiled = await runFile(deps.context, `${name}.json`);
-        report = await runFile(deps.context, `${name}.report.json`);
-        await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Window, title: `Compiling ${name}…` },
-            () => deps.imageGenerator.generate(false, ImageFormat.JSON, document, name, compiled));
-    } catch (err: unknown) {
-        const problems = 'Show Problems';
-        const answer = await vscode.window.showErrorMessage(
-            `${name} could not be compiled, so it cannot be run: ${messageOf(err)}`, problems);
-        if (answer === problems) await vscode.commands.executeCommand('workbench.actions.view.problems');
-        return;
-    }
+    await saveInputs(document, libraries.map(library => library.uri));
+    const files = await compile(deps, document, name);
+    if (!files) return;
+    const { compiled, report } = files;
 
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);

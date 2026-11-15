@@ -1,4 +1,4 @@
-import { DefaultDocumentBuilder, type DocumentState, type LangiumDocument } from 'langium';
+import { DefaultDocumentBuilder, interruptAndCheck, type DocumentState, type LangiumDocument } from 'langium';
 import type { CancellationToken } from 'vscode-languageserver-protocol';
 
 /**
@@ -21,8 +21,10 @@ export class JpipeDocumentBuilder extends DefaultDocumentBuilder {
         cancelToken: CancellationToken
     ): Promise<void> {
         if (documents.length > 0) return super.notifyBuildPhase(documents, state, cancelToken);
+        // One listener at a time, and none once the build is cancelled, as Langium's own builder does.
         for (const listener of this.buildPhaseListeners.get(state).slice()) {
-            await listener(documents, cancelToken);
+            await interruptAndCheck(cancelToken); // NOSONAR(S9382): listeners run in order, each after the last
+            await listener(documents, cancelToken); // NOSONAR(S9382)
         }
     }
 }

@@ -167,9 +167,10 @@ export async function fetchElements(request: RequestFn, model: Model): Promise<E
         const template = parent.name;
         const alias = aliasOf(symbols, template);
         const inheritedFrom = { template, uri: parent.uri };
+        const qualifier = alias ? `${alias}:${template}` : template;
         elements.push(...declared
             .filter(element => !nearer.some(id => overrides(id, template, element.id)))
-            .map(element => ({ ...element, id: `${alias ? `${alias}:` : ''}${template}:${element.id}`, inheritedFrom })));
+            .map(element => ({ ...element, id: `${qualifier}:${element.id}`, inheritedFrom })));
         nearer.push(...declared.map(e => e.id));
         // Placed by its name, as `fetchModels` places a template: that is where the server looks.
         item = { ...parent, range: parent.selectionRange };

@@ -371,7 +371,7 @@ export function buildTree(models: readonly Model[], status: ModelStatus = NO_STA
         .map(model => compose(model, compositions, ['compositions']));
 
     const excluded: GroupNode = { type: 'group', id: 'excluded', label: 'Excluded', children: [] };
-    excluded.children = flat(excluded, excludedModels.sort(templatesFirst));
+    excluded.children = flat(excluded, [...excludedModels].sort(templatesFirst));
 
     return [errors, templates, compositions, justifications, excluded].filter(group => group.children.length > 0);
 }

@@ -60,61 +60,77 @@ export function tokenize(text: string): Token[] {
         }
     };
     while (i < text.length) {
-        const c = text[i];
-        if (c === '\n') { newline(); line++; i++; continue; }
-        if (c === ' ' || c === '\t' || c === '\r' || c === '\f') { i++; continue; }
-        if (c === '\\' && text[i + 1] === '\n') { line++; i += 2; continue; }
-        if (c === '\\' && text[i + 1] === '\r' && text[i + 2] === '\n') { line++; i += 3; continue; }
-        if (c === '#') {
-            while (i < text.length && text[i] !== '\n') i++;
+        if (text[i] === '\n') { newline(); line++; i++; continue; }
+        const blank = blankAt(text, i);
+        if (blank) {
+            i += blank.length;
+            line += blank.lines;
             continue;
         }
-        if (NAME_START.test(c)) {
-            let j = i + 1;
-            while (j < text.length && NAME_PART.test(text[j])) j++;
-            const word = text.slice(i, j);
-            if ((text[j] === '"' || text[j] === "'") && STRING_PREFIX.test(word)) {
-                const read = readString(text, j, /[fF]/.test(word), line);
-                tokens.push(read.token);
-                line = read.line;
-                i = read.end;
-                continue;
-            }
-            tokens.push({ type: 'name', value: word, line });
-            i = j;
-            continue;
-        }
-        if (c === '"' || c === "'") {
-            const read = readString(text, i, false, line);
-            tokens.push(read.token);
-            line = read.line;
-            i = read.end;
-            continue;
-        }
-        if (/\d/.test(c)) {
-            let j = i + 1;
-            while (j < text.length && /[\w.]/.test(text[j])) j++;
-            tokens.push({ type: 'op', value: 'number', line });
-            i = j;
-            continue;
-        }
-        const pair = text.slice(i, i + 2);
-        if (TWO_CHAR_OPS.has(pair)) {
-            tokens.push({ type: 'op', value: pair, line });
-            i += 2;
-            continue;
-        }
-        if (OPENERS.has(c)) depth++;
-        if (CLOSERS.has(c)) depth = Math.max(0, depth - 1);
-        tokens.push({ type: 'op', value: c, line });
-        i++;
+        const read = tokenAt(text, i, line);
+        tokens.push(read.token);
+        if (read.token.type === 'op') depth = Math.max(0, depth + nesting(read.token));
+        i = read.end;
+        line = read.line;
     }
     newline();
     return tokens;
 }
 
+/** What is at `i` when it is no token: a blank, a continued line, a comment. Its length, and the lines it ends. */
+function blankAt(text: string, i: number): { length: number; lines: number } | undefined {
+    const c = text[i];
+    if (c === ' ' || c === '\t' || c === '\r' || c === '\f') return { length: 1, lines: 0 };
+    if (c === '\\' && text[i + 1] === '\n') return { length: 2, lines: 1 };
+    if (c === '\\' && text[i + 1] === '\r' && text[i + 2] === '\n') return { length: 3, lines: 1 };
+    if (c !== '#') return undefined;
+    let end = i;
+    while (end < text.length && text[end] !== '\n') end++;
+    return { length: end - i, lines: 0 };
+}
+
+/** A token, where it ends, and the line reading goes on from: a string may span several. */
+interface Read {
+    token: Token;
+    end: number;
+    line: number;
+}
+
+/** The token starting at `i`, which is neither a blank nor the end of a line. */
+function tokenAt(text: string, i: number, line: number): Read {
+    const c = text[i];
+    if (NAME_START.test(c)) return wordAt(text, i, line);
+    if (c === '"' || c === "'") return readString(text, i, false, line);
+    if (/\d/.test(c)) {
+        let end = i + 1;
+        while (end < text.length && /[\w.]/.test(text[end])) end++;
+        return { token: { type: 'op', value: 'number', line }, end, line };
+    }
+    const pair = text.slice(i, i + 2);
+    const value = TWO_CHAR_OPS.has(pair) ? pair : c;
+    return { token: { type: 'op', value, line }, end: i + value.length, line };
+}
+
+/** A name, or the string literal a prefix such as `r` or `f` introduces. */
+function wordAt(text: string, i: number, line: number): Read {
+    let end = i + 1;
+    while (end < text.length && NAME_PART.test(text[end])) end++;
+    const word = text.slice(i, end);
+    if ((text[end] === '"' || text[end] === "'") && STRING_PREFIX.test(word)) {
+        return readString(text, end, /[fF]/.test(word), line);
+    }
+    return { token: { type: 'name', value: word, line }, end, line };
+}
+
+/** What a token does to the depth of brackets: opens one, closes one, or neither. */
+function nesting(token: Token): number {
+    if (token.type !== 'op') return 0;
+    if (OPENERS.has(token.value)) return 1;
+    return CLOSERS.has(token.value) ? -1 : 0;
+}
+
 /** A string literal starting at its opening quote. Its value is its contents, escapes left as written. */
-function readString(text: string, start: number, formatted: boolean, startLine: number) {
+function readString(text: string, start: number, formatted: boolean, startLine: number): Read {
     const quote = text[start];
     const triple = text.slice(start, start + 3) === quote.repeat(3);
     const delimiter = triple ? quote.repeat(3) : quote;
@@ -130,7 +146,7 @@ function readString(text: string, start: number, formatted: boolean, startLine: 
         }
         if (text.startsWith(delimiter, i)) {
             const value = text.slice(contentStart, i);
-            return { token: { type: 'string' as const, value, formatted, line: startLine }, line, end: i + delimiter.length };
+            return { token: { type: 'string', value, formatted, line: startLine }, line, end: i + delimiter.length };
         }
         if (text[i] === '\n') {
             line++;
@@ -140,7 +156,7 @@ function readString(text: string, start: number, formatted: boolean, startLine: 
         }
         i++;
     }
-    return { token: { type: 'string' as const, value: text.slice(contentStart, i), formatted, line: startLine }, line, end: i };
+    return { token: { type: 'string', value: text.slice(contentStart, i), formatted, line: startLine }, line, end: i };
 }
 
 /** The names a file binds to jpipe-runner: decorator names to their kind, and module aliases. */
@@ -171,47 +187,52 @@ const isName = (t: Token | undefined, value?: string): t is NameToken =>
     t?.type === 'name' && (value === undefined || t.value === value);
 const isOp = (t: Token | undefined, value: string) => t?.type === 'op' && t.value === value;
 
+/** The name `as` gives what is at `i`, if it is given one. */
+function aliasAfter(tokens: readonly Token[], i: number): string | undefined {
+    const alias = tokens[i + 2];
+    return isName(tokens[i + 1], 'as') && isName(alias) ? alias.value : undefined;
+}
+
 function readImports(lines: readonly Token[][]): Imports {
     const imports: Imports = { decorators: new Map(), modules: new Set() };
     for (const tokens of lines) {
-        // from jpipe_runner import a, b as c   /   from jpipe_runner import (a, b)   /   import *
         if (isName(tokens[0], 'from') && isName(tokens[1], RUNNER_MODULE) && isName(tokens[2], 'import')) {
-            const names = tokens.slice(3).filter(t => !isOp(t, '(') && !isOp(t, ')'));
-            if (isOp(names[0], '*')) {
-                for (const kind of STEP_KINDS) imports.decorators.set(kind, kind);
-                continue;
-            }
-            for (let i = 0; i < names.length; i++) {
-                const imported = names[i];
-                if (!isName(imported)) continue;
-                let local = imported.value;
-                const alias = names[i + 2];
-                if (isName(names[i + 1], 'as') && isName(alias)) {
-                    local = alias.value;
-                    i += 2;
-                }
-                if (isStepKind(imported.value)) imports.decorators.set(local, imported.value);
-            }
+            readNamesImported(tokens.slice(3), imports);
         }
-        // import jpipe_runner   /   import os, jpipe_runner as jr   /   import jpipe_runner.x
-        if (isName(tokens[0], 'import')) {
-            for (let i = 1; i < tokens.length; i++) {
-                if (!isName(tokens[i], RUNNER_MODULE) || (i > 1 && !isOp(tokens[i - 1], ','))) continue;
-                // `import jpipe_runner.x` binds `jpipe_runner` too; `import jpipe_runner.x as y`
-                // binds `y` to the submodule, which has no step decorators.
-                let end = i + 1;
-                while (isOp(tokens[end], '.') && isName(tokens[end + 1])) end += 2;
-                const dotted = end > i + 1;
-                const alias = tokens[end + 1];
-                if (isName(tokens[end], 'as') && isName(alias)) {
-                    if (!dotted) imports.modules.add(alias.value);
-                } else {
-                    imports.modules.add(RUNNER_MODULE);
-                }
-            }
-        }
+        if (isName(tokens[0], 'import')) readModulesImported(tokens, imports);
     }
     return imports;
+}
+
+/** from jpipe_runner import a, b as c   /   from jpipe_runner import (a, b)   /   import * */
+function readNamesImported(rest: readonly Token[], imports: Imports): void {
+    const names = rest.filter(t => !isOp(t, '(') && !isOp(t, ')'));
+    if (isOp(names[0], '*')) {
+        for (const kind of STEP_KINDS) imports.decorators.set(kind, kind);
+        return;
+    }
+    for (let i = 0; i < names.length; i++) {
+        const imported = names[i];
+        if (!isName(imported)) continue;
+        const alias = aliasAfter(names, i);
+        if (alias !== undefined) i += 2;
+        if (isStepKind(imported.value)) imports.decorators.set(alias ?? imported.value, imported.value);
+    }
+}
+
+/** import jpipe_runner   /   import os, jpipe_runner as jr   /   import jpipe_runner.x */
+function readModulesImported(tokens: readonly Token[], imports: Imports): void {
+    for (let i = 1; i < tokens.length; i++) {
+        if (!isName(tokens[i], RUNNER_MODULE) || (i > 1 && !isOp(tokens[i - 1], ','))) continue;
+        // `import jpipe_runner.x` binds `jpipe_runner` too; `import jpipe_runner.x as y`
+        // binds `y` to the submodule, which has no step decorators.
+        let end = i + 1;
+        while (isOp(tokens[end], '.') && isName(tokens[end + 1])) end += 2;
+        const dotted = end > i + 1;
+        const alias = aliasAfter(tokens, end - 1);
+        if (alias === undefined) imports.modules.add(RUNNER_MODULE);
+        else if (!dotted) imports.modules.add(alias);
+    }
 }
 
 /** The kind a decorator line names, if it is a step decorator, and where its `(` is. */
@@ -252,19 +273,24 @@ function literalArguments(tokens: readonly Token[], open: number): string[] {
     };
     for (let i = open + 1; i < tokens.length; i++) {
         const token = tokens[i];
-        if (token.type === 'op' && OPENERS.has(token.value)) depth++;
-        if (token.type === 'op' && CLOSERS.has(token.value)) {
-            if (depth === 0) { flush(); break; }
-            depth--;
-        }
         if (depth === 0) {
+            // The call's own `)`, or the argument after the last id.
+            if (nesting(token) < 0 || (argument.length === 0 && endsIds(tokens, i))) {
+                flush();
+                break;
+            }
             if (isOp(token, ',')) { flush(); continue; }
-            if (isName(token) && isOp(tokens[i + 1], '=') && argument.length === 0) break;
-            if ((isOp(token, '*') || isOp(token, '**')) && argument.length === 0) break;
         }
+        depth += nesting(token);
         argument.push(token);
     }
     return ids;
+}
+
+/** Whether an argument starting at `i` is a keyword argument or an unpacking: no id comes after it. */
+function endsIds(tokens: readonly Token[], i: number): boolean {
+    const token = tokens[i];
+    return (isName(token) && isOp(tokens[i + 1], '=')) || isOp(token, '*') || isOp(token, '**');
 }
 
 /** Every step `text` declares, in the order written. */
