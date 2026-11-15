@@ -1,6 +1,7 @@
 [Content_Types].xml
 extension.vsixmanifest
 extension/LICENSE.txt
+extension/images/activity.svg
 extension/images/icon_dark.svg
 extension/images/icon_light.svg
 extension/images/logo.png

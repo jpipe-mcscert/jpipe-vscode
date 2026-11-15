@@ -13,12 +13,15 @@ import { JpipeSemanticTokenProvider } from './jpipe-semantic-token-provider.js';
 import { JpipeRenameProvider } from './jpipe-rename-provider.js';
 import { JpipeCodeActionProvider } from './jpipe-code-action-provider.js';
 import { JpipeFormatter } from './jpipe-formatter.js';
+import { JpipeNodeKindProvider, JpipeTypeHierarchyProvider } from './jpipe-type-hierarchy.js';
+import { JpipeCallHierarchyProvider } from './jpipe-call-hierarchy.js';
 import { JpipeLanguageServer } from './jpipe-language-server.js';
 import { JpipeServerLogger, type LogLevel } from './jpipe-logger.js';
 import { JpipeDocumentValidator } from './jpipe-document-validator.js';
 import { JpipeExclusionService } from './jpipe-exclusions.js';
 import { JpipeUnificationService } from './jpipe-unification.js';
 import { JpipeParserErrorMessageProvider } from './jpipe-parser-errors.js';
+import { JpipeDocumentBuilder } from './jpipe-document-builder.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -44,12 +47,19 @@ export type JpipeServices = LangiumServices & JpipeAddedServices
 /**
  * Shared-service overrides.
  *
- * Only the language server itself, so that the code-action capability arrives with its kinds
- * attached rather than as a bare boolean.
+ * The language server itself, so that the code-action capability arrives with its kinds
+ * attached rather than as a bare boolean; the node-kind provider, so that a template and a
+ * justification are told apart in workspace symbols; and the document builder, so that a
+ * workspace with no model in it still answers.
  */
 const JpipeSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServices> = {
     lsp: {
-        LanguageServer: (services) => new JpipeLanguageServer(services)
+        LanguageServer: (services) => new JpipeLanguageServer(services),
+        NodeKindProvider: () => new JpipeNodeKindProvider()
+    },
+    workspace: {
+        // Answers requests in a workspace with no model in it; see the class.
+        DocumentBuilder: (services) => new JpipeDocumentBuilder(services)
     }
 };
 
@@ -78,6 +88,9 @@ function buildJpipeModule(
             HoverProvider:          (services) => new JpipeHoverProvider(services),
             SemanticTokenProvider:  (services) => new JpipeSemanticTokenProvider(services),
             RenameProvider:         (services) => new JpipeRenameProvider(services),
+            // Binding it is what advertises `typeHierarchyProvider`, as with the two below.
+            TypeHierarchyProvider:  (services) => new JpipeTypeHierarchyProvider(services),
+            CallHierarchyProvider:  (services) => new JpipeCallHierarchyProvider(services),
             // Binding this is all it takes: `startLanguageServer` advertises
             // `codeActionProvider` from the presence of the service.
             CodeActionProvider:     (services) => new JpipeCodeActionProvider(services),

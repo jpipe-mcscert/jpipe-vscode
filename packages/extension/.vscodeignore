@@ -38,12 +38,13 @@
 # an installed extension is doing something reasonable.
 !schema/**
 
-# The extension icon, the two command icons the preview toolbar uses, and the one image the
-# shipped README renders. `images/mcscert.svg` is deliberately absent: 95 KB that nothing —
+# The extension icon, the shield in its two themes (the `.jd` file icon and the preview panel's),
+# the same shield as a mask for the jPipe activity, and the one image the shipped README renders. `images/mcscert.svg` is deliberately absent: 95 KB that nothing —
 # manifest, README or source — refers to.
 !images/logo.png
 !images/icon_dark.svg
 !images/icon_light.svg
+!images/activity.svg
 !images/mcscert.png
 
 # What the Marketplace shows on the extension's page.

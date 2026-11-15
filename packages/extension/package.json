@@ -49,6 +49,150 @@
                 "path": "syntaxes/jpipe.tmLanguage.json"
             }
         ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "jpipe",
+                    "title": "jPipe",
+                    "icon": "images/activity.svg"
+                }
+            ],
+            "panel": [
+                {
+                    "id": "jpipe-results",
+                    "title": "jPipe Results",
+                    "icon": "images/activity.svg"
+                }
+            ]
+        },
+        "views": {
+            "jpipe-results": [
+                {
+                    "id": "jpipe.results",
+                    "name": "Results",
+                    "when": "jpipe.hasResults",
+                    "contextualTitle": "jPipe Results"
+                }
+            ],
+            "jpipe": [
+                {
+                    "id": "jpipe.models",
+                    "name": "Models",
+                    "icon": "images/activity.svg",
+                    "contextualTitle": "jPipe"
+                },
+                {
+                    "id": "jpipe.elements",
+                    "when": "!jpipe.noModels",
+                    "name": "Outline",
+                    "contextualTitle": "jPipe"
+                },
+                {
+                    "id": "jpipe.libraries",
+                    "when": "!jpipe.noModels",
+                    "name": "Libraries",
+                    "contextualTitle": "jPipe"
+                }
+            ]
+        },
+        "viewsWelcome": [
+            {
+                "view": "jpipe.models",
+                "contents": "Welcome to jPipe.\nA justification explains why a conclusion can be trusted: evidence supports strategies, and strategies support the conclusion. This workspace has no model yet.\n[New Justification](command:jpipe.models.newJustification)\nA template is a justification with parts left open, for other justifications to implement.\n[New Template](command:jpipe.models.newTemplate)\nNew to jPipe? The [tutorials](https://www.jpipe.org/tutorials/) walk through a first model step by step.",
+                "when": "workbenchState != empty"
+            },
+            {
+                "view": "jpipe.models",
+                "contents": "Welcome to jPipe.\njPipe models live in the files of a project. Open a folder to write your first justification.\n[Open Folder](command:vscode.openFolder)\nNew to jPipe? The [tutorials](https://www.jpipe.org/tutorials/) walk through a first model step by step.",
+                "when": "workbenchState == empty"
+            },
+            {
+                "view": "jpipe.libraries",
+                "contents": "No step library was found in this workspace. A step library is a Python file whose functions use the `@evidence` and `@strategy` decorators of jpipe-runner.\n[New Library](command:jpipe.libraries.new)\n[Learn how to write one](https://github.com/jpipe-mcscert/jpipe-runner/blob/main/docs/authoring.md)"
+            }
+        ],
+        "colors": [
+            {
+                "id": "jpipe.templateIconForeground",
+                "description": "Colour of the template icon in the jPipe Models view. Defaults to the colour the editor gives interfaces, which is how templates appear in the Outline and Go to Symbol.",
+                "defaults": {
+                    "dark": "symbolIcon.interfaceForeground",
+                    "light": "symbolIcon.interfaceForeground",
+                    "highContrast": "symbolIcon.interfaceForeground",
+                    "highContrastLight": "symbolIcon.interfaceForeground"
+                }
+            },
+            {
+                "id": "jpipe.justificationIconForeground",
+                "description": "Colour of the justification icon in the jPipe Models view. Defaults to the colour the editor gives classes, which is how justifications appear in the Outline and Go to Symbol.",
+                "defaults": {
+                    "dark": "symbolIcon.classForeground",
+                    "light": "symbolIcon.classForeground",
+                    "highContrast": "symbolIcon.classForeground",
+                    "highContrastLight": "symbolIcon.classForeground"
+                }
+            },
+            {
+                "id": "jpipe.compositionIconForeground",
+                "description": "Colour of a composition's icon in the jPipe Models view: a model built by an operator such as assemble or refine. Defaults to the colour the editor gives functions.",
+                "defaults": {
+                    "dark": "symbolIcon.functionForeground",
+                    "light": "symbolIcon.functionForeground",
+                    "highContrast": "symbolIcon.functionForeground",
+                    "highContrastLight": "symbolIcon.functionForeground"
+                }
+            },
+            {
+                "id": "jpipe.conclusionIconForeground",
+                "description": "Colour of a conclusion's icon in the jPipe Outline. The diagram draws conclusions in grey; this defaults to the theme's icon colour.",
+                "defaults": {
+                    "dark": "icon.foreground",
+                    "light": "icon.foreground",
+                    "highContrast": "icon.foreground",
+                    "highContrastLight": "icon.foreground"
+                }
+            },
+            {
+                "id": "jpipe.subConclusionIconForeground",
+                "description": "Colour of a sub-conclusion's icon in the jPipe Outline. Defaults to the blue the diagram outlines sub-conclusions with.",
+                "defaults": {
+                    "dark": "#0072B2",
+                    "light": "#0072B2",
+                    "highContrast": "#0072B2",
+                    "highContrastLight": "#0072B2"
+                }
+            },
+            {
+                "id": "jpipe.strategyIconForeground",
+                "description": "Colour of a strategy's icon in the jPipe Outline. Defaults to the amber the diagram fills strategies with.",
+                "defaults": {
+                    "dark": "#F0C27F",
+                    "light": "#E69F00",
+                    "highContrast": "#F0C27F",
+                    "highContrastLight": "#E69F00"
+                }
+            },
+            {
+                "id": "jpipe.evidenceIconForeground",
+                "description": "Colour of an evidence's icon in the jPipe Outline. Defaults to the sky blue the diagram fills evidence with.",
+                "defaults": {
+                    "dark": "#9ECAE1",
+                    "light": "#56B4E9",
+                    "highContrast": "#9ECAE1",
+                    "highContrastLight": "#56B4E9"
+                }
+            },
+            {
+                "id": "jpipe.supportIconForeground",
+                "description": "Colour of an @support's icon in the jPipe Outline. The diagram leaves @support uncoloured; this defaults to the theme's muted text colour.",
+                "defaults": {
+                    "dark": "descriptionForeground",
+                    "light": "descriptionForeground",
+                    "highContrast": "descriptionForeground",
+                    "highContrastLight": "descriptionForeground"
+                }
+            }
+        ],
         "semanticTokenTypes": [
             {
                 "id": "jpipe-load",
@@ -107,43 +251,43 @@
             },
             {
                 "command": "jpipe.downloadSVG",
-                "title": "Download as SVG",
+                "title": "Export as SVG",
                 "category": "jPipe",
                 "icon": "$(save)"
             },
             {
                 "command": "jpipe.downloadPNG",
-                "title": "Download as PNG",
+                "title": "Export as PNG",
                 "category": "jPipe",
                 "icon": "$(save)"
             },
             {
                 "command": "jpipe.downloadJSON",
-                "title": "Download as JSON",
+                "title": "Export as JSON",
                 "category": "jPipe",
                 "icon": "$(save)"
             },
             {
                 "command": "jpipe.downloadJPEG",
-                "title": "Download as JPEG",
+                "title": "Export as JPEG",
                 "category": "jPipe",
                 "icon": "$(save)"
             },
             {
                 "command": "jpipe.downloadDOT",
-                "title": "Download as DOT",
+                "title": "Export as DOT",
                 "category": "jPipe",
                 "icon": "$(save)"
             },
             {
                 "command": "jpipe.downloadPython",
-                "title": "Download as Python",
+                "title": "Export as Python",
                 "category": "jPipe",
                 "icon": "$(save)"
             },
             {
                 "command": "jpipe.downloadJPIPE",
-                "title": "Download as jPipe",
+                "title": "Export as jPipe",
                 "category": "jPipe",
                 "icon": "$(save)"
             },
@@ -222,25 +366,129 @@
                 "title": "Extract Template from Justification",
                 "category": "jPipe",
                 "icon": "$(symbol-interface)"
+            },
+            {
+                "command": "jpipe.models.refresh",
+                "title": "Refresh Models",
+                "category": "jPipe",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "jpipe.models.newJustification",
+                "title": "New Justification…",
+                "category": "jPipe",
+                "icon": "$(add)"
+            },
+            {
+                "command": "jpipe.models.newTemplate",
+                "title": "New Template…",
+                "category": "jPipe",
+                "icon": "$(add)"
+            },
+            {
+                "command": "jpipe.models.newImplementation",
+                "title": "New Justification Implementing This Template…",
+                "category": "jPipe",
+                "icon": "$(add)"
+            },
+            {
+                "command": "jpipe.run",
+                "title": "Run Model",
+                "category": "jPipe",
+                "icon": "$(play)"
+            },
+            {
+                "command": "jpipe.runLibrary",
+                "title": "Run as jPipe",
+                "category": "jPipe",
+                "icon": "$(play)"
+            },
+            {
+                "command": "jpipe.checkLibrary",
+                "title": "Check as jPipe Library",
+                "category": "jPipe",
+                "icon": "$(checklist)"
+            },
+            {
+                "command": "jpipe.results.showOutput",
+                "title": "Show the Run's Output",
+                "category": "jPipe",
+                "icon": "$(terminal)"
+            },
+            {
+                "command": "jpipe.libraries.checkAll",
+                "title": "Check All Libraries",
+                "category": "jPipe",
+                "icon": "$(check-all)"
+            },
+            {
+                "command": "jpipe.libraries.uncheckAll",
+                "title": "Uncheck All Libraries",
+                "category": "jPipe",
+                "icon": "$(clear-all)"
+            },
+            {
+                "command": "jpipe.libraries.refresh",
+                "title": "Refresh Libraries",
+                "category": "jPipe",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "jpipe.libraries.new",
+                "title": "New Library…",
+                "category": "jPipe",
+                "icon": "$(add)"
+            },
+            {
+                "command": "jpipe.runner.fixEnvironment",
+                "title": "Set Up the Python Environment for Runs",
+                "category": "jPipe",
+                "icon": "$(tools)"
+            },
+            {
+                "command": "jpipe.runner.checkEnvironment",
+                "title": "Check the Python Environment for Runs",
+                "category": "jPipe"
+            },
+            {
+                "command": "jpipe.models.scaffoldLibrary",
+                "title": "Scaffold Step Library…",
+                "category": "jPipe",
+                "icon": "$(file-code)"
             }
         ],
         "submenus": [
             {
-                "id": "jpipe.submenu",
-                "label": "jPipe"
+                "id": "jpipe.exportAs",
+                "label": "Export as…"
+            },
+            {
+                "id": "jpipe.models.new",
+                "label": "New Model",
+                "icon": "$(add)"
             }
         ],
         "menus": {
             "explorer/context": [
                 {
-                    "command": "jpipe.excludeResource",
-                    "when": "(explorerResourceIsFolder || resourceExtname == '.jd') && resourcePath not in jpipe.excludedResourcePaths",
+                    "command": "jpipe.vis.preview",
+                    "when": "resourceExtname == '.jd'",
                     "group": "jpipe@1"
                 },
                 {
+                    "submenu": "jpipe.exportAs",
+                    "when": "resourceExtname == '.jd'",
+                    "group": "jpipe@2"
+                },
+                {
+                    "command": "jpipe.excludeResource",
+                    "when": "(resourceExtname == '.jd' || explorerResourceIsFolder) && resourcePath not in jpipe.excludedResourcePaths",
+                    "group": "jpipe@3"
+                },
+                {
                     "command": "jpipe.includeResource",
-                    "when": "(explorerResourceIsFolder || resourceExtname == '.jd') && resourcePath in jpipe.excludedResourcePaths",
-                    "group": "jpipe@1"
+                    "when": "(resourceExtname == '.jd' || explorerResourceIsFolder) && resourcePath in jpipe.excludedResourcePaths",
+                    "group": "jpipe@3"
                 }
             ],
             "commandPalette": [
@@ -251,70 +499,246 @@
                 {
                     "command": "jpipe.includeResource",
                     "when": "false"
+                },
+                {
+                    "command": "jpipe.models.refresh",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.models.newImplementation",
+                    "when": "false"
+                },
+                {
+                    "command": "jpipe.run",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.results.showOutput",
+                    "when": "jpipe.hasResults"
+                },
+                {
+                    "command": "jpipe.runLibrary",
+                    "when": "resourceLangId == python && resourcePath in jpipe.checkedLibraryPaths"
+                },
+                {
+                    "command": "jpipe.checkLibrary",
+                    "when": "resourceLangId == python && resourcePath in jpipe.checkedLibraryPaths"
+                },
+                {
+                    "command": "jpipe.libraries.checkAll",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.libraries.uncheckAll",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.libraries.refresh",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.libraries.new",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.models.scaffoldLibrary",
+                    "when": "false"
+                }
+            ],
+            "editor/title/run": [
+                {
+                    "command": "jpipe.runLibrary",
+                    "when": "resourceLangId == python && resourcePath in jpipe.checkedLibraryPaths",
+                    "group": "jpipe@0"
+                },
+                {
+                    "command": "jpipe.checkLibrary",
+                    "when": "resourceLangId == python && resourcePath in jpipe.checkedLibraryPaths",
+                    "group": "jpipe@1"
                 }
             ],
             "editor/title": [
                 {
-                    "command": "jpipe.vis.preview",
+                    "command": "jpipe.run",
                     "when": "resourceLangId == jpipe",
                     "group": "navigation@0"
+                },
+                {
+                    "command": "jpipe.vis.preview",
+                    "when": "resourceLangId == jpipe",
+                    "group": "navigation@1"
                 }
             ],
             "editor/context": [
                 {
-                    "submenu": "jpipe.submenu",
-                    "when": "resourceLangId == jpipe",
-                    "group": "navigation"
-                }
-            ],
-            "jpipe.submenu": [
-                {
                     "command": "jpipe.vis.preview",
-                    "group": "1_view@1"
+                    "when": "resourceLangId == jpipe",
+                    "group": "jpipe@1"
                 },
                 {
-                    "command": "jpipe.downloadSVG",
-                    "group": "2_download@1"
-                },
-                {
-                    "command": "jpipe.downloadPNG",
-                    "group": "2_download@2"
-                },
-                {
-                    "command": "jpipe.downloadJSON",
-                    "group": "2_download@3"
-                },
-                {
-                    "command": "jpipe.downloadJPEG",
-                    "group": "2_download@4"
-                },
-                {
-                    "command": "jpipe.downloadDOT",
-                    "group": "2_download@5"
-                },
-                {
-                    "command": "jpipe.downloadPython",
-                    "group": "2_download@6"
-                },
-                {
-                    "command": "jpipe.downloadJPIPE",
-                    "group": "2_download@7"
+                    "submenu": "jpipe.exportAs",
+                    "when": "resourceLangId == jpipe",
+                    "group": "jpipe@2"
                 },
                 {
                     "command": "jpipe.excludeResource",
-                    "when": "resourcePath not in jpipe.excludedResourcePaths",
-                    "group": "3_validation@1"
+                    "when": "resourceLangId == jpipe && resourcePath not in jpipe.excludedResourcePaths",
+                    "group": "jpipe@3"
                 },
                 {
                     "command": "jpipe.includeResource",
-                    "when": "resourcePath in jpipe.excludedResourcePaths",
-                    "group": "3_validation@1"
+                    "when": "resourceLangId == jpipe && resourcePath in jpipe.excludedResourcePaths",
+                    "group": "jpipe@3"
+                }
+            ],
+            "jpipe.exportAs": [
+                {
+                    "command": "jpipe.downloadSVG",
+                    "group": "1_format@1"
+                },
+                {
+                    "command": "jpipe.downloadPNG",
+                    "group": "1_format@2"
+                },
+                {
+                    "command": "jpipe.downloadJSON",
+                    "group": "1_format@3"
+                },
+                {
+                    "command": "jpipe.downloadJPEG",
+                    "group": "1_format@4"
+                },
+                {
+                    "command": "jpipe.downloadDOT",
+                    "group": "1_format@5"
+                },
+                {
+                    "command": "jpipe.downloadPython",
+                    "group": "1_format@6"
+                },
+                {
+                    "command": "jpipe.downloadJPIPE",
+                    "group": "1_format@7"
+                }
+            ],
+            "view/title": [
+                {
+                    "submenu": "jpipe.models.new",
+                    "when": "view == jpipe.models",
+                    "group": "navigation@0"
+                },
+                {
+                    "command": "jpipe.models.refresh",
+                    "when": "view == jpipe.models",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "jpipe.libraries.checkAll",
+                    "when": "view == jpipe.libraries",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "jpipe.libraries.uncheckAll",
+                    "when": "view == jpipe.libraries",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "jpipe.libraries.refresh",
+                    "when": "view == jpipe.libraries",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "jpipe.results.showOutput",
+                    "when": "view == jpipe.results",
+                    "group": "navigation@0"
+                },
+                {
+                    "command": "jpipe.libraries.new",
+                    "when": "view == jpipe.libraries",
+                    "group": "navigation@0"
+                },
+                {
+                    "command": "jpipe.runner.fixEnvironment",
+                    "when": "view == jpipe.libraries",
+                    "group": "navigation@4"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "jpipe.models.newJustification",
+                    "when": "view == jpipe.models && viewItem == jpipe.group.justifications",
+                    "group": "inline"
+                },
+                {
+                    "command": "jpipe.models.newTemplate",
+                    "when": "view == jpipe.models && viewItem == jpipe.group.templates",
+                    "group": "inline"
+                },
+                {
+                    "command": "jpipe.run",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.justification/",
+                    "group": "inline@0"
+                },
+                {
+                    "command": "jpipe.models.newImplementation",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.template/",
+                    "group": "inline@0"
+                },
+                {
+                    "command": "jpipe.vis.preview",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
+                    "group": "inline@1"
+                },
+                {
+                    "command": "jpipe.run",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.justification/",
+                    "group": "1_model@0"
+                },
+                {
+                    "command": "jpipe.models.newImplementation",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.template/",
+                    "group": "1_model@1"
+                },
+                {
+                    "command": "jpipe.models.scaffoldLibrary",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.justification/",
+                    "group": "1_model@2"
+                },
+                {
+                    "command": "jpipe.vis.preview",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
+                    "group": "2_jpipe@1"
+                },
+                {
+                    "submenu": "jpipe.exportAs",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\./",
+                    "group": "2_jpipe@2"
+                },
+                {
+                    "command": "jpipe.excludeResource",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.[a-z]+$/",
+                    "group": "2_jpipe@3"
+                },
+                {
+                    "command": "jpipe.includeResource",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\..*\\.excluded$/",
+                    "group": "2_jpipe@3"
+                }
+            ],
+            "jpipe.models.new": [
+                {
+                    "command": "jpipe.models.newJustification",
+                    "group": "1_new@1"
+                },
+                {
+                    "command": "jpipe.models.newTemplate",
+                    "group": "1_new@2"
                 }
             ]
         },
         "configuration": [
             {
-                "title": "jPipe: Compiler",
+                "title": "jPipe › Compiler › General",
                 "order": 1,
                 "properties": {
                     "jpipe.executionMode": {
@@ -379,7 +803,7 @@
                 }
             },
             {
-                "title": "jPipe: Managed Compiler",
+                "title": "jPipe › Compiler › Managed mode",
                 "order": 2,
                 "properties": {
                     "jpipe.managedCheckForUpdates": {
@@ -410,7 +834,7 @@
                 }
             },
             {
-                "title": "jPipe: Export",
+                "title": "jPipe › Compiler › Export",
                 "order": 3,
                 "properties": {
                     "jpipe.defaultExportFormat": {
@@ -437,7 +861,7 @@
                 }
             },
             {
-                "title": "jPipe: Preview",
+                "title": "jPipe › Compiler › Preview",
                 "order": 4,
                 "properties": {
                     "jpipe.previewZoomSensitivity": {
@@ -451,7 +875,7 @@
                 }
             },
             {
-                "title": "jPipe: Validation",
+                "title": "jPipe › Compiler › Validation",
                 "order": 5,
                 "properties": {
                     "jpipe.additionalUnificationMethods": {
@@ -485,7 +909,7 @@
                 }
             },
             {
-                "title": "jPipe: Logging",
+                "title": "jPipe › Compiler › Logging",
                 "order": 6,
                 "properties": {
                     "jpipe.logLevel": {
@@ -509,6 +933,85 @@
                         ],
                         "default": "info",
                         "description": "Verbosity of the jPipe log channel (Output > jPipe). The language server log level (Output > jPipe Language Server) is set once at startup and requires a window reload to change."
+                    }
+                }
+            },
+            {
+                "title": "jPipe › Runner › General",
+                "order": 7,
+                "properties": {
+                    "jpipe.runner.environment": {
+                        "order": 1,
+                        "type": "string",
+                        "enum": [
+                            "workspace",
+                            "command"
+                        ],
+                        "markdownEnumDescriptions": [
+                            "Use this workspace’s own Python environment: a virtual environment in the folder, or the one your Pipenv, Poetry or uv project uses. If it is missing, or has no jpipe-runner, jPipe offers to fix that, and always asks before changing anything.",
+                            "Use the program set in **Runner: Command**. jPipe leaves your Python environments alone."
+                        ],
+                        "default": "workspace",
+                        "scope": "resource",
+                        "markdownDescription": "Which Python environment runs your models when you press ▶.\n\n- **workspace** (recommended): the environment that belongs to this workspace. If there is none yet, jPipe offers to create one for you.\n- **command**: a jpipe-runner program you choose yourself.\n\n[Set up the Python environment](command:jpipe.runner.fixEnvironment) · [Check the Python environment](command:jpipe.runner.checkEnvironment)"
+                    },
+                    "jpipe.runner.command": {
+                        "order": 2,
+                        "type": "string",
+                        "default": "",
+                        "scope": "machine-overridable",
+                        "markdownDescription": "**[command mode only]** The jpipe-runner program to use: a name such as `jpipe-runner`, or the full path to it. Leave empty to use the `jpipe-runner` installed on your computer."
+                    },
+                    "jpipe.runner.selectInEditor": {
+                        "order": 3,
+                        "type": "boolean",
+                        "default": true,
+                        "scope": "resource",
+                        "markdownDescription": "**[workspace mode only]** Use the same Python environment in the editor as for runs. This is what stops the editor from underlining `from jpipe_runner import …` in your step libraries. Requires the Python extension.\n\nTurn it off if you prefer to choose the editor’s Python interpreter yourself. Runs are not affected."
+                    },
+                    "jpipe.runner.offerSetup": {
+                        "order": 4,
+                        "type": "boolean",
+                        "default": true,
+                        "scope": "resource",
+                        "markdownDescription": "**[workspace mode only]** Let jPipe suggest setting up the Python environment when it notices that your step libraries cannot run yet.\n\nTurn it off to stop the suggestions. You can still set the environment up whenever you want, from the Libraries view or by pressing ▶."
+                    },
+                    "jpipe.runner.libraries": {
+                        "order": 5,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "scope": "resource",
+                        "markdownDescription": "The step libraries used when you run a model. You normally do not edit this list by hand: tick and untick libraries in the **Libraries** view of the jPipe activity, and the list follows.\n\nEach entry is a Python file, given relative to the workspace folder. Wildcards are not supported."
+                    }
+                }
+            },
+            {
+                "title": "jPipe › Runner › Development",
+                "order": 8,
+                "properties": {
+                    "jpipe.runner.localSource": {
+                        "order": 1,
+                        "type": "string",
+                        "default": "",
+                        "scope": "machine-overridable",
+                        "markdownDescription": "**[workspace mode only]** For working on jpipe-runner itself: the folder of a local copy of jpipe-runner to run your models with, instead of a published release. Leave empty to use a published release, which is what you want unless you are changing the runner.\n\nWhen set, jPipe offers to install that copy in the workspace's Python environment, so that a change you make to the runner shows in the next run. Your project files are not changed.\n\n[Set up the Python environment](command:jpipe.runner.fixEnvironment) · [Check the Python environment](command:jpipe.runner.checkEnvironment)"
+                    }
+                }
+            }
+        ],
+        "taskDefinitions": [
+            {
+                "type": "jpipe",
+                "required": [
+                    "model"
+                ],
+                "properties": {
+                    "model": {
+                        "type": "string",
+                        "description": "The justification to run with jpipe-runner."
                     }
                 }
             }

@@ -38,8 +38,12 @@ Simply open a file using the `.jd` extension.
 You get syntax highlighting, live validation, completion, hover and go-to-definition across the
 files a model `load`s, quick fixes on the lightbulb (`⌘.` / `Ctrl+.`), refactorings under
 **Refactor…**, **Format Document** (`⇧⌥F` / `Shift+Alt+F`) to lay a model out, and a diagram
-preview you can export. Everything is also in the command palette under *jPipe*. The tutorials
-below walk through them.
+preview you can export. The jPipe shield in the activity bar opens a **Models** view listing every
+template and justification in the workspace, so you can find a model without remembering which
+file it lives in, and the ▶ button runs a justification with
+[jpipe-runner](https://github.com/jpipe-mcscert/jpipe-runner) against the step libraries you check in
+its **Libraries** view. Everything is also in the command palette under *jPipe*. The tutorials below
+walk through them.
 
 #### Tutorials
 
