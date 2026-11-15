@@ -8,11 +8,14 @@
 #
 # A release is prepared on a work branch cut from dev, reaches main through the
 # dev -> main release pull request, and is tagged on main (jpipe-vscode ADR-VSC-0030).
+# A hotfix is the exception: prepared on a fix branch cut from main, it reaches main
+# through its own pull request, without the unreleased work dev holds.
 #
-#   prepare   X.Y.Z    on a work branch cut from dev: set all four versions, close
-#                      out the CHANGELOG, reconcile the lockfile, verify and commit
-#   preflight X.Y.Z    on main, once the release pull request has merged: re-run
-#                      release.yml's checks locally, before the tag exists
+#   prepare   X.Y.Z    on a work branch cut from dev (from main with --hotfix): set
+#                      all four versions, close out the CHANGELOG, reconcile the
+#                      lockfile, verify and commit
+#   preflight X.Y.Z    on main, once the release or hotfix pull request has merged:
+#                      re-run release.yml's checks locally, before the tag exists
 #
 # The script never creates a tag, never pushes and never publishes. Those stay
 # human actions.
@@ -21,6 +24,7 @@ set -euo pipefail
 
 DRY_RUN=0
 FAILURES=0
+HOTFIX=0
 SKIP_VERIFY=0
 
 # The remote a release is validated against. Deliberately *not* derived from
@@ -56,11 +60,15 @@ Verbs:
                              four places, close out the CHANGELOG section, reconcile
                              package-lock.json, build, test and commit.
   preflight X.Y.Z            On main, once the dev -> main release pull request
-                             has merged: check that everything release.yml
-                             validates would pass, plus the SonarCloud gate on
-                             main, before the tag exists. Read-only.
+                             (or the hotfix pull request) has merged: check that
+                             everything release.yml validates would pass, plus
+                             the SonarCloud gate on main, before the tag exists.
+                             Read-only.
 
 Options:
+  --hotfix                   Prepare a patch of the released version, on a fix
+                             branch cut from main, to come back into main by
+                             pull request without what dev holds (prepare only).
   --dry-run                  Show what would change without writing anything
                              (prepare only).
   --skip-verify              Skip the build and test run.
@@ -68,7 +76,8 @@ Options:
 
 Environment:
   RELEASE_REMOTE             Remote treated as canonical when checking that HEAD is
-                             on main or contains dev, and that the tag is free.
+                             on main or contains dev (main, for a hotfix), and
+                             that the tag is free.
                              Defaults to origin.
 
 Neither verb tags, pushes or publishes. Pushing the tag triggers release.yml,
@@ -150,23 +159,42 @@ check_clean_tree() {
 # request into dev, then the dev -> main release pull request. Committing it on main or dev
 # directly is what this refuses. Cut from the current dev, so the release carries everything
 # that has been merged and the pull request into dev applies cleanly.
+#
+# A hotfix patches what is released, so it is measured against main instead, and comes back
+# into main by its own pull request. Requiring dev there would be wrong twice over: dev's
+# unreleased work would ship in the patch.
 check_work_branch() {
-  local version=$1 branch
+  local version=$1 branch base=dev suggestion
   branch=$(current_branch)
+  suggestion="chore/release-$version"
+  if [ "$HOTFIX" -eq 1 ]; then
+    base=main
+    suggestion="fix/release-$version"
+  fi
   case $branch in
     main|dev|HEAD)
       [ "$branch" = HEAD ] && branch="a detached HEAD"
-      fail "on $branch — prepare runs on a work branch cut from dev"
-      note "git switch -c chore/release-$version $RELEASE_REMOTE/dev"
+      fail "on $branch — prepare runs on a work branch cut from $base"
+      note "git switch -c $suggestion $RELEASE_REMOTE/$base"
       return
       ;;
   esac
   pass "on work branch $branch"
-  fetch_remote "$RELEASE_REMOTE" dev || return 0
-  if git merge-base --is-ancestor "$RELEASE_REMOTE/dev" HEAD; then
-    pass "$branch contains $RELEASE_REMOTE/dev"
+  fetch_remote "$RELEASE_REMOTE" main dev || return 0
+  if git merge-base --is-ancestor "$RELEASE_REMOTE/$base" HEAD; then
+    pass "$branch contains $RELEASE_REMOTE/$base"
   else
-    fail "$branch does not contain $RELEASE_REMOTE/dev — merge or rebase onto it first"
+    fail "$branch does not contain $RELEASE_REMOTE/$base — merge or rebase onto it first"
+  fi
+  [ "$HOTFIX" -eq 1 ] || return 0
+  # A branch that holds all of dev while dev is ahead of main is a release branch, not a
+  # hotfix: the patch would carry everything the next release was meant to.
+  if git merge-base --is-ancestor "$RELEASE_REMOTE/dev" HEAD &&
+     ! git merge-base --is-ancestor "$RELEASE_REMOTE/dev" "$RELEASE_REMOTE/main"; then
+    fail "$branch contains $RELEASE_REMOTE/dev, which holds unreleased work — a hotfix is cut from main"
+    note "git switch -c $suggestion $RELEASE_REMOTE/main"
+  else
+    pass "$branch does not carry the unreleased work on $RELEASE_REMOTE/dev"
   fi
 }
 
@@ -450,7 +478,11 @@ cmd_prepare() {
   local version=$1 today entries
   today=$(date +%Y-%m-%d)
 
-  head2 "Preparing the $version release"
+  if [ "$HOTFIX" -eq 1 ]; then
+    head2 "Preparing the $version hotfix"
+  else
+    head2 "Preparing the $version release"
+  fi
   check_clean_tree
   check_work_branch "$version"
   check_in_sync
@@ -511,9 +543,15 @@ cmd_prepare() {
 
   print_manual_checklist
   printf '\n%sPrepared.%s Next:\n' "$C_GREEN" "$C_OFF"
-  printf '  git push -u %s HEAD, and open a pull request into dev\n' "$RELEASE_REMOTE"
-  printf '  once merged, open the dev -> main release pull request\n'
-  printf '  once that has merged, on main: scripts/release.sh preflight %s\n' "$version"
+  if [ "$HOTFIX" -eq 1 ]; then
+    printf '  git push -u %s HEAD, and open a pull request into main\n' "$RELEASE_REMOTE"
+    printf '  once a maintainer has merged it, on main: scripts/release.sh preflight %s\n' "$version"
+    printf '  after the tag, merge main back into dev\n'
+  else
+    printf '  git push -u %s HEAD, and open a pull request into dev\n' "$RELEASE_REMOTE"
+    printf '  once merged, open the dev -> main release pull request\n'
+    printf '  once that has merged, on main: scripts/release.sh preflight %s\n' "$version"
+  fi
 }
 
 cmd_preflight() {
@@ -551,6 +589,7 @@ main() {
   for arg in "$@"; do
     case $arg in
       --dry-run) DRY_RUN=1 ;;
+      --hotfix) HOTFIX=1 ;;
       --skip-verify) SKIP_VERIFY=1 ;;
       -h|--help) usage; exit 0 ;;
       -*) die "unknown option: $arg" ;;
@@ -576,6 +615,8 @@ main() {
       valid_version "$version" || die "not a valid version: $version"
       ;;
   esac
+
+  [ "$HOTFIX" -eq 0 ] || [ "$verb" = prepare ] || die "--hotfix only applies to prepare"
 
   case $verb in
     prepare) cmd_prepare "$version" ;;

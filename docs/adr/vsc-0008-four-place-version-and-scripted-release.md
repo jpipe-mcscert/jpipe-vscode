@@ -35,7 +35,9 @@ start on a dirty tree, on `main` or `dev`, on a branch that does not contain the
 out of sync with the branch's upstream, on an unpinned Node, if the tag already exists, or if the
 changelog has no entries under the named version. It then sets all four versions, reconciles the
 lockfile, flips the changelog's `### vX.Y.Z (Unreleased)` heading to today's date, runs
-`clean → langium:generate → build → test`, and commits `chore(release): X.Y.Z`.
+`clean → langium:generate → build → test`, and commits `chore(release): X.Y.Z`. With `--hotfix`
+it runs on a fix branch cut from `main` instead, which must contain the remote's `main` and not
+the unreleased work of `dev`.
 
 `preflight X.Y.Z` is read-only, and is run on `main` once the release has merged there. It
 re-runs what `.github/workflows/release.yml` validates — the four-way version comparison and the
@@ -72,8 +74,8 @@ a fork.
   output — coverage reports, generated artefacts — must be added to `.gitignore` in the same
   change that produces it, or `prepare` and `preflight` both refuse to run.
 - `prepare` commits on a work branch, so the release commit reaches `main` like any other change:
-  by pull request into `dev`, then through the `dev` → `main` release pull request
-  (jpipe-vscode ADR-VSC-0030).
+  by pull request into `dev`, then through the `dev` → `main` release pull request, or, for a
+  hotfix, by its own pull request into `main` (jpipe-vscode ADR-VSC-0030).
 - The changelog gates the release: `prepare` refuses if there are no entries under
   `### vX.Y.Z (Unreleased)`. Closing that heading out is the script's job, not a manual edit.
 - Node is pinned by Volta and checked by `prepare`. A contributor without Volta gets whatever

@@ -26,6 +26,11 @@ This repository follows the organisation's workflow, and states here only what i
 release pull request. Once that has merged, a maintainer runs `scripts/release.sh preflight X.Y.Z`
 on `main` and pushes the `vX.Y.Z` tag. `release.yml` still refuses a tag that is not on `main`.
 
+A hotfix, in the organisation's sense, is prepared with `scripts/release.sh prepare --hotfix X.Y.Z`
+on a fix branch cut from `main`. The branch must contain `main`, must not carry the unreleased
+work of `dev`, and comes back into `main` through its own pull request; `main` is merged back into
+`dev` after the tag.
+
 `build.yml` runs on pushes to `main` and `dev` and on every pull request. `sonar.yml` runs on
 every pull request and on pushes to `main`.
 
@@ -55,4 +60,6 @@ every pull request and on pushes to `main`.
 - Dependabot opens its pull requests against the default branch, so dependency updates now land
   on `dev` and ship with the next release, not on their own.
 - `prepare` fails on a work branch that does not contain the current `dev`, so a release cannot
-  silently leave out something already merged.
+  silently leave out something already merged. With `--hotfix` the same check is made against
+  `main`, so a patch cannot ship what `dev` holds, and the script stays the only way to move the
+  version (jpipe-vscode ADR-VSC-0008).

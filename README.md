@@ -160,6 +160,18 @@ changelog has no entries under the version you named.
 
 Add `--dry-run` to see the changes without writing anything.
 
+A **hotfix**, a fix to the released version that cannot wait for what `dev` holds, is prepared
+with `--hotfix` on a fix branch cut from `main`:
+
+```
+mosser@azrael jpipe-vscode % git switch -c fix/broken-export origin/main
+mosser@azrael jpipe-vscode % ./scripts/release.sh prepare --hotfix 1.4.1
+```
+
+The branch must then contain the current `main`, not `dev`, and is refused if it carries `dev`'s
+unreleased work. It skips step 2: its pull request goes straight into `main`, and `main` is merged
+back into `dev` after the tag.
+
 The four-location dance is the reason this is a script rather than a command: `npm version`
 handles three of them, but only with `--no-workspaces-update`, because otherwise npm tries
 to resolve the still-old `jpipe-language` dependency against the registry and fails with a
