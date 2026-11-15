@@ -13,6 +13,7 @@ import { RUNNER_COMMAND_SETTING, cannotRun, resolveRunner, runnerArguments } fro
 import type { RunnerEnvironment } from './environment.js';
 import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
 import type { ResultsView } from './results-view.js';
+import type { LibraryStep } from './step-binding.js';
 import { parseReport, verdictSentence, withReport } from './run-report.js';
 
 /** The task type a run is launched as, contributed in `package.json`'s `taskDefinitions`. */
@@ -28,13 +29,19 @@ export interface RunDeps {
     results: ResultsView;
 }
 
-/** Save the model and the libraries a run loads: the compiler and the runner read files, not editors. */
-async function saveInputs(document: vscode.TextDocument, libraries: readonly vscode.Uri[]): Promise<void> {
-    if (document.isDirty) await document.save();
+/**
+ * Save what a run reads: the compiler and the runner read files, not editors. That is the model,
+ * the libraries the run loads, and every other jPipe file with unsaved changes, since the model
+ * may load any of them and the run must be of the model as the editor shows it. The file that
+ * could not be saved, if one could not.
+ */
+async function saveInputs(document: vscode.TextDocument, libraries: readonly vscode.Uri[]): Promise<vscode.Uri | undefined> {
     const loaded = new Set(libraries.map(uri => uri.toString()));
-    await Promise.all(vscode.workspace.textDocuments
-        .filter(open => open.isDirty && loaded.has(open.uri.toString()))
-        .map(open => open.save()));
+    const inputs = new Set([document, ...vscode.workspace.textDocuments
+        .filter(open => open.languageId === 'jpipe' || loaded.has(open.uri.toString()))]);
+    const unsaved = [...inputs].filter(input => input.isDirty);
+    const saved = await Promise.all(unsaved.map(input => input.save()));
+    return unsaved.find((_, i) => !saved[i])?.uri;
 }
 
 /**
@@ -48,18 +55,20 @@ async function compile(
     deps: RunDeps,
     document: vscode.TextDocument,
     name: string
-): Promise<{ compiled: vscode.Uri; report: vscode.Uri } | undefined> {
+): Promise<{ folder: vscode.Uri; compiled: vscode.Uri; report: vscode.Uri } | undefined> {
+    const folder = await runFolder(deps.context);
     try {
-        const compiled = await runFile(deps.context, `${name}.json`);
-        const report = await runFile(deps.context, `${name}.report.json`);
+        const compiled = vscode.Uri.joinPath(folder, `${name}.json`);
+        const report = vscode.Uri.joinPath(folder, `${name}.report.json`);
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Window, title: `Compiling ${name}…` },
             () => deps.imageGenerator.generate(false, ImageFormat.JSON, document, name, compiled));
-        return { compiled, report };
+        return { folder, compiled, report };
     } catch (err: unknown) {
         const problems = 'Show Problems';
         const answer = await vscode.window.showErrorMessage(
             `${name} could not be compiled, so it cannot be run: ${messageOf(err)}`, problems);
+        await discard(folder);
         if (answer === problems) await vscode.commands.executeCommand('workbench.actions.view.problems');
         return undefined;
     }
@@ -101,14 +110,41 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
         return;
     }
 
-    await saveInputs(document, libraries.map(library => library.uri));
+    // The steps as this run loads them: the libraries checked may change while it runs.
+    const steps = deps.libraries.checkedSteps();
+    const unsaved = await saveInputs(document, libraries.map(library => library.uri));
+    if (unsaved) {
+        void vscode.window.showErrorMessage(
+            `${name} was not ${check ? 'checked' : 'run'}: ${vscode.workspace.asRelativePath(unsaved)} could not be saved, and a run reads files as they are saved.`);
+        return;
+    }
     const files = await compile(deps, document, name);
     if (!files) return;
+    try {
+        await launch(deps, { document, name, check, libraries: libraries.map(library => library.uri.fsPath), steps }, files);
+    } finally {
+        await discard(files.folder);
+    }
+}
+
+/** What a run is of, as `runModel` settled it. */
+interface Run {
+    document: vscode.TextDocument;
+    name: string;
+    check: boolean;
+    /** The libraries it loads, and their steps as they were when it started. */
+    libraries: string[];
+    steps: LibraryStep[];
+}
+
+/** Start the runner on a compiled model, wait for it, and show what its report says. */
+async function launch(deps: RunDeps, run: Run, files: { compiled: vscode.Uri; report: vscode.Uri }): Promise<void> {
+    const { document, name, check, steps } = run;
     const { compiled, report } = files;
 
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    const runnerArgs = withReport(runnerArguments(libraries.map(library => library.uri.fsPath), compiled.fsPath), report.fsPath, check);
+    const runnerArgs = withReport(runnerArguments(run.libraries, compiled.fsPath), report.fsPath, check);
     const invocation = await chooseInvocation(deps, folder, runnerArgs);
     if (!invocation) return;
     const { program, args, env } = invocation;
@@ -149,7 +185,7 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
         return;
     }
     deps.logger.info(`${task.name}: ${verdictSentence(read.report, name, check)}`);
-    await deps.results.show({ report: read.report, name, check, cwd, steps: deps.libraries.checkedSteps(), showOutput });
+    await deps.results.show({ report: read.report, name, check, cwd, steps, showOutput });
 }
 
 /**
@@ -168,29 +204,39 @@ export async function runSelectedModel(deps: RunDeps, check: boolean): Promise<v
 /**
  * Run `task`, and give its exit code once it has ended: `undefined` if its process never started.
  *
- * The end is listened for before the task starts, and matched by what the task is rather than by
- * the execution `executeTask` resolves to: a task that fails at once, a missing program say, can
- * end before that.
+ * The end is listened for before the task starts, because a task that fails at once, a missing
+ * program say, can end before `executeTask` resolves. Every end is therefore noted until then,
+ * and the one waited for is that of the very execution `executeTask` resolves to: another task
+ * of the same name, a run of a model so named in another folder, is not this one.
  */
 function executed(task: vscode.Task): Promise<number | undefined> {
-    const ours = (e: { execution: vscode.TaskExecution }): boolean =>
-        e.execution.task.source === task.source && e.execution.task.name === task.name;
     return new Promise((resolve, reject) => {
-        let exitCode: number | undefined;
-        const listeners = [
-            vscode.tasks.onDidEndTaskProcess(e => {
-                if (ours(e)) exitCode = e.exitCode;
-            }),
-            // Fires after the process's own event, and alone when there was no process.
-            vscode.tasks.onDidEndTask(e => {
-                if (ours(e)) done(() => resolve(exitCode));
-            })
-        ];
+        const exitCodes = new Map<vscode.TaskExecution, number | undefined>();
+        const ended = new Set<vscode.TaskExecution>();
+        let execution: vscode.TaskExecution | undefined;
         const done = (settle: () => void): void => {
             for (const listener of listeners) listener.dispose();
             settle();
         };
-        vscode.tasks.executeTask(task).then(undefined, (err: unknown) => done(() => reject(err)));
+        const settleIfEnded = (): void => {
+            if (!execution || !ended.has(execution)) return;
+            const exitCode = exitCodes.get(execution);
+            done(() => resolve(exitCode));
+        };
+        const listeners = [
+            vscode.tasks.onDidEndTaskProcess(e => exitCodes.set(e.execution, e.exitCode)),
+            // Fires after the process's own event, and alone when there was no process.
+            vscode.tasks.onDidEndTask(e => {
+                ended.add(e.execution);
+                settleIfEnded();
+            })
+        ];
+        vscode.tasks.executeTask(task).then(
+            started => {
+                execution = started;
+                settleIfEnded();
+            },
+            (err: unknown) => done(() => reject(err)));
     });
 }
 
@@ -263,24 +309,32 @@ async function resolveSubject(
         return undefined;
     }
     const uri = editor.document.uri.toString();
-    const kind = deps.models.knownModels
+    const kind = (await deps.models.freshModels())
         .find(m => m.name === name && vscode.Uri.parse(m.uri).toString() === uri)?.kind;
     return { document: editor.document, name, kind };
 }
 
+/** How many runs this window has started: what tells one run's folder from another's. */
+let runs = 0;
+
 /**
- * A file of a run, in the extension's storage for this workspace: the model the compiler writes,
- * or the report the runner writes. Any earlier one is removed first, so a program that fails
- * without saying so cannot leave the previous run's file to be read as this one's.
+ * A folder of its own for one run, in the extension's storage for this workspace: where the
+ * compiler writes the model and the runner its report. Each run has its own, so two runs under
+ * way at once, a run and a check of one model say, or two models of one name, never read or
+ * replace each other's files, and a report found there can only be this run's. It is removed
+ * once the run has been read.
  */
-async function runFile(context: vscode.ExtensionContext, fileName: string): Promise<vscode.Uri> {
-    const folder = vscode.Uri.joinPath(context.storageUri ?? context.globalStorageUri, 'runs');
+async function runFolder(context: vscode.ExtensionContext): Promise<vscode.Uri> {
+    const folder = vscode.Uri.joinPath(context.storageUri ?? context.globalStorageUri, 'runs', `${Date.now()}-${runs++}`);
     await vscode.workspace.fs.createDirectory(folder);
-    const file = vscode.Uri.joinPath(folder, fileName);
+    return folder;
+}
+
+/** Remove a run's folder. What is left behind if it cannot be is a few small files in the extension's storage. */
+async function discard(folder: vscode.Uri): Promise<void> {
     try {
-        await vscode.workspace.fs.delete(file);
+        await vscode.workspace.fs.delete(folder, { recursive: true });
     } catch {
-        // Nothing there yet.
+        // Nothing to do about it, and nothing depends on it.
     }
-    return file;
 }

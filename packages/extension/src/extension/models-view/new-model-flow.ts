@@ -9,7 +9,7 @@ import {
     joinUri,
     loadInsertionLine,
     loadLine,
-    loadsFile,
+    reachOf,
     modelSnippet,
     nameError,
     nameWarning,
@@ -227,7 +227,10 @@ async function appendToFile(
 ): Promise<vscode.TextEditor> {
     const editor = await vscode.window.showTextDocument(vscode.Uri.parse(uri), { preview: false });
     const document = editor.document;
-    if (template && !loadsFile(document.getText(), uri, template.uri)) {
+    // A template in this very file, or one the file already loads, needs no `load`; one it loads
+    // under a name is implemented under that name.
+    const reach = template ? reachOf(document.getText(), uri, template.uri) : undefined;
+    if (template && !reach) {
         const line = loadInsertionLine(document.getText());
         // A first `load` gets a blank line between it and the models below.
         const trailer = line === 0 && document.getText().trim().length > 0 ? '\n\n' : '\n';
@@ -238,7 +241,7 @@ async function appendToFile(
     const end = document.lineAt(document.lineCount - 1).range.end;
     const separator = appendSeparator(document.getText());
     if (template) {
-        await editor.edit(builder => builder.insert(end, separator + modelSnippet(kind, name, template)));
+        await editor.edit(builder => builder.insert(end, separator + modelSnippet(kind, name, template, reach?.alias)));
     } else {
         await editor.insertSnippet(new vscode.SnippetString(separator + modelSnippet(kind, name)), end);
     }

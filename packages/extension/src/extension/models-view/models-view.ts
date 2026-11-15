@@ -148,6 +148,9 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
             await this.client.start();
             this.models = await fetchModels((method, params) => this.client.sendRequest(method, params));
             this.ambiguous = ambiguousNames(this.models);
+            // The model on show may have moved in its file: keep it as the server now places it.
+            const key = this.current?.key;
+            this.current = this.models.find(m => m.key === key) ?? this.current;
             this.tree = buildTree(this.models, this.status());
             this.view.message = undefined;
             // With no model there is nothing to outline or run: the other two views step aside
@@ -271,6 +274,17 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     private selectionOf(model: Model): vscode.Range {
         const { start, end } = cursorAt(model.selection);
         return new vscode.Range(start.line, start.character, end.line, end.character);
+    }
+
+    /**
+     * The models as the server has them now, asked again if anything changed since the last
+     * answer, whether or not the view is showing: a command reaches a model through here before
+     * the jPipe activity has ever been opened.
+     */
+    async freshModels(): Promise<readonly Model[]> {
+        if (this.stale) this.startLoad();
+        await this.loading;
+        return this.models;
     }
 
     /** The models as of the last refresh. */

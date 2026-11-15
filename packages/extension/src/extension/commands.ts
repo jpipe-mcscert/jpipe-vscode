@@ -129,7 +129,8 @@ export function registerCommands(deps: CommandDeps): void {
         if (node) return node.model;
         if (!(arg instanceof vscode.Uri)) return 'editor';
         if (vscode.window.activeTextEditor?.document.uri.toString() === arg.toString()) return 'editor';
-        const inFile = modelsView.knownModels.filter(m => vscode.Uri.parse(m.uri).toString() === arg.toString());
+        // Asked afresh: the Models view only keeps its list current while it is showing.
+        const inFile = (await modelsView.freshModels()).filter(m => vscode.Uri.parse(m.uri).toString() === arg.toString());
         if (inFile.length === 0) {
             void vscode.window.showWarningMessage(`${vscode.workspace.asRelativePath(arg)} declares no model.`);
             return undefined;

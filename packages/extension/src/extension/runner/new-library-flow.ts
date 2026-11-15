@@ -38,8 +38,13 @@ export async function scaffoldLibrary(
     compileTo: (document: vscode.TextDocument, file: vscode.Uri) => Promise<unknown>
 ): Promise<void> {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(model.uri));
-    // The compiler reads the file, not the editor.
-    if (document.isDirty) await document.save();
+    // The compiler reads the file, not the editor: stubs from what was saved last would miss
+    // the elements added since.
+    if (document.isDirty && !await document.save()) {
+        void vscode.window.showErrorMessage(
+            `No library was generated: ${vscode.workspace.asRelativePath(document.uri)} could not be saved, and the compiler reads the file as it is saved.`);
+        return;
+    }
     await createLibrary(libraries, model, `Scaffold Step Library for ${model.name}`, async uri => {
         try {
             await vscode.window.withProgress(

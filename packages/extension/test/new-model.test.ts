@@ -10,7 +10,8 @@ import {
     fileNameFor,
     kebabCase,
     loadInsertionLine,
-    loadsFile,
+    reachOf,
+    withoutComments,
     modelSnippet,
     nameError,
     nameWarning,
@@ -128,15 +129,46 @@ describe('loads', () => {
         expect(relativeLoadPath(from, to)).toBe(expected);
     });
 
+    test('a template on another Windows drive is named in full: no relative path leads there', () => {
+        expect(relativeLoadPath('file:///c%3A/w/app/a.jd', 'file:///d%3A/lib/t.jd')).toBe('d:/lib/t.jd');
+        expect(relativeLoadPath('file:///C%3A/w/app/a.jd', 'file:///c%3A/w/lib/t.jd')).toBe('../lib/t.jd');
+    });
+
     test('a file already loading the template literally is recognised, however the path is spelled', () => {
         const text = 'load "../lib/signoff.jd"\nload "other.jd"\n';
-        expect(loadsFile(text, 'file:///w/app/a.jd', 'file:///w/lib/signoff.jd')).toBe(true);
-        expect(loadsFile('load "./../lib/./signoff.jd"', 'file:///w/app/a.jd', 'file:///w/lib/signoff.jd')).toBe(true);
-        expect(loadsFile(text, 'file:///w/app/a.jd', 'file:///w/lib/strict.jd')).toBe(false);
+        expect(reachOf(text, 'file:///w/app/a.jd', 'file:///w/lib/signoff.jd')).toEqual({});
+        expect(reachOf('load "./../lib/./signoff.jd"', 'file:///w/app/a.jd', 'file:///w/lib/signoff.jd')).toEqual({});
+        expect(reachOf("load '../lib/signoff.jd'", 'file:///w/app/a.jd', 'file:///w/lib/signoff.jd')).toEqual({});
+        expect(reachOf(text, 'file:///w/app/a.jd', 'file:///w/lib/strict.jd')).toBeUndefined();
+        expect(reachOf('load "d:/lib/t.jd"', 'file:///c%3A/w/a.jd', 'file:///d%3A/lib/t.jd')).toEqual({});
     });
 
     test('a glob is not taken for a literal load', () => {
-        expect(loadsFile('load "../lib/*.jd"', 'file:///w/app/a.jd', 'file:///w/lib/signoff.jd')).toBe(false);
+        expect(reachOf('load "../lib/*.jd"', 'file:///w/app/a.jd', 'file:///w/lib/signoff.jd')).toBeUndefined();
+    });
+
+    test('a template in the file itself is reached without a load, which would be circular', () => {
+        expect(reachOf('template Signoff {\n}\n', 'file:///w/a.jd', 'file:///w/a.jd')).toEqual({});
+    });
+
+    test('a template loaded under a name is implemented under that name', () => {
+        expect(reachOf('load "lib.jd" as lib\n', 'file:///w/a.jd', 'file:///w/lib.jd')).toEqual({ alias: 'lib' });
+        expect(modelSnippet('justification', 'J', { name: 'Signoff', uri: 'file:///w/lib.jd' }, 'lib'))
+            .toBe('justification J implements lib:Signoff {\n}\n');
+    });
+
+    test('a load in a comment is not a load, and a new one is not put inside that comment', () => {
+        const text = '/*\nload "lib.jd"\n*/\n// load "lib.jd"\nload "other.jd" // load "lib.jd"\n\njustification J {\n}';
+        expect(reachOf(text, 'file:///w/a.jd', 'file:///w/lib.jd')).toBeUndefined();
+        expect(loadInsertionLine(text)).toBe(5);
+        expect(loadInsertionLine('/*\nload "lib.jd"\n*/\njustification J {\n}')).toBe(0);
+    });
+
+    test('blanking comments keeps every line and column, and leaves strings alone', () => {
+        const text = 'a /* b\nc */ d // e\n"// not a comment" \'/* nor this */\' f';
+        const blanked = withoutComments(text);
+        expect(blanked).toBe('a     \n     d     \n"// not a comment" \'/* nor this */\' f');
+        expect(blanked.length).toBe(text.length);
     });
 
     test('a new load goes after the last one, or at the top', () => {

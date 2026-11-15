@@ -61,7 +61,7 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
 
     constructor(
         private readonly client: LanguageClient,
-        models: ModelsView,
+        private readonly models: ModelsView,
         private readonly libraries: LibrariesView,
         private readonly logger: JpipeLogger
     ) {
@@ -132,7 +132,12 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
     }
 
     private async load(): Promise<void> {
-        const model = this.model;
+        const selected = this.model;
+        // The model is found in its file by where it was: after an edit above it, that is where
+        // the server places it now, not where it was when it was selected.
+        const model = selected && ((await this.models.freshModels()).find(m => m.key === selected.key) ?? selected);
+        if (selected !== this.model) return;
+        this.model = model;
         this.view.description = model?.name;
         if (!model || model.operator) {
             this.elements = [];

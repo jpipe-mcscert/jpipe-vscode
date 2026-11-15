@@ -23,7 +23,9 @@ that fails then reads as several failures.
 ## Decision
 
 - **The runner writes its report to a file** (`--report PATH`), in the extension's storage for the
-  workspace, beside the compiled model. The extension never reads the runner's standard output.
+  workspace, beside the compiled model, in a folder that run alone uses and that is removed once
+  the report is read: two runs under way at once never read each other's files. The extension
+  never reads the runner's standard output.
 - **The run stays a VS Code task**, whose terminal is no longer brought forward. It is where the
   steps print, and Show the Run's Output reaches it. It is brought forward only when a run ends
   without a report, which the runner documents as a usage error or a file it could not read.
