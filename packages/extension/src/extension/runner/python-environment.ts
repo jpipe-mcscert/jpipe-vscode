@@ -256,7 +256,7 @@ export function environmentStatus(
     // A local runner, for working on the runner itself: the checkout is run as it stands, so
     // neither its release nor the machine's has a say.
     if (localSource !== undefined) {
-        const wanted: EnvironmentStatus = { kind: 'runner-source', python, ...managed, wanted: localSource };
+        const wanted = { kind: 'runner-source' as const, python, ...managed, wanted: localSource };
         return localRunnerStatus(probe, localSource, declaredLocal, wanted) ?? selected;
     }
     // One installed by hand in a managed project is the user's arrangement with their tool.
@@ -277,7 +277,7 @@ function localRunnerStatus(
     probe: Probe,
     localSource: string,
     declaredLocal: string | undefined,
-    wanted: EnvironmentStatus
+    wanted: Extract<EnvironmentStatus, { kind: 'runner-source' }>
 ): EnvironmentStatus | undefined {
     if (probe.localSource === undefined || !sameDirectory(probe.localSource, localSource)) return wanted;
     const stale = staleInstall(probe.runnerVersion, declaredLocal);
