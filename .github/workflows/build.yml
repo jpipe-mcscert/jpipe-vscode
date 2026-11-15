@@ -2,10 +2,14 @@
 
 name: Build VS Code extension
 
+# `main` holds releases and `dev` is where work integrates (jpipe-vscode ADR-VSC-0030), so both
+# are built on every push. Pull requests are not filtered by branch: one into `dev` and the
+# `dev` → `main` release pull request are both built.
 on:
   push:
     branches:
       - main
+      - dev
   pull_request:
   workflow_dispatch:  # Can be triggered manually
 
