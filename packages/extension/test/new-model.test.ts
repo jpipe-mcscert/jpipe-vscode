@@ -168,7 +168,7 @@ describe('loads', () => {
         const text = 'a /* b\nc */ d // e\n"// not a comment" \'/* nor this */\' f';
         const blanked = withoutComments(text);
         expect(blanked).toBe('a     \n     d     \n"// not a comment" \'/* nor this */\' f');
-        expect(blanked.length).toBe(text.length);
+        expect(blanked).toHaveLength(text.length);
     });
 
     test('a new load goes after the last one, or at the top', () => {
