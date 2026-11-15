@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { JpipeLogger } from '../logger.js';
@@ -9,9 +8,12 @@ import { ImageFormat, type ImageGenerator } from '../compiler/image-generator.js
 import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import { LIBRARIES_VIEW_ID, type LibrariesView } from './libraries-view.js';
+import { MODELS_VIEW_ID } from '../models-view/models-view.js';
 import { RUNNER_COMMAND_SETTING, cannotRun, resolveRunner, runnerArguments } from './runner-invocation.js';
 import type { RunnerEnvironment } from './environment.js';
-import { fixLabel, moduleInvocation, statusMessage } from './python-environment.js';
+import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
+import type { ResultsView } from './results-view.js';
+import { parseReport, verdictSentence, withReport } from './run-report.js';
 
 /** The task type a run is launched as, contributed in `package.json`'s `taskDefinitions`. */
 export const RUN_TASK_TYPE = 'jpipe';
@@ -23,20 +25,26 @@ export interface RunDeps {
     libraries: LibrariesView;
     models: ModelsView;
     environment: RunnerEnvironment;
+    results: ResultsView;
 }
 
 /**
  * Run a justification with jpipe-runner: the ▶ button.
  *
  * The model is the one given (a Models row), or else the one the cursor is in. It is compiled to
- * JSON by the jPipe compiler — the same call as Download as JSON — and the runner is launched as
- * a VS Code task, so its report appears in the terminal panel with its colours, and its exit code
- * says pass (0) or fail (1) the way it would in CI.
+ * JSON by the jPipe compiler — the same call as Export as JSON — and the runner is launched as
+ * a VS Code task, the way it would be in CI, and asked to write its JSON report to a file
+ * (`--report`). When it ends, the Results view shows that report (jpipe-vscode ADR-VSC-0029). The
+ * task's terminal is where the steps print; it stays in the background unless the run ended
+ * without a report, which is when what the runner printed is all there is to read.
  *
  * The run's working directory is the workspace folder, because the paths a step observes are
  * relative to where the runner runs, and a project's artifacts are laid out from its root.
+ *
+ * A `check` is the same with `--dry-run`: the runner validates the checked libraries against the
+ * model and calls no step.
  */
-export async function runModel(deps: RunDeps, target?: Model): Promise<void> {
+export async function runModel(deps: RunDeps, target?: Model, check = false): Promise<void> {
     const subject = await resolveSubject(deps, target);
     if (!subject) return;
     const { document, name } = subject;
@@ -58,12 +66,21 @@ export async function runModel(deps: RunDeps, target?: Model): Promise<void> {
 
     // The compiler and the runner read files, not editors.
     if (document.isDirty) await document.save();
+    const loaded = new Set(libraries.map(library => library.uri.toString()));
+    await Promise.all(vscode.workspace.textDocuments
+        .filter(open => open.isDirty && loaded.has(open.uri.toString()))
+        .map(open => open.save()));
 
-    let json: string;
+    // The compiler writes the file itself: what it prints is for a reader, banner included, and
+    // is not the JSON.
+    let compiled: vscode.Uri;
+    let report: vscode.Uri;
     try {
-        json = await vscode.window.withProgress(
+        compiled = await runFile(deps.context, `${name}.json`);
+        report = await runFile(deps.context, `${name}.report.json`);
+        await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Window, title: `Compiling ${name}…` },
-            () => deps.imageGenerator.generate(false, ImageFormat.JSON, document, name));
+            () => deps.imageGenerator.generate(false, ImageFormat.JSON, document, name, compiled));
     } catch (err: unknown) {
         const problems = 'Show Problems';
         const answer = await vscode.window.showErrorMessage(
@@ -72,72 +89,139 @@ export async function runModel(deps: RunDeps, target?: Model): Promise<void> {
         return;
     }
 
-    const compiled = await writeCompiled(deps.context, name, json);
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    const runnerArgs = runnerArguments(libraries.map(library => library.uri.fsPath), compiled);
+    const runnerArgs = withReport(runnerArguments(libraries.map(library => library.uri.fsPath), compiled.fsPath), report.fsPath, check);
     const invocation = await chooseInvocation(deps, folder, runnerArgs);
     if (!invocation) return;
-    const { program, args } = invocation;
-    deps.logger.info(`Running ${name}: ${program} ${args.join(' ')} (in ${cwd})`);
+    const { program, args, env } = invocation;
+    const doing = check ? 'Checking' : 'Running';
+    deps.logger.info(`${doing} ${name}: ${program} ${args.join(' ')} (in ${cwd})`);
 
     const task = new vscode.Task(
         { type: RUN_TASK_TYPE, model: name },
         folder ?? vscode.TaskScope.Workspace,
-        `Run ${name}`,
+        `${check ? 'Check' : 'Run'} ${name}`,
         'jPipe',
-        new vscode.ProcessExecution(program, args, { cwd })
+        new vscode.ProcessExecution(program, args, { cwd, ...(env ? { env } : {}) })
     );
     task.presentationOptions = {
-        reveal: vscode.TaskRevealKind.Always,
+        reveal: vscode.TaskRevealKind.Never,
         panel: vscode.TaskPanelKind.Dedicated,
         clear: true,
         showReuseMessage: false
     };
+    let exitCode: number | undefined;
     try {
-        await vscode.tasks.executeTask(task);
+        exitCode = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Window, title: `${doing} ${name}…` },
+            () => executed(task));
     } catch (err: unknown) {
         void vscode.window.showErrorMessage(`Could not start jpipe-runner: ${messageOf(err)}`);
+        return;
+    }
+
+    const showOutput = (): void => terminalOf(task)?.show();
+    const read = await readReport(report);
+    if ('problem' in read) {
+        // No report: a usage error, a file that could not be read, or a runner that did not start.
+        deps.logger.warn(`${task.name} ended with exit code ${exitCode ?? '(none)'}: ${read.problem}`);
+        showOutput();
+        void vscode.window.showErrorMessage(
+            `${name} was not ${check ? 'checked' : 'run'}: ${read.problem}. What jpipe-runner printed is in the terminal.`);
+        return;
+    }
+    deps.logger.info(`${task.name}: ${verdictSentence(read.report, name, check)}`);
+    await deps.results.show({ report: read.report, name, check, cwd, steps: deps.libraries.checkedSteps(), showOutput });
+}
+
+/**
+ * Run or check the model selected in the Models view: the shortcut on a checked library's ▶ menu.
+ * A library is run through a justification, so with none selected the answer is to select one.
+ */
+export async function runSelectedModel(deps: RunDeps, check: boolean): Promise<void> {
+    const model = deps.models.currentModel;
+    if (model) return runModel(deps, model, check);
+    const show = 'Show Models';
+    const answer = await vscode.window.showInformationMessage(
+        `Select a justification in the jPipe Models view first: it is what the libraries are ${check ? 'checked against' : 'run for'}.`, show);
+    if (answer === show) await vscode.commands.executeCommand(`${MODELS_VIEW_ID}.focus`);
+}
+
+/**
+ * Run `task`, and give its exit code once it has ended: `undefined` if its process never started.
+ *
+ * The end is listened for before the task starts, and matched by what the task is rather than by
+ * the execution `executeTask` resolves to: a task that fails at once, a missing program say, can
+ * end before that.
+ */
+function executed(task: vscode.Task): Promise<number | undefined> {
+    const ours = (e: { execution: vscode.TaskExecution }): boolean =>
+        e.execution.task.source === task.source && e.execution.task.name === task.name;
+    return new Promise((resolve, reject) => {
+        let exitCode: number | undefined;
+        const listeners = [
+            vscode.tasks.onDidEndTaskProcess(e => {
+                if (ours(e)) exitCode = e.exitCode;
+            }),
+            // Fires after the process's own event, and alone when there was no process.
+            vscode.tasks.onDidEndTask(e => {
+                if (ours(e)) done(() => resolve(exitCode));
+            })
+        ];
+        const done = (settle: () => void): void => {
+            for (const listener of listeners) listener.dispose();
+            settle();
+        };
+        vscode.tasks.executeTask(task).then(undefined, (err: unknown) => done(() => reject(err)));
+    });
+}
+
+/**
+ * The terminal a task ran in. VS Code names it after the task, behind a prefix of its own, so the
+ * name is matched whole: `Run release` is not the terminal of `Run release2`.
+ */
+function terminalOf(task: vscode.Task): vscode.Terminal | undefined {
+    return vscode.window.terminals.find(({ name }) =>
+        name.endsWith(task.name) && !/\w/.test(name.charAt(name.length - task.name.length - 1)));
+}
+
+async function readReport(file: vscode.Uri): Promise<ReturnType<typeof parseReport>> {
+    try {
+        return parseReport(new TextDecoder('utf-8').decode(await vscode.workspace.fs.readFile(file)));
+    } catch {
+        return { problem: 'jpipe-runner wrote no report' };
     }
 }
 
 /**
- * How to start the runner: the configured program if there is one; otherwise the Python VS Code
- * uses, as `python -m jpipe_runner`, so the run and the editor agree on the environment
- * (jpipe-vscode ADR-VSC-0026). When that Python cannot run step libraries, the fix is offered,
- * and so is running anyway with whatever `jpipe-runner` the old search finds.
+ * How to start the runner (jpipe-vscode ADR-VSC-0026). In `command` mode, the program the user
+ * named. Otherwise the workspace's own Python environment, as `python -m jpipe_runner` with that
+ * environment activated — the one the editor is pointed at too; when the workspace has none that
+ * can run step libraries, the fix is offered, and the run goes ahead only once it has one.
  */
 async function chooseInvocation(
     deps: RunDeps,
     folder: vscode.WorkspaceFolder | undefined,
     runnerArgs: string[]
-): Promise<{ program: string; args: string[] } | undefined> {
-    const configured = vscode.workspace.getConfiguration('jpipe').get<string>(RUNNER_COMMAND_SETTING, '') ?? '';
-    const search = () => ({
-        program: resolveRunner({
-            configured,
-            folder: folder?.uri.fsPath,
-            platform: process.platform,
-            home: os.homedir(),
-            exists: file => fs.existsSync(file)
-        }),
-        args: runnerArgs
-    });
-    if (configured.trim()) return search();
-
+): Promise<(Command & { env?: Record<string, string> }) | undefined> {
     let status = await deps.environment.settled();
-    if (status.kind !== 'ready') {
-        const fix = fixLabel(status);
-        const anyway = 'Run Anyway';
-        const answer = await vscode.window.showWarningMessage(
-            statusMessage(status) ?? 'The selected Python cannot run step libraries.',
-            ...(fix ? [fix] : []), anyway);
-        if (answer === anyway) return search();
-        if (answer !== fix || !await deps.environment.fix()) return undefined;
-        status = await deps.environment.settled();
-        if (status.kind !== 'ready') return undefined;
+    if (status.kind === 'external') {
+        const configured = vscode.workspace.getConfiguration('jpipe', folder?.uri).get<string>(RUNNER_COMMAND_SETTING, '') ?? '';
+        return { program: resolveRunner(configured, os.homedir()), args: runnerArgs };
     }
-    return moduleInvocation(status.python, runnerArgs);
+    let python = runnablePython(status);
+    if (!python) {
+        const fix = fixLabel(status);
+        const answer = await vscode.window.showWarningMessage(
+            statusMessage(status) ?? 'This workspace\'s Python environment cannot run step libraries.',
+            ...(fix ? [fix] : []));
+        if (!fix || answer !== fix || !await deps.environment.fix()) return undefined;
+        status = await deps.environment.settled();
+        python = runnablePython(status);
+        if (!python) return undefined;
+    }
+    return { ...moduleInvocation(python, runnerArgs), env: deps.environment.runEnv(python) as Record<string, string> };
 }
 
 /** The document and model to run, or `undefined` after saying why there is none. */
@@ -167,12 +251,19 @@ async function resolveSubject(
     return { document: editor.document, name, kind };
 }
 
-/** Where the compiled model is written: the extension's storage for this workspace. */
-async function writeCompiled(context: vscode.ExtensionContext, name: string, json: string): Promise<string> {
-    const base = context.storageUri ?? context.globalStorageUri;
-    const folder = vscode.Uri.joinPath(base, 'runs');
+/**
+ * A file of a run, in the extension's storage for this workspace: the model the compiler writes,
+ * or the report the runner writes. Any earlier one is removed first, so a program that fails
+ * without saying so cannot leave the previous run's file to be read as this one's.
+ */
+async function runFile(context: vscode.ExtensionContext, fileName: string): Promise<vscode.Uri> {
+    const folder = vscode.Uri.joinPath(context.storageUri ?? context.globalStorageUri, 'runs');
     await vscode.workspace.fs.createDirectory(folder);
-    const file = vscode.Uri.joinPath(folder, `${name}.json`);
-    await vscode.workspace.fs.writeFile(file, new TextEncoder().encode(json));
-    return file.fsPath;
+    const file = vscode.Uri.joinPath(folder, fileName);
+    try {
+        await vscode.workspace.fs.delete(file);
+    } catch {
+        // Nothing there yet.
+    }
+    return file;
 }

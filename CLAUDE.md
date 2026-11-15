@@ -38,6 +38,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
         jpipe-formatter.ts      ← Format Document / Selection (ADR-VSC-0024)
         jpipe-type-hierarchy.ts ← `implements` as LSP type hierarchy; model kinds in workspace symbols
         jpipe-call-hierarchy.ts ← compositions as LSP call hierarchy (operands = outgoing calls)
+        jpipe-document-builder.ts ← announces build phases even for an empty workspace (else requests hang)
         jpipe-layout.ts         ← the house layout, pure over a document (what the formatter runs)
         jpipe-utils.ts          ← getAllElements / getLocalElements (AST helpers)
         jpipe-glob.ts           ← Java-NIO glob matcher for `load` patterns (ADR-VSC-0007)
@@ -53,7 +54,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
       src/
         extension/              ← extension host. The only place `vscode` may be imported.
           main.ts               ← activate/deactivate: constructs and wires, nothing else
-          commands.ts           ← the 32 contributed commands, as a table (ADR-VSC-0017)
+          commands.ts           ← the 36 contributed commands, as a table (ADR-VSC-0017)
           exclusion-commands.ts ← the exclusion flows and their failure messages
           exclusions.ts         ← excluded-path manager, decorations, code lenses
           process-launcher.ts   ← Windows command resolution, cmd.exe escaping, running a program (tested)
@@ -69,9 +70,12 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             step-binding.ts     ← the runner's id → element binding rules, for the Outline (tested)
             runner-invocation.ts ← which runner program, which arguments (tested)
             libraries-view.ts   ← the Libraries view; checkboxes = `jpipe.runner.libraries`
-            run-model.ts        ← ▶: compile to JSON, launch the runner as a VS Code task
-            python-environment.ts ← can the selected Python run steps? which fix? (tested; ADR-VSC-0026)
-            environment.ts      ← reads the Python extension's selected interpreter, probes it, runs fixes
+            run-model.ts        ← ▶: compile to JSON, launch the runner as a VS Code task, hand its report to Results
+            run-report.ts       ← the runner's JSON report → the rows of the Results view (tested; ADR-VSC-0029)
+            results-view.ts     ← the Results view, in the bottom panel
+            python-environment.ts ← which environment is the workspace's own? can it run steps? which fix? (tested; ADR-VSC-0026)
+            environment.ts      ← finds that environment, points the Python extension at it, asks consent, runs fixes
+            step-terminal.ts    ← runs a fix step itself, shown in a task's terminal: a task cannot unset an inherited variable
             new-library.ts      ← New Library… decisions: module name, folder, skeleton (tested)
             new-library-flow.ts ← its input box, file creation and checking
           preview/              ← the diagram panel (ADR-VSC-0016)
@@ -84,7 +88,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             new-model.ts        ← New Justification/Template decisions, vscode-free (tested)
             new-model-flow.ts   ← the name input box and the edits it makes
             elements-view.ts    ← the activity's Outline: elements of the model selected in Models
-            elements-tree.ts    ← which symbols are that model's own elements, vscode-free (tested)
+            elements-tree.ts    ← that model's own and inherited elements, vscode-free (tested)
         webview/                ← browser code. DOM only — no `vscode`, no node: (ADR-VSC-0003)
           preview.ts            ← preview controller (pan/zoom, message dispatch)
           diagnostic-view.ts    ← the diagnostics tables
@@ -224,7 +228,7 @@ packaging, so a red suite blocks the VSIX.
 
 ### `packages/language/test/`
 
-27 files, integration-style: they import `'jpipe-language'`, which resolves through the package's
+28 files, integration-style: they import `'jpipe-language'`, which resolves through the package's
 `exports` map to the **built** `out/index.js`, and drive the LSP through Langium's test helpers.
 `parsing.test.ts`, `linking.test.ts` and `validating.test.ts` are the core three; the rest cover
 completion, code actions, renaming, globs, layout, hovering, symbols and semantic tokens.
@@ -255,14 +259,14 @@ ADR-VSC-0004.
 
 ## VS Code Commands
 
-`packages/extension/package.json` is the source of truth — it declares **32** commands, with
+`packages/extension/package.json` is the source of truth — it declares **36** commands, with
 their menu placement and `when`-clauses. The ones worth knowing:
 
 | Command ID | Title |
 |---|---|
 | `jpipe.vis.preview` | Open Diagram Preview |
 | `jpipe.export` | Export Diagram (default format) |
-| `jpipe.downloadSVG` / `PNG` / `JPEG` / `JSON` / `DOT` / `Python` / `JPIPE` | Download as … |
+| `jpipe.downloadSVG` / `PNG` / `JPEG` / `JSON` / `DOT` / `Python` / `JPIPE` | Export as … (the `jpipe.exportAs` submenu) |
 | `jpipe.checkInstallation` | Check jPipe Installation |
 | `jpipe.installFromRelease` | Install Compiler from GitHub Release |
 | `jpipe.selectJarFile` | Select Compiler JAR File… (also linked from the `jpipe.jarFile` setting) |
@@ -274,6 +278,11 @@ their menu placement and `when`-clauses. The ones worth knowing:
 | `jpipe.models.refresh` / `newJustification` / `newTemplate` / `newImplementation` / `scaffoldLibrary` | Models view toolbar, inline and context actions |
 | `jpipe.run` | ▶ Run Model with jpipe-runner (editor title, Models inline) |
 | `jpipe.libraries.new` / `checkAll` / `uncheckAll` / `refresh` | Libraries view toolbar |
+| `jpipe.runLibrary` / `checkLibrary` | Run as jPipe / Check as jPipe Library: the ▶ menu (`editor/title/run`) of a Python file that is a checked library; act on the model selected in Models, with every checked library (ADR-VSC-0029) |
+| `jpipe.results.showOutput` | Results view toolbar: the terminal the last run printed in (ADR-VSC-0029) |
+| `jpipe.runner.fixEnvironment` / `checkEnvironment` | Set up / check the workspace's Python environment for runs (linked from the `jpipe.runner.environment` setting; ADR-VSC-0026) |
+
+Settings groups are titled `jPipe › <Tool> › <Group>` (`Compiler` or `Runner`, each starting with `General`), because VS Code has one level of groups; a new group follows it (ADR-VSC-0028, held by `test/settings.test.ts`). Setting identifiers never change with a group's title.
 
 The **Models view** (`jpipe.models`, in the `jpipe` activity-bar container) is built from
 *standard* LSP requests only — `workspace/symbol` (templates are `Interface`, justifications
@@ -281,12 +290,17 @@ The **Models view** (`jpipe.models`, in the `jpipe` activity-bar container) is b
 (a composition's item has its operator as `detail`) then `callHierarchy/outgoingCalls` per
 composition (its operands) — so it needs no custom protocol. Its Errors
 group (an overlay) comes from the client's own diagnostics, and its Excluded group (a partition)
-from `ExclusionManager`; changes to either regroup without a server round trip. It is shown only
-when the `jpipe.activated` context key is set, i.e. after activation.
+from `ExclusionManager`; changes to either regroup without a server round trip. The activity
+is always shown, even in a workspace with no `.jd` file, because it is where a first model is
+created; opening it activates the extension. With no model, the Models view shows its welcome
+text (`viewsWelcome`) and the Outline and Libraries views are hidden (`jpipe.noModels`). The `jpipe.activated` context key only hides the
+palette commands that need a model or a library to act on.
 
-Right-clicking a model shows **one** `jpipe.submenu` in the editor, on a `.jd` file in the Explorer,
-and on a Models row (ADR-VSC-0027, held by `test/menus.test.ts`). Its commands therefore take a
-tree node, an Explorer URI or nothing, and resolve it to a model (`targetOf` in `commands.ts`).
+Right-clicking a model offers the same three entries, directly in the menu, in the editor, on a
+`.jd` file in the Explorer, and on a Models row: Open Diagram Preview, the `jpipe.exportAs` submenu
+(the only place export formats are listed), and Exclude/Include (ADR-VSC-0027, held by
+`test/menus.test.ts`). Their commands therefore take a tree node, an Explorer URI or nothing, and
+resolve it to a model (`targetOf` in `commands.ts`).
 
 The preview panel auto-refreshes on file save, highlights the node under the cursor (via LSP `textDocument/documentSymbol`), and has zoom controls (+/−/0 keys or toolbar buttons).
 

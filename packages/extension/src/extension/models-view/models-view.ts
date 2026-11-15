@@ -150,6 +150,9 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
             this.ambiguous = ambiguousNames(this.models);
             this.tree = buildTree(this.models, this.status());
             this.view.message = undefined;
+            // With no model there is nothing to outline or run: the other two views step aside
+            // and leave the activity to the welcome text, which says how to write a first one.
+            void vscode.commands.executeCommand('setContext', 'jpipe.noModels', this.models.length === 0);
         } catch (err: unknown) {
             this.logger.error(`Could not list the workspace's models: ${messageOf(err)}`);
             this.view.message = 'Could not list the models — see the jPipe output channel.';
@@ -239,7 +242,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
             (model.operator ? ` — composed by \`${model.operator}\`` : '') +
             `\n\n${path}`
         );
-        // `.excluded` lets the shared jPipe submenu offer Include rather than Exclude on this row,
+        // `.excluded` lets the row's menu offer Include rather than Exclude on this row,
         // which the editor decides from the file's path — a key a tree row does not set.
         item.contextValue = `jpipe.model.${model.kind}${this.exclusions.isExcluded(uri) ? '.excluded' : ''}`;
         item.command = {

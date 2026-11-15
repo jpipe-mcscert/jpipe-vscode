@@ -53,6 +53,8 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
     private readonly disposables: vscode.Disposable[] = [];
     private readonly libraries = new Map<string, Library>();
     private scanning: Promise<void> | undefined;
+    /** Whether the environment fix has been proposed in this window; once is enough. */
+    private offered = false;
     private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
 
     constructor(private readonly logger: JpipeLogger, private readonly environment: RunnerEnvironment) {
@@ -76,13 +78,13 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
                 if (e.affectsConfiguration(`jpipe.${LIBRARIES_SETTING}`)) this.changed();
             }),
             vscode.workspace.onDidChangeWorkspaceFolders(() => void this.rescanAll()),
-            environment.onDidChange(() => this.treeEmitter.fire(undefined))
+            environment.onDidChange(() => {
+                // A run with a checkout of the runner is not a run with a release: say so where runs start.
+                this.view.description = environment.localRunner ? 'local jpipe-runner' : undefined;
+                this.treeEmitter.fire(undefined);
+            })
         );
-        this.scanning = this.scanAll().then(() => {
-            // A workspace with step libraries is one that will want to run them: if its Python
-            // cannot, say so now, once, rather than at the first ▶.
-            if (this.libraries.size > 0) void environment.offer(false);
-        });
+        this.scanning = this.scanAll();
     }
 
     /** Look at every Python file again. */
@@ -123,8 +125,19 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
     }
 
     private changed(): void {
+        // What the ▶ menu of a Python editor asks, to offer a run only on a checked library.
+        void vscode.commands.executeCommand('setContext', 'jpipe.checkedLibraryPaths',
+            this.checkedLibraries().map(library => library.uri.path));
         this.treeEmitter.fire(undefined);
         this.changeEmitter.fire();
+        // A workspace with step libraries is one that will want to run them: if its Python cannot,
+        // say so once, rather than at the first ▶ — when the workspace opens with libraries in
+        // it, or when its first one is created, which is the moment the editor starts flagging
+        // the `jpipe_runner` import.
+        if (this.libraries.size > 0 && !this.offered) {
+            this.offered = true;
+            void this.environment.offer(false);
+        }
     }
 
     /** The workspace paths of the checked libraries, as the setting holds them. */

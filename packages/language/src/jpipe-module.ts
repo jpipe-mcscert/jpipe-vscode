@@ -21,6 +21,7 @@ import { JpipeDocumentValidator } from './jpipe-document-validator.js';
 import { JpipeExclusionService } from './jpipe-exclusions.js';
 import { JpipeUnificationService } from './jpipe-unification.js';
 import { JpipeParserErrorMessageProvider } from './jpipe-parser-errors.js';
+import { JpipeDocumentBuilder } from './jpipe-document-builder.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -47,13 +48,18 @@ export type JpipeServices = LangiumServices & JpipeAddedServices
  * Shared-service overrides.
  *
  * The language server itself, so that the code-action capability arrives with its kinds
- * attached rather than as a bare boolean; and the node-kind provider, so that a template and a
- * justification are told apart in workspace symbols.
+ * attached rather than as a bare boolean; the node-kind provider, so that a template and a
+ * justification are told apart in workspace symbols; and the document builder, so that a
+ * workspace with no model in it still answers.
  */
 const JpipeSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServices> = {
     lsp: {
         LanguageServer: (services) => new JpipeLanguageServer(services),
         NodeKindProvider: () => new JpipeNodeKindProvider()
+    },
+    workspace: {
+        // Answers requests in a workspace with no model in it; see the class.
+        DocumentBuilder: (services) => new JpipeDocumentBuilder(services)
     }
 };
 

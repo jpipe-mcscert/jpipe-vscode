@@ -5,23 +5,31 @@ import { messageOf } from '../../shared/errors.js';
 import { cursorAt, type Model } from './models-tree.js';
 import type { ModelsView } from './models-view.js';
 import type { LibrariesView } from '../runner/libraries-view.js';
-import { bindSteps, stepNote, type LibraryStep } from '../runner/step-binding.js';
+import { bindSteps, stepLabel, stepNote, type LibraryStep } from '../runner/step-binding.js';
 import {
-    DOCUMENT_SYMBOL_REQUEST,
     ELEMENT_COLORS,
     ELEMENT_ICONS,
     elementAt,
     elementLabel,
-    elementsOf,
     emptyMessage,
-    type Element,
-    type WireDocumentSymbol
+    fetchElements,
+    type Element
 } from './elements-tree.js';
 
 export const ELEMENTS_VIEW_ID = 'jpipe.elements';
 
 /** As in the Models view: long enough to let a name be typed, short enough to look live. */
 const REFRESH_DELAY_MS = 500;
+
+/** A step of a checked library, under the element it implements. */
+interface StepRow {
+    element: Element;
+    step: LibraryStep;
+}
+
+type Row = Element | StepRow;
+
+const isStep = (row: Row): row is StepRow => 'step' in row;
 
 /**
  * The jPipe activity's Outline: the elements of the model selected in Models.
@@ -30,14 +38,16 @@ const REFRESH_DELAY_MS = 500;
  * file — and since Models follows the editor, it follows the editor too. Within the model, it
  * selects the element the cursor is in, as the Explorer's Outline does.
  *
- * Its rows are the model's own elements only, flat and in the order written; `elements-tree.ts`
- * decides which they are and how they read.
+ * Its rows are the model's own elements in the order written, then the ones it inherits under
+ * their qualified ids (`T:e1`); `elements-tree.ts` decides which they are and how they read. Once a
+ * library is checked, each element has under it the steps implementing it, as `step-binding.ts`
+ * works them out.
  */
-export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Disposable {
+export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Disposable {
     private readonly changeEmitter = new vscode.EventEmitter<undefined>();
     readonly onDidChangeTreeData = this.changeEmitter.event;
 
-    private readonly view: vscode.TreeView<Element>;
+    private readonly view: vscode.TreeView<Row>;
     private readonly disposables: vscode.Disposable[] = [];
     private model: Model | undefined;
     private elements: Element[] | undefined;
@@ -72,13 +82,15 @@ export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Di
                 this.refresh();
             }),
             vscode.workspace.onDidChangeTextDocument(e => {
-                if (this.isModelFile(e.document.uri) && e.contentChanges.length > 0) this.scheduleRefresh();
+                if (this.isShown(e.document.uri) && e.contentChanges.length > 0) this.scheduleRefresh();
             }),
             vscode.workspace.onDidSaveTextDocument(doc => {
-                if (this.isModelFile(doc.uri)) this.scheduleRefresh();
+                if (this.isShown(doc.uri)) this.scheduleRefresh();
             }),
             this.view.onDidChangeSelection(e => {
-                if (e.selection[0]) this.selectedId = e.selection[0].id;
+                // A step counts as its element, so moving the cursor within that element leaves it selected.
+                const row = e.selection[0];
+                if (row) this.selectedId = isStep(row) ? row.element.id : row.id;
             }),
             this.view.onDidChangeVisibility(e => {
                 if (e.visible && this.stale) this.refresh();
@@ -91,6 +103,12 @@ export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Di
 
     private isModelFile(uri: vscode.Uri): boolean {
         return this.model !== undefined && vscode.Uri.parse(this.model.uri).toString() === uri.toString();
+    }
+
+    /** Whether `uri` holds something on show: the model, or a template it inherits elements from. */
+    private isShown(uri: vscode.Uri): boolean {
+        return this.isModelFile(uri) || (this.elements ?? []).some(e =>
+            e.inheritedFrom !== undefined && vscode.Uri.parse(e.inheritedFrom.uri).toString() === uri.toString());
     }
 
     refresh(): void {
@@ -121,11 +139,10 @@ export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Di
         } else {
             try {
                 await this.client.start();
-                const symbols = await this.client.sendRequest<WireDocumentSymbol[] | null>(
-                    DOCUMENT_SYMBOL_REQUEST, { textDocument: { uri: model.uri } });
+                const elements = await fetchElements((method, params) => this.client.sendRequest(method, params), model);
                 // The selection may have moved on while the server was answering.
                 if (model !== this.model) return;
-                this.elements = elementsOf(symbols ?? [], model);
+                this.elements = elements;
             } catch (err: unknown) {
                 this.logger.error(`Could not list the elements of ${model.name}: ${messageOf(err)}`);
                 this.elements = undefined;
@@ -141,36 +158,61 @@ export class ElementsView implements vscode.TreeDataProvider<Element>, vscode.Di
             : new Map();
     }
 
-    async getChildren(element?: Element): Promise<Element[]> {
-        if (element) return [];
+    async getChildren(row?: Row): Promise<Row[]> {
+        if (row) return isStep(row) ? [] : (this.bindings.get(row.id) ?? []).map(step => ({ element: row, step }));
         if (this.stale) this.startLoad();
         await this.loading;
         setTimeout(() => void this.revealElementAtCursor(), 0);
         return this.elements ?? [];
     }
 
-    getParent(): undefined {
-        return undefined;
+    getParent(row: Row): Element | undefined {
+        return isStep(row) ? row.element : undefined;
     }
 
-    getTreeItem(element: Element): vscode.TreeItem {
-        const item = new vscode.TreeItem(elementLabel(element), vscode.TreeItemCollapsibleState.None);
+    getTreeItem(row: Row): vscode.TreeItem {
+        return isStep(row) ? this.stepItem(row) : this.elementItem(row);
+    }
+
+    /** A step: the function, the library it is in, and a click that opens it there. */
+    private stepItem({ element, step }: StepRow): vscode.TreeItem {
+        const library = vscode.Uri.parse(step.libraryUri);
+        const item = new vscode.TreeItem(stepLabel(step), vscode.TreeItemCollapsibleState.None);
+        item.id = `${element.id}>${step.libraryUri}#${step.line}`;
+        // The library's own file icon, from the user's icon theme: the Python logo in most of them.
+        item.resourceUri = library;
+        item.iconPath = vscode.ThemeIcon.File;
+        item.description = vscode.workspace.asRelativePath(library);
+        item.tooltip = `Implements ${element.id}\n${vscode.workspace.asRelativePath(library)}, line ${step.line + 1}`;
+        item.command = {
+            command: 'vscode.open',
+            title: 'Open',
+            arguments: [library, { selection: new vscode.Range(step.line, 0, step.line, 0) }]
+        };
+        return item;
+    }
+
+    private elementItem(element: Element): vscode.TreeItem {
+        const steps = this.bindings.get(element.id);
+        // Open by default: the steps are what a checked library is looked at for.
+        const item = new vscode.TreeItem(elementLabel(element), steps?.length
+            ? vscode.TreeItemCollapsibleState.Expanded
+            : vscode.TreeItemCollapsibleState.None);
         item.id = element.id;
         item.iconPath = new vscode.ThemeIcon(ELEMENT_ICONS[element.kind], new vscode.ThemeColor(ELEMENT_COLORS[element.kind]));
-        const steps = this.bindings.get(element.id);
-        // Step functions in grey: what the runner will call for this element, once libraries are checked.
+        // In grey, only what is wrong: a required element no step implements, or one with several.
         item.description = stepNote(element.kind, steps, this.libraries.checkedLibraries().length > 0);
         item.tooltip = `${element.kind === 'support' ? '@support' : element.kind} ${element.id}` +
             (element.label ? `\n${element.label}` : '') +
-            (steps ?? []).map(step =>
-                `\nImplemented by ${step.functionName ?? 'a step'} in ${vscode.workspace.asRelativePath(vscode.Uri.parse(step.libraryUri))}`).join('');
+            (element.inheritedFrom ? `\nInherited from ${element.inheritedFrom.template}` : '');
         if (this.model) {
             const { start, end } = cursorAt(element.selection);
             item.command = {
                 command: 'vscode.open',
                 title: 'Open',
                 arguments: [
-                    vscode.Uri.parse(this.model.uri),
+                    // An inherited element opens where it is declared, in its template.
+                    vscode.Uri.parse(element.inheritedFrom?.uri ?? this.model.uri),
                     { selection: new vscode.Range(start.line, start.character, end.line, end.character) }
                 ]
             };

@@ -11,9 +11,13 @@
  * 3. **suffix** — it is a strictly shorter tail of the element's id, cut at `:`. A tail shared by
  *    two elements designates neither.
  *
- * This is an indication, not the runner's verdict. It sees the elements the model declares
- * itself, not the ones it inherits or that a composition produces, and not the aliases the
- * compiler adds; the runner, which has the compiled model, remains the authority.
+ * An inherited element is exported the same way, under its qualified id: `release:lib:T:e1` for
+ * `e1` of a template `T` loaded as `lib`, so a step written for `e1` reaches it by the suffix rule.
+ *
+ * This is an indication, not the runner's verdict. It does not see the elements a composition
+ * produces, the aliases the compiler adds, or how the compiler flattens an override made by a
+ * template in the middle of a chain; the runner, which has the compiled model, remains the
+ * authority.
  */
 import type { StepKind } from './library-scan.js';
 
@@ -66,11 +70,12 @@ export function bindSteps(
 const REQUIRED = new Set(['evidence', 'strategy']);
 
 /**
- * What an Outline row says about its step, or `undefined` for nothing.
+ * What an Outline row says about its steps, or `undefined` for nothing.
  *
  * Nothing at all until a library is checked: without one there is no run to prepare for, and
  * "no step" on every row would be noise. After that, a required element without a step says so,
- * since the runner will refuse the model.
+ * since the runner will refuse the model, and so does one with several, which it also refuses.
+ * The one step of an element that is in order is a row of its own under it, and needs no note.
  */
 export function stepNote(
     elementKind: string,
@@ -79,6 +84,11 @@ export function stepNote(
 ): string | undefined {
     if (!anyLibraryChecked) return undefined;
     if (steps && steps.length > 1) return `${steps.length} steps`;
-    if (steps && steps.length === 1) return steps[0].functionName ? `${steps[0].functionName}()` : 'step';
+    if (steps && steps.length === 1) return undefined;
     return REQUIRED.has(elementKind) ? 'no step' : undefined;
+}
+
+/** How the row of a step under its element reads: the function the runner will call. */
+export function stepLabel(step: LibraryStep): string {
+    return step.functionName ? `${step.functionName}()` : 'step';
 }

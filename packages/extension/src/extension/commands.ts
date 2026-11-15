@@ -14,9 +14,10 @@ import type { ModelsView } from './models-view/models-view.js';
 import type { Model, ModelNode, TreeNode } from './models-view/models-tree.js';
 import { newModel } from './models-view/new-model-flow.js';
 import type { LibrariesView } from './runner/libraries-view.js';
-import { runModel } from './runner/run-model.js';
+import { runModel, runSelectedModel, type RunDeps } from './runner/run-model.js';
 import { newLibrary, scaffoldLibrary } from './runner/new-library-flow.js';
 import type { RunnerEnvironment } from './runner/environment.js';
+import type { ResultsView } from './runner/results-view.js';
 import { installFromRelease } from './compiler/managed-install.js';
 import { selectJarFile } from './compiler/jar-selection.js';
 import { accessMethodHeader } from './compiler/release-presentation.js';
@@ -50,6 +51,7 @@ export interface CommandDeps {
     modelsView: ModelsView;
     librariesView: LibrariesView;
     runnerEnvironment: RunnerEnvironment;
+    resultsView: ResultsView;
 }
 
 /**
@@ -87,7 +89,8 @@ const CODE_ACTION_COMMANDS: ReadonlyArray<readonly [command: string, kind: strin
 ];
 
 export function registerCommands(deps: CommandDeps): void {
-    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment } = deps;
+    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView } = deps;
+    const runDeps: RunDeps = { context, logger, imageGenerator, libraries: librariesView, models: modelsView, environment: runnerEnvironment, results: resultsView };
 
     /**
      * Where a new model goes is decided beside "the model in question": the row the command was
@@ -113,10 +116,10 @@ export function registerCommands(deps: CommandDeps): void {
         typeof arg === 'object' && arg !== null && (arg as TreeNode).type === 'model' ? arg as ModelNode : undefined;
 
     /**
-     * The model a jPipe-submenu command acts on, or `'editor'` for the one at the editor's cursor.
+     * The model a right-click command acts on, or `'editor'` for the one at the editor's cursor.
      *
-     * The submenu is the same in the editor, on a `.jd` file in the Explorer and on a Models row
-     * (jpipe-vscode ADR-VSC-0027), so its commands receive a tree node, or a file's URI. A row
+     * Preview and Export as… are offered in the editor, on a `.jd` file in the Explorer and on a
+     * Models row (jpipe-vscode ADR-VSC-0027), so their commands receive a tree node, or a file's URI. A row
      * names its model. A URI from the editor means the model at the cursor, as it always has. A
      * URI from the Explorer names a file: its one model, or the one picked when it has several.
      * `undefined` when there is none, or the pick was dismissed.
@@ -176,14 +179,17 @@ export function registerCommands(deps: CommandDeps): void {
         vscode.commands.registerCommand('jpipe.models.refresh', () => modelsView.refresh()),
 
         // ▶: the model of the Models row it was clicked on, or the one the cursor is in.
-        vscode.commands.registerCommand('jpipe.run', (arg?: unknown) =>
-            runModel({ context, logger, imageGenerator, libraries: librariesView, models: modelsView, environment: runnerEnvironment },
-                modelOf(arg)?.model)),
+        vscode.commands.registerCommand('jpipe.run', (arg?: unknown) => runModel(runDeps, modelOf(arg)?.model)),
+        // On a checked library's own ▶ menu: the model selected in Models, with every checked library.
+        vscode.commands.registerCommand('jpipe.runLibrary', () => runSelectedModel(runDeps, false)),
+        vscode.commands.registerCommand('jpipe.checkLibrary', () => runSelectedModel(runDeps, true)),
+        vscode.commands.registerCommand('jpipe.results.showOutput', () => resultsView.showOutput()),
         vscode.commands.registerCommand('jpipe.libraries.checkAll', () => librariesView.checkAll()),
         vscode.commands.registerCommand('jpipe.libraries.uncheckAll', () => librariesView.uncheckAll()),
         vscode.commands.registerCommand('jpipe.libraries.refresh', () => librariesView.rescanAll()),
         vscode.commands.registerCommand('jpipe.libraries.new', () => newLibrary(librariesView, modelsView)),
-        vscode.commands.registerCommand('jpipe.runner.fixEnvironment', () => runnerEnvironment.fix()),
+        vscode.commands.registerCommand('jpipe.runner.fixEnvironment', () => runnerEnvironment.setUp()),
+        vscode.commands.registerCommand('jpipe.runner.checkEnvironment', () => runnerEnvironment.report()),
         vscode.commands.registerCommand('jpipe.models.newJustification', (node?: TreeNode) =>
             newModel(modelsView.knownModels, { kind: 'justification', contextUri: contextOf(node) })),
         vscode.commands.registerCommand('jpipe.models.newTemplate', (node?: TreeNode) =>

@@ -62,5 +62,7 @@ The compiler's records are at
 | [VSC-0023](vsc-0023-error-means-the-build-fails.md) | An error means the build fails | 2026-08-13 | Accepted |
 | [VSC-0024](vsc-0024-layout-is-a-formatter.md) | Laying a model out is a formatter, not a source action | 2026-08-14 | Accepted |
 | [VSC-0025](vsc-0025-step-libraries-are-read-not-imported.md) | Step libraries are found by reading them, never by importing them | 2026-11-11 | Accepted |
-| [VSC-0026](vsc-0026-runs-use-the-python-vs-code-uses.md) | Runs use the Python VS Code uses | 2026-11-11 | Accepted |
-| [VSC-0027](vsc-0027-one-jpipe-menu-everywhere.md) | One jPipe menu, wherever a model is right-clicked | 2026-11-11 | Accepted |
+| [VSC-0026](vsc-0026-runs-use-the-workspaces-own-python-environment.md) | Runs use the workspace's own Python environment | 2026-11-11 | Accepted |
+| [VSC-0027](vsc-0027-one-jpipe-menu-everywhere.md) | The same jPipe items, wherever a model is right-clicked | 2026-11-11 | Accepted |
+| [VSC-0028](vsc-0028-settings-groups-are-named-as-a-path.md) | Settings groups are named as a path | 2026-11-13 | Accepted |
+| [VSC-0029](vsc-0029-a-run-is-read-from-its-json-report.md) | A run is read from the runner's JSON report, and listed, not drawn as a tree | 2026-11-14 | Accepted |

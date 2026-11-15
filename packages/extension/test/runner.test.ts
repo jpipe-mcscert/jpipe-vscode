@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { bindSteps, designates, stepNote, type LibraryStep } from '../src/extension/runner/step-binding.js';
+import { bindSteps, designates, stepLabel, stepNote, type LibraryStep } from '../src/extension/runner/step-binding.js';
 import { DEFAULT_RUNNER, cannotRun, resolveRunner, runnerArguments } from '../src/extension/runner/runner-invocation.js';
 
 /**
@@ -73,9 +73,19 @@ describe('binding a model\'s elements', () => {
 
 describe('what an Outline row says', () => {
 
+    test('a step reads as the function the runner will call', () => {
+        expect(stepLabel(step(['e'], 'tests_pass'))).toBe('tests_pass()');
+        expect(stepLabel({ kind: 'evidence', ids: ['e'], libraryUri: 'file:///w/steps.py', line: 0 })).toBe('step');
+    });
+
+    test('an inherited element is reached by a step written for its own id', () => {
+        const bound = bindSteps('release', ['e1', 'lib:Signoff:s'], [step(['s'], 'sign', 'strategy')]);
+        expect(bound.get('lib:Signoff:s')!.map(s => s.functionName)).toEqual(['sign']);
+    });
+
     test.each([
         ['nothing before any library is checked', 'evidence', undefined, false, undefined],
-        ['the function implementing it', 'evidence', [step(['e'], 'tests_pass')], true, 'tests_pass()'],
+        ['nothing when one step implements it, which is a row of its own', 'evidence', [step(['e'], 'tests_pass')], true, undefined],
         ['that two steps claim it', 'evidence', [step(['e'], 'a'), step(['e'], 'b')], true, '2 steps'],
         ['that a required element has no step', 'strategy', undefined, true, 'no step'],
         ['nothing for an optional element without one', 'conclusion', undefined, true, undefined],
@@ -87,28 +97,13 @@ describe('what an Outline row says', () => {
 
 describe('launching the runner', () => {
 
-    const base = { configured: '', folder: '/w', platform: 'darwin' as NodeJS.Platform, home: '/home/me' };
-
-    test('a configured program wins, with ~ expanded', () => {
-        expect(resolveRunner({ ...base, configured: '~/bin/jpipe-runner', exists: () => true }))
-            .toBe(path.join('/home/me', 'bin', 'jpipe-runner'));
+    test('a named program is used as written, with ~ expanded', () => {
+        expect(resolveRunner('~/bin/jpipe-runner', '/home/me')).toBe(path.join('/home/me', 'bin', 'jpipe-runner'));
+        expect(resolveRunner('  /opt/tools/jpipe-runner ', '/home/me')).toBe('/opt/tools/jpipe-runner');
     });
 
-    test('then the workspace\'s .venv, then its venv', () => {
-        const venv = path.join('/w', 'venv', 'bin', 'jpipe-runner');
-        expect(resolveRunner({ ...base, exists: f => f === venv })).toBe(venv);
-        const dotVenv = path.join('/w', '.venv', 'bin', 'jpipe-runner');
-        expect(resolveRunner({ ...base, exists: f => f === dotVenv || f === venv })).toBe(dotVenv);
-    });
-
-    test('a Windows virtual environment keeps its programs in Scripts', () => {
-        const exe = path.join('C:\\w', '.venv', 'Scripts', 'jpipe-runner.exe');
-        expect(resolveRunner({ ...base, folder: 'C:\\w', platform: 'win32', exists: f => f === exe })).toBe(exe);
-    });
-
-    test('and finally jpipe-runner from PATH', () => {
-        expect(resolveRunner({ ...base, exists: () => false })).toBe(DEFAULT_RUNNER);
-        expect(resolveRunner({ ...base, folder: undefined, exists: () => true })).toBe(DEFAULT_RUNNER);
+    test('with none named, it is jpipe-runner from PATH', () => {
+        expect(resolveRunner('', '/home/me')).toBe(DEFAULT_RUNNER);
     });
 
     test('one --library per library, then the compiled justification', () => {

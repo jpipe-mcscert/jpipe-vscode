@@ -19,6 +19,7 @@ export const SYMBOL_KIND_INTERFACE = 11;
 
 export const WORKSPACE_SYMBOL_REQUEST = 'workspace/symbol';
 export const TYPE_HIERARCHY_SUBTYPES_REQUEST = 'typeHierarchy/subtypes';
+export const TYPE_HIERARCHY_SUPERTYPES_REQUEST = 'typeHierarchy/supertypes';
 export const PREPARE_CALL_HIERARCHY_REQUEST = 'textDocument/prepareCallHierarchy';
 export const CALL_HIERARCHY_OUTGOING_REQUEST = 'callHierarchy/outgoingCalls';
 
