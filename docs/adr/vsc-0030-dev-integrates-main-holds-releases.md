@@ -1,4 +1,4 @@
-# ADR-VSC-0025: `dev` integrates, `main` holds releases
+# ADR-VSC-0030: `dev` integrates, `main` holds releases
 
 **Date:** 2026-11-15
 **Status:** Accepted

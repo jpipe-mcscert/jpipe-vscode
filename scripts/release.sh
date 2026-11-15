@@ -7,7 +7,7 @@
 # release.
 #
 # A release is prepared on a work branch cut from dev, reaches main through the
-# dev -> main release pull request, and is tagged on main (jpipe-vscode ADR-VSC-0025).
+# dev -> main release pull request, and is tagged on main (jpipe-vscode ADR-VSC-0030).
 #
 #   prepare   X.Y.Z    on a work branch cut from dev: set all four versions, close
 #                      out the CHANGELOG, reconcile the lockfile, verify and commit

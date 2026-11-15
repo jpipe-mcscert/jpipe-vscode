@@ -177,7 +177,7 @@ vsce publish
 
 ## Branches and pull requests
 
-This repository follows the jPipe workflow in the organisation's [contributing guide](https://github.com/jpipe-mcscert/.github/blob/main/CONTRIBUTING.md), including its rules for AI assistants: `main` holds releases, `dev` is the integration and default branch, work branches are cut from `dev` and return to it by pull request (jpipe-vscode ADR-VSC-0025). What is specific here:
+This repository follows the jPipe workflow in the organisation's [contributing guide](https://github.com/jpipe-mcscert/.github/blob/main/CONTRIBUTING.md), including its rules for AI assistants: `main` holds releases, `dev` is the integration and default branch, work branches are cut from `dev` and return to it by pull request (jpipe-vscode ADR-VSC-0030). What is specific here:
 
 - **CI:** `build.yml` (job `build`) runs on pushes to `main` and `dev` and on every pull request; `sonar.yml` (job `Build and analyze`, SonarQube Cloud with the gate waited on) runs on every pull request and on pushes to `main`. Both jobs are required checks on `main`; the README's "What has to be green before a pull request merges?" has the details, including why pull requests from forks cannot be analysed.
 - **Releases:** `scripts/release.sh prepare X.Y.Z` runs on a work branch cut from `dev` (it refuses `main` and `dev`); that branch goes into `dev` by pull request, then `dev` into `main` by the release pull request. A maintainer then runs `scripts/release.sh preflight X.Y.Z` on `main` and pushes the `vX.Y.Z` tag, which `release.yml` turns into a GitHub Release and a Marketplace publish — it refuses a tag that is not on `main`. See "How to cut a release?" in the README and jpipe-vscode ADR-VSC-0008.

@@ -46,7 +46,7 @@ As in every jPipe repository, following the organisation's
 holds released code, `dev` is the integration branch and the default branch, and work branches
 are cut from `dev` and come back to it by pull request. A release is a pull request from `dev`
 into `main` (see [How to cut a release?](#how-to-cut-a-release) below, and
-[ADR-VSC-0025](docs/adr/vsc-0025-dev-integrates-main-holds-releases.md)).
+[ADR-VSC-0030](docs/adr/vsc-0030-dev-integrates-main-holds-releases.md)).
 
 ### What has to be green before a pull request merges?
 

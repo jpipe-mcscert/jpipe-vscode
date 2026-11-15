@@ -30,7 +30,7 @@ awkward thing to undo.
 `scripts/release.sh` is the only supported way to move the version. It has two verbs and
 **neither one tags, pushes, or publishes** — those stay deliberate human actions.
 
-`prepare X.Y.Z` runs on a work branch cut from `dev` (jpipe-vscode ADR-VSC-0025): it refuses to
+`prepare X.Y.Z` runs on a work branch cut from `dev` (jpipe-vscode ADR-VSC-0030): it refuses to
 start on a dirty tree, on `main` or `dev`, on a branch that does not contain the remote's `dev`,
 out of sync with the branch's upstream, on an unpinned Node, if the tag already exists, or if the
 changelog has no entries under the named version. It then sets all four versions, reconciles the
@@ -73,7 +73,7 @@ a fork.
   change that produces it, or `prepare` and `preflight` both refuse to run.
 - `prepare` commits on a work branch, so the release commit reaches `main` like any other change:
   by pull request into `dev`, then through the `dev` → `main` release pull request
-  (jpipe-vscode ADR-VSC-0025).
+  (jpipe-vscode ADR-VSC-0030).
 - The changelog gates the release: `prepare` refuses if there are no entries under
   `### vX.Y.Z (Unreleased)`. Closing that heading out is the script's job, not a manual edit.
 - Node is pinned by Volta and checked by `prepare`. A contributor without Volta gets whatever
