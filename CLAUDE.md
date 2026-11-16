@@ -324,8 +324,10 @@ The **Run panel** is a second webview, opened by every ▶ and ✓ and never by 
 imports the libraries). It shows the last run only — the runner's dataflow SVG (`--dataflow`; the
 argument-only view is left to the preview), under a bar that says *Execution* or *Check · no step
 called* first. It shares that run with the Results view through `RunSession`, and the two come
-forward together; until a report arrives Results lists one status row. A node click selects the
-element's row in Results, a double-click opens the element. A runner that cannot draw (Graphviz
+forward together; until a report arrives Results lists one status row. A node click lights it and
+everything downstream (walked from the SVG's edge titles, `webview/flow.ts`) and selects an
+element's row in Results; a second click, the background or Escape clears; a double-click opens
+the element. A runner that cannot draw (Graphviz
 missing, exit 4, no report) is launched once more without the drawing (ADR-VSC-0031).
 
 ---

@@ -53,9 +53,13 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
   (`runner/run-session.ts`), and come forward together, neither taking the focus: the panel beside
   the editor, Results in the bottom panel. Until there is a report, Results lists one row saying the
   run is under way, or why it ended without one. A run started while another is under way takes both
-  over; the earlier one's result is dropped. Clicking a node selects its element's row in Results,
-  double-clicking it opens the element in its `.jd` file, and selecting an element's row in Results
-  marks its node.
+  over; the earlier one's result is dropped.
+- **A click follows the flow.** Clicking a node — an element, an observed file, a variable — lights
+  it and everything its arrows lead to, up to the conclusion, and dims the rest; the walk is read
+  from the drawing's own edges (`webview/flow.ts`). Clicking it again, clicking the background or
+  pressing Escape clears the selection. An element's click also selects its row in Results, and
+  selecting an element's row in Results lights its node the same way. Double-clicking an element
+  opens it in its `.jd` file.
 - **The canvas is the preview's.** Panning, zooming, the minimap and following the theme move
   from `webview/preview.ts` into `webview/canvas.ts`, which both pages use, and the run panel wears
   the preview's stylesheet with one of its own on top. The decisions — what the page is told, when
@@ -64,6 +68,9 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
 
 ## Rationale
 
+- **What follows, not the node alone**, because the question a dataflow is clicked for is what
+  depends on this: which claims a file feeds, which steps a value reaches. A node on its own is
+  already visible.
 - **A panel of its own, because a run is not a view of the cursor.** A run mode in the preview
   would either stop following the cursor, which is what the preview is for, or drop the run as soon
   as the cursor moved. Two panels keep two behaviours that each read simply: the preview is always

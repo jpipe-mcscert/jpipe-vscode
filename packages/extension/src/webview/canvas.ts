@@ -71,6 +71,8 @@ export interface CanvasHooks {
     onRebuilt?(): void;
     /** A node was clicked, not dragged. `twice` for the second click of a double click. */
     onNodeClick?(node: SVGGElement, twice: boolean): void;
+    /** The canvas was clicked, not dragged, away from every node. */
+    onBackgroundClick?(): void;
 }
 
 /** What a diagram's caption says, so it can be stripped: the panel already says it. */
@@ -381,8 +383,9 @@ export class DiagramCanvas {
         container.addEventListener('click', event => {
             const press = this.press;
             this.press = null;
-            if (!press?.node || press.moved || !this.hooks.onNodeClick) return;
-            this.hooks.onNodeClick(press.node, event.detail >= 2);
+            if (!press || press.moved) return;
+            if (press.node) this.hooks.onNodeClick?.(press.node, event.detail >= 2);
+            else this.hooks.onBackgroundClick?.();
         });
         document.addEventListener('keydown', event => this.onKey(event));
     }

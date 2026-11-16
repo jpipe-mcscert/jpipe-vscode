@@ -241,10 +241,50 @@ describe('nodes', () => {
         expect(post).toHaveBeenCalledWith({ type: 'open', element: 'release:c' });
     });
 
-    test('a node that is no element of the report is not selected', () => {
+    test('a file or a variable is lit too, but there is no row in Results to select', () => {
         newPage().apply(state());
         click('node9', 1);
-        expect(post).not.toHaveBeenCalled();
+        expect(post).toHaveBeenLastCalledWith({ type: 'select', element: null });
+        expect(byId('svg-wrapper').querySelector('[id="node9"]')!.classList.contains('jpipe-origin')).toBe(true);
+        click('node9', 2);
+        expect(post).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'open' }));
+    });
+
+    test('a second click on the selected node clears the selection', () => {
+        newPage().apply(state());
+        click('release:e', 1);
+        click('release:e', 1);
+        expect(post).toHaveBeenLastCalledWith({ type: 'select', element: null });
+        expect(byId('svg-wrapper').querySelectorAll('.jpipe-dimmed')).toHaveLength(0);
+    });
+
+    test('a click on the background, or Escape, clears it too', () => {
+        newPage().apply(state());
+        click('release:e', 1);
+        byId('container').dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: 5, pointerId: 1, button: 0, bubbles: true }));
+        byId('container').dispatchEvent(new MouseEvent('click', { detail: 1, bubbles: true }));
+        expect(byId('svg-wrapper').querySelectorAll('.jpipe-dimmed')).toHaveLength(0);
+
+        click('release:e', 1);
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        expect(byId('svg-wrapper').querySelectorAll('.jpipe-dimmed')).toHaveLength(0);
+        expect(post).toHaveBeenLastCalledWith({ type: 'select', element: null });
+    });
+
+    test('lights what follows the selected element, and dims the rest', () => {
+        const flow = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g class="graph">
+<g id="release:e" class="node"><title>release:e</title><text>release:e</text></g>
+<g id="release:s" class="node"><title>release:s</title><text>release:s</text></g>
+<g id="release:c" class="node"><title>release:c</title><text>release:c</text></g>
+<g id="release:e2" class="node"><title>release:e2</title><text>release:e2</text></g>
+<g class="edge"><title>release:e&#45;&gt;release:s</title></g>
+<g class="edge"><title>release:e2&#45;&gt;release:s</title></g>
+<g class="edge"><title>release:s&#45;&gt;release:c</title></g>
+</g></svg>`;
+        newPage().apply(state({ dataflow: flow, elements: ['release:e', 'release:s', 'release:c', 'release:e2'] }));
+        click('release:e', 1);
+        const dimmed = Array.from(byId('svg-wrapper').querySelectorAll('.jpipe-dimmed')).map(g => g.querySelector('title')!.textContent);
+        expect(dimmed).toEqual(['release:e2', 'release:e2->release:s']);
     });
 
     test('a selection made in Results is shown, and cleared when it moves off the elements', () => {

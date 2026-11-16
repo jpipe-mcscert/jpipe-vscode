@@ -120,6 +120,9 @@
 
 /* ------------------------------------------------------------- the canvas */
 
-/* A node can be clicked: to select it in Results, or twice to open it. */
+/* A node can be clicked: to light it and what follows it, or twice to open it. */
 #svg-wrapper g.node { cursor: pointer; }
+
+/* Where the lit chain starts. */
+#svg-wrapper g.node.jpipe-origin :is(polygon, ellipse, path) { stroke-width: 3; }
 #container.dragging g.node { cursor: grabbing; }

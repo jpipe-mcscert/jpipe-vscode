@@ -317,12 +317,16 @@ describe('the pointer', () => {
         expect(hooks.onNodeClick).not.toHaveBeenCalled();
     });
 
-    test('a click on the background is no node click', () => {
-        const canvas = newCanvas();
+    test('a click on the background is no node click, and says so', () => {
+        const onBackgroundClick = vi.fn<() => void>();
+        const canvas = new DiagramCanvas(
+            { container: page.container, wrapper: page.wrapper, zoomValue: page.zoomValue, minimap: document.getElementById('minimap') as HTMLElement },
+            { ...hooks, onBackgroundClick });
         canvas.show(SVG, { documentPath: null, diagramName: null }, false);
         pointer(page.container, 'pointerdown', 10, 10);
         page.container.dispatchEvent(new MouseEvent('click', { detail: 1, bubbles: true }));
         expect(hooks.onNodeClick).not.toHaveBeenCalled();
+        expect(onBackgroundClick).toHaveBeenCalledOnce();
     });
 
     test('a press on the chrome is left alone', () => {

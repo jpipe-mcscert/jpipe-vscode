@@ -85,8 +85,8 @@ export type RunPanelToHost =
     /** Open the Results view, on a row when one is named. */
     | { type: 'results'; row: string | null }
     | { type: 'output' }
-    /** A node was clicked: select its row in Results. */
-    | { type: 'select'; element: string }
+    /** An element's node was selected: select its row in Results. Null when the selection was cleared. */
+    | { type: 'select'; element: string | null }
     /** A node was double-clicked: open the element in its `.jd` file. */
     | { type: 'open'; element: string }
     /** Save the drawing. */

@@ -1,6 +1,6 @@
 import type { HostToRunPanel, RunKind, RunPanelState, RunPanelToHost, Tone } from '../shared/run-protocol.js';
 import { DiagramCanvas } from './canvas.js';
-import { applyDimming } from './highlight.js';
+import { applyFocus, downstream, nameOf, nodeNamed } from './flow.js';
 import type { Box } from './viewbox.js';
 
 /**
@@ -49,6 +49,10 @@ export class RunPage {
     private state: RunPanelState | null = null;
     /** What is on the canvas, so a state that changes something else does not redraw it. */
     private drawn: { name: string; svg: string } | null = null;
+    /**
+     * The node selected, by the name Graphviz gave it, which is the element's id for an element:
+     * kept across a redraw, where the node itself is replaced.
+     */
     private selected: string | null = null;
     private readonly body: HTMLElement;
 
@@ -74,7 +78,8 @@ export class RunPage {
                 isChrome: target => target instanceof Element && target.closest('#toolbar, #banners, #minimap') !== null,
                 onViewChange: () => this.persist({ vb: this.canvas.view ?? undefined }),
                 onRebuilt: () => this.applySelection(false),
-                onNodeClick: (node, twice) => this.nodeClicked(node, twice)
+                onNodeClick: (node, twice) => this.nodeClicked(node, twice),
+                onBackgroundClick: () => this.select(null)
             }
         );
         if (restored.vb) this.canvas.restoreView(restored.vb);
@@ -198,32 +203,38 @@ export class RunPage {
         return 'Nothing to draw yet: ▶ executes the justification, and ✓ checks it against its libraries without calling any step.';
     }
 
-    /** The node of `element` on the canvas, if it is drawn. */
-    private nodeOf(element: string): SVGGElement | null {
-        const svg = this.canvas.svg;
-        if (!svg) return null;
-        return Array.from(svg.querySelectorAll<SVGGElement>('g.node')).find(node => node.id === element) ?? null;
-    }
-
-    /** Mark the selected element's node by dimming the rest, and bring it into view when asked. */
+    /**
+     * Light the selected node and everything that follows it — what its arrows lead to, up to the
+     * conclusion — by dimming the rest, and bring the node into view when asked.
+     */
     private applySelection(reveal: boolean): void {
         const svg = this.canvas.svg;
         if (!svg) return;
-        const node = this.selected === null ? null : this.nodeOf(this.selected);
-        applyDimming(svg, node);
+        const node = this.selected === null ? null : nodeNamed(svg, this.selected);
+        applyFocus(svg, node && downstream(svg, node), node);
         if (node && reveal) this.canvas.reveal(node);
     }
 
-    /** A click selects the element in Results; a double click opens it where it is written. */
+    /** Select the node named `name`, or clear the selection; Results follows when it is an element's. */
+    private select(name: string | null): void {
+        if (name === this.selected) return;
+        this.selected = name;
+        this.applySelection(false);
+        const element = name !== null && this.state?.elements.includes(name) ? name : null;
+        this.post({ type: 'select', element });
+    }
+
+    /**
+     * A click selects a node, and a second click on the selected node clears the selection, as a
+     * click on the background does. A double click opens an element where it is written.
+     */
     private nodeClicked(node: SVGGElement, twice: boolean): void {
-        if (!this.state?.elements.includes(node.id)) return;
+        const name = nameOf(node);
         if (twice) {
-            this.post({ type: 'open', element: node.id });
+            if (this.state?.elements.includes(name)) this.post({ type: 'open', element: name });
             return;
         }
-        this.selected = node.id;
-        this.applySelection(false);
-        this.post({ type: 'select', element: node.id });
+        this.select(name === this.selected ? null : name);
     }
 
     private bindControls(): void {
@@ -239,6 +250,10 @@ export class RunPage {
             if (id) this.post({ type: 'action', id });
         });
         click('out-of-date-action', () => this.post({ type: this.state?.check ? 'check' : 'run' }));
+        // Escape clears the selection, as it does in the editor's own lists.
+        this.doc.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && this.selected !== null) this.select(null);
+        });
         // The banner stack changes height when a banner wraps, which no message announces.
         new ResizeObserver(() => this.measureBanners()).observe(byId(this.doc, 'banners'));
     }
