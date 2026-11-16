@@ -1040,7 +1040,7 @@
     "devDependencies": {
         "@types/vscode": "~1.91.0",
         "ajv": "~8.20.0",
-        "concurrently": "~10.0.6",
+        "concurrently": "~10.0.7",
         "esbuild": "~0.28.2",
         "happy-dom": "~21.0.4"
     },
