@@ -36,13 +36,13 @@
         "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
-        "langium": "~4.4.0",
+        "langium": "~4.4.2",
         "vscode-languageserver": "~10.1.2",
         "vscode-languageserver-protocol": "~3.18.4",
         "vscode-languageserver-types": "~3.18.4"
     },
     "devDependencies": {
-        "langium-cli": "~4.4.0",
+        "langium-cli": "~4.4.1",
         "vscode-languageserver-textdocument": "~1.0.15"
     }
 }
