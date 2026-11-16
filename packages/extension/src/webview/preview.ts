@@ -137,7 +137,8 @@ function setMode(mode: ViewMode): void {
     const modeLabel = mode === 'diagnostic' ? 'Back to diagram view' : 'Diagnostic view';
     modeToggle.dataset.tooltip = modeLabel;
     modeToggle.setAttribute('aria-label', modeLabel);
-    canvas.showMinimap(mode === 'diagram');
+    if (mode === 'diagram') canvas.refreshMinimap();
+    else canvas.hideMinimap();
     // The banner says what is stale, which depends on what is being shown. Written into the text
     // span rather than over the banner: the banner also holds the glyph that tells it apart from
     // the failure banner, and `textContent` on the parent would take that with it.

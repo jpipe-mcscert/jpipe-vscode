@@ -14,7 +14,7 @@ import type { RunnerEnvironment } from './environment.js';
 import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
 import type { ResultsView } from './results-view.js';
 import type { LibraryStep } from './step-binding.js';
-import { parseReport, verdictSentence, withReport } from './run-report.js';
+import { parseReport, verdictSentence, withReport, type RunReport } from './run-report.js';
 import type { RunSession } from './run-session.js';
 import type { RunPanel } from './run-panel.js';
 import type { Notice } from '../../shared/run-protocol.js';
@@ -183,26 +183,61 @@ interface Run {
  * nothing ran, and the panel says why it has none.
  */
 async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, draw: boolean): Promise<void> {
-    const { document, name, check, steps } = run;
-    const { compiled, report } = files;
-
+    const { document, name, check } = run;
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    const runnerArgs = withReport(runnerArguments(run.libraries, compiled.fsPath), report.fsPath, check, draw ? files.dataflow.fsPath : undefined);
+    const runnerArgs = withReport(runnerArguments(run.libraries, files.compiled.fsPath), files.report.fsPath, check, draw ? files.dataflow.fsPath : undefined);
     const invocation = await chooseInvocation(deps, token, folder, runnerArgs);
     if (!invocation) return;
     if (deps.session.stopped(token)) {
         deps.session.endWith(token, 'stopped', { text: `${name} was stopped before it started.`, action: null });
         return;
     }
-    const { program, args, env } = invocation;
-    const doing = check ? 'Checking' : 'Running';
-    deps.logger.info(`${doing} ${name}: ${program} ${args.join(' ')} (in ${cwd})`);
+    deps.logger.info(`${check ? 'Checking' : 'Running'} ${name}: ${invocation.program} ${invocation.args.join(' ')} (in ${cwd})`);
 
+    const task = runTask(run, folder, cwd, invocation);
+    const showOutput = (): void => terminalOf(task)?.show();
+    let exitCode: number | undefined;
+    try {
+        exitCode = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Window, title: `${check ? 'Checking' : 'Running'} ${name}…` },
+            () => executed(task, execution => deps.session.attach(token, execution, showOutput)));
+    } catch (err: unknown) {
+        deps.session.endWith(token, 'blocked', { text: `Could not start jpipe-runner: ${messageOf(err)}`, action: null });
+        return;
+    }
+
+    const read = await readReport(files.report);
+    const ended: Ended = { taskName: task.name, exitCode, cwd, showOutput };
+    if ('problem' in read) {
+        await endedWithoutReport(deps, token, run, files, draw, ended, read.problem);
+    } else {
+        await showReport(deps, token, run, files, ended, read.report);
+    }
+}
+
+/** How a run's task ended, for what is said about it. */
+interface Ended {
+    taskName: string;
+    exitCode: number | undefined;
+    /** Where it ran: the report's paths are relative to it. */
+    cwd: string;
+    /** Bring its terminal forward. */
+    showOutput: () => void;
+}
+
+/** The task a run is launched as: a build-like action with a terminal of its own, kept in the background. */
+function runTask(
+    run: Run,
+    folder: vscode.WorkspaceFolder | undefined,
+    cwd: string,
+    invocation: Command & { env?: Record<string, string> }
+): vscode.Task {
+    const { program, args, env } = invocation;
     const task = new vscode.Task(
-        { type: RUN_TASK_TYPE, model: name },
+        { type: RUN_TASK_TYPE, model: run.name },
         folder ?? vscode.TaskScope.Workspace,
-        `${check ? 'Check' : 'Run'} ${name}`,
+        `${run.check ? 'Check' : 'Run'} ${run.name}`,
         'jPipe',
         new vscode.ProcessExecution(program, args, { cwd, ...(env ? { env } : {}) })
     );
@@ -212,55 +247,55 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
         clear: true,
         showReuseMessage: false
     };
-    const showOutput = (): void => terminalOf(task)?.show();
-    let exitCode: number | undefined;
-    try {
-        exitCode = await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Window, title: `${doing} ${name}…` },
-            () => executed(task, execution => deps.session.attach(token, execution, showOutput)));
-    } catch (err: unknown) {
-        deps.session.endWith(token, 'blocked', { text: `Could not start jpipe-runner: ${messageOf(err)}`, action: null });
-        return;
-    }
+    return task;
+}
 
-    const read = await readReport(report);
-    if ('problem' in read) {
-        // No report: a usage error, a file that could not be read, or a runner that did not start.
-        deps.logger.warn(`${task.name} ended with exit code ${exitCode ?? '(none)'}: ${read.problem}`);
-        // A run another has taken the place of says nothing more: no second launch, no terminal
-        // brought over the one the panel now speaks for.
-        if (!deps.session.isCurrent(token)) return;
-        if (deps.session.stopped(token)) {
-            deps.session.endWith(token, 'stopped', { text: `${name} was stopped.`, action: { label: 'Show Output', id: 'showOutput' } });
-            return;
-        }
-        if (draw && exitCode === FILE_PROBLEM_EXIT) {
-            deps.logger.warn(`${task.name}: launched again without the drawing, which may need Graphviz`);
-            await launch(deps, token, run, files, false);
-            return;
-        }
-        showOutput();
-        deps.session.endWith(token, 'blocked', {
-            text: `${name} was not ${check ? 'checked' : 'run'}: ${read.problem}. What jpipe-runner printed is in the terminal.`,
-            action: { label: 'Show Output', id: 'showOutput' }
-        });
+/**
+ * Say why a run ended without a report: a usage error, a file that could not be read, a runner
+ * that did not start — or one that could not draw, which is launched once more without drawing.
+ */
+async function endedWithoutReport(
+    deps: RunDeps, token: number, run: Run, files: RunFiles, draw: boolean, ended: Ended, problem: string
+): Promise<void> {
+    const { name, check } = run;
+    deps.logger.warn(`${ended.taskName} ended with exit code ${ended.exitCode ?? '(none)'}: ${problem}`);
+    // A run another has taken the place of says nothing more: no second launch, no terminal
+    // brought over the one the panel now speaks for.
+    if (!deps.session.isCurrent(token)) return;
+    if (deps.session.stopped(token)) {
+        deps.session.endWith(token, 'stopped', { text: `${name} was stopped.`, action: { label: 'Show Output', id: 'showOutput' } });
         return;
     }
-    deps.logger.info(`${task.name}: ${verdictSentence(read.report, name, check)}`);
+    if (draw && ended.exitCode === FILE_PROBLEM_EXIT) {
+        deps.logger.warn(`${ended.taskName}: launched again without the drawing, which may need Graphviz`);
+        await launch(deps, token, run, files, false);
+        return;
+    }
+    ended.showOutput();
+    deps.session.endWith(token, 'blocked', {
+        text: `${name} was not ${check ? 'checked' : 'run'}: ${problem}. What jpipe-runner printed is in the terminal.`,
+        action: { label: 'Show Output', id: 'showOutput' }
+    });
+}
+
+/** Show a run's report and its drawing, in the panel and in Results, unless a newer run has taken its place. */
+async function showReport(deps: RunDeps, token: number, run: Run, files: RunFiles, ended: Ended, report: RunReport): Promise<void> {
+    const { name, check, steps } = run;
+    deps.logger.info(`${ended.taskName}: ${verdictSentence(report, name, check)}`);
     if (!deps.session.isCurrent(token)) {
-        deps.logger.info(`${task.name}: not shown, a newer run has taken its place`);
+        deps.logger.info(`${ended.taskName}: not shown, a newer run has taken its place`);
         return;
     }
-    const dataflow = await readText(files.dataflow, read.report.dataflow);
+    const dataflow = await readText(files.dataflow, report.dataflow);
     deps.session.update(token, {
         phase: 'done',
-        report: read.report,
+        report,
         dataflow,
         drawingMissing: dataflow ? null : NO_DRAWING,
         endedAt: new Date(),
         notice: null
     });
-    await deps.results.show({ report: read.report, name, check, cwd, steps, showOutput });
+    await deps.results.show({ report, name, check, cwd: ended.cwd, steps, showOutput: ended.showOutput });
 }
 
 /** Why a run has no drawing: the runner could not draw, which is most often Graphviz missing. */

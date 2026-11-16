@@ -186,7 +186,7 @@ export class RunPage {
         }
         this.body.dataset.mode = 'diagram';
         if (this.drawn?.svg === svg) {
-            this.canvas.showMinimap(true);
+            this.canvas.refreshMinimap();
             return;
         }
         // The same justification keeps its framing from one run to the next.

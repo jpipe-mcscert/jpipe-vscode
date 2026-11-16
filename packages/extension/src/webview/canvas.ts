@@ -198,10 +198,14 @@ export class DiagramCanvas {
         this.minimap.hide();
     }
 
-    /** Show or hide the overview map, for pages whose canvas is not always the layer on show. */
-    showMinimap(visible: boolean): void {
-        if (!visible) this.minimap.hide();
-        else if (this.vb && this.content) this.minimap.update(this.vb, this.content, this.panelSize());
+    /** Take the overview map off screen, for a page whose canvas is not the layer on show. */
+    hideMinimap(): void {
+        this.minimap.hide();
+    }
+
+    /** Show the overview map again, as the current view needs it, once the canvas is back on show. */
+    refreshMinimap(): void {
+        if (this.vb && this.content) this.minimap.update(this.vb, this.content, this.panelSize());
     }
 
     /** Jump to exactly 100%: the diagram at the size it was laid out for. */

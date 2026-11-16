@@ -208,9 +208,9 @@ describe('showing a diagram', () => {
         canvas.show(SVG, { documentPath: null, diagramName: null }, false);
         for (let i = 0; i < 6; i++) canvas.zoomStep('in');
         expect(minimap.hidden).toBe(false);
-        canvas.showMinimap(false);
+        canvas.hideMinimap();
         expect(minimap.hidden).toBe(true);
-        canvas.showMinimap(true);
+        canvas.refreshMinimap();
         expect(minimap.hidden).toBe(false);
     });
 });
