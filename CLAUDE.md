@@ -54,7 +54,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
       src/
         extension/              ← extension host. The only place `vscode` may be imported.
           main.ts               ← activate/deactivate: constructs and wires, nothing else
-          commands.ts           ← the 36 contributed commands, as a table (ADR-VSC-0017)
+          commands.ts           ← the 37 contributed commands, as a table (ADR-VSC-0017)
           exclusion-commands.ts ← the exclusion flows and their failure messages
           exclusions.ts         ← excluded-path manager, decorations, code lenses
           process-launcher.ts   ← Windows command resolution, cmd.exe escaping, running a program (tested)
@@ -70,9 +70,13 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             step-binding.ts     ← the runner's id → element binding rules, for the Outline (tested)
             runner-invocation.ts ← which runner program, which arguments (tested)
             libraries-view.ts   ← the Libraries view; checkboxes = `jpipe.runner.libraries`
-            run-model.ts        ← ▶: compile to JSON, launch the runner as a VS Code task, hand its report to Results
+            run-model.ts        ← ▶ and ✓: compile to JSON, launch the runner as a VS Code task, hand its report and drawings to the session
             run-report.ts       ← the runner's JSON report → the rows of the Results view (tested; ADR-VSC-0029)
-            results-view.ts     ← the Results view, in the bottom panel
+            run-session.ts      ← the last run: the one the Run panel draws and Results lists (ADR-VSC-0031)
+            run-state.ts        ← what the Run panel shows, when a run is out of date (tested)
+            run-panel.ts        ← the Run panel beside the editor: lifecycle, messages, open element, save drawing
+            run-shell.ts        ← the Run panel's HTML shell
+            results-view.ts     ← the Results view, in the bottom panel; opened from the Run panel
             python-environment.ts ← which environment is the workspace's own? can it run steps? which fix? (tested; ADR-VSC-0026)
             environment.ts      ← finds that environment, points the Python extension at it, asks consent, runs fixes
             step-terminal.ts    ← runs a fix step itself, shown in a task's terminal: a task cannot unset an inherited variable
@@ -90,11 +94,14 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             elements-view.ts    ← the activity's Outline: elements of the model selected in Models
             elements-tree.ts    ← that model's own and inherited elements, vscode-free (tested)
         webview/                ← browser code. DOM only — no `vscode`, no node: (ADR-VSC-0003)
-          preview.ts            ← preview controller (pan/zoom, message dispatch)
+          preview.ts            ← preview page: modes, banners, highlight, message dispatch
+          canvas.ts             ← the diagram canvas both pages share: pan/zoom, minimap, theme (tested)
+          run.ts / run-view.ts  ← the Run panel's page: entry point / its logic (run-view tested)
           diagnostic-view.ts    ← the diagnostics tables
           viewbox.ts            ← pure viewbox maths (tested)
         shared/                 ← the ONLY code both bundles may import (ADR-VSC-0005)
           preview-protocol.ts   ← typed host↔webview message contract
+          run-protocol.ts       ← the same, for the Run panel
           diagnostic-model.ts   ← report → view model (tested)
         language/main.ts        ← language-server process entry point
       test/                     ← Vitest tests; cannot load anything importing `vscode`
@@ -268,7 +275,7 @@ ADR-VSC-0004.
 
 ## VS Code Commands
 
-`packages/extension/package.json` is the source of truth — it declares **36** commands, with
+`packages/extension/package.json` is the source of truth — it declares **37** commands, with
 their menu placement and `when`-clauses. The ones worth knowing:
 
 | Command ID | Title |
@@ -285,7 +292,7 @@ their menu placement and `when`-clauses. The ones worth knowing:
 | `jpipe.autoIndent` | Auto-indent and Align — delegates to `editor.action.formatDocument`, *not* a code action (ADR-VSC-0024) |
 | `jpipe.convertModelKind`, `jpipe.extractTemplate` | Model refactorings |
 | `jpipe.models.refresh` / `newJustification` / `newTemplate` / `newImplementation` / `scaffoldLibrary` | Models view toolbar, inline and context actions |
-| `jpipe.run` | ▶ Run Model with jpipe-runner (editor title, Models inline) |
+| `jpipe.run` / `jpipe.check` | ▶ Run Model with jpipe-runner (editor title, Models inline) / ✓ Check Model (Models context menu); both open the Run panel (ADR-VSC-0031) |
 | `jpipe.libraries.new` / `checkAll` / `uncheckAll` / `refresh` | Libraries view toolbar |
 | `jpipe.runLibrary` / `checkLibrary` | Run as jPipe / Check as jPipe Library: the ▶ menu (`editor/title/run`) of a Python file that is a checked library; act on the model selected in Models, with every checked library (ADR-VSC-0029) |
 | `jpipe.results.showOutput` | Results view toolbar: the terminal the last run printed in (ADR-VSC-0029) |
@@ -312,6 +319,13 @@ Right-clicking a model offers the same three entries, directly in the menu, in t
 resolve it to a model (`targetOf` in `commands.ts`).
 
 The preview panel auto-refreshes on file save, highlights the node under the cursor (via LSP `textDocument/documentSymbol`), and has zoom controls (+/−/0 keys or toolbar buttons).
+
+The **Run panel** is a second webview, opened by every ▶ and ✓ and never by opening a file (a check
+imports the libraries). It shows the last run only — the runner's own SVGs, dataflow first — and
+shares that run with the Results view through `RunSession`: a node click selects the element's row in
+Results, a double-click opens the element, and Results no longer comes forward by itself. A runner
+that cannot draw (Graphviz missing, exit 4, no report) is launched once more without the drawings
+(ADR-VSC-0031).
 
 ---
 
