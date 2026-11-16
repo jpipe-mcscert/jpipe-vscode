@@ -13,6 +13,8 @@ import { ElementsView } from './models-view/elements-view.js';
 import { LibrariesView } from './runner/libraries-view.js';
 import { RunnerEnvironment } from './runner/environment.js';
 import { ResultsView } from './runner/results-view.js';
+import { RunSession } from './runner/run-session.js';
+import { RunPanel } from './runner/run-panel.js';
 import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 import { displayMessageOf, messageOf } from '../shared/errors.js';
 import { JpipeLogger } from './logger.js';
@@ -105,13 +107,15 @@ export function activate(context: vscode.ExtensionContext): void {
     runnerEnvironment.start();
     librariesView.start();
     const resultsView = new ResultsView();
-    context.subscriptions.push(modelsView, runnerEnvironment, librariesView, resultsView, new ElementsView(client, modelsView, librariesView, logger));
+    const runSession = new RunSession(librariesView);
+    const runPanel = new RunPanel(context, logger, runSession, resultsView, modelsView);
+    context.subscriptions.push(modelsView, runnerEnvironment, librariesView, resultsView, runSession, runPanel, new ElementsView(client, modelsView, librariesView, logger));
     // Hides the palette commands that need models to act on until this workspace is known to be
     // a jPipe one. The activity itself is always there: it is where a first model is created, and
     // opening it is one of the things that activates the extension.
     void vscode.commands.executeCommand('setContext', 'jpipe.activated', true);
 
-    registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView });
+    registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView, runSession, runPanel });
 }
 
 // This function is called when the extension is deactivated.

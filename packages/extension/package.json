@@ -398,6 +398,12 @@
                 "icon": "$(play)"
             },
             {
+                "command": "jpipe.check",
+                "title": "Check Model",
+                "category": "jPipe",
+                "icon": "$(checklist)"
+            },
+            {
                 "command": "jpipe.runLibrary",
                 "title": "Run as jPipe",
                 "category": "jPipe",
@@ -510,6 +516,10 @@
                 },
                 {
                     "command": "jpipe.run",
+                    "when": "jpipe.activated"
+                },
+                {
+                    "command": "jpipe.check",
                     "when": "jpipe.activated"
                 },
                 {
@@ -693,6 +703,11 @@
                     "command": "jpipe.run",
                     "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.justification/",
                     "group": "1_model@0"
+                },
+                {
+                    "command": "jpipe.check",
+                    "when": "view == jpipe.models && viewItem =~ /^jpipe\\.model\\.justification/",
+                    "group": "1_model@1"
                 },
                 {
                     "command": "jpipe.models.newImplementation",

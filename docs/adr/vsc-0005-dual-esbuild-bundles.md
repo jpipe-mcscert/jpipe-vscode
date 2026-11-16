@@ -12,7 +12,7 @@ incompatible loaders.
 The VS Code extension host still loads extension entry points as CommonJS. A `.js` file inside a
 `"type": "module"` package is treated by Node as ESM, so shipping ESM to the host fails to load.
 
-The preview webview runs in a browser inside a webview panel. It has no module loader, no
+The preview and run panel webviews run in a browser inside a webview panel. It has no module loader, no
 `require`, and is delivered by a `<script>` tag from a generated HTML shell — so it needs a
 single self-contained script with no import statements at all.
 
@@ -24,8 +24,10 @@ The **host** context bundles `src/extension/main.ts` and `src/language/main.ts` 
 `format: 'cjs'`, `platform: 'node'`, target ES2017, with `external: ['vscode']` and
 `outExtension: { '.js': '.cjs' }`.
 
-The **webview** context bundles `src/webview/preview.ts` and `preview.css` to `out/webview/`, as
-`format: 'iife'`, `platform: 'browser'`, target ES2020.
+The **webview** context bundles each page — `src/webview/preview.ts` and `preview.css`, the run
+panel's `run.ts` and `run.css` — to `out/webview/`, as `format: 'iife'`, `platform: 'browser'`,
+target ES2020. Code the two pages share, such as the diagram canvas, is imported by both and
+bundled into each.
 
 `packages/extension/src/shared/` is the **only** code both bundles may import.
 

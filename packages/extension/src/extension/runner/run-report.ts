@@ -65,6 +65,10 @@ export interface RunReport {
     verdict: Verdict;
     elements: ReportElement[];
     diagnostics: ReportDiagnostic[];
+    /** Where the runner drew the argument (`--diagram`), or null when it drew nothing. */
+    diagram: string | null;
+    /** Where it drew the dataflow (`--dataflow`), or null when it drew nothing. */
+    dataflow: string | null;
 }
 
 /** The report's major version this reads. */
@@ -152,7 +156,9 @@ export function parseReport(content: string): { report: RunReport } | { problem:
                 message: text(d.message),
                 fix: textOrNull(d.fix),
                 traceback: traceback(d.traceback)
-            }))
+            })),
+            diagram: textOrNull(raw.diagram),
+            dataflow: textOrNull(raw.dataflow)
         }
     };
 }
@@ -232,7 +238,7 @@ export function verdictRow(report: RunReport, name: string, check = false): Resu
     };
 }
 
-function verdictLabel(report: RunReport, name: string, check: boolean): string {
+export function verdictLabel(report: RunReport, name: string, check = false): string {
     const says = check && report.verdict === 'invalid' ? 'is not valid' : VERDICTS[report.verdict].says;
     return `${report.justification ?? name} ${says}`;
 }
@@ -252,6 +258,33 @@ function verdictCounts(report: RunReport): string[] {
         }
     }
     return counts;
+}
+
+/** The problems about no listed element: why nothing ran, most often. */
+function generalProblems(report: RunReport): ReportDiagnostic[] {
+    const listed = new Set(report.elements.map(e => e.id));
+    return report.diagnostics.filter(d => d.element === null || !listed.has(d.element));
+}
+
+/**
+ * The verdict's counts, each with the row of the Results view it opens: `2 failed` opens the
+ * Failed group. When no step was called, the problems are counted, and open the Problems group
+ * when some are about no element, With problems otherwise. Problems about no element are counted
+ * after a run too, since no node of a diagram can show them.
+ */
+export function verdictLinks(report: RunReport): { text: string; row: string }[] {
+    const general = generalProblems(report);
+    if (nothingRan(report)) {
+        const row = general.length > 0 ? 'problems' : 'group/With problems';
+        return verdictCounts(report).map(text => ({ text, row }));
+    }
+    const links = OUTCOMES.flatMap(([status, says]) => {
+        const n = report.elements.filter(e => e.status === status).length;
+        const group = GROUPS.find(g => g.status === status)!;
+        return n > 0 ? [{ text: `${n} ${says}`, row: `group/${group.title}` }] : [];
+    });
+    if (general.length > 0) links.push({ text: plural(general.length, 'problem'), row: 'problems' });
+    return links;
 }
 
 function tracebackRows(id: string, trace: Traceback): ResultRow[] {
@@ -365,8 +398,7 @@ function groupRow(title: string, elements: readonly ReportElement[], report: Run
  * has an outcome, and they are grouped by whether a problem is about them instead.
  */
 export function resultRows(report: RunReport, name: string, check = false): ResultRow[] {
-    const listed = new Set(report.elements.map(e => e.id));
-    const general = report.diagnostics.filter(d => d.element === null || !listed.has(d.element));
+    const general = generalProblems(report);
     const rows: ResultRow[] = [verdictRow(report, name, check)];
     if (general.length > 0) {
         rows.push({
@@ -416,10 +448,22 @@ export function stepLocation(boundTo: string, steps: readonly LibraryStep[]): { 
     return step && { libraryUri: step.libraryUri, line: step.line };
 }
 
+/** Where the runner draws a run's two views (jpipe-runner ADR-0022). Each file's suffix is its format. */
+export interface DiagramPaths {
+    argument: string;
+    dataflow: string;
+}
+
 /**
- * `--report PATH`, before the runner's other arguments; and `--dry-run` for a check, which
- * validates the libraries against the justification and calls no step.
+ * `--report PATH`, before the runner's other arguments; `--dry-run` for a check, which validates
+ * the libraries against the justification and calls no step; and `--diagram` and `--dataflow`
+ * when the run's views are to be drawn, which a check draws too, from what the steps declare.
  */
-export function withReport(runnerArgs: readonly string[], report: string, check = false): string[] {
-    return [...(check ? ['--dry-run'] : []), '--report', report, ...runnerArgs];
+export function withReport(runnerArgs: readonly string[], report: string, check = false, diagrams?: DiagramPaths): string[] {
+    return [
+        ...(check ? ['--dry-run'] : []),
+        '--report', report,
+        ...(diagrams ? ['--diagram', diagrams.argument, '--dataflow', diagrams.dataflow] : []),
+        ...runnerArgs
+    ];
 }

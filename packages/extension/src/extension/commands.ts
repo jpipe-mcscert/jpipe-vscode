@@ -14,10 +14,12 @@ import type { ModelsView } from './models-view/models-view.js';
 import type { Model, ModelNode, TreeNode } from './models-view/models-tree.js';
 import { newModel } from './models-view/new-model-flow.js';
 import type { LibrariesView } from './runner/libraries-view.js';
-import { runModel, runSelectedModel, type RunDeps } from './runner/run-model.js';
+import { runModel, runSelectedModel, runShownAgain, type RunDeps } from './runner/run-model.js';
 import { newLibrary, scaffoldLibrary } from './runner/new-library-flow.js';
 import type { RunnerEnvironment } from './runner/environment.js';
 import type { ResultsView } from './runner/results-view.js';
+import type { RunSession } from './runner/run-session.js';
+import type { RunPanel } from './runner/run-panel.js';
 import { installFromRelease } from './compiler/managed-install.js';
 import { selectJarFile } from './compiler/jar-selection.js';
 import { accessMethodHeader } from './compiler/release-presentation.js';
@@ -52,6 +54,8 @@ export interface CommandDeps {
     librariesView: LibrariesView;
     runnerEnvironment: RunnerEnvironment;
     resultsView: ResultsView;
+    runSession: RunSession;
+    runPanel: RunPanel;
 }
 
 /**
@@ -89,8 +93,13 @@ const CODE_ACTION_COMMANDS: ReadonlyArray<readonly [command: string, kind: strin
 ];
 
 export function registerCommands(deps: CommandDeps): void {
-    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView } = deps;
-    const runDeps: RunDeps = { context, logger, imageGenerator, libraries: librariesView, models: modelsView, environment: runnerEnvironment, results: resultsView };
+    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView, runSession, runPanel } = deps;
+    const runDeps: RunDeps = {
+        context, logger, imageGenerator, libraries: librariesView, models: modelsView, environment: runnerEnvironment,
+        results: resultsView, session: runSession, panel: runPanel
+    };
+    // The run panel's own ▶ and ✓: the justification it shows, again.
+    context.subscriptions.push(runPanel.onDidRequestRun(check => runShownAgain(runDeps, check)));
 
     /**
      * Where a new model goes is decided beside "the model in question": the row the command was
@@ -181,6 +190,8 @@ export function registerCommands(deps: CommandDeps): void {
 
         // ▶: the model of the Models row it was clicked on, or the one the cursor is in.
         vscode.commands.registerCommand('jpipe.run', (arg?: unknown) => runModel(runDeps, modelOf(arg)?.model)),
+        // ✓: the same, validating the libraries against the model without calling any step.
+        vscode.commands.registerCommand('jpipe.check', (arg?: unknown) => runModel(runDeps, modelOf(arg)?.model, true)),
         // On a checked library's own ▶ menu: the model selected in Models, with every checked library.
         vscode.commands.registerCommand('jpipe.runLibrary', () => runSelectedModel(runDeps, false)),
         vscode.commands.registerCommand('jpipe.checkLibrary', () => runSelectedModel(runDeps, true)),

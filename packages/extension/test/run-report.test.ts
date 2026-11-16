@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
-    fileSize, parseReport, resultRows, stepLocation, verdictSentence, withReport,
+    fileSize, parseReport, resultRows, stepLocation, verdictLinks, verdictSentence, withReport,
     type ResultRow, type RunReport
 } from '../src/extension/runner/run-report.js';
 
@@ -210,6 +210,39 @@ describe('when no step was called', () => {
     });
 });
 
+describe('the verdict\'s counts, as links to Results', () => {
+    const unrun = (id: string) => element({ id, status: null, ran: false });
+    const problem = (severity: string, on: string | null) =>
+        ({ code: 'JP010', severity, element: on, message: `a ${severity}`, fix: null, traceback: null });
+
+    test('after a run, each outcome opens its group', () => {
+        expect(verdictLinks(read(RELEASE))).toEqual([
+            { text: '1 passed', row: 'group/Passed' },
+            { text: '1 failed', row: 'group/Failed' },
+            { text: '3 skipped', row: 'group/Skipped' }
+        ]);
+    });
+
+    test('after a run, problems about no element are counted too, since no node shows them', () => {
+        const report = read({ ...RELEASE, diagnostics: [problem('warning', null), problem('warning', 'release:e1')] });
+        expect(verdictLinks(report).at(-1)).toEqual({ text: '1 problem', row: 'problems' });
+    });
+
+    test('when no step was called, the problems are counted, and open where they are listed', () => {
+        expect(verdictLinks(read({ verdict: 'valid', elements: [unrun('e')], diagnostics: [problem('warning', 'e')] })))
+            .toEqual([{ text: '1 warning', row: 'group/With problems' }]);
+        expect(verdictLinks(read({ verdict: 'invalid', diagnostics: [problem('error', null), problem('error', null)] })))
+            .toEqual([{ text: '2 errors', row: 'problems' }]);
+        expect(verdictLinks(read({ verdict: 'valid', elements: [unrun('e')] }))).toEqual([]);
+    });
+
+    test('every link names a row the Results view has', () => {
+        const report = read({ ...RELEASE, diagnostics: [problem('warning', null)] });
+        const ids = new Set(flat(resultRows(report, 'release')).map(r => r.id));
+        for (const link of verdictLinks(report)) expect(ids).toContain(link.row);
+    });
+});
+
 describe('around the report', () => {
 
     test('a run is summed up in a sentence', () => {
@@ -235,6 +268,19 @@ describe('around the report', () => {
     test('the runner is asked to write its report to a file', () => {
         expect(withReport(['-l', '/w/a.py', '/tmp/release.json'], '/tmp/release.report.json'))
             .toEqual(['--report', '/tmp/release.report.json', '-l', '/w/a.py', '/tmp/release.json']);
+    });
+
+    test('a run is asked to draw both its views, after its report and before its libraries', () => {
+        expect(withReport(['-l', '/w/a.py', '/tmp/m.json'], '/tmp/r.json', false, { argument: '/tmp/m.svg', dataflow: '/tmp/m-dataflow.svg' }))
+            .toEqual(['--report', '/tmp/r.json', '--diagram', '/tmp/m.svg', '--dataflow', '/tmp/m-dataflow.svg', '-l', '/w/a.py', '/tmp/m.json']);
+        expect(withReport(['/tmp/m.json'], '/tmp/r.json', true, { argument: 'a.svg', dataflow: 'd.svg' }))
+            .toEqual(['--dry-run', '--report', '/tmp/r.json', '--diagram', 'a.svg', '--dataflow', 'd.svg', '/tmp/m.json']);
+    });
+
+    test('the report says where the runner drew, or that it drew nothing', () => {
+        expect(read({ diagram: '/tmp/m.svg', dataflow: '/tmp/m-dataflow.svg' })).toMatchObject({ diagram: '/tmp/m.svg', dataflow: '/tmp/m-dataflow.svg' });
+        expect(read({ diagram: null })).toMatchObject({ diagram: null, dataflow: null });
+        expect(parseReport(JSON.stringify({ schema_version: '1.0', verdict: 'pass' }))).toMatchObject({ report: { diagram: null, dataflow: null } });
     });
 
     test.each([[187, '187 B'], [1234, '1.2 kB'], [3_400_000, '3.4 MB']])('%i bytes reads %s', (bytes, shown) => {

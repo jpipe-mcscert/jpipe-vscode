@@ -48,10 +48,17 @@ export interface RunResult {
  * report (jpipe-vscode ADR-VSC-0029). `run-report.ts` decides the rows; this shows them and makes
  * them clickable: a file opens, a traceback frame opens at its line, a step opens at its function,
  * and "supports" or "stopped it" goes to that element's row.
+ *
+ * It lists the run the run panel draws, and is opened from it rather than coming forward on its
+ * own (jpipe-vscode ADR-VSC-0031): selecting an element here selects its node there, and a node
+ * clicked there selects its row here.
  */
 export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.Disposable {
     private readonly changeEmitter = new vscode.EventEmitter<undefined>();
     readonly onDidChangeTreeData = this.changeEmitter.event;
+    private readonly selectEmitter = new vscode.EventEmitter<string | null>();
+    /** The element whose row is selected, or null when the selection is no element's row. */
+    readonly onDidSelectElement = this.selectEmitter.event;
 
     private readonly view: vscode.TreeView<ResultRow>;
     private readonly disposables: vscode.Disposable[] = [];
@@ -65,11 +72,13 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
         this.disposables.push(
             this.view,
             this.changeEmitter,
-            vscode.commands.registerCommand(ACTIVATE_ROW, (id: string) => this.activate(id))
+            this.selectEmitter,
+            vscode.commands.registerCommand(ACTIVATE_ROW, (id: string) => this.activate(id)),
+            this.view.onDidChangeSelection(e => this.selectEmitter.fire(elementOf(e.selection[0])))
         );
     }
 
-    /** Show a run's report, and bring the panel forward. */
+    /** Show a run's report. The view is not brought forward: the run panel is (jpipe-vscode ADR-VSC-0031). */
     async show(result: RunResult): Promise<void> {
         this.result = result;
         this.rows = resultRows(result.report, result.name, result.check);
@@ -85,7 +94,20 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
         this.view.description = `${result.report.justification ?? result.name} · ${result.check ? 'check' : 'run'}`;
         this.changeEmitter.fire(undefined);
         await vscode.commands.executeCommand('setContext', HAS_RESULTS, true);
-        await vscode.commands.executeCommand(`${RESULTS_VIEW_ID}.focus`, { preserveFocus: true });
+    }
+
+    /**
+     * Bring the view forward, on the row `id` when there is one: a count of the run panel's verdict
+     * opens its group, and a node clicked there selects its element's row. A node's click leaves the
+     * focus in the panel (`focus` false), where the second click of a double click lands.
+     */
+    async reveal(id: string | null, focus = true): Promise<void> {
+        const row = id === null ? undefined : this.byId.get(id);
+        if (!row) {
+            await vscode.commands.executeCommand(`${RESULTS_VIEW_ID}.focus`);
+            return;
+        }
+        await this.view.reveal(row, { select: true, focus, expand: true });
     }
 
     /** The terminal of the run on show, where its steps printed. */
@@ -149,6 +171,12 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
     dispose(): void {
         for (const d of this.disposables) d.dispose();
     }
+}
+
+/** The element a row is about, when the row is an element's own: `element/‹id›`. */
+function elementOf(row: ResultRow | undefined): string | null {
+    const prefix = 'element/';
+    return row?.id.startsWith(prefix) && !row.id.includes('/', prefix.length) ? row.id.slice(prefix.length) : null;
 }
 
 function collapsibleState(row: ResultRow): vscode.TreeItemCollapsibleState {

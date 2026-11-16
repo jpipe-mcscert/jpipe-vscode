@@ -67,3 +67,4 @@ The compiler's records are at
 | [VSC-0028](vsc-0028-settings-groups-are-named-as-a-path.md) | Settings groups are named as a path | 2026-11-13 | Accepted |
 | [VSC-0029](vsc-0029-a-run-is-read-from-its-json-report.md) | A run is read from the runner's JSON report, and listed, not drawn as a tree | 2026-11-14 | Accepted |
 | [VSC-0030](vsc-0030-dev-integrates-main-holds-releases.md) | `dev` integrates, `main` holds releases | 2026-11-15 | Accepted |
+| [VSC-0031](vsc-0031-a-run-is-drawn-in-a-panel-of-its-own.md) | A run is drawn in a panel of its own, beside the editor | 2026-11-15 | Accepted |

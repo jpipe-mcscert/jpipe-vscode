@@ -11,6 +11,8 @@ extension/out/extension/main.cjs
 extension/out/language/main.cjs
 extension/out/webview/preview.css
 extension/out/webview/preview.js
+extension/out/webview/run.css
+extension/out/webview/run.js
 extension/package.json
 extension/readme.md
 extension/schema/diagnostic-report.v1.schema.json
