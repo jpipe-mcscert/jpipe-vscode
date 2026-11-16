@@ -28,6 +28,11 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # `labels` replaces Dependabot's defaults. Without it, a configuration with two ecosystems
+    # also gets a per-ecosystem label (`javascript`, `github_actions`), which Dependabot creates
+    # in the repository if it is missing — outside the label scheme (README, "How are issues
+    # labelled?").
+    labels: ["dependencies", "area: build"]
 
     groups:
       # Vitest and its coverage plugin peer-depend on each other's *exact* version, so they are
@@ -132,6 +137,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 3
+    labels: ["dependencies", "area: build"]
     groups:
       actions:
         patterns:
