@@ -104,10 +104,16 @@ describe('going out of date', () => {
         expect(outOfDateReason(done(), { kind: 'checked', paths: ['/w/more.py'] })).toBeDefined();
     });
 
-    test('only a run that ended can be out of date', () => {
+    test('a change made while the run is under way counts: it is not what the run read', () => {
         const running = startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined);
-        expect(outOfDateReason(running, saved('/w/release.jd', true))).toBeUndefined();
+        expect(outOfDateReason(running, saved('/w/release.jd', true))).toBe('release.jd changed since this execution.');
+        expect(outOfDateReason(running, { kind: 'checked', paths: [] })).toBeDefined();
+    });
+
+    test('a run that ended without a report has nothing to be out of date', () => {
+        const running = startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined);
         expect(outOfDateReason({ ...running, phase: 'blocked' }, saved('/w/release.jd', true))).toBeUndefined();
+        expect(outOfDateReason({ ...running, phase: 'stopped' }, saved('/w/release.jd', true))).toBeUndefined();
     });
 });
 

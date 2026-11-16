@@ -109,15 +109,16 @@ export type Change =
     | { kind: 'checked'; paths: string[] };
 
 /**
- * Why `change` makes the run on show out of date, or `undefined` when it does not. Only a run that
- * ended can be out of date.
+ * Why `change` makes the run on show out of date, or `undefined` when it does not. A run under way
+ * counts as well as one that ended: what changes while it runs is not what it read, and the page
+ * shows the banner once it ends. A run that ended without a report has nothing to be out of date.
  *
  * Any jPipe file counts, not only the model's own: the model may load it, and telling which files
  * it loads would need the language server for a banner. A library counts when the run loaded it;
  * the libraries checked count when they are no longer the ones the run loaded.
  */
 export function outOfDateReason(run: ShownRun, change: Change): string | undefined {
-    if (run.phase !== 'done') return undefined;
+    if (run.phase !== 'done' && run.phase !== 'running') return undefined;
     if (change.kind === 'saved') {
         const loaded = run.libraries.some(library => library.path === change.path);
         return change.isModel || loaded ? `${change.display} changed since this ${kindOf(run.check)}.` : undefined;

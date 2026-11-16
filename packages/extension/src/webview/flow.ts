@@ -24,6 +24,7 @@ export function nodeNamed(svg: SVGSVGElement, name: string): SVGGElement | null 
  * which validation reports but the drawing still shows, is walked once.
  */
 export function downstream(svg: SVGSVGElement, start: SVGGElement): Set<SVGGElement> {
+    const nodes = new Map(Array.from(svg.querySelectorAll<SVGGElement>('g.node')).map(node => [nameOf(node), node]));
     const out = new Map<string, { head: string; edge: SVGGElement }[]>();
     for (const edge of Array.from(svg.querySelectorAll<SVGGElement>('g.edge'))) {
         const name = nameOf(edge);
@@ -43,7 +44,7 @@ export function downstream(svg: SVGSVGElement, start: SVGGElement): Set<SVGGElem
             if (seen.has(head)) continue;
             seen.add(head);
             queue.push(head);
-            const node = nodeNamed(svg, head);
+            const node = nodes.get(head);
             if (node) reached.add(node);
         }
     }

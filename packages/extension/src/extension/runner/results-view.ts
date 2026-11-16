@@ -139,9 +139,10 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
         await this.view.reveal(row, { select: true, focus, expand: true });
     }
 
-    /** The terminal of the run on show, where its steps printed. */
+    /** The terminal of the run on show, where its steps printed, whether it has a report or not. */
     showOutput(): void {
-        this.result?.showOutput();
+        if (this.result) this.result.showOutput();
+        else this.session.showOutput();
     }
 
     getChildren(row?: ResultRow): ResultRow[] {

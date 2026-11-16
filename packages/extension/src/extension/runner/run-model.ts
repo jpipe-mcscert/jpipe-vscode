@@ -130,7 +130,12 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
         return;
     }
 
+    // The libraries and their steps as this run loads them: the libraries checked may change while
+    // it runs. What it reads is saved before it begins, so that its own saves are not changes made
+    // since it began, which would put it out of date (ADR-VSC-0031).
     const libraries = deps.libraries.checkedLibraries();
+    const steps = deps.libraries.checkedSteps();
+    const unsaved = libraries.length > 0 ? await saveInputs(document, libraries.map(library => library.uri)) : undefined;
     const token = deps.session.begin(name, document.uri.toString(), check, libraries.map(library => ({
         path: library.uri.fsPath,
         display: vscode.workspace.asRelativePath(library.uri)
@@ -143,10 +148,6 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
         });
         return;
     }
-
-    // The steps as this run loads them: the libraries checked may change while it runs.
-    const steps = deps.libraries.checkedSteps();
-    const unsaved = await saveInputs(document, libraries.map(library => library.uri));
     if (unsaved) {
         deps.session.endWith(token, 'blocked', {
             text: `${name} was not ${check ? 'checked' : 'run'}: ${vscode.workspace.asRelativePath(unsaved)} could not be saved, and a run reads files as they are saved.`,
@@ -226,6 +227,9 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
     if ('problem' in read) {
         // No report: a usage error, a file that could not be read, or a runner that did not start.
         deps.logger.warn(`${task.name} ended with exit code ${exitCode ?? '(none)'}: ${read.problem}`);
+        // A run another has taken the place of says nothing more: no second launch, no terminal
+        // brought over the one the panel now speaks for.
+        if (!deps.session.isCurrent(token)) return;
         if (deps.session.stopped(token)) {
             deps.session.endWith(token, 'stopped', { text: `${name} was stopped.`, action: { label: 'Show Output', id: 'showOutput' } });
             return;

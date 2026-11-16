@@ -6,7 +6,8 @@ import { responseToCursorMove } from './preview-refresh.js';
 import { panelExportTarget } from './export-target.js';
 import { symbolAtPosition, type DocumentSymbol } from './document-symbols.js';
 import { dispositionOf, type ResultDisposition } from './staleness.js';
-import { chooseRevealColumn } from './reveal-column.js';
+import { revealColumnAmong } from './reveal-column.js';
+import { ZOOM_SENSITIVITY_SETTING, clampZoomSensitivity } from './zoom-sensitivity.js';
 import type {
     DiagnosticMessage,
     HostToWebview,
@@ -232,7 +233,7 @@ export class PreviewProvider {
         // The page is built once, so it cannot read settings itself — it has to be told when
         // they change.
         const configListener = vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('jpipe.previewZoomSensitivity')) this.postConfig();
+            if (e.affectsConfiguration(`jpipe.${ZOOM_SENSITIVITY_SETTING}`)) this.postConfig();
         });
 
         this.subscriptions.push(saveListener, changeListener, cursorListener, openListener, configListener);
@@ -300,11 +301,7 @@ export class PreviewProvider {
 
     /** Where to put a revealed source, read off what is currently on screen. */
     private revealColumn(document: vscode.TextDocument): vscode.ViewColumn {
-        return chooseRevealColumn(vscode.window.visibleTextEditors.map(editor => ({
-            column: editor.viewColumn,
-            showsTarget: editor.document === document,
-            isModel: editor.document.languageId === 'jpipe'
-        })));
+        return revealColumnAmong(vscode.window.visibleTextEditors, document);
     }
 
     /** Extract the SVG document from CLI output (drops any path or log text before/after the <svg>). */
@@ -323,11 +320,8 @@ export class PreviewProvider {
 
     /** Hand the page the settings it needs. Sent on `ready` and whenever they change. */
     private postConfig(): void {
-        const sensitivity = vscode.workspace.getConfiguration('jpipe').get<number>('previewZoomSensitivity', 1);
-        // Guard the range here as well as in the schema: a hand-edited settings.json can hold
-        // anything, and a zero or negative multiplier would break zooming outright.
-        const clamped = Number.isFinite(sensitivity) ? Math.min(4, Math.max(0.25, sensitivity)) : 1;
-        this.post({ type: 'config', zoomSensitivity: clamped });
+        const sensitivity = vscode.workspace.getConfiguration('jpipe').get<unknown>(ZOOM_SENSITIVITY_SETTING, 1);
+        this.post({ type: 'config', zoomSensitivity: clampZoomSensitivity(sensitivity) });
     }
 
     /**

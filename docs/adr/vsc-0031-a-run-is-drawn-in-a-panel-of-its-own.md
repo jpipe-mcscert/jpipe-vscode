@@ -44,7 +44,9 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
   says why it has none.
 - **What stops a run is said in the panel**, with the one thing to do about it on a button: no
   library checked (Show Libraries), a model that does not compile (Show Problems), no environment
-  that can run steps (its fix), a runner that wrote no report (Show Output). These were dialogs.
+  that can run steps (its fix, after which the run goes ahead), a runner that wrote no report (Show
+  Output). These were dialogs. A run that ends this way takes the previous drawing with it: its
+  colours were another run's.
 - **A verdict bar** opens with what was done — **Execution**, which called every step, or **Check ·
   no step called** — then the verdict, its counts, when, and which libraries were loaded. Each count
   opens its group in Results. A banner says when the run is **out of date**: a jPipe file or a

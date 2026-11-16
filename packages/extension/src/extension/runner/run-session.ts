@@ -87,9 +87,12 @@ export class RunSession implements vscode.Disposable {
         if (this.shown) this.show({ ...this.shown, notice });
     }
 
-    /** End run `token` without a report, saying why. */
+    /**
+     * End run `token` without a report, saying why. The previous run's drawing, kept under the busy
+     * overlay, goes too: its colours are another run's, and nothing would say so.
+     */
     endWith(token: number, phase: 'blocked' | 'stopped', notice: Notice): void {
-        this.update(token, { phase, notice, endedAt: new Date() });
+        this.update(token, { phase, notice, endedAt: new Date(), dataflow: null });
     }
 
     /** The task run `token` is executing in, so that it can be stopped. */

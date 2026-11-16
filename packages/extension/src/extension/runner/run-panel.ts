@@ -3,7 +3,8 @@ import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import type { HostToRunPanel, NoticeAction, RunPanelToHost } from '../../shared/run-protocol.js';
 import type { ModelsView } from '../models-view/models-view.js';
-import { chooseRevealColumn } from '../preview/reveal-column.js';
+import { revealColumnAmong } from '../preview/reveal-column.js';
+import { ZOOM_SENSITIVITY_SETTING, clampZoomSensitivity } from '../preview/zoom-sensitivity.js';
 import { LIBRARIES_VIEW_ID } from './libraries-view.js';
 import type { ResultsView } from './results-view.js';
 import { getRunShellHtml } from './run-shell.js';
@@ -47,7 +48,7 @@ export class RunPanel implements vscode.Disposable {
             session.onDidChange(() => this.sendState()),
             results.onDidSelectElement(element => this.post({ type: 'select', element })),
             vscode.workspace.onDidChangeConfiguration(e => {
-                if (e.affectsConfiguration('jpipe.previewZoomSensitivity')) this.postConfig();
+                if (e.affectsConfiguration(`jpipe.${ZOOM_SENSITIVITY_SETTING}`)) this.postConfig();
             })
         );
     }
@@ -83,14 +84,27 @@ export class RunPanel implements vscode.Disposable {
             light: vscode.Uri.joinPath(this.context.extensionUri, 'images', 'icon_light.svg'),
             dark: vscode.Uri.joinPath(this.context.extensionUri, 'images', 'icon_dark.svg')
         };
+        // The page's listener lives as long as the panel, not as long as the extension: a panel
+        // closed and opened again must not leave its predecessor's listener behind.
+        const listener = panel.webview.onDidReceiveMessage((msg: RunPanelToHost) => void this.receive(msg));
         panel.onDidDispose(() => {
+            listener.dispose();
             this.panel = undefined;
-        }, undefined, this.disposables);
-        panel.webview.onDidReceiveMessage((msg: RunPanelToHost) => void this.receive(msg), undefined, this.disposables);
+        });
         return panel;
     }
 
+    /** Act on what the page asks; whatever fails is logged and said, never left unhandled. */
     private async receive(msg: RunPanelToHost): Promise<void> {
+        try {
+            await this.act(msg);
+        } catch (err: unknown) {
+            this.logger.error(`The run panel could not do '${msg.type}': ${messageOf(err)}`);
+            void vscode.window.showErrorMessage(`jPipe could not do that: ${messageOf(err)}`);
+        }
+    }
+
+    private async act(msg: RunPanelToHost): Promise<void> {
         switch (msg.type) {
             case 'ready':
                 this.postConfig();
@@ -121,13 +135,23 @@ export class RunPanel implements vscode.Disposable {
                 await this.download();
                 break;
             case 'action':
-                if (msg.id === 'showOutput') {
-                    this.session.showOutput();
-                } else {
-                    await vscode.commands.executeCommand(NOTICE_COMMANDS[msg.id]);
-                }
+                await this.noticeAction(msg.id);
                 break;
         }
+    }
+
+    /**
+     * Do what a notice's button says. Setting the environment up is followed by the run it stopped,
+     * once the environment can run steps: that run is why the reader pressed it.
+     */
+    private async noticeAction(id: NoticeAction): Promise<void> {
+        if (id === 'showOutput') {
+            this.session.showOutput();
+            return;
+        }
+        const done = await vscode.commands.executeCommand<boolean | undefined>(NOTICE_COMMANDS[id]);
+        const run = this.session.run;
+        if (id === 'fixEnvironment' && done === true && run) this.runEmitter.fire(run.check);
     }
 
     private sendState(): void {
@@ -143,9 +167,8 @@ export class RunPanel implements vscode.Disposable {
 
     /** The zoom setting is the preview's: one canvas, one feel. */
     private postConfig(): void {
-        const sensitivity = vscode.workspace.getConfiguration('jpipe').get<number>('previewZoomSensitivity', 1);
-        const clamped = Number.isFinite(sensitivity) ? Math.min(4, Math.max(0.25, sensitivity)) : 1;
-        this.post({ type: 'config', zoomSensitivity: clamped });
+        const sensitivity = vscode.workspace.getConfiguration('jpipe').get<unknown>(ZOOM_SENSITIVITY_SETTING, 1);
+        this.post({ type: 'config', zoomSensitivity: clampZoomSensitivity(sensitivity) });
     }
 
     /**
@@ -159,7 +182,7 @@ export class RunPanel implements vscode.Disposable {
         if (!run) return;
         const { model: modelName, element } = elementLocation(id);
         const named = (await this.models.freshModels()).filter(m => m.name === (modelName ?? run.name));
-        const model = named.find(m => m.uri === run.uri) ?? named[0];
+        const model = named.find(m => vscode.Uri.parse(m.uri).toString() === run.uri) ?? named[0];
         if (!model) {
             void vscode.window.showInformationMessage(`${id} is not declared in a model of this workspace.`);
             return;
@@ -173,11 +196,7 @@ export class RunPanel implements vscode.Disposable {
             const { start } = model.selection;
             const range = declared?.selectionRange ?? new vscode.Range(start.line, start.character, start.line, start.character);
             await vscode.window.showTextDocument(document, {
-                viewColumn: chooseRevealColumn(vscode.window.visibleTextEditors.map(editor => ({
-                    column: editor.viewColumn,
-                    showsTarget: editor.document === document,
-                    isModel: editor.document.languageId === 'jpipe'
-                }))),
+                viewColumn: revealColumnAmong(vscode.window.visibleTextEditors, document),
                 selection: range
             });
         } catch (err: unknown) {
@@ -197,7 +216,13 @@ export class RunPanel implements vscode.Disposable {
             filters: { SVG: ['svg'] }
         });
         if (!target) return;
-        await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(svg));
+        try {
+            await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(svg));
+        } catch (err: unknown) {
+            this.logger.error(`Could not save the dataflow of ${run.name} to ${target.fsPath}: ${messageOf(err)}`);
+            void vscode.window.showErrorMessage(`The dataflow of ${run.name} was not saved: ${messageOf(err)}`);
+            return;
+        }
         this.logger.info(`Saved the dataflow of ${run.name} to ${target.fsPath}`);
     }
 
