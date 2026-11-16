@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import type { LibraryStep } from './step-binding.js';
 import { resultRows, stepLocation, type ResultRow, type RowIcon, type RunReport } from './run-report.js';
+import type { RunSession } from './run-session.js';
+import { kindOf, statusRow } from './run-state.js';
 
 export const RESULTS_VIEW_ID = 'jpipe.results';
 /** Set once a run has a report, which is when the panel has something to show. */
@@ -25,7 +27,9 @@ const ICONS: Readonly<Record<RowIcon, [codicon: string, colour?: string]>> = {
     'value': ['symbol-variable'],
     'consumes': ['arrow-right'],
     'supports': ['arrow-up'],
-    'blocked': ['circle-slash']
+    'blocked': ['circle-slash'],
+    'running': ['loading~spin'],
+    'stopped': ['debug-stop']
 };
 
 /** A run, as the view needs it. */
@@ -49,9 +53,10 @@ export interface RunResult {
  * them clickable: a file opens, a traceback frame opens at its line, a step opens at its function,
  * and "supports" or "stopped it" goes to that element's row.
  *
- * It lists the run the run panel draws, and is opened from it rather than coming forward on its
- * own (jpipe-vscode ADR-VSC-0031): selecting an element here selects its node there, and a node
- * clicked there selects its row here.
+ * It lists the run the run panel draws, and comes forward with it (jpipe-vscode ADR-VSC-0031):
+ * while the run has no report, it says in one row that it is under way, or why it ended without
+ * one. Selecting an element here selects its node there, and a node clicked there selects its row
+ * here.
  */
 export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.Disposable {
     private readonly changeEmitter = new vscode.EventEmitter<undefined>();
@@ -67,9 +72,10 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
     private readonly parents = new Map<ResultRow, ResultRow | undefined>();
     private readonly byId = new Map<string, ResultRow>();
 
-    constructor() {
+    constructor(private readonly session: RunSession) {
         this.view = vscode.window.createTreeView(RESULTS_VIEW_ID, { treeDataProvider: this });
         this.disposables.push(
+            session.onDidChange(() => this.followSession()),
             this.view,
             this.changeEmitter,
             this.selectEmitter,
@@ -78,10 +84,34 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
         );
     }
 
-    /** Show a run's report. The view is not brought forward: the run panel is (jpipe-vscode ADR-VSC-0031). */
+    /** Show a run's report, and bring the view forward without taking the focus. */
     async show(result: RunResult): Promise<void> {
         this.result = result;
-        this.rows = resultRows(result.report, result.name, result.check);
+        this.setRows(resultRows(result.report, result.name, result.check), result.report.justification ?? result.name, result.check);
+        await this.bringForward();
+    }
+
+    /**
+     * Bring the view forward without taking the focus, as the run panel comes forward: the two show
+     * one run. Revealing the first row is what shows a view without focusing it.
+     */
+    async bringForward(): Promise<void> {
+        await vscode.commands.executeCommand('setContext', HAS_RESULTS, true);
+        const first = this.rows[0];
+        if (first) await this.view.reveal(first, { select: false, focus: false });
+    }
+
+    /** A run with no report yet, or none at all, is listed as one row saying so. */
+    private followSession(): void {
+        const run = this.session.run;
+        const status = run && statusRow(run);
+        if (!run || !status) return;
+        this.result = undefined;
+        this.setRows([status], run.name, run.check);
+    }
+
+    private setRows(rows: ResultRow[], name: string, check: boolean): void {
+        this.rows = rows;
         this.parents.clear();
         this.byId.clear();
         const index = (row: ResultRow, parent: ResultRow | undefined): void => {
@@ -90,10 +120,9 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
             for (const child of row.children) index(child, row);
         };
         for (const row of this.rows) index(row, undefined);
-        // A valid check is not a run that passed: say which this is.
-        this.view.description = `${result.report.justification ?? result.name} · ${result.check ? 'check' : 'run'}`;
+        // A valid check is not an execution that passed: say which this is.
+        this.view.description = `${name} · ${kindOf(check)}`;
         this.changeEmitter.fire(undefined);
-        await vscode.commands.executeCommand('setContext', HAS_RESULTS, true);
     }
 
     /**

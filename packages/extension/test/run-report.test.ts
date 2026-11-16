@@ -270,17 +270,17 @@ describe('around the report', () => {
             .toEqual(['--report', '/tmp/release.report.json', '-l', '/w/a.py', '/tmp/release.json']);
     });
 
-    test('a run is asked to draw both its views, after its report and before its libraries', () => {
-        expect(withReport(['-l', '/w/a.py', '/tmp/m.json'], '/tmp/r.json', false, { argument: '/tmp/m.svg', dataflow: '/tmp/m-dataflow.svg' }))
-            .toEqual(['--report', '/tmp/r.json', '--diagram', '/tmp/m.svg', '--dataflow', '/tmp/m-dataflow.svg', '-l', '/w/a.py', '/tmp/m.json']);
-        expect(withReport(['/tmp/m.json'], '/tmp/r.json', true, { argument: 'a.svg', dataflow: 'd.svg' }))
-            .toEqual(['--dry-run', '--report', '/tmp/r.json', '--diagram', 'a.svg', '--dataflow', 'd.svg', '/tmp/m.json']);
+    test('a run is asked to draw its dataflow only, after its report and before its libraries', () => {
+        expect(withReport(['-l', '/w/a.py', '/tmp/m.json'], '/tmp/r.json', false, '/tmp/m-dataflow.svg'))
+            .toEqual(['--report', '/tmp/r.json', '--dataflow', '/tmp/m-dataflow.svg', '-l', '/w/a.py', '/tmp/m.json']);
+        expect(withReport(['/tmp/m.json'], '/tmp/r.json', true, 'd.svg'))
+            .toEqual(['--dry-run', '--report', '/tmp/r.json', '--dataflow', 'd.svg', '/tmp/m.json']);
     });
 
-    test('the report says where the runner drew, or that it drew nothing', () => {
-        expect(read({ diagram: '/tmp/m.svg', dataflow: '/tmp/m-dataflow.svg' })).toMatchObject({ diagram: '/tmp/m.svg', dataflow: '/tmp/m-dataflow.svg' });
-        expect(read({ diagram: null })).toMatchObject({ diagram: null, dataflow: null });
-        expect(parseReport(JSON.stringify({ schema_version: '1.0', verdict: 'pass' }))).toMatchObject({ report: { diagram: null, dataflow: null } });
+    test('the report says where the runner drew the dataflow, or that it drew nothing', () => {
+        expect(read({ dataflow: '/tmp/m-dataflow.svg' })).toMatchObject({ dataflow: '/tmp/m-dataflow.svg' });
+        expect(read({})).toMatchObject({ dataflow: null });
+        expect(parseReport(JSON.stringify({ schema_version: '1.0', verdict: 'pass' }))).toMatchObject({ report: { dataflow: null } });
     });
 
     test.each([[187, '187 B'], [1234, '1.2 kB'], [3_400_000, '3.4 MB']])('%i bytes reads %s', (bytes, shown) => {

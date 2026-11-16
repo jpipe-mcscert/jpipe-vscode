@@ -14,7 +14,7 @@ import type { RunnerEnvironment } from './environment.js';
 import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
 import type { ResultsView } from './results-view.js';
 import type { LibraryStep } from './step-binding.js';
-import { parseReport, verdictSentence, withReport, type DiagramPaths } from './run-report.js';
+import { parseReport, verdictSentence, withReport } from './run-report.js';
 import type { RunSession } from './run-session.js';
 import type { RunPanel } from './run-panel.js';
 import type { Notice } from '../../shared/run-protocol.js';
@@ -78,7 +78,6 @@ async function compile(
             folder,
             compiled,
             report: vscode.Uri.joinPath(folder, `${name}.report.json`),
-            argument: vscode.Uri.joinPath(folder, `${name}.svg`),
             dataflow: vscode.Uri.joinPath(folder, `${name}-dataflow.svg`)
         };
     } catch (err: unknown) {
@@ -97,8 +96,7 @@ interface RunFiles {
     folder: vscode.Uri;
     compiled: vscode.Uri;
     report: vscode.Uri;
-    /** The two drawings (jpipe-runner ADR-0022). */
-    argument: vscode.Uri;
+    /** The drawing of the run's dataflow (jpipe-runner ADR-0022). */
     dataflow: vscode.Uri;
 }
 
@@ -108,8 +106,8 @@ interface RunFiles {
  * The model is the one given (a Models row, or the run panel's own), or else the one the cursor is
  * in. It is compiled to JSON by the jPipe compiler — the same call as Export as JSON — and the
  * runner is launched as a VS Code task, the way it would be in CI, and asked to write its JSON
- * report to a file (`--report`) and to draw the run's two views. The run panel opens as the run
- * starts and shows it under way, then its drawings and verdict, and the Results view lists the
+ * report to a file (`--report`) and to draw the run's dataflow. The run panel opens as the run
+ * starts and shows it under way, then its drawing and verdict, and the Results view lists the
  * report (jpipe-vscode ADR-VSC-0029, ADR-VSC-0031). What stops a run before it starts — no library
  * checked, a model that does not compile, no environment to run in — is said in the panel too.
  * The task's terminal is where the steps print; it stays in the background unless the run ended
@@ -178,9 +176,9 @@ interface Run {
 /**
  * Start the runner on a compiled model, wait for it, and show what its report says.
  *
- * With `draw`, the runner draws the run's two views as well. A drawing needs Graphviz, and a
+ * With `draw`, the runner draws the run's dataflow as well. A drawing needs Graphviz, and a
  * runner that cannot draw stops before any step runs, writing no report; so when a run asked to
- * draw ends that way, it is launched once more without the drawings, which costs nothing since
+ * draw ends that way, it is launched once more without the drawing, which costs nothing since
  * nothing ran, and the panel says why it has none.
  */
 async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, draw: boolean): Promise<void> {
@@ -189,8 +187,7 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
 
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    const diagrams: DiagramPaths | undefined = draw ? { argument: files.argument.fsPath, dataflow: files.dataflow.fsPath } : undefined;
-    const runnerArgs = withReport(runnerArguments(run.libraries, compiled.fsPath), report.fsPath, check, diagrams);
+    const runnerArgs = withReport(runnerArguments(run.libraries, compiled.fsPath), report.fsPath, check, draw ? files.dataflow.fsPath : undefined);
     const invocation = await chooseInvocation(deps, token, folder, runnerArgs);
     if (!invocation) return;
     if (deps.session.stopped(token)) {
@@ -234,7 +231,7 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
             return;
         }
         if (draw && exitCode === FILE_PROBLEM_EXIT) {
-            deps.logger.warn(`${task.name}: drawing again without the diagrams, which may need Graphviz`);
+            deps.logger.warn(`${task.name}: launched again without the drawing, which may need Graphviz`);
             await launch(deps, token, run, files, false);
             return;
         }
@@ -250,12 +247,12 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
         deps.logger.info(`${task.name}: not shown, a newer run has taken its place`);
         return;
     }
-    const drawings = { dataflow: await readText(files.dataflow, read.report.dataflow), argument: await readText(files.argument, read.report.diagram) };
+    const dataflow = await readText(files.dataflow, read.report.dataflow);
     deps.session.update(token, {
         phase: 'done',
         report: read.report,
-        diagrams: drawings,
-        diagramsMissing: drawings.dataflow || drawings.argument ? null : NO_DRAWING,
+        dataflow,
+        drawingMissing: dataflow ? null : NO_DRAWING,
         endedAt: new Date(),
         notice: null
     });

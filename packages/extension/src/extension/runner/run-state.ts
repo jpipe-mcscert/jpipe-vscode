@@ -3,10 +3,11 @@
  *
  * The panel and the Results view are two views of one run, the last one (jpipe-vscode
  * ADR-VSC-0031). `run-session.ts` holds that run; this decides what the panel's page is told about
- * it, when it stops saying what a run would, and where an element of the report is written.
+ * it, what Results says while it has no report, when it stops saying what a run would, and where an
+ * element of the report is written.
  */
-import type { Notice, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
-import { verdictLabel, verdictLinks, type RunReport } from './run-report.js';
+import type { Notice, RunKind, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
+import { verdictLabel, verdictLinks, type ResultRow, type RunReport } from './run-report.js';
 
 /** The run the panel and the Results view show. */
 export interface ShownRun {
@@ -16,9 +17,9 @@ export interface ShownRun {
     check: boolean;
     phase: RunPhase;
     report: RunReport | null;
-    /** The runner's SVG of each view. */
-    diagrams: { dataflow: string | null; argument: string | null };
-    diagramsMissing: string | null;
+    /** The runner's SVG of the run's dataflow. */
+    dataflow: string | null;
+    drawingMissing: string | null;
     /** The libraries it loaded: their paths, to tell when they change, and how the workspace names them. */
     libraries: { path: string; display: string }[];
     /** When it ended. */
@@ -26,6 +27,12 @@ export interface ShownRun {
     notice: Notice | null;
     outOfDate: string | null;
 }
+
+/** What a run is called wherever it is shown: an execution calls the steps, a check does not. */
+export const kindOf = (check: boolean): RunKind => check ? 'check' : 'execution';
+
+/** `Executing release…`, `Checking release…`. */
+export const underWay = (name: string, check: boolean): string => `${check ? 'Checking' : 'Executing'} ${name}…`;
 
 /** A run of `name` just started: what is shown until it ends. */
 export function startedRun(
@@ -40,8 +47,8 @@ export function startedRun(
     const same = previous?.name === name && previous.uri === uri;
     return {
         name, uri, check, phase: 'running', report: null,
-        diagrams: same ? previous.diagrams : { dataflow: null, argument: null },
-        diagramsMissing: null,
+        dataflow: same ? previous.dataflow : null,
+        drawingMissing: null,
         libraries, endedAt: null, notice: null, outOfDate: null
     };
 }
@@ -55,24 +62,42 @@ export function clockTime(date: Date): string {
 /** The page's state for `run`. */
 export function panelState(run: ShownRun, revision: number): RunPanelState {
     const report = run.report;
-    const kind = run.check ? 'check' : 'run';
     return {
         revision,
         name: run.name,
         check: run.check,
         phase: run.phase,
         verdict: report && {
+            kind: kindOf(run.check),
             label: verdictLabel(report, run.name, run.check),
             tone: report.verdict,
             counts: verdictLinks(report),
-            when: run.endedAt ? `${kind} · ${clockTime(run.endedAt)}` : kind,
+            at: run.endedAt ? clockTime(run.endedAt) : null,
             libraries: run.libraries.map(library => library.display)
         },
         notice: run.notice,
-        diagrams: run.diagrams,
-        diagramsMissing: run.diagramsMissing,
+        dataflow: run.dataflow,
+        drawingMissing: run.drawingMissing,
         elements: report?.elements.map(e => e.id) ?? [],
         outOfDate: run.outOfDate
+    };
+}
+
+/**
+ * What the Results view lists for a run that has no report: one row saying it is under way, or
+ * why it ended without one. A run with a report is listed from the report (`resultRows`).
+ */
+export function statusRow(run: ShownRun): ResultRow | undefined {
+    if (run.phase === 'running') {
+        return { id: 'status', label: underWay(run.name, run.check), icon: 'running', children: [] };
+    }
+    if (run.phase === 'done' || !run.notice) return undefined;
+    return {
+        id: 'status',
+        label: run.notice.text,
+        tooltip: run.notice.text,
+        icon: run.phase === 'stopped' ? 'stopped' : 'error',
+        children: []
     };
 }
 
@@ -95,11 +120,11 @@ export function outOfDateReason(run: ShownRun, change: Change): string | undefin
     if (run.phase !== 'done') return undefined;
     if (change.kind === 'saved') {
         const loaded = run.libraries.some(library => library.path === change.path);
-        return change.isModel || loaded ? `${change.display} changed since this ${run.check ? 'check' : 'run'}.` : undefined;
+        return change.isModel || loaded ? `${change.display} changed since this ${kindOf(run.check)}.` : undefined;
     }
     const before = new Set(run.libraries.map(library => library.path));
     const same = before.size === new Set(change.paths).size && change.paths.every(path => before.has(path));
-    return same ? undefined : 'The libraries checked are not the ones this run loaded.';
+    return same ? undefined : `The libraries checked are not the ones this ${kindOf(run.check)} loaded.`;
 }
 
 /**

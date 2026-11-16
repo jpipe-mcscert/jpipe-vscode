@@ -321,11 +321,12 @@ resolve it to a model (`targetOf` in `commands.ts`).
 The preview panel auto-refreshes on file save, highlights the node under the cursor (via LSP `textDocument/documentSymbol`), and has zoom controls (+/−/0 keys or toolbar buttons).
 
 The **Run panel** is a second webview, opened by every ▶ and ✓ and never by opening a file (a check
-imports the libraries). It shows the last run only — the runner's own SVGs, dataflow first — and
-shares that run with the Results view through `RunSession`: a node click selects the element's row in
-Results, a double-click opens the element, and Results no longer comes forward by itself. A runner
-that cannot draw (Graphviz missing, exit 4, no report) is launched once more without the drawings
-(ADR-VSC-0031).
+imports the libraries). It shows the last run only — the runner's dataflow SVG (`--dataflow`; the
+argument-only view is left to the preview), under a bar that says *Execution* or *Check · no step
+called* first. It shares that run with the Results view through `RunSession`, and the two come
+forward together; until a report arrives Results lists one status row. A node click selects the
+element's row in Results, a double-click opens the element. A runner that cannot draw (Graphviz
+missing, exit 4, no report) is launched once more without the drawing (ADR-VSC-0031).
 
 ---
 

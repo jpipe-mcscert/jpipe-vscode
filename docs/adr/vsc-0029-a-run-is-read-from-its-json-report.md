@@ -23,7 +23,7 @@ that fails then reads as several failures.
 ## Decision
 
 - **The runner writes its report to a file** (`--report PATH`), in the extension's storage for the
-  workspace, beside the compiled model and its drawings (ADR-VSC-0031), in a folder that run alone
+  workspace, beside the compiled model and its drawing (ADR-VSC-0031), in a folder that run alone
   uses and that is removed once they are read: two runs under way at once never read each other's
   files. The extension
   never reads the runner's standard output.
@@ -31,8 +31,7 @@ that fails then reads as several failures.
   steps print, and Show the Run's Output reaches it. It is brought forward only when a run ends
   without a report, which the runner documents as a usage error or a file it could not read.
 - **The report is listed in a Results view in the bottom panel**, a native tree view, which appears
-  with the first run that has a report. It lists the run the run panel draws, and is opened from it
-  rather than coming forward on its own (ADR-VSC-0031).
+  with the first run. It lists the run the run panel draws, and comes forward with it (ADR-VSC-0031).
 - **Its rows are a list by outcome, not the argument**: the verdict, then Failed, Skipped, Passed
   and Not run, each element exactly once, in the report's own order. An element's row says what
   stopped it; under it are its problems with their fix and traceback, its step, the files it

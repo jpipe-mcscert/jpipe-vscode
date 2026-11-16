@@ -1,7 +1,7 @@
 /*
  * The run panel's own styles. It also loads the preview's stylesheet, whose toolbar, banners,
  * layers, minimap and busy overlay it shares; what is here is only what the preview has not: the
- * run's buttons, the switch between its two drawings, and its banners.
+ * run's buttons and its banners.
  */
 
 #run-actions { border-right: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35)); }
@@ -9,36 +9,14 @@
 #run-button { color: var(--vscode-debugIcon-startForeground, var(--vscode-testing-iconPassed)); }
 #stop-button { color: var(--vscode-debugIcon-stopForeground, var(--vscode-testing-iconFailed)); }
 
-.toolbar-btn:disabled,
-.view-btn:disabled {
+.toolbar-btn:disabled {
     opacity: 0.4;
     cursor: default;
     background: none;
 }
 
-/* ------------------------------------------------------------- the views */
+/* ---------------------------------------------------------------- focus */
 
-#view-switch { gap: 2px; }
-
-.view-btn {
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: none;
-    color: var(--vscode-descriptionForeground);
-    font-family: inherit;
-    font-size: 12px;
-    padding: 3px 8px;
-    cursor: pointer;
-}
-
-.view-btn:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
-
-.view-btn[aria-pressed="true"] {
-    color: var(--vscode-foreground);
-    border-color: var(--vscode-focusBorder);
-}
-
-.view-btn:focus-visible,
 .verdict-count:focus-visible,
 .banner-action:focus-visible {
     outline: 1px solid var(--vscode-focusBorder);
@@ -66,6 +44,21 @@
 #verdict-bar[data-tone="skip"] { --tone: var(--vscode-testing-iconSkipped); }
 
 #verdict-bar .banner-glyph { color: var(--tone); }
+/*
+ * What was done, before the verdict: an execution and a check can both end green, and only one of
+ * them called the steps.
+ */
+#verdict-kind {
+    flex-shrink: 0;
+    border: 1px solid var(--tone);
+    border-radius: 3px;
+    padding: 0 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
 #verdict-label { font-weight: 600; }
 #verdict-counts { display: flex; flex-wrap: wrap; gap: 4px; }
 

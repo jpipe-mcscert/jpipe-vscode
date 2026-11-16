@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
-import type { HostToRunPanel, NoticeAction, RunPanelToHost, RunView } from '../../shared/run-protocol.js';
+import type { HostToRunPanel, NoticeAction, RunPanelToHost } from '../../shared/run-protocol.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import { chooseRevealColumn } from '../preview/reveal-column.js';
 import { LIBRARIES_VIEW_ID } from './libraries-view.js';
@@ -21,8 +21,8 @@ const NOTICE_COMMANDS: Readonly<Record<Exclude<NoticeAction, 'showOutput'>, stri
 };
 
 /**
- * The run panel: the last run's dataflow and argument, as jpipe-runner draws them, beside the
- * editor (jpipe-vscode ADR-VSC-0031). There is one, opened by ▶ and ✓, reused for every run, and
+ * The run panel: the last run's dataflow, as jpipe-runner draws it, beside the editor
+ * (jpipe-vscode ADR-VSC-0031). There is one, opened by ▶ and ✓, reused for every run, and
  * never locking its editor group (ADR-VSC-0019).
  *
  * What it shows is the session's: this only opens it, tells the page, and acts on what the page
@@ -52,14 +52,18 @@ export class RunPanel implements vscode.Disposable {
         );
     }
 
-    /** Open the panel beside the editor, or bring it forward, leaving the focus where it is. */
+    /**
+     * Open the panel beside the editor, or bring it forward, leaving the focus where it is; and the
+     * Results view with it, at the bottom, since the two show one run.
+     */
     reveal(): void {
         if (this.panel) {
             this.panel.reveal(undefined, true);
-            return;
+        } else {
+            this.panel = this.create();
+            this.sendState();
         }
-        this.panel = this.create();
-        this.sendState();
+        void this.results.bringForward();
     }
 
     private create(): vscode.WebviewPanel {
@@ -112,7 +116,7 @@ export class RunPanel implements vscode.Disposable {
                 await this.openElement(msg.element);
                 break;
             case 'download':
-                await this.download(msg.view);
+                await this.download();
                 break;
             case 'action':
                 if (msg.id === 'showOutput') {
@@ -179,20 +183,20 @@ export class RunPanel implements vscode.Disposable {
         }
     }
 
-    /** Save the runner's drawing of `view` where the user says. */
-    private async download(view: RunView): Promise<void> {
+    /** Save the runner's drawing where the user says. */
+    private async download(): Promise<void> {
         const run = this.session.run;
-        const svg = run?.diagrams[view];
+        const svg = run?.dataflow;
         if (!run || !svg) return;
         const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.parse(run.uri))?.uri;
-        const name = view === 'dataflow' ? `${run.name}-dataflow.svg` : `${run.name}.svg`;
+        const name = `${run.name}-dataflow.svg`;
         const target = await vscode.window.showSaveDialog({
             defaultUri: folder ? vscode.Uri.joinPath(folder, name) : undefined,
             filters: { SVG: ['svg'] }
         });
         if (!target) return;
         await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(svg));
-        this.logger.info(`Saved the ${view} of ${run.name} to ${target.fsPath}`);
+        this.logger.info(`Saved the dataflow of ${run.name} to ${target.fsPath}`);
     }
 
     dispose(): void {

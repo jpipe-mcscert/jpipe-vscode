@@ -8,9 +8,6 @@
  * message: the panel shows the last run only, so there is never more than one thing to say.
  */
 
-/** Which drawing of the run is on show: the files and variables its steps declare, or the argument. */
-export type RunView = 'dataflow' | 'argument';
-
 /** What the panel is showing a run in: under way, ended with a report, stopped short of one, or not started. */
 export type RunPhase = 'running' | 'done' | 'stopped' | 'blocked';
 
@@ -32,13 +29,18 @@ export interface Notice {
     action: { label: string; id: NoticeAction } | null;
 }
 
+/** What was done: an execution calls the steps, a check only validates the libraries against the model. */
+export type RunKind = 'execution' | 'check';
+
 export interface Verdict {
+    /** Said before the verdict, so a valid check is never read as an execution that passed. */
+    kind: RunKind;
     /** `release failed`, `release is valid`. */
     label: string;
     tone: Tone;
     counts: VerdictCount[];
-    /** `run · 14:02`, `check · 14:02`: a valid check is not a run that passed. */
-    when: string;
+    /** When it ended, `14:02`, or null when that is not known. */
+    at: string | null;
     /** The libraries the run loaded, as the workspace names them. */
     libraries: string[];
 }
@@ -54,10 +56,13 @@ export interface RunPanelState {
     /** Set once a run has a report. */
     verdict: Verdict | null;
     notice: Notice | null;
-    /** The runner's SVG of each view, or null when it drew none. */
-    diagrams: { dataflow: string | null; argument: string | null };
+    /**
+     * The runner's SVG of the run's dataflow, its argument with the files and values its steps
+     * declare and, once steps ran, each element's status. Null when it drew none.
+     */
+    dataflow: string | null;
     /** Why there is no drawing although the run ended, when that is known. */
-    diagramsMissing: string | null;
+    drawingMissing: string | null;
     /** The ids of the report's elements: the nodes a click selects. */
     elements: string[];
     /** Why the run on show no longer says what a run would, or null while it does. */
@@ -84,6 +89,6 @@ export type RunPanelToHost =
     | { type: 'select'; element: string }
     /** A node was double-clicked: open the element in its `.jd` file. */
     | { type: 'open'; element: string }
-    /** Save the drawing of `view`. */
-    | { type: 'download'; view: RunView }
+    /** Save the drawing. */
+    | { type: 'download' }
     | { type: 'action'; id: NoticeAction };

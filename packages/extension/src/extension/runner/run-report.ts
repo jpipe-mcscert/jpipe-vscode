@@ -65,9 +65,7 @@ export interface RunReport {
     verdict: Verdict;
     elements: ReportElement[];
     diagnostics: ReportDiagnostic[];
-    /** Where the runner drew the argument (`--diagram`), or null when it drew nothing. */
-    diagram: string | null;
-    /** Where it drew the dataflow (`--dataflow`), or null when it drew nothing. */
+    /** Where the runner drew the dataflow (`--dataflow`), or null when it drew nothing. */
     dataflow: string | null;
 }
 
@@ -157,7 +155,6 @@ export function parseReport(content: string): { report: RunReport } | { problem:
                 fix: textOrNull(d.fix),
                 traceback: traceback(d.traceback)
             })),
-            diagram: textOrNull(raw.diagram),
             dataflow: textOrNull(raw.dataflow)
         }
     };
@@ -167,7 +164,8 @@ export function parseReport(content: string): { report: RunReport } | { problem:
 export type RowIcon =
     | 'pass' | 'fail' | 'skip' | 'not-run'
     | 'error' | 'warning' | 'info' | 'fix' | 'frame'
-    | 'step' | 'file' | 'missing-file' | 'value' | 'consumes' | 'supports' | 'blocked';
+    | 'step' | 'file' | 'missing-file' | 'value' | 'consumes' | 'supports' | 'blocked'
+    | 'running' | 'stopped';
 
 /** A row of the Results view. */
 export interface ResultRow {
@@ -448,22 +446,21 @@ export function stepLocation(boundTo: string, steps: readonly LibraryStep[]): { 
     return step && { libraryUri: step.libraryUri, line: step.line };
 }
 
-/** Where the runner draws a run's two views (jpipe-runner ADR-0022). Each file's suffix is its format. */
-export interface DiagramPaths {
-    argument: string;
-    dataflow: string;
-}
-
 /**
  * `--report PATH`, before the runner's other arguments; `--dry-run` for a check, which validates
- * the libraries against the justification and calls no step; and `--diagram` and `--dataflow`
- * when the run's views are to be drawn, which a check draws too, from what the steps declare.
+ * the libraries against the justification and calls no step; and `--dataflow PATH` when the run is
+ * to be drawn (jpipe-runner ADR-0022), which a check draws too, from what the steps declare. The
+ * file's suffix is its format.
+ *
+ * Only the dataflow view is asked for. It is the argument as the compiler draws it, with each
+ * element's status over it once steps ran, plus the files and values the steps declare; the
+ * runner's other view, the argument alone, is what the preview already shows (ADR-VSC-0031).
  */
-export function withReport(runnerArgs: readonly string[], report: string, check = false, diagrams?: DiagramPaths): string[] {
+export function withReport(runnerArgs: readonly string[], report: string, check = false, dataflow?: string): string[] {
     return [
         ...(check ? ['--dry-run'] : []),
         '--report', report,
-        ...(diagrams ? ['--diagram', diagrams.argument, '--dataflow', diagrams.dataflow] : []),
+        ...(dataflow ? ['--dataflow', dataflow] : []),
         ...runnerArgs
     ];
 }

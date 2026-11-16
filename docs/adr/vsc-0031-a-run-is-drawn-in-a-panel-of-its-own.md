@@ -14,8 +14,12 @@ evidence observes and the variables the steps produce and consume. A check (`--d
 from what the steps declare, without calling any step (jpipe-runner ADR-0024), so the dataflow
 exists before anything has run.
 
-Two places could show these drawings. The preview already draws diagrams beside the editor, and
-could gain a run mode. Or a run could have a panel of its own. The two differ in what they are
+The argument alone is what the preview already draws, from the compiler. The dataflow is not: it
+is the same argument with the files and values the steps declare added to it, and, once steps ran,
+each element's status drawn over it.
+
+Two places could show a run. The preview already draws diagrams beside the editor, and could gain
+a run mode. Or a run could have a panel of its own. The two differ in what they are
 about and when they change: the preview follows the cursor across every model, templates included,
 and is redrawn by the compiler on every save; a run is of one justification, is redrawn only when
 asked for, since it may call every step of a project, and stops being true as soon as the model or
@@ -32,23 +36,26 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
   memory only: it is not restored after a window reload.
 - **Its own ▶ and ✓** run again, or check, the justification it shows, with the libraries checked
   when the button is pressed. **■** stops a run under way.
-- **Dataflow first.** The runner is asked to draw both views (`--diagram`, `--dataflow`) as SVG,
-  read before the run's folder is removed. The panel opens on the dataflow, the view a check draws
-  too, and the reader may switch to the argument; the choice is kept. When the runner draws neither,
-  most often because Graphviz is missing, it stops before any step with exit code 4 and no report,
-  and the run is launched once more without them; the panel then says why it has no drawing.
+- **The dataflow, and only it.** The runner is asked to draw the dataflow (`--dataflow`) as SVG,
+  read before the run's folder is removed. The argument view is not asked for: the dataflow is the
+  argument, with the statuses and the declared data on it, and the argument alone is the preview's.
+  When the runner cannot draw, most often because Graphviz is missing, it stops before any step with
+  exit code 4 and no report, and the run is launched once more without the drawing; the panel then
+  says why it has none.
 - **What stops a run is said in the panel**, with the one thing to do about it on a button: no
   library checked (Show Libraries), a model that does not compile (Show Problems), no environment
   that can run steps (its fix), a runner that wrote no report (Show Output). These were dialogs.
-- **A verdict bar** says the verdict, its counts, whether it was a run or a check, when, and which
-  libraries it loaded. Each count opens its group in Results. A banner says when the run is **out
-  of date**: a jPipe file or a library it loaded was saved since, or the libraries checked changed.
-  Nothing is run again unasked.
+- **A verdict bar** opens with what was done — **Execution**, which called every step, or **Check ·
+  no step called** — then the verdict, its counts, when, and which libraries were loaded. Each count
+  opens its group in Results. A banner says when the run is **out of date**: a jPipe file or a
+  library it loaded was saved since, or the libraries checked changed. Nothing is run again unasked.
 - **One run, two views.** The panel and the Results view show the same run, held in one place
-  (`runner/run-session.ts`). A run started while another is under way takes both over; the earlier
-  one's result is dropped. The panel comes forward after a run; Results comes forward when a count
-  or a node is clicked. Clicking a node selects its element's row in Results, double-clicking it
-  opens the element in its `.jd` file, and selecting an element's row in Results marks its node.
+  (`runner/run-session.ts`), and come forward together, neither taking the focus: the panel beside
+  the editor, Results in the bottom panel. Until there is a report, Results lists one row saying the
+  run is under way, or why it ended without one. A run started while another is under way takes both
+  over; the earlier one's result is dropped. Clicking a node selects its element's row in Results,
+  double-clicking it opens the element in its `.jd` file, and selecting an element's row in Results
+  marks its node.
 - **The canvas is the preview's.** Panning, zooming, the minimap and following the theme move
   from `webview/preview.ts` into `webview/canvas.ts`, which both pages use, and the run panel wears
   the preview's stylesheet with one of its own on top. The decisions — what the page is told, when
@@ -67,20 +74,26 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
 - **Opened by ▶, not by opening a file.** A check imports the step libraries, which runs their
   top-level code (ADR-VSC-0025); a run calls every step. Neither may happen as a side effect of
   looking at a model.
-- **Dataflow first**, because it is the view that exists before anything ran, and the one that
-  shows what validation stops a run for: a variable with no producer, a file that cannot be read.
+- **The dataflow only**, because it is the view that exists before anything ran, the one that shows
+  what validation stops a run for — a variable with no producer, a file that cannot be read — and it
+  carries the statuses too. A second view of the argument alone would repeat the preview.
+- **Execution or check, said first**, because both can end green, and only one of them called the
+  steps: a valid check read as a passed execution would claim what was never tested.
+- **Results with the panel**, because the drawing says where a run failed and Results says why; a
+  reader should not have to look for the second after reading the first.
 - **Notices in the panel rather than dialogs**, because the panel is where the reader is looking
   once ▶ is pressed, and a notice stays until the next run where a dialog is gone with one key.
 - **Drawn by the runner**, as the compiler draws the preview: one notation across jPipe's tools
   (jpipe-runner ADR-0022), and nothing to lay out in the extension. Asking it again without the
-  drawings when it cannot draw keeps every run that worked without Graphviz working.
+  drawing when it cannot draw keeps every run that worked without Graphviz working.
 
 ## Consequences
 
-- **The Results view no longer comes forward after a run.** A reader who used it as the place a
-  run's outcome appears now finds the panel there, and Results one click away.
-- **A run draws two SVGs**, which costs a Graphviz layout each; on a large model that is felt
-  before the verdict appears. A runner that cannot draw costs a second launch, in which no step runs.
+- **A run draws an SVG**, which costs a Graphviz layout; on a large model that is felt before the
+  verdict appears. A runner that cannot draw costs a second launch, in which no step runs.
+- **The argument alone, with statuses, is not shown anywhere.** The runner can draw it
+  (`--diagram`); a reader who wants the statuses without the data has the dataflow, or the preview
+  for the argument without the statuses.
 - **The panel shows nothing while a run is under way** but a busy overlay over the last drawing:
   the report arrives whole. Statuses appearing as steps finish, and clickable file and variable
   nodes in the dataflow, wait for jpipe-runner (#169).

@@ -35,7 +35,6 @@ ${nodes.map(id => `<g id="${id}" class="node"><title>${id}</title><polygon fill=
 </g></svg>`;
 
 const DATAFLOW = svg('release (dataflow)', 'release:e', 'release:c');
-const ARGUMENT = svg('release', 'release:e', 'release:c');
 
 const state = (over: Partial<RunPanelState> = {}): RunPanelState => ({
     revision: 1,
@@ -43,13 +42,13 @@ const state = (over: Partial<RunPanelState> = {}): RunPanelState => ({
     check: false,
     phase: 'done',
     verdict: {
-        label: 'release failed', tone: 'fail',
+        kind: 'execution', label: 'release failed', tone: 'fail',
         counts: [{ text: '1 passed', row: 'group/Passed' }, { text: '1 failed', row: 'group/Failed' }],
-        when: 'run · 14:02', libraries: ['steps.py']
+        at: '14:02', libraries: ['steps.py']
     },
     notice: null,
-    diagrams: { dataflow: DATAFLOW, argument: ARGUMENT },
-    diagramsMissing: null,
+    dataflow: DATAFLOW,
+    drawingMissing: null,
     elements: ['release:e', 'release:c'],
     outOfDate: null,
     ...over
@@ -80,16 +79,15 @@ beforeEach(() => {
 
 describe('a run that ended', () => {
 
-    test('shows its dataflow first, with its verdict above it', () => {
+    test('shows its dataflow, with its verdict above it', () => {
         newPage().apply(state());
         expect(document.body.dataset.mode).toBe('diagram');
-        expect(document.body.dataset.view).toBe('dataflow');
         expect(byId('svg-wrapper').querySelector('svg')).not.toBeNull();
-        expect(byId('view-dataflow').getAttribute('aria-pressed')).toBe('true');
         expect(byId('verdict-bar').classList.contains('visible')).toBe(true);
         expect(byId('verdict-bar').dataset.tone).toBe('fail');
+        expect(byId('verdict-kind').textContent).toBe('Execution');
         expect(byId('verdict-label').textContent).toBe('release failed');
-        expect(byId('verdict-when').textContent).toBe('run · 14:02');
+        expect(byId('verdict-when').textContent).toBe('14:02');
         expect(byId('verdict-when').title).toBe('Loaded steps.py');
         expect(document.body.classList.contains('busy')).toBe(false);
         expect([button('run-button').disabled, button('check-button').disabled, button('stop-button').disabled]).toEqual([false, false, true]);
@@ -103,39 +101,40 @@ describe('a run that ended', () => {
         expect(post).toHaveBeenCalledWith({ type: 'results', row: 'group/Failed' });
     });
 
-    test('switches to the argument, and keeps that choice for the next run', () => {
+    test('a check says so before its verdict, so a valid check is not read as an execution that passed', () => {
+        newPage().apply(state({
+            check: true,
+            verdict: { kind: 'check', label: 'release is valid', tone: 'valid', counts: [], at: '14:02', libraries: [] }
+        }));
+        expect(byId('verdict-kind').textContent).toBe('Check · no step called');
+        expect(byId('verdict-kind').title).toContain('no step was called');
+        expect(byId('verdict-label').textContent).toBe('release is valid');
+        expect(byId('verdict-when').title).toBe('');
+    });
+
+    test('a redrawn run keeps the reader\'s framing, and a state about something else does not redraw', () => {
         const page = newPage();
         page.apply(state());
-        button('view-argument').click();
-        expect(document.body.dataset.view).toBe('argument');
-        expect(persist).toHaveBeenLastCalledWith(expect.objectContaining({ view: 'argument' }));
-        page.apply(state({ revision: 2 }));
-        expect(document.body.dataset.view).toBe('argument');
-    });
-
-    test('a restored page opens on the view it was showing', () => {
-        newPage({ view: 'argument' }).apply(state());
-        expect(document.body.dataset.view).toBe('argument');
-    });
-
-    test('shows the view the runner drew when it drew only one, and the other cannot be chosen', () => {
-        newPage().apply(state({ diagrams: { dataflow: null, argument: ARGUMENT } }));
-        expect(document.body.dataset.view).toBe('argument');
-        expect(button('view-dataflow').disabled).toBe(true);
+        const drawn = byId('svg-wrapper').querySelector('svg');
+        page.apply(state({ revision: 2, outOfDate: 'release.jd changed since this execution.' }));
+        expect(byId('svg-wrapper').querySelector('svg')).toBe(drawn);
+        page.apply(state({ revision: 3, dataflow: svg('release (dataflow)', 'release:e') }));
+        expect(byId('svg-wrapper').querySelector('svg')).not.toBe(drawn);
+        expect(persist).toHaveBeenCalled();
     });
 
     test('with no drawing, says why', () => {
-        newPage().apply(state({ diagrams: { dataflow: null, argument: null }, diagramsMissing: 'Drawing needs Graphviz.' }));
+        newPage().apply(state({ dataflow: null, drawingMissing: 'Drawing needs Graphviz.' }));
         expect(document.body.dataset.mode).toBe('empty');
         expect(byId('empty-message').textContent).toBe('Drawing needs Graphviz.');
-        newPage().apply(state({ revision: 2, diagrams: { dataflow: null, argument: null } }));
-        expect(byId('empty-message').textContent).toBe('jpipe-runner drew nothing for this run.');
+        newPage().apply(state({ revision: 2, dataflow: null }));
+        expect(byId('empty-message').textContent).toBe('jpipe-runner drew nothing for this execution.');
     });
 
-    test('saves the drawing on show', () => {
+    test('saves the drawing', () => {
         newPage().apply(state());
         button('download-button').click();
-        expect(post).toHaveBeenCalledWith({ type: 'download', view: 'dataflow' });
+        expect(post).toHaveBeenCalledWith({ type: 'download' });
     });
 
     test('a state older than the one on show is dropped', () => {
@@ -151,15 +150,17 @@ describe('a run under way', () => {
     test('is busy over the last drawing, and can only be stopped', () => {
         newPage().apply(state({ phase: 'running', verdict: null, check: true }));
         expect(document.body.classList.contains('busy')).toBe(true);
-        expect(byId('verdict-label').textContent).toBe('Checking release');
+        expect(byId('verdict-kind').textContent).toBe('Check · no step called');
+        expect(byId('verdict-label').textContent).toBe('release, under way');
         expect([button('run-button').disabled, button('check-button').disabled, button('stop-button').disabled]).toEqual([true, true, false]);
         button('stop-button').click();
         expect(post).toHaveBeenCalledWith({ type: 'stop' });
     });
 
-    test('with nothing drawn yet, says it is running', () => {
-        newPage().apply(state({ phase: 'running', verdict: null, diagrams: { dataflow: null, argument: null } }));
-        expect(byId('empty-message').textContent).toBe('Running release…');
+    test('with nothing drawn yet, says it is executing', () => {
+        newPage().apply(state({ phase: 'running', verdict: null, dataflow: null }));
+        expect(byId('verdict-kind').textContent).toBe('Execution');
+        expect(byId('empty-message').textContent).toBe('Executing release…');
     });
 });
 
@@ -167,7 +168,7 @@ describe('notices and banners', () => {
 
     test('a notice says why, and its button does the one thing about it', () => {
         newPage().apply(state({
-            phase: 'blocked', verdict: null, diagrams: { dataflow: null, argument: null },
+            phase: 'blocked', verdict: null, dataflow: null,
             notice: { text: 'No step library is checked.', action: { label: 'Show Libraries', id: 'showLibraries' } }
         }));
         expect(byId('notice-banner').classList.contains('visible')).toBe(true);
@@ -176,7 +177,7 @@ describe('notices and banners', () => {
         button('notice-action').click();
         expect(post).toHaveBeenCalledWith({ type: 'action', id: 'showLibraries' });
         expect(byId('verdict-bar').classList.contains('visible')).toBe(false);
-        expect(byId('empty-message').textContent).toContain('▶ runs the justification');
+        expect(byId('empty-message').textContent).toContain('▶ executes the justification');
     });
 
     test('a notice without anything to do has no button', () => {
@@ -185,11 +186,12 @@ describe('notices and banners', () => {
         expect(byId('notice-banner').dataset.phase).toBe('stopped');
     });
 
-    test('a run out of date says why, and runs again; a check checks again', () => {
+    test('an execution out of date says why, and executes again; a check checks again', () => {
         const page = newPage();
-        page.apply(state({ outOfDate: 'release.jd changed since this run.' }));
+        page.apply(state({ outOfDate: 'release.jd changed since this execution.' }));
         expect(byId('out-of-date-banner').classList.contains('visible')).toBe(true);
-        expect(byId('out-of-date-text').textContent).toBe('release.jd changed since this run.');
+        expect(byId('out-of-date-text').textContent).toBe('release.jd changed since this execution.');
+        expect(byId('out-of-date-action').textContent).toBe('Execute again');
         button('out-of-date-action').click();
         expect(post).toHaveBeenLastCalledWith({ type: 'run' });
 
@@ -259,7 +261,7 @@ describe('nodes', () => {
         const page = newPage();
         page.apply(state());
         page.receive({ type: 'select', element: 'release:c' });
-        page.apply(state({ revision: 2, name: 'other', diagrams: { dataflow: svg('other (dataflow)', 'release:c'), argument: null } }));
+        page.apply(state({ revision: 2, name: 'other', dataflow: svg('other (dataflow)', 'release:c') }));
         expect(byId('svg-wrapper').querySelectorAll('.jpipe-dimmed')).toHaveLength(0);
     });
 });

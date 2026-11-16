@@ -106,8 +106,8 @@ export function activate(context: vscode.ExtensionContext): void {
     const librariesView = new LibrariesView(logger, runnerEnvironment);
     runnerEnvironment.start();
     librariesView.start();
-    const resultsView = new ResultsView();
     const runSession = new RunSession(librariesView);
+    const resultsView = new ResultsView(runSession);
     const runPanel = new RunPanel(context, logger, runSession, resultsView, modelsView);
     context.subscriptions.push(modelsView, runnerEnvironment, librariesView, resultsView, runSession, runPanel, new ElementsView(client, modelsView, librariesView, logger));
     // Hides the palette commands that need models to act on until this workspace is known to be
