@@ -108,7 +108,7 @@ export function activate(context: vscode.ExtensionContext): void {
     librariesView.start();
     const runSession = new RunSession(librariesView);
     const resultsView = new ResultsView(runSession);
-    const runPanel = new RunPanel(context, logger, runSession, resultsView, modelsView);
+    const runPanel = new RunPanel(context, logger, runSession, resultsView, modelsView, (method, params) => client.sendRequest(method, params));
     context.subscriptions.push(modelsView, runnerEnvironment, librariesView, resultsView, runSession, runPanel, new ElementsView(client, modelsView, librariesView, logger));
     // Hides the palette commands that need models to act on until this workspace is known to be
     // a jPipe one. The activity itself is always there: it is where a first model is created, and

@@ -129,13 +129,22 @@ export function outOfDateReason(run: ShownRun, change: Change): string | undefin
 }
 
 /**
- * Where an element of the report is declared: the element's own name, and the model it is
- * declared in. The report names an element after the models it was reached through, innermost
- * last — `readiness:draft:changelog` is `changelog`, declared in `draft` — so the model is the
- * name before the element's. An id with no model in it names the element alone.
+ * Where to look for an element of the report, in order: a model, and the id the element has among
+ * that model's own and inherited elements as the Outline lists them (`elements-tree.ts`).
+ *
+ * The report qualifies an element by the models it was reached through. First, the justification
+ * shown, under the rest of the id: `release:e1` is its `e1`, and `release:T:slot` the `T:slot` it
+ * inherits. Then the model named just before the element, which is where an operand of a
+ * composition declares it: `readiness:draft:changelog` is `changelog` of `draft`.
  */
-export function elementLocation(id: string): { model: string | null; element: string } {
+export function elementCandidates(id: string, shown: string): { model: string; element: string }[] {
+    const candidates: { model: string; element: string }[] = [];
+    const prefix = `${shown}:`;
+    if (id.startsWith(prefix)) candidates.push({ model: shown, element: id.slice(prefix.length) });
     const parts = id.split(':');
-    const element = parts.at(-1) ?? id;
-    return { model: parts.length > 1 ? parts.at(-2)! : null, element };
+    if (parts.length > 1) {
+        const last = { model: parts.at(-2)!, element: parts.at(-1)! };
+        if (!candidates.some(c => c.model === last.model && c.element === last.element)) candidates.push(last);
+    }
+    return candidates;
 }

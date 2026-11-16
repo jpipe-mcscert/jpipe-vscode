@@ -70,6 +70,11 @@ export class RunSession implements vscode.Disposable {
         return this.latest;
     }
 
+    /** The token of the run on show. */
+    get current(): number {
+        return this.latest;
+    }
+
     /** Whether `token` is the run on show: what an ending run asks before saying anything. */
     isCurrent(token: number): boolean {
         return token === this.latest;

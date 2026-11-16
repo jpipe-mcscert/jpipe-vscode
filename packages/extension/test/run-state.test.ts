@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { parseReport, type RunReport } from '../src/extension/runner/run-report.js';
 import {
-    clockTime, elementLocation, kindOf, outOfDateReason, panelState, startedRun, statusRow, underWay, type ShownRun
+    clockTime, elementCandidates, kindOf, outOfDateReason, panelState, startedRun, statusRow, underWay, type ShownRun
 } from '../src/extension/runner/run-state.js';
 
 /**
@@ -138,13 +138,28 @@ describe('what Results lists while a run has no report', () => {
     });
 });
 
-describe('where an element is declared', () => {
+describe('where to look for an element of the report', () => {
 
-    test.each([
-        ['release:c', 'release', 'c'],
-        ['readiness:draft:changelog', 'draft', 'changelog'],
-        ['c', null, 'c']
-    ])('%s is %s, in %s', (id, model, element) => {
-        expect(elementLocation(id)).toEqual({ model, element });
+    test('an element of the justification shown is looked for in it, under the rest of its id', () => {
+        expect(elementCandidates('release:c', 'release')).toEqual([{ model: 'release', element: 'c' }]);
+    });
+
+    test('an inherited element is looked for in the justification first, then in its template', () => {
+        expect(elementCandidates('release:T:slot', 'release')).toEqual([
+            { model: 'release', element: 'T:slot' },
+            { model: 'T', element: 'slot' }
+        ]);
+    });
+
+    test('an element of a composition\'s operand is looked for in that operand', () => {
+        expect(elementCandidates('readiness:draft:changelog', 'readiness')).toEqual([
+            { model: 'readiness', element: 'draft:changelog' },
+            { model: 'draft', element: 'changelog' }
+        ]);
+    });
+
+    test('an id with no model in it, or another justification\'s, has only what it names', () => {
+        expect(elementCandidates('c', 'release')).toEqual([]);
+        expect(elementCandidates('other:c', 'release')).toEqual([{ model: 'other', element: 'c' }]);
     });
 });

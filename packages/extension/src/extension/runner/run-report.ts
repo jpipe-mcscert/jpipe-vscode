@@ -265,22 +265,28 @@ function generalProblems(report: RunReport): ReportDiagnostic[] {
 }
 
 /**
- * The verdict's counts, each with the row of the Results view it opens: `2 failed` opens the
- * Failed group. When no step was called, the problems are counted, and open the Problems group
- * when some are about no element, With problems otherwise. Problems about no element are counted
- * after a run too, since no node of a diagram can show them.
+ * The verdict's counts, each with the row of the Results view it opens, which lists every
+ * diagnostic or element it counts: `2 failed` opens the Failed group. When no step was called, the
+ * problems about elements are counted by severity and open With problems. Problems about no
+ * element are counted apart, as `1 problem`, and open Problems; they are counted after a run too,
+ * since no node of a diagram can show them.
  */
 export function verdictLinks(report: RunReport): { text: string; row: string }[] {
     const general = generalProblems(report);
+    const links: { text: string; row: string }[] = [];
     if (nothingRan(report)) {
-        const row = general.length > 0 ? 'problems' : 'group/With problems';
-        return verdictCounts(report).map(text => ({ text, row }));
+        const aboutElements = report.diagnostics.filter(d => !general.includes(d));
+        for (const severity of ['error', 'warning'] as const) {
+            const n = aboutElements.filter(d => d.severity === severity).length;
+            if (n > 0) links.push({ text: plural(n, severity), row: 'group/With problems' });
+        }
+    } else {
+        for (const [status, says] of OUTCOMES) {
+            const n = report.elements.filter(e => e.status === status).length;
+            const group = GROUPS.find(g => g.status === status)!;
+            if (n > 0) links.push({ text: `${n} ${says}`, row: `group/${group.title}` });
+        }
     }
-    const links = OUTCOMES.flatMap(([status, says]) => {
-        const n = report.elements.filter(e => e.status === status).length;
-        const group = GROUPS.find(g => g.status === status)!;
-        return n > 0 ? [{ text: `${n} ${says}`, row: `group/${group.title}` }] : [];
-    });
     if (general.length > 0) links.push({ text: plural(general.length, 'problem'), row: 'problems' });
     return links;
 }

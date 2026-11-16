@@ -189,6 +189,12 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
     const runnerArgs = withReport(runnerArguments(run.libraries, files.compiled.fsPath), files.report.fsPath, check, draw ? files.dataflow.fsPath : undefined);
     const invocation = await chooseInvocation(deps, token, folder, runnerArgs);
     if (!invocation) return;
+    // Compiling and finding the environment take time, in which another run may have started, or
+    // this one been stopped: a run no longer on show is never launched, where no ■ could reach it.
+    if (!deps.session.isCurrent(token)) {
+        deps.logger.info(`${name}: not launched, a newer run has taken its place`);
+        return;
+    }
     if (deps.session.stopped(token)) {
         deps.session.endWith(token, 'stopped', { text: `${name} was stopped before it started.`, action: null });
         return;
@@ -287,7 +293,7 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
         return;
     }
     const dataflow = await readText(files.dataflow, report.dataflow);
-    deps.session.update(token, {
+    const shown = deps.session.update(token, {
         phase: 'done',
         report,
         dataflow,
@@ -295,6 +301,8 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
         endedAt: new Date(),
         notice: null
     });
+    // A newer run may have started while the drawing was read: Results stays with it, as the panel does.
+    if (!shown) return;
     await deps.results.show({ report, name, check, cwd: ended.cwd, steps, showOutput: ended.showOutput });
 }
 

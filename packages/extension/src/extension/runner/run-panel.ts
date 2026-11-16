@@ -3,13 +3,15 @@ import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import type { HostToRunPanel, NoticeAction, RunPanelToHost } from '../../shared/run-protocol.js';
 import type { ModelsView } from '../models-view/models-view.js';
+import { fetchElements } from '../models-view/elements-tree.js';
+import type { Model, RequestFn } from '../models-view/models-tree.js';
 import { revealColumnAmong } from '../preview/reveal-column.js';
 import { ZOOM_SENSITIVITY_SETTING, clampZoomSensitivity } from '../preview/zoom-sensitivity.js';
 import { LIBRARIES_VIEW_ID } from './libraries-view.js';
 import type { ResultsView } from './results-view.js';
 import { getRunShellHtml } from './run-shell.js';
 import type { RunSession } from './run-session.js';
-import { elementLocation, panelState } from './run-state.js';
+import { elementCandidates, panelState } from './run-state.js';
 
 /** The webview panel's type, which VS Code keys a panel's state by. */
 export const RUN_PANEL_TYPE = 'jpipe.run';
@@ -41,7 +43,9 @@ export class RunPanel implements vscode.Disposable {
         private readonly logger: JpipeLogger,
         private readonly session: RunSession,
         private readonly results: ResultsView,
-        private readonly models: ModelsView
+        private readonly models: ModelsView,
+        /** The language server, for a model's elements as the Outline lists them. */
+        private readonly request: RequestFn
     ) {
         this.disposables.push(
             this.runEmitter,
@@ -149,9 +153,12 @@ export class RunPanel implements vscode.Disposable {
             this.session.showOutput();
             return;
         }
+        // The run the button belongs to, taken before setting up, which may take a while: if another
+        // run has started meanwhile, it is not the one to start again.
+        const token = this.session.current;
+        const check = this.session.run?.check ?? false;
         const done = await vscode.commands.executeCommand<boolean | undefined>(NOTICE_COMMANDS[id]);
-        const run = this.session.run;
-        if (id === 'fixEnvironment' && done === true && run) this.runEmitter.fire(run.check);
+        if (id === 'fixEnvironment' && done === true && this.session.isCurrent(token)) this.runEmitter.fire(check);
     }
 
     private sendState(): void {
@@ -172,36 +179,45 @@ export class RunPanel implements vscode.Disposable {
     }
 
     /**
-     * Open a double-clicked element where it is declared: in the model the report says it was
-     * reached through last, looked up among the workspace's models — the run's own document first,
-     * since names are unique only within a file. An element the model does not declare itself, one
-     * it inherits, opens the model.
+     * Open a double-clicked element where it is declared, found as the Outline finds a model's
+     * elements, inherited ones included (`fetchElements`): in the justification shown, else in the
+     * model the report names just before it (`elementCandidates`). Models are looked up among the
+     * workspace's, the run's own document first, since names are unique only within a file. An
+     * element found nowhere opens the first model looked in.
      */
     private async openElement(id: string): Promise<void> {
         const run = this.session.run;
         if (!run) return;
-        const { model: modelName, element } = elementLocation(id);
-        const named = (await this.models.freshModels()).filter(m => m.name === (modelName ?? run.name));
-        const model = named.find(m => vscode.Uri.parse(m.uri).toString() === run.uri) ?? named[0];
-        if (!model) {
+        const models = await this.models.freshModels();
+        const modelNamed = (name: string): Model | undefined => {
+            const named = models.filter(m => m.name === name);
+            return named.find(m => vscode.Uri.parse(m.uri).toString() === run.uri) ?? named[0];
+        };
+        let fallback: Model | undefined;
+        for (const candidate of elementCandidates(id, run.name)) {
+            const model = modelNamed(candidate.model);
+            if (!model) continue;
+            fallback ??= model;
+            const found = (await fetchElements(this.request, model))?.find(e => e.id === candidate.element);
+            if (found) {
+                await this.openAt(vscode.Uri.parse(found.inheritedFrom?.uri ?? model.uri), found.selection);
+                return;
+            }
+        }
+        if (fallback) {
+            await this.openAt(vscode.Uri.parse(fallback.uri), fallback.selection);
+        } else {
             void vscode.window.showInformationMessage(`${id} is not declared in a model of this workspace.`);
-            return;
         }
-        try {
-            const uri = vscode.Uri.parse(model.uri);
-            const document = await vscode.workspace.openTextDocument(uri);
-            const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[] | undefined>(
-                'vscode.executeDocumentSymbolProvider', uri) ?? [];
-            const declared = symbols.find(s => s.name === model.name)?.children.find(s => s.name === element);
-            const { start } = model.selection;
-            const range = declared?.selectionRange ?? new vscode.Range(start.line, start.character, start.line, start.character);
-            await vscode.window.showTextDocument(document, {
-                viewColumn: revealColumnAmong(vscode.window.visibleTextEditors, document),
-                selection: range
-            });
-        } catch (err: unknown) {
-            this.logger.warn(`Could not open ${id}: ${messageOf(err)}`);
-        }
+    }
+
+    /** Open `uri` with `range` selected, in a column that holds text rather than over the panel. */
+    private async openAt(uri: vscode.Uri, range: { start: { line: number; character: number }; end: { line: number; character: number } }): Promise<void> {
+        const document = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(document, {
+            viewColumn: revealColumnAmong(vscode.window.visibleTextEditors, document),
+            selection: new vscode.Range(range.start.line, range.start.character, range.end.line, range.end.character)
+        });
     }
 
     /** Save the runner's drawing where the user says. */

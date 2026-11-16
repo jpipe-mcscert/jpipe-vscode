@@ -232,8 +232,23 @@ describe('the verdict\'s counts, as links to Results', () => {
         expect(verdictLinks(read({ verdict: 'valid', elements: [unrun('e')], diagnostics: [problem('warning', 'e')] })))
             .toEqual([{ text: '1 warning', row: 'group/With problems' }]);
         expect(verdictLinks(read({ verdict: 'invalid', diagnostics: [problem('error', null), problem('error', null)] })))
-            .toEqual([{ text: '2 errors', row: 'problems' }]);
+            .toEqual([{ text: '2 problems', row: 'problems' }]);
         expect(verdictLinks(read({ verdict: 'valid', elements: [unrun('e')] }))).toEqual([]);
+    });
+
+    test('problems about elements and about none are counted apart, each opening the group that lists it', () => {
+        const report = read({
+            verdict: 'invalid', elements: [unrun('e')],
+            diagnostics: [problem('error', null), problem('warning', 'e'), problem('error', 'e')]
+        });
+        expect(verdictLinks(report)).toEqual([
+            { text: '1 error', row: 'group/With problems' },
+            { text: '1 warning', row: 'group/With problems' },
+            { text: '1 problem', row: 'problems' }
+        ]);
+        const rows = flat(resultRows(report, 'release', true));
+        expect(rows.find(r => r.id === 'problems')?.children).toHaveLength(1);
+        expect(rows.find(r => r.id === 'group/With problems')?.children.map(c => c.id)).toEqual(['element/e']);
     });
 
     test('every link names a row the Results view has', () => {
