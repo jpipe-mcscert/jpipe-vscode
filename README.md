@@ -48,6 +48,24 @@ are cut from `dev` and come back to it by pull request. A release is a pull requ
 into `main` (see [How to cut a release?](#how-to-cut-a-release) below, and
 [ADR-VSC-0030](docs/adr/vsc-0030-dev-integrates-main-holds-releases.md)).
 
+### How are issues labelled?
+
+Along the same four facets as [jpipe-compiler](https://github.com/jpipe-mcscert/jpipe-compiler/labels),
+each label's description saying what it covers:
+
+- **`type:`** — exactly one per issue: `bug` (does not behave as the docs, the language or the
+  compiler say), `feature`, `docs`, `debt` (internal quality with no visible effect) or `design`
+  (a question to decide, often by an ADR, before any code).
+- **`area:`** — one or more, by where the work lands: `language`, `editing`, `preview`,
+  `compiler`, `views`, `runner` or `build`.
+- **`upstream:`** — `compiler` or `runner`, when the fix needs, or follows, a change in that
+  repository. It is the counterpart of the compiler's `affects: vscode`.
+- **`breaking`** — the change removes or alters a setting, command or behaviour users rely on,
+  or raises a minimum version.
+
+`dependencies` is applied by Dependabot. There is no `duplicate` or `wontfix`: close the issue
+with GitHub's *duplicate* or *not planned* reason instead.
+
 ### What has to be green before a pull request merges?
 
 Two checks, both required on `main`:
