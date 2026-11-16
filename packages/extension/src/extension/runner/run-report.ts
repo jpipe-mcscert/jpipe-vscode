@@ -65,6 +65,8 @@ export interface RunReport {
     verdict: Verdict;
     elements: ReportElement[];
     diagnostics: ReportDiagnostic[];
+    /** Where the runner drew the dataflow (`--dataflow`), or null when it drew nothing. */
+    dataflow: string | null;
 }
 
 /** The report's major version this reads. */
@@ -152,7 +154,8 @@ export function parseReport(content: string): { report: RunReport } | { problem:
                 message: text(d.message),
                 fix: textOrNull(d.fix),
                 traceback: traceback(d.traceback)
-            }))
+            })),
+            dataflow: textOrNull(raw.dataflow)
         }
     };
 }
@@ -161,7 +164,8 @@ export function parseReport(content: string): { report: RunReport } | { problem:
 export type RowIcon =
     | 'pass' | 'fail' | 'skip' | 'not-run'
     | 'error' | 'warning' | 'info' | 'fix' | 'frame'
-    | 'step' | 'file' | 'missing-file' | 'value' | 'consumes' | 'supports' | 'blocked';
+    | 'step' | 'file' | 'missing-file' | 'value' | 'consumes' | 'supports' | 'blocked'
+    | 'running' | 'stopped';
 
 /** A row of the Results view. */
 export interface ResultRow {
@@ -232,7 +236,7 @@ export function verdictRow(report: RunReport, name: string, check = false): Resu
     };
 }
 
-function verdictLabel(report: RunReport, name: string, check: boolean): string {
+export function verdictLabel(report: RunReport, name: string, check = false): string {
     const says = check && report.verdict === 'invalid' ? 'is not valid' : VERDICTS[report.verdict].says;
     return `${report.justification ?? name} ${says}`;
 }
@@ -252,6 +256,39 @@ function verdictCounts(report: RunReport): string[] {
         }
     }
     return counts;
+}
+
+/** The problems about no listed element: why nothing ran, most often. */
+function generalProblems(report: RunReport): ReportDiagnostic[] {
+    const listed = new Set(report.elements.map(e => e.id));
+    return report.diagnostics.filter(d => d.element === null || !listed.has(d.element));
+}
+
+/**
+ * The verdict's counts, each with the row of the Results view it opens, which lists every
+ * diagnostic or element it counts: `2 failed` opens the Failed group. When no step was called, the
+ * problems about elements are counted by severity and open With problems. Problems about no
+ * element are counted apart, as `1 problem`, and open Problems; they are counted after a run too,
+ * since no node of a diagram can show them.
+ */
+export function verdictLinks(report: RunReport): { text: string; row: string }[] {
+    const general = generalProblems(report);
+    const links: { text: string; row: string }[] = [];
+    if (nothingRan(report)) {
+        const aboutElements = report.diagnostics.filter(d => !general.includes(d));
+        for (const severity of ['error', 'warning'] as const) {
+            const n = aboutElements.filter(d => d.severity === severity).length;
+            if (n > 0) links.push({ text: plural(n, severity), row: 'group/With problems' });
+        }
+    } else {
+        for (const [status, says] of OUTCOMES) {
+            const n = report.elements.filter(e => e.status === status).length;
+            const group = GROUPS.find(g => g.status === status)!;
+            if (n > 0) links.push({ text: `${n} ${says}`, row: `group/${group.title}` });
+        }
+    }
+    if (general.length > 0) links.push({ text: plural(general.length, 'problem'), row: 'problems' });
+    return links;
 }
 
 function tracebackRows(id: string, trace: Traceback): ResultRow[] {
@@ -365,8 +402,7 @@ function groupRow(title: string, elements: readonly ReportElement[], report: Run
  * has an outcome, and they are grouped by whether a problem is about them instead.
  */
 export function resultRows(report: RunReport, name: string, check = false): ResultRow[] {
-    const listed = new Set(report.elements.map(e => e.id));
-    const general = report.diagnostics.filter(d => d.element === null || !listed.has(d.element));
+    const general = generalProblems(report);
     const rows: ResultRow[] = [verdictRow(report, name, check)];
     if (general.length > 0) {
         rows.push({
@@ -417,9 +453,20 @@ export function stepLocation(boundTo: string, steps: readonly LibraryStep[]): { 
 }
 
 /**
- * `--report PATH`, before the runner's other arguments; and `--dry-run` for a check, which
- * validates the libraries against the justification and calls no step.
+ * `--report PATH`, before the runner's other arguments; `--dry-run` for a check, which validates
+ * the libraries against the justification and calls no step; and `--dataflow PATH` when the run is
+ * to be drawn (jpipe-runner ADR-0022), which a check draws too, from what the steps declare. The
+ * file's suffix is its format.
+ *
+ * Only the dataflow view is asked for. It is the argument as the compiler draws it, with each
+ * element's status over it once steps ran, plus the files and values the steps declare; the
+ * runner's other view, the argument alone, is what the preview already shows (ADR-VSC-0031).
  */
-export function withReport(runnerArgs: readonly string[], report: string, check = false): string[] {
-    return [...(check ? ['--dry-run'] : []), '--report', report, ...runnerArgs];
+export function withReport(runnerArgs: readonly string[], report: string, check = false, dataflow?: string): string[] {
+    return [
+        ...(check ? ['--dry-run'] : []),
+        '--report', report,
+        ...(dataflow ? ['--dataflow', dataflow] : []),
+        ...runnerArgs
+    ];
 }

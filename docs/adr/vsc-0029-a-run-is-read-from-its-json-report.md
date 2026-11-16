@@ -23,14 +23,15 @@ that fails then reads as several failures.
 ## Decision
 
 - **The runner writes its report to a file** (`--report PATH`), in the extension's storage for the
-  workspace, beside the compiled model, in a folder that run alone uses and that is removed once
-  the report is read: two runs under way at once never read each other's files. The extension
+  workspace, beside the compiled model and its drawing (ADR-VSC-0031), in a folder that run alone
+  uses and that is removed once they are read: two runs under way at once never read each other's
+  files. The extension
   never reads the runner's standard output.
 - **The run stays a VS Code task**, whose terminal is no longer brought forward. It is where the
   steps print, and Show the Run's Output reaches it. It is brought forward only when a run ends
   without a report, which the runner documents as a usage error or a file it could not read.
-- **The report is shown in a Results view in the bottom panel**, a native tree view, which appears
-  with the first run that has a report.
+- **The report is listed in a Results view in the bottom panel**, a native tree view, which appears
+  with the first run. It lists the run the run panel draws, and comes forward with it (ADR-VSC-0031).
 - **Its rows are a list by outcome, not the argument**: the verdict, then Failed, Skipped, Passed
   and Not run, each element exactly once, in the report's own order. An element's row says what
   stopped it; under it are its problems with their fix and traceback, its step, the files it
@@ -60,7 +61,7 @@ that fails then reads as several failures.
   opened for at the top, and the report already names the root cause of every skipped element, so
   the relation that matters when reading a failure is stated on the row without nesting.
 - **The argument's shape belongs to a diagram**, where a shared element is one node with several
-  arrows. The preview draws diagrams already.
+  arrows. The run panel draws it (ADR-VSC-0031).
 - **A tree view, not a webview**: it looks and behaves like the Models, Outline and Libraries
   views, every row is clickable without a message protocol, and it needs no second browser bundle
   (ADR-VSC-0005).
@@ -77,7 +78,8 @@ that fails then reads as several failures.
 - A step's row opens its function through the libraries the Libraries view found. The report names
   a step `module.function`, so two libraries with the same file name and function name cannot be
   told apart, and the first is opened.
-- An element's row does not open the element in its `.jd` file.
+- An element's row does not open the element in its `.jd` file; double-clicking its node in the
+  run panel does.
 - The view and its click handling need the editor, so they are checked by hand (ADR-VSC-0004).
 - A runner that does not know `--report` ends with a usage error, shown in the terminal. Every
   runner this extension accepts (4.0.0 and newer, ADR-VSC-0026) knows it.

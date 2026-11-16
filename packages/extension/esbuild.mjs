@@ -56,7 +56,7 @@ const ctx = await esbuild.context({
 // The preview webview is browser code, so it cannot share the context above: that one is
 // platform:'node', format:'cjs' and renames its output to `.cjs` for the extension host.
 const webviewCtx = await esbuild.context({
-    entryPoints: ['src/webview/preview.ts', 'src/webview/preview.css'],
+    entryPoints: ['src/webview/preview.ts', 'src/webview/preview.css', 'src/webview/run.ts', 'src/webview/run.css'],
     outdir: 'out/webview',
     bundle: true,
     target: 'es2020',

@@ -1,0 +1,128 @@
+/*
+ * The run panel's own styles. It also loads the preview's stylesheet, whose toolbar, banners,
+ * layers, minimap and busy overlay it shares; what is here is only what the preview has not: the
+ * run's buttons and its banners.
+ */
+
+#run-actions { border-right: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35)); }
+
+#run-button { color: var(--vscode-debugIcon-startForeground, var(--vscode-testing-iconPassed)); }
+#stop-button { color: var(--vscode-debugIcon-stopForeground, var(--vscode-testing-iconFailed)); }
+
+.toolbar-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+    background: none;
+}
+
+/* ---------------------------------------------------------------- focus */
+
+.verdict-count:focus-visible,
+.banner-action:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------ the banners */
+
+/*
+ * As in the preview, each banner says what it is in its words and in its glyph's shape; the hue
+ * is on the background, the rule beneath and the glyph only, never on the words.
+ */
+#verdict-bar {
+    --tone: var(--vscode-descriptionForeground);
+    background: color-mix(in srgb, var(--tone) 12%, var(--vscode-editorWidget-background));
+    border-bottom: 1px solid var(--tone);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+#verdict-bar[data-tone="pass"],
+#verdict-bar[data-tone="valid"] { --tone: var(--vscode-testing-iconPassed); }
+#verdict-bar[data-tone="fail"],
+#verdict-bar[data-tone="invalid"] { --tone: var(--vscode-testing-iconFailed); }
+#verdict-bar[data-tone="skip"] { --tone: var(--vscode-testing-iconSkipped); }
+
+#verdict-bar .banner-glyph { color: var(--tone); }
+/*
+ * What was done, before the verdict: an execution and a check can both end green, and only one of
+ * them called the steps.
+ */
+#verdict-kind {
+    flex-shrink: 0;
+    border: 1px solid var(--tone);
+    border-radius: 3px;
+    padding: 0 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+#verdict-label { font-weight: 600; }
+#verdict-counts { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.verdict-count {
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 0 8px;
+    cursor: pointer;
+}
+
+.verdict-count:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+#verdict-when {
+    margin-left: auto;
+    color: var(--vscode-descriptionForeground);
+}
+
+#notice-banner {
+    background: color-mix(in srgb, var(--vscode-editorError-foreground) 15%, var(--vscode-editorWidget-background));
+    border-bottom: 1px solid var(--vscode-editorError-foreground);
+}
+
+#notice-banner .banner-glyph { color: var(--vscode-editorError-foreground); }
+
+/* A stopped run is not an error: it is what the reader asked for. */
+#notice-banner[data-phase="stopped"] {
+    background: var(--vscode-editorWidget-background);
+    border-bottom-color: var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+}
+
+#notice-banner[data-phase="stopped"] .banner-glyph { color: var(--vscode-descriptionForeground); }
+
+#out-of-date-banner {
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 15%, var(--vscode-editorWidget-background));
+    border-bottom: 1px solid var(--vscode-editorWarning-foreground);
+}
+
+#out-of-date-banner .banner-glyph { color: var(--vscode-editorWarning-foreground); }
+
+.banner-action {
+    flex-shrink: 0;
+    margin-left: auto;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+
+.banner-action:hover { background: var(--vscode-toolbar-hoverBackground); }
+.banner-action[hidden] { display: none; }
+
+/* ------------------------------------------------------------- the canvas */
+
+/* A node can be clicked: to light it and what follows it, or twice to open it. */
+#svg-wrapper g.node { cursor: pointer; }
+
+/* Where the lit chain starts. */
+#svg-wrapper g.node.jpipe-origin :is(polygon, ellipse, path) { stroke-width: 3; }
+#container.dragging g.node { cursor: grabbing; }

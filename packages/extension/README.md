@@ -42,7 +42,8 @@ preview you can export. The jPipe shield in the activity bar opens a **Models** 
 template and justification in the workspace, so you can find a model without remembering which
 file it lives in, and the ▶ button runs a justification with
 [jpipe-runner](https://github.com/jpipe-mcscert/jpipe-runner) against the step libraries you check in
-its **Libraries** view. Everything is also in the command palette under *jPipe*. The tutorials below
+its **Libraries** view, and draws the run, its dataflow and its verdict, in a **Run** panel beside
+the editor. Everything is also in the command palette under *jPipe*. The tutorials below
 walk through them.
 
 #### Tutorials

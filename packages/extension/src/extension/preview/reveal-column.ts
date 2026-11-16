@@ -55,3 +55,18 @@ function columnOf(
 ): number | undefined {
     return editors.find(e => predicate(e) && e.column !== undefined)?.column;
 }
+
+/**
+ * The column to reveal `document` in, among the visible text editors as VS Code lists them: the
+ * mapping both panels make, written once. Typed by shape, so this file stays free of `vscode`.
+ */
+export function revealColumnAmong<D extends { languageId: string }>(
+    editors: readonly { viewColumn?: number; document: D }[],
+    document: D
+): number {
+    return chooseRevealColumn(editors.map(editor => ({
+        column: editor.viewColumn,
+        showsTarget: editor.document === document,
+        isModel: editor.document.languageId === 'jpipe'
+    })));
+}

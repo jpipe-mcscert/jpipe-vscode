@@ -38,6 +38,17 @@ describe('the ▶ menu of a Python editor', () => {
     });
 });
 
+describe('a justification in the Models view', () => {
+
+    test('offers Run, then Check, at the top of its menu, and only Run inline', () => {
+        const isJustification = 'view == jpipe.models && viewItem =~ /^jpipe\\.model\\.justification/';
+        const entries = menus['view/item/context'].filter(e => e.when === isJustification);
+        const inMenu = entries.filter(e => e.group?.startsWith('1_model@')).sort((a, b) => a.group!.localeCompare(b.group!));
+        expect(inMenu.slice(0, 2).map(idOf)).toEqual(['jpipe.run', 'jpipe.check']);
+        expect(entries.filter(e => e.group?.startsWith('inline')).map(idOf)).toEqual(['jpipe.run']);
+    });
+});
+
 describe('right-clicking a model', () => {
 
     test.each(PLACES)('in $menu offers preview, Export as…, and Exclude or Include, in that order', place => {

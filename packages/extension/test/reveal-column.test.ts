@@ -10,7 +10,7 @@
  * function holds text. That is the fact the whole rule rests on.
  */
 import { describe, expect, test } from 'vitest';
-import { chooseRevealColumn, type VisibleEditor } from '../src/extension/preview/reveal-column.js';
+import { chooseRevealColumn, revealColumnAmong, type VisibleEditor } from '../src/extension/preview/reveal-column.js';
 
 /** A visible text editor, described the way the chooser sees one. */
 function editor(column: number | undefined, extra: Partial<VisibleEditor> = {}): VisibleEditor {
@@ -81,5 +81,18 @@ describe('choosing where to reveal a source', () => {
             editor(4)
         ])).toBe(4);
         expect(chooseRevealColumn([editor(undefined)])).toBe(1);
+    });
+});
+
+describe('the visible editors, as VS Code lists them', () => {
+    const model = { languageId: 'jpipe' };
+    const target = { languageId: 'python' };
+    const other = { languageId: 'markdown' };
+
+    test('are read for the target, then a model, then any text', () => {
+        expect(revealColumnAmong([{ viewColumn: 1, document: model }, { viewColumn: 3, document: target }], target)).toBe(3);
+        expect(revealColumnAmong([{ viewColumn: 2, document: other }, { viewColumn: 1, document: model }], target)).toBe(1);
+        expect(revealColumnAmong([{ viewColumn: 2, document: other }], target)).toBe(2);
+        expect(revealColumnAmong([{ document: other }], target)).toBe(1);
     });
 });
