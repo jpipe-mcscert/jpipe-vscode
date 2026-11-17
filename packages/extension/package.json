@@ -70,6 +70,7 @@
                 {
                     "id": "jpipe.results",
                     "name": "Results",
+                    "icon": "$(checklist)",
                     "when": "jpipe.hasResults",
                     "contextualTitle": "jPipe Results"
                 }
@@ -85,12 +86,14 @@
                     "id": "jpipe.elements",
                     "when": "!jpipe.noModels",
                     "name": "Outline",
+                    "icon": "$(symbol-class)",
                     "contextualTitle": "jPipe"
                 },
                 {
                     "id": "jpipe.libraries",
                     "when": "!jpipe.noModels",
                     "name": "Libraries",
+                    "icon": "$(library)",
                     "contextualTitle": "jPipe"
                 }
             ]
