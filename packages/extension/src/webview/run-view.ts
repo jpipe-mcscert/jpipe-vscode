@@ -228,7 +228,7 @@ export class RunPage {
      * click on the background does. A double click opens an element where it is written.
      */
     private nodeClicked(node: SVGGElement, twice: boolean): void {
-        const name = nameOf(node);
+        const name = this.standIn(nameOf(node));
         if (twice) {
             const element = this.elementNamed(name);
             if (element) this.post({ type: 'open', element });
@@ -237,10 +237,20 @@ export class RunPage {
         this.select(name === this.selected ? null : name);
     }
 
-    /** The run's element a node stands for, if it stands for one: a placeholder stands for its filler. */
+    /**
+     * The node a click on `name` acts on: a template slot's placeholder stands for the node of the
+     * element that fills it, so selecting either is selecting that element — here, and when
+     * Results selects it back — and lights the same flow, placeholder included.
+     */
+    private standIn(name: string): string {
+        const filler = elementOf(name);
+        const svg = this.canvas.svg;
+        return filler !== name && svg && nodeNamed(svg, filler) ? filler : name;
+    }
+
+    /** The run's element named `name`, if it is one. */
     private elementNamed(name: string): string | null {
-        const element = elementOf(name);
-        return this.state?.elements.includes(element) ? element : null;
+        return this.state?.elements.includes(name) ? name : null;
     }
 
     private bindControls(): void {

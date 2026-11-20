@@ -67,9 +67,10 @@ export interface RunReport {
     elements: ReportElement[];
     diagnostics: ReportDiagnostic[];
     /**
-     * Where the runner drew the dataflow, or null when it drew nothing: the report's `dataflow`
-     * in version 1 (jpipe-runner 4.0), its `diagram` from version 2 on, where the dataflow is the
-     * only diagram the runner draws.
+     * Where the runner drew the run, or null when it drew nothing: from version 2 on, its
+     * `diagram`, the one diagram the runner draws, the dataflow. In version 1 (jpipe-runner 4.0),
+     * its `dataflow`, or its `diagram` — the argument alone — for a 4.0 runner that was asked for
+     * `--diagram` because its release was not known (`dataflowFlag`). One drawing is ever asked for.
      */
     dataflow: string | null;
 }
@@ -161,7 +162,7 @@ export function parseReport(content: string): { report: RunReport } | { problem:
                 fix: textOrNull(d.fix),
                 traceback: traceback(d.traceback)
             })),
-            dataflow: textOrNull(major === '1' ? raw.dataflow : raw.diagram)
+            dataflow: major === '1' ? textOrNull(raw.dataflow) ?? textOrNull(raw.diagram) : textOrNull(raw.diagram)
         }
     };
 }

@@ -552,6 +552,17 @@ export class RunnerEnvironment implements vscode.Disposable {
     }
 
     /** The release of the jpipe-runner installed on the machine, outside any environment, if there is one. */
+    /** The release a runner program says it is (`--version`), or `undefined` when it does not say. */
+    async releaseOf(program: string, folder: vscode.WorkspaceFolder | undefined): Promise<string | undefined> {
+        try {
+            const { stdout } = await this.execute({ program, args: ['--version'] }, folder);
+            return parseRunnerVersion(stdout);
+        } catch (err: unknown) {
+            this.logger.debug(`${program} --version did not answer: ${messageOf(err)}`);
+            return undefined;
+        }
+    }
+
     private async machineRunnerRelease(folder: vscode.WorkspaceFolder | undefined): Promise<string | undefined> {
         try {
             const { stdout } = await this.execute(GLOBAL_RUNNER_VERSION, folder);

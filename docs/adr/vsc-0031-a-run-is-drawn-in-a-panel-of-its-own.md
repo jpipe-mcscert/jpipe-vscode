@@ -42,9 +42,12 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
   depends on the runner's release. jpipe-runner 4.0 draws the dataflow with `--dataflow` and the
   argument with `--diagram`; the releases after it draw only the dataflow, with `--diagram`, and
   refuse `--dataflow` (jpipe-runner ADR-0029). So 4.0.x is asked for `--dataflow`, and every other
-  release for `--diagram`. That includes a release the extension cannot know, a runner named in
-  the settings or a source checkout without a version, because `--diagram` runs on every release
-  where `--dataflow` would stop the later ones.
+  release for `--diagram`. The release is the one the workspace's environment has, or the one a
+  runner named in the settings gives for `--version`, read in the same look at the environment
+  that picks the program. A release that cannot be known, from a runner that does not answer or a
+  source checkout without a version, is asked for `--diagram`: it runs on every release, where
+  `--dataflow` would stop the later ones. A 4.0 runner records that drawing as its report's
+  `diagram`, which is then read in place of `dataflow`.
   When the runner cannot draw, most often because Graphviz is missing, it stops before any step with
   exit code 4 and no report, and the run is launched once more without the drawing; the panel then
   says why it has none.
@@ -69,7 +72,7 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
   selecting an element's row in Results lights its node the same way. Double-clicking an element
   opens it in its `.jd` file. The runners after 4.0 draw a template's `@support` slot as a node of
   its own in the template's cluster, named after the element that fills it with `@abstract`
-  added. Clicking or double-clicking that node acts on the filling element.
+  added. A click or a double click on that node is a click on the filling element's node.
 - **The canvas is the preview's.** Panning, zooming, the minimap and following the theme move
   from `webview/preview.ts` into `webview/canvas.ts`, which both pages use, and the run panel wears
   the preview's stylesheet with one of its own on top. The decisions — what the page is told, when

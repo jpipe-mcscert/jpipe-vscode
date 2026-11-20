@@ -292,9 +292,10 @@ describe('around the report', () => {
             .toEqual(['--dry-run', '--report', '/tmp/r.json', '--dataflow', 'd.svg', '/tmp/m.json']);
     });
 
-    test('in a version 1 report, the dataflow is `dataflow`; `diagram` is the argument alone, never asked for', () => {
+    test('in a version 1 report, the drawing is `dataflow`, or `diagram` when that is what was asked for', () => {
         expect(read({ dataflow: '/tmp/m-dataflow.svg' })).toMatchObject({ dataflow: '/tmp/m-dataflow.svg' });
-        expect(read({ diagram: '/tmp/m.svg', dataflow: null })).toMatchObject({ dataflow: null });
+        // A 4.0 runner whose release was unknown is asked for --diagram, and draws the argument there.
+        expect(read({ diagram: '/tmp/m-dataflow.svg', dataflow: null })).toMatchObject({ dataflow: '/tmp/m-dataflow.svg' });
         expect(read({})).toMatchObject({ dataflow: null });
         expect(parseReport(JSON.stringify({ schema_version: '1.0', verdict: 'pass' }))).toMatchObject({ report: { dataflow: null } });
     });
