@@ -469,27 +469,38 @@ export class PreviewProvider {
             if (this.diagramDisposition(revision) !== 'deliver') return;
             await this.sendRender(revision, this.extractSvgFromOutput(stdout), document, editor, diagramName, null);
         } catch (error: unknown) {
-            if (error instanceof CompilerTooOldError) {
-                await this.explainNoDiagram(document, revision, error);
-                return;
-            }
-            const { stdout = '', exitCode } = asProcessFailure(error);
-            this.logRenderError(document.fileName, exitCode, error);
-            this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
+            await this.showRenderFailure(error, revision, document, editor, diagramName);
+        }
+    }
 
-            if (this.diagramDisposition(revision) !== 'deliver') return;
-            const svgFromError = this.extractSvgFromOutput(stdout);
-            if (svgFromError.includes('<svg')) {
-                await this.sendRender(revision, svgFromError, document, editor, diagramName, { exitCode });
-            } else {
-                // Leave the last good diagram up rather than replacing it with an error screen.
-                // With a persistent document that costs nothing: not sending is already the
-                // right behaviour. lastRender is intentionally retained too, since it describes
-                // what the panel is still showing, so the diagnostic toggle keeps a document to
-                // work from.
-                this.post({ type: 'busy', busy: false });
-                if (!this.lastRender) this.post({ type: 'view', mode: 'empty' });
-            }
+    /** What the panel shows when the diagram could not be compiled. */
+    private async showRenderFailure(
+        error: unknown,
+        revision: number,
+        document: vscode.TextDocument,
+        editor: vscode.TextEditor | undefined,
+        diagramName: string
+    ): Promise<void> {
+        if (error instanceof CompilerTooOldError) {
+            await this.explainNoDiagram(document, revision, error);
+            return;
+        }
+        const { stdout = '', exitCode } = asProcessFailure(error);
+        this.logRenderError(document.fileName, exitCode, error);
+        this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
+
+        if (this.diagramDisposition(revision) !== 'deliver') return;
+        const svgFromError = this.extractSvgFromOutput(stdout);
+        if (svgFromError.includes('<svg')) {
+            await this.sendRender(revision, svgFromError, document, editor, diagramName, { exitCode });
+        } else {
+            // Leave the last good diagram up rather than replacing it with an error screen.
+            // With a persistent document that costs nothing: not sending is already the
+            // right behaviour. lastRender is intentionally retained too, since it describes
+            // what the panel is still showing, so the diagnostic toggle keeps a document to
+            // work from.
+            this.post({ type: 'busy', busy: false });
+            if (!this.lastRender) this.post({ type: 'view', mode: 'empty' });
         }
     }
 
