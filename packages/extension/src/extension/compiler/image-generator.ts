@@ -10,12 +10,18 @@ import {
     buildPathEnv,
     findDiagramName as findDiagramNameIn,
     isUnknownOptionFailure,
-    MIN_JSON_DIAGNOSTIC_VERSION,
     parseCompilerVersion,
     resolveExecCommand as resolveExecCommandFrom,
-    supportsJsonDiagnostic,
     type CompilerSettings
 } from './compiler-invocation.js';
+import {
+    COMPILER_INSTALL_GUIDE,
+    CompilerTooOldError,
+    compilerLine,
+    compilerUpdate,
+    compilerVerdict,
+    type CompilerVerdict
+} from '../requirements.js';
 import { isRenderableReport } from '../../shared/diagnostic-model.js';
 import type { DiagnosticReport } from '../../shared/diagnostic-report.js';
 
@@ -23,7 +29,7 @@ import type { DiagnosticReport } from '../../shared/diagnostic-report.js';
  * The outcome of one `diagnostic` run.
  *
  * `raw` is always there — it is what the panel shows when there is no structured report, and what
- * the copy button copies when there is. `report` is null for a compiler with no `-f json`, for
+ * the copy button copies when there is. `report` is null for a compiler that cannot be used, for
  * output that does not parse, and for a schema version this build does not know.
  */
 export interface DiagnosticRun {
@@ -46,6 +52,11 @@ function runCompiler(
 ): Promise<{ stdout: string; stderr: string }> {
     const plan = planLaunchHere(file, args, options.env);
     return execFileText(plan.file, plan.args, { ...options, windowsVerbatimArguments: plan.windowsVerbatimArguments });
+}
+
+/** What identifies a compiler build: the command it is started with. */
+function execKeyOf(resolved: { file: string; args: string[] }): string {
+    return [resolved.file, ...resolved.args].join(' ');
 }
 
 /** Generous stdout cap so large SVG renders are not truncated (default is only 1 MB). */
@@ -154,6 +165,7 @@ export class ImageGenerator {
             vscode.window.showErrorMessage(messageOf(e));
             throw e;
         }
+        await this.requireSupported(resolved, config);
 
         const argv = [
             ...resolved.args,
@@ -197,34 +209,53 @@ export class ImageGenerator {
     }
     
     /**
-     * Generate and save a file in the given format
+     * What Check jPipe Installation says about the compiler: whether it answers, its `doctor`
+     * report, and whether its version is one this extension can use.
+     *
+     * The version is asked afresh rather than read from the cache, since the reason to check is
+     * often that the compiler was just updated.
      */
-    public async check(): Promise<{ ok: boolean; message: string }> {
+    public async check(): Promise<{ status: 'ready' | 'unreachable' | 'too-old'; message: string; version?: string }> {
         const config = vscode.workspace.getConfiguration('jpipe');
 
         let resolved: { file: string; args: string[] };
         try {
             resolved = this.resolveExecCommand(config);
         } catch (e: unknown) {
-            return { ok: false, message: messageOf(e) };
+            return { status: 'unreachable', message: messageOf(e) };
         }
 
+        let output: string;
         try {
             const { stdout, stderr } = await runCompiler(resolved.file, [...resolved.args, '--headless', 'doctor'], { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
-            const output = (stdout + stderr).trim();
-            return { ok: true, message: output || 'jPipe is accessible.' };
+            output = (stdout + stderr).trim() || 'jPipe is accessible.';
         } catch (error: unknown) {
-            const detail = detailOf(error);
-            return { ok: false, message: `Cannot access jPipe: ${detail}` };
+            return { status: 'unreachable', message: `Cannot access jPipe: ${detailOf(error)}` };
+        }
+
+        this.verdicts.delete(execKeyOf(resolved));
+        const verdict = await this.verdictFor(resolved, config);
+        return { status: verdict.kind === 'too-old' ? 'too-old' : 'ready', message: output, version: compilerLine(verdict) };
+    }
+
+    /**
+     * Get the user a compiler recent enough: the managed mode installs one, the others are sent
+     * to the install guide, since their compiler is theirs to update.
+     */
+    public async updateCompiler(): Promise<void> {
+        const mode = vscode.workspace.getConfiguration('jpipe').get<string>('executionMode', 'cli');
+        if (compilerUpdate(mode).kind === 'install') {
+            await vscode.commands.executeCommand('jpipe.installFromRelease');
+        } else {
+            await vscode.env.openExternal(vscode.Uri.parse(COMPILER_INSTALL_GUIDE));
         }
     }
 
     /**
-     * Run `diagnostic` and, when the compiler can produce one, parse its structured report.
+     * Run `diagnostic` and parse its structured report.
      *
-     * `report` being null is a supported outcome, not a failure: it is what an older compiler
-     * gets, and it renders the raw text exactly as this panel always has. Nothing about that is
-     * surfaced to the user, because from their point of view nothing went wrong.
+     * A compiler too old to produce one is not run: the panel says why instead, in the raw pane,
+     * and the user is offered an update (jpipe-vscode ADR-VSC-0032).
      */
     public async generateDiagnostic(document: vscode.TextDocument): Promise<DiagnosticRun> {
         const inputFile = path.normalize(document.uri.fsPath);
@@ -239,20 +270,21 @@ export class ImageGenerator {
             return { raw: messageOf(e), report: null, exitCode: undefined };
         }
 
-        const wantsJson = await this.compilerSupportsJsonDiagnostic(resolved, config);
-        const run = await this.runDiagnostic(resolved, inputFile, config, wantsJson);
-
-        if (wantsJson && run.unknownOption) {
-            // The version said the flag exists and it did not — a pre-feature snapshot, or a
-            // patched build. Rather than show picocli's usage dump as though it were a report,
-            // fetch the text one. Not detection: when the version is right this never runs.
-            this.logger.warn(
-                `Compiler reports a version with 'diagnostic -f json' but rejected the option; using the text report`);
-            const textRun = await this.runDiagnostic(resolved, inputFile, config, false);
-            return { raw: textRun.raw, report: null, exitCode: textRun.exitCode };
+        try {
+            await this.requireSupported(resolved, config);
+        } catch (e: unknown) {
+            return { raw: messageOf(e), report: null, exitCode: undefined };
         }
+        const run = await this.runDiagnostic(resolved, inputFile, config, true);
 
-        if (!wantsJson) return { raw: run.raw, report: null, exitCode: run.exitCode };
+        if (run.unknownOption) {
+            // A build whose version could not be read, or that claimed more than it has: it
+            // does not know `-f json`, so it predates what this extension needs. Said as such
+            // rather than shown as picocli's usage dump.
+            const tooOld = new CompilerTooOldError(undefined);
+            this.tellTooOld(execKeyOf(resolved), tooOld);
+            return { raw: tooOld.message, report: null, exitCode: undefined };
+        }
         return { raw: run.raw, report: this.parseReport(run.stdout), exitCode: run.exitCode };
     }
 
@@ -271,53 +303,87 @@ export class ImageGenerator {
         } catch (e: unknown) {
             return messageOf(e);
         }
+        try {
+            await this.requireSupported(resolved, config);
+        } catch (e: unknown) {
+            return messageOf(e);
+        }
         const run = await this.runDiagnostic(resolved, inputFile, config, false);
         return run.raw;
     }
 
     /**
-     * Whether this compiler is new enough to report diagnostics as JSON.
+     * What each compiler's version means for this extension, by resolved command.
      *
-     * Asked once per executable and cached: the answer is a property of the build, and running
+     * Only a usable answer is kept: the version is a property of the build, and running
      * `--version` before every save would be a second process for a fact that cannot change.
-     * Keyed by the resolved command, so pointing `cliPath` or `jarFile` at a different build asks
-     * again rather than inheriting the previous one's answer.
+     * A compiler found too old is asked again next time, because the next thing its user does
+     * is update it — often in place, under the same command — and a cached refusal would outlive
+     * the update until the window is reloaded. Keyed by the resolved command, so pointing
+     * `cliPath` or `jarFile` at a different build asks again.
      */
-    private readonly jsonDiagnosticSupport = new Map<string, boolean>();
+    private readonly verdicts = new Map<string, CompilerVerdict>();
 
-    private async compilerSupportsJsonDiagnostic(
+    /** The too-old compilers the user has been told about, by command and version: once each. */
+    private readonly toldTooOld = new Set<string>();
+
+    private async verdictFor(
         resolved: { file: string; args: string[] },
         config: vscode.WorkspaceConfiguration
-    ): Promise<boolean> {
-        const execKey = [resolved.file, ...resolved.args].join(' ');
-        const cached = this.jsonDiagnosticSupport.get(execKey);
-        if (cached !== undefined) return cached;
+    ): Promise<CompilerVerdict> {
+        const execKey = execKeyOf(resolved);
+        const cached = this.verdicts.get(execKey);
+        if (cached) return cached;
 
-        let supported = false;
+        let verdict: CompilerVerdict = { kind: 'unknown' };
         try {
             const { stdout, stderr } = await runCompiler(
                 resolved.file,
                 [...resolved.args, '--headless', '--version'],
                 { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES }
             );
-            const version = parseCompilerVersion(`${stdout}\n${stderr}`);
-            supported = supportsJsonDiagnostic(version);
-            const pre = version?.pre ? `-${version.pre}` : '';
-            const reported = version ? `${version.nums.join('.')}${pre}` : 'no readable version';
-            const availability = supported
-                ? 'available'
-                : `need ${MIN_JSON_DIAGNOSTIC_VERSION.join('.')}`;
-            this.logger.debug(
-                `Compiler at '${execKey}' reports ${reported}; structured diagnostics ${availability}`);
+            verdict = compilerVerdict(parseCompilerVersion(`${stdout}\n${stderr}`));
+            this.logger.debug(`Compiler at '${execKey}': ${compilerLine(verdict)}`);
         } catch (e: unknown) {
-            // A build that cannot even be asked its version gets the text report, which every
-            // release can produce. Not fatal: the diagnostic run itself will report the real
-            // problem if there is one.
+            // A build that cannot even be asked its version is let through: the run itself will
+            // report the real problem, if there is one.
             this.logger.debug(`Could not read the compiler version from '${execKey}': ${messageOf(e)}`);
         }
 
-        this.jsonDiagnosticSupport.set(execKey, supported);
-        return supported;
+        if (verdict.kind !== 'too-old') this.verdicts.set(execKey, verdict);
+        return verdict;
+    }
+
+    /**
+     * Refuse to run a compiler older than this extension needs (jpipe-vscode ADR-VSC-0032).
+     *
+     * @throws CompilerTooOldError, after offering the update.
+     */
+    private async requireSupported(
+        resolved: { file: string; args: string[] },
+        config: vscode.WorkspaceConfiguration
+    ): Promise<void> {
+        const verdict = await this.verdictFor(resolved, config);
+        if (verdict.kind !== 'too-old') return;
+        const error = new CompilerTooOldError(verdict.version);
+        this.tellTooOld(execKeyOf(resolved), error);
+        throw error;
+    }
+
+    /**
+     * Say once, with the way out, that this compiler is too old. Once per compiler and version:
+     * a preview refreshes on every save, and a notification each time would bury the editor.
+     */
+    private tellTooOld(execKey: string, error: CompilerTooOldError): void {
+        const key = `${execKey}@${error.version ?? '?'}`;
+        if (this.toldTooOld.has(key)) return;
+        this.toldTooOld.add(key);
+        this.logger.warn(`${error.message} (${execKey})`);
+        const mode = vscode.workspace.getConfiguration('jpipe').get<string>('executionMode', 'cli');
+        const { label } = compilerUpdate(mode);
+        void vscode.window.showErrorMessage(error.message, label).then(answer => {
+            if (answer === label) void this.updateCompiler();
+        });
     }
 
     /** One invocation, with the pieces the caller has to tell apart kept separate. */

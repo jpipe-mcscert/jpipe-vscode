@@ -22,7 +22,7 @@ import type { RunSession } from './runner/run-session.js';
 import type { RunPanel } from './runner/run-panel.js';
 import { installFromRelease } from './compiler/managed-install.js';
 import { selectJarFile } from './compiler/jar-selection.js';
-import { accessMethodHeader } from './compiler/release-presentation.js';
+import { checkInstallation } from './installation-check.js';
 import {
     addExcludedDirectory,
     excludeResource,
@@ -233,15 +233,7 @@ export function registerCommands(deps: CommandDeps): void {
 
         vscode.commands.registerCommand('jpipe.selectJarFile', () => selectJarFile(logger)),
 
-        vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
-            const { ok, message } = await imageGenerator.check();
-            const mode = vscode.workspace.getConfiguration('jpipe').get<string>('executionMode', 'cli');
-            const detail = `${accessMethodHeader(mode, releaseManager.getInstalled())}\n\n${message}`;
-            if (ok) {
-                vscode.window.showInformationMessage('jPipe is accessible.', { modal: true, detail });
-            } else {
-                vscode.window.showErrorMessage('Cannot access jPipe.', { modal: true, detail });
-            }
-        })
+        vscode.commands.registerCommand('jpipe.checkInstallation', () =>
+            checkInstallation({ logger, imageGenerator, releaseManager, runnerEnvironment, librariesView }))
     );
 }

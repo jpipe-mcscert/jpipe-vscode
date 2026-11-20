@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import { isStrictlyNewer, selectInstallableReleases, type JpipeRelease } from './release-selection.js';
+import { REQUIREMENTS } from '../requirements.js';
 import {
     DEFAULT_RELEASE_REPO,
     DEFAULT_UPDATE_INTERVAL_HOURS,
@@ -46,7 +47,8 @@ export class ReleaseManager {
     ) {}
 
     /**
-     * List installable releases (v2.0.0+ with a `jpipe-cli-*.jar` asset), newest first.
+     * List installable releases (the required compiler or newer, with a `jpipe-cli-*.jar`
+     * asset), newest first.
      * Excludes pre-releases unless `jpipe.managedIncludePrereleases` is enabled; the rolling
      * non-semver `unstable` tag is always excluded. Throws on network/API failure.
      */
@@ -54,7 +56,7 @@ export class ReleaseManager {
         const config = vscode.workspace.getConfiguration('jpipe');
         const includePrereleases = config.get<boolean>('managedIncludePrereleases', false);
         const raw = await httpsGetJson(releasesUrl(this.repo()));
-        const releases = selectInstallableReleases(raw, includePrereleases);
+        const releases = selectInstallableReleases(raw, includePrereleases, REQUIREMENTS.compiler);
         this.logger.debug(`Found ${releases.length} installable jPipe release(s)`);
         return releases;
     }

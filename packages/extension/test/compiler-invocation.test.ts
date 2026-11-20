@@ -7,7 +7,6 @@ import {
     isUnknownOptionFailure,
     parseCompilerVersion,
     resolveExecCommand,
-    supportsJsonDiagnostic,
     type CompilerContext,
     type CompilerSettings
 } from '../src/extension/compiler/compiler-invocation.js';
@@ -308,41 +307,5 @@ describe('parseCompilerVersion', () => {
         expect(parseCompilerVersion('')).toBeUndefined();
         expect(parseCompilerVersion('command not found: jpipe')).toBeUndefined();
         expect(parseCompilerVersion('jPipe 2.4')).toBeUndefined();
-    });
-});
-
-describe('supportsJsonDiagnostic', () => {
-    const at = (v: string) => supportsJsonDiagnostic(parseCompilerVersion(v));
-
-    test('2.4.0 and later can report as JSON', () => {
-        expect(at('jPipe 2.4.0')).toBe(true);
-        expect(at('jPipe 2.4.1')).toBe(true);
-        expect(at('jPipe 2.5.0')).toBe(true);
-        expect(at('jPipe 3.0.0')).toBe(true);
-    });
-
-    test('everything before it cannot', () => {
-        expect(at('jPipe 2.3.1')).toBe(false);
-        expect(at('jPipe 2.3.99')).toBe(false);
-        expect(at('jPipe 1.9.9')).toBe(false);
-    });
-
-    test('a prerelease of 2.4.0 counts as 2.4.0', () => {
-        // The subtlety worth pinning. Semver orders `2.4.0-SNAPSHOT` *below* `2.4.0`, which is
-        // correct when asking which release is newer — and wrong here: a snapshot of 2.4.0 is a
-        // build of 2.4.0 and has its features. Ordering it below would refuse structured
-        // diagnostics on every development build of the release that introduces them.
-        expect(at('jPipe 2.4.0-SNAPSHOT')).toBe(true);
-        expect(at('jPipe 2.4.0-rc1')).toBe(true);
-    });
-
-    test('a prerelease of an older release is still older', () => {
-        expect(at('jPipe 2.3.0-SNAPSHOT')).toBe(false);
-    });
-
-    test('an unreadable version is treated as too old', () => {
-        // The text report is the thing every release can produce, so it is the safe assumption.
-        expect(supportsJsonDiagnostic(undefined)).toBe(false);
-        expect(at('command not found')).toBe(false);
     });
 });

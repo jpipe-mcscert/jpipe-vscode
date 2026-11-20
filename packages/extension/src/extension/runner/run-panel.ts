@@ -20,7 +20,8 @@ export const RUN_PANEL_TYPE = 'jpipe.run';
 const NOTICE_COMMANDS: Readonly<Record<Exclude<NoticeAction, 'showOutput'>, string>> = {
     showLibraries: `${LIBRARIES_VIEW_ID}.focus`,
     fixEnvironment: 'jpipe.runner.fixEnvironment',
-    showProblems: 'workbench.actions.view.problems'
+    showProblems: 'workbench.actions.view.problems',
+    checkInstallation: 'jpipe.checkInstallation'
 };
 
 /**

@@ -58,6 +58,8 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
           exclusion-commands.ts ← the exclusion flows and their failure messages
           exclusions.ts         ← excluded-path manager, decorations, code lenses
           process-launcher.ts   ← Windows command resolution, cmd.exe escaping, running a program (tested)
+          requirements.ts       ← the oldest compiler/runner/Python this release works with; Pylance; the install report's verdict (tested; ADR-VSC-0032)
+          installation-check.ts ← Check jPipe Installation: compiler, runs, Pylance, in one dialog
           compiler/             ← obtaining and running the jPipe compiler (ADR-VSC-0016)
             image-generator.ts  ← calls the external jpipe CLI/JAR for SVG/PNG/JSON
             compiler-invocation.ts ← argv construction, vscode-free (tested)
@@ -78,6 +80,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             run-shell.ts        ← the Run panel's HTML shell
             results-view.ts     ← the Results view, in the bottom panel; opened from the Run panel
             python-environment.ts ← which environment is the workspace's own? can it run steps? which fix? (tested; ADR-VSC-0026)
+            pylance.ts          ← is Pylance installed? install it. Wanted, never declared (ADR-VSC-0032)
             environment.ts      ← finds that environment, points the Python extension at it, asks consent, runs fixes
             step-terminal.ts    ← runs a fix step itself, shown in a task's terminal: a task cannot unset an inherited variable
             new-library.ts      ← New Library… decisions: module name, folder, skeleton (tested)
@@ -166,6 +169,9 @@ The `JpipeCompletionProvider` deliberately never falls through to Langium's glob
 - `jpipe.jarFile` + `jpipe.setJavaVersion`
 
 Exit codes: `1` = model has errors, `42` = compiler crashed.
+
+### Required versions
+`src/extension/requirements.ts` names the **oldest** compiler, jpipe-runner and Python this release works with, and no newest (jpipe-vscode ADR-VSC-0032). A compiler below the minimum is refused before any run, with an update offered; the managed install lists only releases at or above it. Raising a minimum is a user-facing change: changelog entry, and the Marketplace README's "Required software" (held by `test/requirements.test.ts`). Pylance is a soft dependency — never add it to `extensionDependencies` or `extensionPack`.
 
 ---
 

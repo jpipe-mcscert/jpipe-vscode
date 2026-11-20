@@ -10,17 +10,13 @@
  */
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { meetsMinimum, pylanceLine, REQUIREMENTS } from '../requirements.js';
 
-/** jpipe-runner's minimum, from its README. */
-export const MIN_PYTHON: readonly [number, number] = [3, 11];
+/** The Python jpipe-runner runs on (`../requirements.ts` says why). */
+export const MIN_PYTHON = REQUIREMENTS.python;
 
-/**
- * The first jpipe-runner whose API step libraries are written against: `from jpipe_runner import
- * evidence, strategy`, which is what New Library… writes and what the Libraries view looks for.
- * Earlier releases install and import, but have neither decorator, so the editor flags every
- * import of them and a run finds no step.
- */
-export const MIN_RUNNER: readonly [number, number, number] = [4, 0, 0];
+/** The jpipe-runner step libraries are written against (`../requirements.ts` says why). */
+export const MIN_RUNNER = REQUIREMENTS.runner;
 
 /** jpipe-runner as a requirement, when nothing says which release: any recent enough, so an old one is upgraded. */
 export const RUNNER_REQUIREMENT = `jpipe-runner>=${MIN_RUNNER.join('.')}`;
@@ -328,6 +324,8 @@ export interface EnvironmentFacts {
     localSource?: string;
     /** The version that local jpipe-runner declares now. */
     declaredLocal?: string;
+    /** Whether Pylance is installed, when that was looked at. */
+    pylance?: boolean;
 }
 
 /** `file` as a reader would say it: from the workspace folder if it is in it, else from `~`. */
@@ -366,6 +364,7 @@ export function environmentReport(facts: EnvironmentFacts, places: { folder?: st
         lines.push(environment.manager ? `Environment: none yet (${environment.manager} project)` : 'Environment: none yet');
     }
     lines.push(...editorLines(facts, short));
+    if (facts.pylance !== undefined) lines.push(pylanceLine(facts.pylance));
     // Only what the lines above do not already say.
     if (facts.localSource && (!local || !sameDirectory(local, facts.localSource))) {
         lines.push('Settings ask for a local copy', `  ${short(facts.localSource)}`);
@@ -400,12 +399,12 @@ export function runnablePython(status: EnvironmentStatus): string | undefined {
     return status.kind === 'ready' || status.kind === 'unselected' || stale ? status.python : undefined;
 }
 
-export const isRecentEnough = (version: readonly number[]): boolean => compareVersion(version, MIN_PYTHON) >= 0;
+export const isRecentEnough = (version: readonly number[]): boolean => meetsMinimum(version, MIN_PYTHON);
 
 /** Whether a jpipe-runner release (`4.0.0`, `4.1.0rc1`) has the API step libraries use. */
 export function isRunnerRecentEnough(release: string): boolean {
     const numbers = release.split('.').map(part => Number.parseInt(part, 10));
-    return numbers.every(n => !Number.isNaN(n)) ? compareVersion(numbers, MIN_RUNNER) >= 0 : true;
+    return numbers.every(n => !Number.isNaN(n)) ? meetsMinimum(numbers, MIN_RUNNER) : true;
 }
 
 /** A program to try as the Python an environment is created with, and the arguments that select it. */
@@ -436,13 +435,6 @@ export function basePythonCandidates(selected: string | undefined, platform: Nod
  */
 export function chooseBasePython(candidates: ReadonlyArray<{ command: PythonCommand; version?: readonly number[]; isVirtualEnv?: boolean }>): PythonCommand | undefined {
     return candidates.find(c => c.version !== undefined && isRecentEnough(c.version) && !c.isVirtualEnv)?.command;
-}
-
-function compareVersion(version: readonly number[], minimum: readonly number[]): number {
-    for (let i = 0; i < minimum.length; i++) {
-        if ((version[i] ?? 0) !== minimum[i]) return (version[i] ?? 0) - minimum[i];
-    }
-    return 0;
 }
 
 /** One line for the Libraries view, or `undefined` when there is nothing to say. */

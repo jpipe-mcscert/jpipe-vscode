@@ -140,7 +140,8 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
         // the `jpipe_runner` import.
         if (this.libraries.size > 0 && !this.offered) {
             this.offered = true;
-            void this.environment.offer(false);
+            // Pylance after the environment, so the two offers never stack.
+            void this.environment.offer(false).then(() => this.environment.offerPylance());
         }
     }
 

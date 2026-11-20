@@ -17,8 +17,11 @@
 
 #### Required software
 
-The plugin requires the `jpipe` compiler to be available on your computer:
+The plugin requires the `jpipe` compiler, **version 3.0.0 or newer**, to be available on your
+computer:
   - [https://www.jpipe.org/tutorials/install/](https://www.jpipe.org/tutorials/install/)
+
+An older compiler is not used: the plugin says which version it found and offers to update it.
 
 You can provide the compiler in three ways, selected via the `jpipe.executionMode` setting:
 
@@ -30,6 +33,14 @@ You can provide the compiler in three ways, selected via the `jpipe.executionMod
     into its own private storage and runs it with `java` — no manual path configuration. The
     downloaded JAR is an executable; the extension only fetches it after you explicitly pick a
     release, and periodically offers to update it. (Requires a Java runtime.)
+
+Running models (the ▶ button) also needs, in the workspace's Python environment,
+[jpipe-runner](https://github.com/jpipe-mcscert/jpipe-runner) 4.0.0 or newer on Python 3.11 or
+newer; the plugin offers to set that environment up. [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance)
+is recommended for writing step libraries, and offered, but not required.
+
+**jPipe: Check jPipe Installation** reports all of it at once, with a button for the first
+thing to fix.
 
 #### How to use the plugin?
 

@@ -5,6 +5,8 @@ import * as path from 'node:path';
 import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import { runInTerminal } from './step-terminal.js';
+import { installPylance, pylanceInstalled } from './pylance.js';
+import { PYLANCE_OFFER } from '../requirements.js';
 import { execFileText } from '../process-launcher.js';
 import { envWithPath } from '../compiler/image-generator.js';
 import { expandTilde } from '../compiler/compiler-invocation.js';
@@ -107,6 +109,8 @@ const PYTHON_EXTENSION = 'ms-python.python';
 const PYTHON_ENVS_EXTENSION = 'ms-python.vscode-python-envs';
 /** Remembers "Not now" for this workspace, so opening it does not ask again. */
 const DECLINED_KEY = 'jpipe.runner.environmentDeclined';
+/** The same, for the offer to install Pylance. */
+const PYLANCE_DECLINED_KEY = 'jpipe.runner.pylanceDeclined';
 /** The interpreter last selected for the editor from here, so a later choice of the user's is left alone. */
 const SELECTED_KEY = 'jpipe.runner.selectedEnvironment';
 
@@ -335,15 +339,53 @@ export class RunnerEnvironment implements vscode.Disposable {
             await this.setUp();
             return;
         }
-        const detail = environmentReport(this.facts, { ...(this.folder ? { folder: this.folder.uri.fsPath } : {}), home: os.homedir() });
+        const detail = this.detail();
         const message = statusMessage(status);
         if (!message) {
-            void vscode.window.showInformationMessage('This workspace\'s Python environment can run step libraries.', { modal: true, detail });
+            const install = 'Install Pylance';
+            const offered = pylanceInstalled() ? [] : [install];
+            const answer = await vscode.window.showInformationMessage('This workspace\'s Python environment can run step libraries.', { modal: true, detail }, ...offered);
+            if (answer === install) await installPylance(this.logger);
             return;
         }
         const label = fixLabel(status);
         const answer = await vscode.window.showWarningMessage(message, { modal: true, detail }, ...(label ? [label] : []));
         if (label && answer === label) await this.fix();
+    }
+
+    /** The facts behind the status, line by line, as the reports show them. */
+    private detail(): string {
+        return environmentReport({ ...this.facts, pylance: pylanceInstalled() },
+            { ...(this.folder ? { folder: this.folder.uri.fsPath } : {}), home: os.homedir() });
+    }
+
+    /**
+     * The runner's part of Check jPipe Installation: whether this workspace can run models, and
+     * the facts behind it. Looks again first, like the environment's own check.
+     */
+    async describe(): Promise<{ runner: 'ready' | 'needs-setup' | 'external'; detail: string }> {
+        this.recheck();
+        const status = await this.settled();
+        if (status.kind === 'external') {
+            return { runner: 'external', detail: 'Runs use the runner command named in the settings.' };
+        }
+        return { runner: runnablePython(status) ? 'ready' : 'needs-setup', detail: this.detail() };
+    }
+
+    /**
+     * Offer to install Pylance, once per workspace, to a workspace that has step libraries:
+     * without it nothing checks them as they are written. Silenced, like the environment's own
+     * offer, by the setting that turns set-up suggestions off.
+     */
+    async offerPylance(): Promise<void> {
+        if (pylanceInstalled()) return;
+        if (!this.setting(OFFER_SETUP_SETTING, true) || this.context.workspaceState.get<boolean>(PYLANCE_DECLINED_KEY)) return;
+        const install = 'Install Pylance';
+        const notNow = 'Not Now';
+        const answer = await vscode.window.showInformationMessage(PYLANCE_OFFER, install, notNow);
+        this.logger.info(`Offered Pylance: ${answer ?? 'dismissed'}.`);
+        if (answer === install) await installPylance(this.logger);
+        if (answer === notNow) await this.context.workspaceState.update(PYLANCE_DECLINED_KEY, true);
     }
 
     /**
