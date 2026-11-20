@@ -5,6 +5,7 @@ import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import { findDiagramName } from '../compiler/compiler-invocation.js';
 import { ImageFormat, type ImageGenerator } from '../compiler/image-generator.js';
+import { CompilerTooOldError } from '../requirements.js';
 import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
@@ -82,9 +83,12 @@ async function compile(
         };
     } catch (err: unknown) {
         deps.logger.warn(`${name} could not be compiled: ${messageOf(err)}`);
+        // A compiler too old is not a problem with the model: the Problems view would be empty.
         deps.session.endWith(token, 'blocked', {
             text: `${name} could not be compiled, so it cannot be run: ${messageOf(err)}`,
-            action: { label: 'Show Problems', id: 'showProblems' }
+            action: err instanceof CompilerTooOldError
+                ? { label: 'Check jPipe Installation', id: 'checkInstallation' }
+                : { label: 'Show Problems', id: 'showProblems' }
         });
         await discard(folder);
         return undefined;

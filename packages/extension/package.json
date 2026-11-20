@@ -992,7 +992,7 @@
                         "type": "boolean",
                         "default": true,
                         "scope": "resource",
-                        "markdownDescription": "**[workspace mode only]** Let jPipe suggest setting up the Python environment when it notices that your step libraries cannot run yet.\n\nTurn it off to stop the suggestions. You can still set the environment up whenever you want, from the Libraries view or by pressing ▶."
+                        "markdownDescription": "**[workspace mode only]** Let jPipe suggest setting up the Python environment when it notices that your step libraries cannot run yet, and suggest installing Pylance when a workspace with step libraries does not have it.\n\nTurn it off to stop the suggestions. You can still set the environment up whenever you want, from the Libraries view or by pressing ▶, and install Pylance from Check jPipe Installation."
                     },
                     "jpipe.runner.libraries": {
                         "order": 5,

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { messageOf } from '../../shared/errors.js';
+import { CompilerTooOldError } from '../requirements.js';
 import { joinUri } from '../models-view/new-model.js';
 import type { Model } from '../models-view/models-tree.js';
 import { fileExists } from '../models-view/new-model-flow.js';
@@ -52,7 +53,10 @@ export async function scaffoldLibrary(
                 () => compileTo(document, uri));
             return true;
         } catch (err: unknown) {
-            void vscode.window.showErrorMessage(`Could not generate steps for ${model.name}: ${messageOf(err)}`);
+            // A compiler too old has said so already, with its update button.
+            if (!(err instanceof CompilerTooOldError)) {
+                void vscode.window.showErrorMessage(`Could not generate steps for ${model.name}: ${messageOf(err)}`);
+            }
             return false;
         }
     });

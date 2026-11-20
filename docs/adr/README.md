@@ -68,3 +68,4 @@ The compiler's records are at
 | [VSC-0029](vsc-0029-a-run-is-read-from-its-json-report.md) | A run is read from the runner's JSON report, and listed, not drawn as a tree | 2026-11-14 | Accepted |
 | [VSC-0030](vsc-0030-dev-integrates-main-holds-releases.md) | `dev` integrates, `main` holds releases | 2026-11-15 | Accepted |
 | [VSC-0031](vsc-0031-a-run-is-drawn-in-a-panel-of-its-own.md) | A run is drawn in a panel of its own, beside the editor | 2026-11-15 | Accepted |
+| [VSC-0032](vsc-0032-each-release-names-the-oldest-tools-it-works-with.md) | Each release names the oldest tools it works with | 2026-11-19 | Accepted |

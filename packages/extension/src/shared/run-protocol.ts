@@ -21,7 +21,7 @@ export interface VerdictCount {
 }
 
 /** The commands a notice may offer. The host decides what each does. */
-export type NoticeAction = 'showLibraries' | 'fixEnvironment' | 'showProblems' | 'showOutput';
+export type NoticeAction = 'showLibraries' | 'fixEnvironment' | 'showProblems' | 'checkInstallation' | 'showOutput';
 
 /** Why the panel has no run to show, or what went wrong with it, and the one thing to do about it. */
 export interface Notice {

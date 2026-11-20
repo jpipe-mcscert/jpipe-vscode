@@ -132,16 +132,13 @@ export function findDiagramName(text: string, cursorLine: number): string {
     return diagramName;
 }
 
-/* ------------------------------------------------------- what this compiler can be asked for */
-
-/** The release that introduced `diagnostic -f json`. */
-export const MIN_JSON_DIAGNOSTIC_VERSION: readonly [number, number, number] = [2, 4, 0];
+/* -------------------------------------------------------------------- which compiler this is */
 
 /**
- * The version `jpipe --version` reports, e.g. `jPipe 2.4.0` or `jPipe 2.4.0-SNAPSHOT`.
+ * The version `jpipe --version` reports, e.g. `jPipe 3.0.0` or `jPipe 3.0.0-SNAPSHOT`.
  *
- * Returns undefined for anything that does not look like a version, which callers treat as "do
- * not ask this build for things only newer ones have".
+ * Returns undefined for anything that does not look like a version, which `compilerVerdict`
+ * (`../requirements.ts`) reads as "cannot tell".
  */
 export function parseCompilerVersion(output: string):
     { nums: [number, number, number]; pre: string | undefined } | undefined {
@@ -152,35 +149,13 @@ export function parseCompilerVersion(output: string):
 }
 
 /**
- * Does this build understand `diagnostic -f json`?
- *
- * Compares the release numbers and **ignores the prerelease tag**, which is the one subtlety
- * here. Semver says `2.4.0-SNAPSHOT` precedes `2.4.0`, and that is right when the question is
- * "which release is newer" — the question `release-selection.ts` asks when offering an install.
- * It is wrong for this question. A `-SNAPSHOT` or `-rc1` of 2.4.0 is a build *of* 2.4.0 and
- * carries its features, so ordering it below 2.4.0 would refuse structured diagnostics on every
- * development build of the very release that introduces them.
- */
-export function supportsJsonDiagnostic(
-    version: { nums: readonly [number, number, number] } | undefined
-): boolean {
-    if (!version) return false;
-    for (let i = 0; i < 3; i++) {
-        if (version.nums[i] !== MIN_JSON_DIAGNOSTIC_VERSION[i]) {
-            return version.nums[i] > MIN_JSON_DIAGNOSTIC_VERSION[i];
-        }
-    }
-    return true;
-}
-
-/**
  * Did this invocation fail because the compiler does not know the option we passed?
  *
- * Not the detection mechanism — the version is (see `supportsJsonDiagnostic`). This is recovery
- * for the case where the version said yes and the flag was not there anyway: a pre-feature
- * `2.4.0-SNAPSHOT`, or a patched build. Without it the panel would show picocli's usage dump as
- * though it were a diagnostic report; with it, the text report is fetched instead. When the
- * version gate is right, which is essentially always, this never fires.
+ * Not the detection mechanism — the version is (see `compilerVerdict` in `../requirements.ts`).
+ * This catches the build whose version could not be read, or claimed more than it had: a
+ * pre-feature snapshot, or a patched build. Without it the panel would show picocli's usage dump
+ * as though it were a diagnostic report; with it, the compiler is reported as too old. When the
+ * version is readable and honest, which is essentially always, this never fires.
  *
  * picocli answers an unrecognised option with exit code 2 and an `Unknown option(s)` or
  * `Unmatched argument` line. Both halves are required, so that a model with errors (exit 1) or an

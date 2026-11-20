@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node';
 import { ImageGenerator, ImageFormat, type DiagnosticRun } from '../compiler/image-generator.js';
+import { CompilerTooOldError } from '../requirements.js';
 import { getShellHtml } from './preview-shell.js';
 import { responseToCursorMove } from './preview-refresh.js';
 import { panelExportTarget } from './export-target.js';
@@ -468,24 +469,51 @@ export class PreviewProvider {
             if (this.diagramDisposition(revision) !== 'deliver') return;
             await this.sendRender(revision, this.extractSvgFromOutput(stdout), document, editor, diagramName, null);
         } catch (error: unknown) {
-            const { stdout = '', exitCode } = asProcessFailure(error);
-            this.logRenderError(document.fileName, exitCode, error);
-            this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
-
-            if (this.diagramDisposition(revision) !== 'deliver') return;
-            const svgFromError = this.extractSvgFromOutput(stdout);
-            if (svgFromError.includes('<svg')) {
-                await this.sendRender(revision, svgFromError, document, editor, diagramName, { exitCode });
-            } else {
-                // Leave the last good diagram up rather than replacing it with an error screen.
-                // With a persistent document that costs nothing: not sending is already the
-                // right behaviour. lastRender is intentionally retained too, since it describes
-                // what the panel is still showing, so the diagnostic toggle keeps a document to
-                // work from.
-                this.post({ type: 'busy', busy: false });
-                if (!this.lastRender) this.post({ type: 'view', mode: 'empty' });
-            }
+            await this.showRenderFailure(error, revision, document, editor, diagramName);
         }
+    }
+
+    /** What the panel shows when the diagram could not be compiled. */
+    private async showRenderFailure(
+        error: unknown,
+        revision: number,
+        document: vscode.TextDocument,
+        editor: vscode.TextEditor | undefined,
+        diagramName: string
+    ): Promise<void> {
+        if (error instanceof CompilerTooOldError) {
+            await this.explainNoDiagram(document, revision, error);
+            return;
+        }
+        const { stdout = '', exitCode } = asProcessFailure(error);
+        this.logRenderError(document.fileName, exitCode, error);
+        this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
+
+        if (this.diagramDisposition(revision) !== 'deliver') return;
+        const svgFromError = this.extractSvgFromOutput(stdout);
+        if (svgFromError.includes('<svg')) {
+            await this.sendRender(revision, svgFromError, document, editor, diagramName, { exitCode });
+        } else {
+            // Leave the last good diagram up rather than replacing it with an error screen.
+            // With a persistent document that costs nothing: not sending is already the
+            // right behaviour. lastRender is intentionally retained too, since it describes
+            // what the panel is still showing, so the diagnostic toggle keeps a document to
+            // work from.
+            this.post({ type: 'busy', busy: false });
+            if (!this.lastRender) this.post({ type: 'view', mode: 'empty' });
+        }
+    }
+
+    /**
+     * The preview of a compiler too old to be run. Nothing was run, so this is no render failure,
+     * and the output channel is not brought forward on every save. The panel says why instead:
+     * the diagnostic view shows the reason as its text (jpipe-vscode ADR-VSC-0032).
+     */
+    private async explainNoDiagram(document: vscode.TextDocument, revision: number, error: CompilerTooOldError): Promise<void> {
+        this.logger.debug(`Preview of ${document.fileName} not rendered: ${error.message}`);
+        if (this.diagramDisposition(revision) !== 'deliver') return;
+        this.viewMode = 'diagnostic';
+        await this.updateDiagnostic(document);
     }
 
     /** Build and send a render message, and remember it for the `ready` replay. */

@@ -140,7 +140,8 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
         // the `jpipe_runner` import.
         if (this.libraries.size > 0 && !this.offered) {
             this.offered = true;
-            void this.environment.offer(false);
+            // Pylance after the environment, so the two offers never stack.
+            void this.environment.offer(false).then(() => this.environment.offerPylance());
         }
     }
 
@@ -170,6 +171,11 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
             if (state === vscode.TreeItemCheckboxState.Checked) entries.push(entry);
         }
         await this.write(entries);
+    }
+
+    /** Once the scan in progress, if any, is done: before asking how many libraries there are. */
+    async ready(): Promise<void> {
+        await this.scanning;
     }
 
     async checkAll(): Promise<void> {

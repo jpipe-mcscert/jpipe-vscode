@@ -132,34 +132,42 @@ describe('compareSemverDesc', () => {
 });
 
 describe('selectInstallableReleases', () => {
+    /** A minimum every release in these cases meets, so each case tests only its own rule. */
+    const ANY = [0, 0, 0];
+
     test('keeps stable releases, newest first', () => {
         const picked = selectInstallableReleases(
-            [apiRelease('v2.0.0'), apiRelease('v2.2.0'), apiRelease('v2.1.0')], false);
+            [apiRelease('v2.0.0'), apiRelease('v2.2.0'), apiRelease('v2.1.0')], false, ANY);
         expect(tags(picked)).toEqual(['v2.2.0', 'v2.1.0', 'v2.0.0']);
     });
 
     test('hides prereleases unless asked for', () => {
         const payload = [apiRelease('v2.2.0'), apiRelease('v2.3.0-rc1', { prerelease: true })];
-        expect(tags(selectInstallableReleases(payload, false))).toEqual(['v2.2.0']);
-        expect(tags(selectInstallableReleases(payload, true))).toEqual(['v2.3.0-rc1', 'v2.2.0']);
+        expect(tags(selectInstallableReleases(payload, false, ANY))).toEqual(['v2.2.0']);
+        expect(tags(selectInstallableReleases(payload, true, ANY))).toEqual(['v2.3.0-rc1', 'v2.2.0']);
     });
 
     test('always hides drafts, even when prereleases are wanted', () => {
         const payload = [apiRelease('v2.2.0'), apiRelease('v2.3.0', { draft: true })];
-        expect(tags(selectInstallableReleases(payload, true))).toEqual(['v2.2.0']);
+        expect(tags(selectInstallableReleases(payload, true, ANY))).toEqual(['v2.2.0']);
     });
 
-    test('hides releases below the supported major version', () => {
-        // 1.x predates the subcommands this extension drives.
-        const payload = [apiRelease('v2.0.0'), apiRelease('1.9.0'), apiRelease('0.2.8')];
-        expect(tags(selectInstallableReleases(payload, false))).toEqual(['v2.0.0']);
+    test('hides releases older than the compiler this extension requires', () => {
+        // The picker must never offer a compiler the extension would then refuse to run.
+        const payload = [apiRelease('v3.1.0'), apiRelease('v3.0.0'), apiRelease('v2.5.0'), apiRelease('1.9.0')];
+        expect(tags(selectInstallableReleases(payload, false, [3, 0, 0]))).toEqual(['v3.1.0', 'v3.0.0']);
+    });
+
+    test('a prerelease of the required compiler is offered when prereleases are', () => {
+        const payload = [apiRelease('v3.0.0-rc1', { prerelease: true }), apiRelease('v2.5.0')];
+        expect(tags(selectInstallableReleases(payload, true, [3, 0, 0]))).toEqual(['v3.0.0-rc1']);
     });
 
     test('hides tags that are not versions at all', () => {
         // The rolling `unstable` tag must never appear in the picker, and neither must a tag
         // that merely starts with a version.
         const payload = [apiRelease('v2.0.0'), apiRelease('unstable'), apiRelease('v2.1.0nightly')];
-        expect(tags(selectInstallableReleases(payload, false))).toEqual(['v2.0.0']);
+        expect(tags(selectInstallableReleases(payload, false, ANY))).toEqual(['v2.0.0']);
     });
 
     test('requires a jpipe-cli jar asset', () => {
@@ -168,12 +176,12 @@ describe('selectInstallableReleases', () => {
             apiRelease('v2.3.0', { assets: [{ name: 'jpipe-2.3.0.zip', browser_download_url: 'u', size: 1 }] }),
             apiRelease('v2.4.0', { assets: [] })
         ];
-        expect(tags(selectInstallableReleases(payload, false))).toEqual(['v2.2.0']);
+        expect(tags(selectInstallableReleases(payload, false, ANY))).toEqual(['v2.2.0']);
     });
 
     test('skips an asset with no download URL', () => {
         const payload = [apiRelease('v2.3.0', { assets: [{ name: 'jpipe-cli-2.3.0.jar', size: 1 }] })];
-        expect(selectInstallableReleases(payload, false)).toEqual([]);
+        expect(selectInstallableReleases(payload, false, ANY)).toEqual([]);
     });
 
     test('picks the cli jar out of a release carrying several assets', () => {
@@ -184,14 +192,14 @@ describe('selectInstallableReleases', () => {
                 { name: 'checksums.txt', browser_download_url: 'txt', size: 1 }
             ]
         })];
-        const [release] = selectInstallableReleases(payload, false);
+        const [release] = selectInstallableReleases(payload, false, ANY);
         expect(release.jarUrl).toBe('jar');
         expect(release.jarName).toBe('jpipe-cli-2.3.0.jar');
         expect(release.jarSize).toBe(20);
     });
 
     test('falls back to the tag when a release has no name', () => {
-        const [release] = selectInstallableReleases([apiRelease('v2.3.0', { name: '' })], false);
+        const [release] = selectInstallableReleases([apiRelease('v2.3.0', { name: '' })], false, ANY);
         expect(release.name).toBe('v2.3.0');
     });
 
@@ -200,18 +208,18 @@ describe('selectInstallableReleases', () => {
         const payload = [apiRelease('v2.3.0', {
             assets: [{ name: 'jpipe-cli-2.3.0.jar', browser_download_url: 'u' }]
         })];
-        expect(selectInstallableReleases(payload, false)[0].jarSize).toBe(0);
+        expect(selectInstallableReleases(payload, false, ANY)[0].jarSize).toBe(0);
     });
 
     test('survives malformed entries instead of throwing', () => {
         const payload = [null, undefined, {}, { tag_name: null }, apiRelease('v2.0.0')];
-        expect(tags(selectInstallableReleases(payload, false))).toEqual(['v2.0.0']);
+        expect(tags(selectInstallableReleases(payload, false, ANY))).toEqual(['v2.0.0']);
     });
 
     test('rejects a payload that is not an array', () => {
-        expect(() => selectInstallableReleases({ message: 'rate limited' }, false))
+        expect(() => selectInstallableReleases({ message: 'rate limited' }, false, ANY))
             .toThrow(/Unexpected response/);
-        expect(() => selectInstallableReleases(null, false)).toThrow(/Unexpected response/);
+        expect(() => selectInstallableReleases(null, false, ANY)).toThrow(/Unexpected response/);
     });
 });
 
