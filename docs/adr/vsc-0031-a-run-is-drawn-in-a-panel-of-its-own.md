@@ -42,10 +42,13 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
   depends on the runner's release. jpipe-runner 4.0 draws the dataflow with `--dataflow` and the
   argument with `--diagram`; the releases after it draw only the dataflow, with `--diagram`, and
   refuse `--dataflow` (jpipe-runner ADR-0029). So 4.0.x is asked for `--dataflow`, and every other
-  release for `--diagram`. The release is the one the workspace's environment has, or the one a
-  runner named in the settings gives for `--version`, read in the same look at the environment
-  that picks the program. A release that cannot be known, from a runner that does not answer or a
-  source checkout without a version, is asked for `--diagram`: it runs on every release, where
+  release for `--diagram`. The release is asked of the runner that will run, as the run is
+  launched, with the environment and the folder the run will have, so that the program that
+  answers is the one that runs: `--version` of the program named in the settings, or of the
+  workspace's environment (`python -m jpipe_runner --version`), never the last environment check,
+  which may predate an upgrade. A local copy runs as it stands, so its release is the one its
+  `pyproject.toml` declares now. A release that cannot be known, from a runner that does not
+  answer or a source checkout without a version, is asked for `--diagram`: it runs on every release, where
   `--dataflow` would stop the later ones. A 4.0 runner records that drawing as its report's
   `diagram`, which is then read in place of `dataflow`.
   When the runner cannot draw, most often because Graphviz is missing, it stops before any step with
@@ -110,7 +113,8 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
 ## Consequences
 
 - **A run draws an SVG**, which costs a Graphviz layout; on a large model that is felt before the
-  verdict appears. A runner that cannot draw costs a second launch, in which no step runs.
+  verdict appears. A runner that cannot draw costs a second launch, in which no step runs. Asking
+  the runner its release costs one more process before every run that draws.
 - **The argument alone, with statuses, is not shown anywhere.** jpipe-runner 4.0 can draw it, and
   its later releases cannot. A reader who wants the statuses without the data has the dataflow, or
   the preview for the argument without the statuses.

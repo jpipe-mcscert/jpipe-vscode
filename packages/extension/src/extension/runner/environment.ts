@@ -38,6 +38,7 @@ import {
     requirementChangeKind,
     requirementsFile,
     restorePublishedCommands,
+    moduleInvocation,
     runnablePython,
     runnerRequirement,
     statusMessage,
@@ -319,16 +320,6 @@ export class RunnerEnvironment implements vscode.Disposable {
         return configured ? path.resolve(expandTilde(configured, os.homedir())) : undefined;
     }
 
-    /**
-     * The jpipe-runner release a run will use, when the workspace's environment can run and says:
-     * for a local copy, the version it declares now, since it runs as it stands.
-     */
-    get runnerRelease(): string | undefined {
-        const probe = this.facts.probe;
-        if (!runnablePython(this.current) || !probe) return undefined;
-        return probe.localSource ? this.facts.declaredLocal ?? probe.runnerVersion : probe.runnerVersion;
-    }
-
     /** The local checkout the workspace's environment runs, when it does: shown, so it is not mistaken for a release. */
     get localRunner(): string | undefined {
         return runnablePython(this.current) ? this.facts.probe?.localSource : undefined;
@@ -552,15 +543,33 @@ export class RunnerEnvironment implements vscode.Disposable {
     }
 
     /** The release of the jpipe-runner installed on the machine, outside any environment, if there is one. */
-    /** The release a runner program says it is (`--version`), or `undefined` when it does not say. */
-    async releaseOf(program: string, folder: vscode.WorkspaceFolder | undefined): Promise<string | undefined> {
+    /**
+     * The release a runner says it is (`command` is its `--version`), or `undefined` when it does
+     * not say. Asked with the environment and folder given, which are the run's, so that the
+     * program that answers is the one that will run; `undefined` env is the editor's own.
+     */
+    async releaseOf(command: Command, where: { cwd: string; env?: NodeJS.ProcessEnv }): Promise<string | undefined> {
         try {
-            const { stdout } = await this.execute({ program, args: ['--version'] }, folder);
+            const { stdout } = await execFileText(command.program, command.args, {
+                cwd: where.cwd, timeout: 15_000, windowsHide: true, env: where.env ?? process.env
+            });
             return parseRunnerVersion(stdout);
         } catch (err: unknown) {
-            this.logger.debug(`${program} --version did not answer: ${messageOf(err)}`);
+            this.logger.debug(`${command.program} ${command.args.join(' ')} did not answer: ${messageOf(err)}`);
             return undefined;
         }
+    }
+
+    /**
+     * The jpipe-runner release the workspace's environment at `python` runs now. Asked rather
+     * than read from the last check, which may predate an upgrade. A local copy runs as it
+     * stands, so its release is the one its `pyproject.toml` declares now: what the environment
+     * recorded is the version it had when it was installed.
+     */
+    async runnerReleaseNow(python: string, where: { cwd: string; env: NodeJS.ProcessEnv }): Promise<string | undefined> {
+        const local = this.facts.probe?.localSource;
+        const declared = local ? this.declaredLocal(local) : undefined;
+        return declared ?? this.releaseOf(moduleInvocation(python, ['--version']), where);
     }
 
     private async machineRunnerRelease(folder: vscode.WorkspaceFolder | undefined): Promise<string | undefined> {
