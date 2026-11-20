@@ -1,6 +1,6 @@
 import type { HostToRunPanel, RunKind, RunPanelState, RunPanelToHost, Tone } from '../shared/run-protocol.js';
 import { DiagramCanvas } from './canvas.js';
-import { applyFocus, downstream, nameOf, nodeNamed } from './flow.js';
+import { applyFocus, downstream, elementOf, nameOf, nodeNamed } from './flow.js';
 import type { Box } from './viewbox.js';
 
 /**
@@ -220,8 +220,7 @@ export class RunPage {
         if (name === this.selected) return;
         this.selected = name;
         this.applySelection(false);
-        const element = name !== null && this.state?.elements.includes(name) ? name : null;
-        this.post({ type: 'select', element });
+        this.post({ type: 'select', element: name === null ? null : this.elementNamed(name) });
     }
 
     /**
@@ -231,10 +230,17 @@ export class RunPage {
     private nodeClicked(node: SVGGElement, twice: boolean): void {
         const name = nameOf(node);
         if (twice) {
-            if (this.state?.elements.includes(name)) this.post({ type: 'open', element: name });
+            const element = this.elementNamed(name);
+            if (element) this.post({ type: 'open', element });
             return;
         }
         this.select(name === this.selected ? null : name);
+    }
+
+    /** The run's element a node stands for, if it stands for one: a placeholder stands for its filler. */
+    private elementNamed(name: string): string | null {
+        const element = elementOf(name);
+        return this.state?.elements.includes(element) ? element : null;
     }
 
     private bindControls(): void {

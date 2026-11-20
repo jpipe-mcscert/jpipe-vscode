@@ -45,8 +45,10 @@ that fails then reads as several failures.
 - **A checked library's own ▶ menu offers both**, Run as jPipe and Check as jPipe Library, after
   the Python extension's entries. They are shortcuts: they act on the justification selected in the
   Models view, with every checked library, and ask for one to be selected when none is.
-- **The report is read as its contract says**: major version 1, unknown fields ignored, missing
-  ones empty. Another major version is not shown, and the terminal is brought forward instead.
+- **The report is read as its contract says**: major versions 1 (jpipe-runner 4.0) and 2 (the
+  releases after it), unknown fields ignored, missing ones empty. The two differ, for this
+  extension, only in where the drawing is: `dataflow` in version 1, `diagram` in version 2. Another
+  major version is not shown, and the terminal is brought forward instead.
 - **Rows are decided in `runner/run-report.ts`**, which has no VS Code in it and is tested against
   the runner's documented examples; `runner/results-view.ts` only displays them.
 

@@ -2,9 +2,12 @@
  * @vitest-environment happy-dom
  */
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { installSvg } from '../src/webview/canvas.js';
-import { applyFocus, downstream, nameOf, nodeNamed } from '../src/webview/flow.js';
+import { applyFocus, downstream, elementOf, nameOf, nodeNamed } from '../src/webview/flow.js';
 
 /**
  * What follows a node in the run panel's dataflow, read from the SVG as Graphviz writes it: node
@@ -60,6 +63,23 @@ describe('what follows a node', () => {
         expect(names(downstream(drawing, nodeNamed(drawing, 'release:a')!))).toEqual([
             'release:a', 'release:a->release:b', 'release:b', 'release:b->release:a'
         ]);
+    });
+
+    test('a template\'s slot leads on to what the template supports', () => {
+        // Drawn by jpipe-runner after 4.0, for a justification that implements a template: the
+        // element that fills the slot points at its placeholder, in the template's cluster.
+        const fixture = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'svg', 'runner-dataflow-with-template.svg'), 'utf8');
+        const drawing = installSvg(document.createElement('div'), fixture)!;
+        const reached = names(downstream(drawing, nodeNamed(drawing, 'release:Signoff:review')!)).filter(n => !n.includes('->'));
+        expect(reached).toEqual([
+            'release:Signoff:c', 'release:Signoff:review', 'release:Signoff:review@abstract', 'release:Signoff:s', 'variable approvals'
+        ]);
+    });
+
+    test('a placeholder stands for the element that fills its slot; any other node for itself', () => {
+        expect(elementOf('release:Signoff:review@abstract')).toBe('release:Signoff:review');
+        expect(elementOf('release:Signoff:review')).toBe('release:Signoff:review');
+        expect(elementOf('artifact release.jd')).toBe('artifact release.jd');
     });
 
     test('a name the drawing does not have is no node', () => {

@@ -10,7 +10,7 @@ import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
 import { MODELS_VIEW_ID } from '../models-view/models-view.js';
-import { RUNNER_COMMAND_SETTING, cannotRun, resolveRunner, runnerArguments } from './runner-invocation.js';
+import { RUNNER_COMMAND_SETTING, cannotRun, dataflowFlag, resolveRunner, runnerArguments, type DataflowFlag } from './runner-invocation.js';
 import type { RunnerEnvironment } from './environment.js';
 import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
 import type { ResultsView } from './results-view.js';
@@ -190,7 +190,8 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
     const { document, name, check } = run;
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    const runnerArgs = withReport(runnerArguments(run.libraries, files.compiled.fsPath), files.report.fsPath, check, draw ? files.dataflow.fsPath : undefined);
+    const dataflow = draw ? { path: files.dataflow.fsPath, flag: await dataflowFlagFor(deps) } : undefined;
+    const runnerArgs = withReport(runnerArguments(run.libraries, files.compiled.fsPath), files.report.fsPath, check, dataflow);
     const invocation = await chooseInvocation(deps, token, folder, runnerArgs);
     if (!invocation) return;
     // Compiling and finding the environment take time, in which another run may have started, or
@@ -224,6 +225,18 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
     } else {
         await showReport(deps, token, run, files, ended, read.report);
     }
+}
+
+/**
+ * The option that draws the dataflow, for the runner this run will use: known in the workspace's
+ * environment, unknown for a runner named in the settings (`dataflowFlag` says what that gets).
+ */
+async function dataflowFlagFor(deps: RunDeps): Promise<DataflowFlag> {
+    const status = await deps.environment.settled();
+    const release = status.kind === 'external' ? undefined : deps.environment.runnerRelease;
+    const flag = dataflowFlag(release);
+    deps.logger.debug(`jpipe-runner ${release ?? '(release unknown)'} draws the dataflow with ${flag}`);
+    return flag;
 }
 
 /** How a run's task ended, for what is said about it. */

@@ -36,9 +36,15 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
   memory only: it is not restored after a window reload.
 - **Its own ▶ and ✓** run again, or check, the justification it shows, with the libraries checked
   when the button is pressed. **■** stops a run under way.
-- **The dataflow, and only it.** The runner is asked to draw the dataflow (`--dataflow`) as SVG,
-  read before the run's folder is removed. The argument view is not asked for: the dataflow is the
-  argument, with the statuses and the declared data on it, and the argument alone is the preview's.
+- **The dataflow, and only it.** The runner is asked to draw the dataflow as SVG, read before the
+  run's folder is removed. The argument view is not asked for: the dataflow is the argument, with
+  the statuses and the declared data on it, and the argument alone is the preview's. The option
+  depends on the runner's release. jpipe-runner 4.0 draws the dataflow with `--dataflow` and the
+  argument with `--diagram`; the releases after it draw only the dataflow, with `--diagram`, and
+  refuse `--dataflow` (jpipe-runner ADR-0029). So 4.0.x is asked for `--dataflow`, and every other
+  release for `--diagram`. That includes a release the extension cannot know, a runner named in
+  the settings or a source checkout without a version, because `--diagram` runs on every release
+  where `--dataflow` would stop the later ones.
   When the runner cannot draw, most often because Graphviz is missing, it stops before any step with
   exit code 4 and no report, and the run is launched once more without the drawing; the panel then
   says why it has none.
@@ -61,7 +67,9 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
   from the drawing's own edges (`webview/flow.ts`). Clicking it again, clicking the background or
   pressing Escape clears the selection. An element's click also selects its row in Results, and
   selecting an element's row in Results lights its node the same way. Double-clicking an element
-  opens it in its `.jd` file.
+  opens it in its `.jd` file. The runners after 4.0 draw a template's `@support` slot as a node of
+  its own in the template's cluster, named after the element that fills it with `@abstract`
+  added. Clicking or double-clicking that node acts on the filling element.
 - **The canvas is the preview's.** Panning, zooming, the minimap and following the theme move
   from `webview/preview.ts` into `webview/canvas.ts`, which both pages use, and the run panel wears
   the preview's stylesheet with one of its own on top. The decisions — what the page is told, when
@@ -100,9 +108,15 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
 
 - **A run draws an SVG**, which costs a Graphviz layout; on a large model that is felt before the
   verdict appears. A runner that cannot draw costs a second launch, in which no step runs.
-- **The argument alone, with statuses, is not shown anywhere.** The runner can draw it
-  (`--diagram`); a reader who wants the statuses without the data has the dataflow, or the preview
-  for the argument without the statuses.
+- **The argument alone, with statuses, is not shown anywhere.** jpipe-runner 4.0 can draw it, and
+  its later releases cannot. A reader who wants the statuses without the data has the dataflow, or
+  the preview for the argument without the statuses.
+- **A runner whose release is unknown, if it is 4.0, draws the argument without its files and
+  values**, since it is asked for `--diagram`. A development build of the runner from between 4.0
+  and the change to `--diagram` reports a later release but still wants `--dataflow`: it stops with
+  a usage error and no report, which the panel says, pointing at the terminal.
+- **Two report versions and two options are read and passed** until the minimum runner moves past
+  4.0 (jpipe-vscode ADR-VSC-0032). Then the `--dataflow` branch and version 1 go.
 - **The panel shows nothing while a run is under way** but a busy overlay over the last drawing:
   the report arrives whole. Statuses appearing as steps finish, and clickable file and variable
   nodes in the dataflow, wait for jpipe-runner (#169).

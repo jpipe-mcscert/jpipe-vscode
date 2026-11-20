@@ -319,6 +319,16 @@ export class RunnerEnvironment implements vscode.Disposable {
         return configured ? path.resolve(expandTilde(configured, os.homedir())) : undefined;
     }
 
+    /**
+     * The jpipe-runner release a run will use, when the workspace's environment can run and says:
+     * for a local copy, the version it declares now, since it runs as it stands.
+     */
+    get runnerRelease(): string | undefined {
+        const probe = this.facts.probe;
+        if (!runnablePython(this.current) || !probe) return undefined;
+        return probe.localSource ? this.facts.declaredLocal ?? probe.runnerVersion : probe.runnerVersion;
+    }
+
     /** The local checkout the workspace's environment runs, when it does: shown, so it is not mistaken for a release. */
     get localRunner(): string | undefined {
         return runnablePython(this.current) ? this.facts.probe?.localSource : undefined;

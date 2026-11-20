@@ -10,6 +10,7 @@
  * says in words what it supports and what stopped it (jpipe-vscode ADR-VSC-0029).
  */
 import type { LibraryStep } from './step-binding.js';
+import type { DataflowFlag } from './runner-invocation.js';
 
 export type Status = 'pass' | 'fail' | 'skip' | null;
 export type Verdict = 'pass' | 'fail' | 'skip' | 'invalid' | 'valid';
@@ -65,12 +66,16 @@ export interface RunReport {
     verdict: Verdict;
     elements: ReportElement[];
     diagnostics: ReportDiagnostic[];
-    /** Where the runner drew the dataflow (`--dataflow`), or null when it drew nothing. */
+    /**
+     * Where the runner drew the dataflow, or null when it drew nothing: the report's `dataflow`
+     * in version 1 (jpipe-runner 4.0), its `diagram` from version 2 on, where the dataflow is the
+     * only diagram the runner draws.
+     */
     dataflow: string | null;
 }
 
-/** The report's major version this reads. */
-const MAJOR = '1';
+/** The report's major versions this reads: 1 is jpipe-runner 4.0's, 2 the releases after it. */
+const MAJORS: readonly string[] = ['1', '2'];
 /** How much of a produced value a row shows. */
 const VALUE_WIDTH = 80;
 
@@ -137,8 +142,9 @@ export function parseReport(content: string): { report: RunReport } | { problem:
     }
     if (typeof raw !== 'object' || raw === null) return { problem: 'the runner\'s report is not a JSON object' };
     const version = text(raw.schema_version);
-    if (version.split('.')[0] !== MAJOR) {
-        return { problem: `the runner's report is in version ${version || '(none)'}, and this extension reads version ${MAJOR}` };
+    const major = version.split('.')[0];
+    if (!MAJORS.includes(major)) {
+        return { problem: `the runner's report is in version ${version || '(none)'}, and this extension reads versions ${MAJORS.join(' and ')}` };
     }
     const verdict = oneOf(raw.verdict, ['pass', 'fail', 'skip', 'invalid', 'valid'] as const);
     if (!verdict) return { problem: 'the runner\'s report has no verdict' };
@@ -155,7 +161,7 @@ export function parseReport(content: string): { report: RunReport } | { problem:
                 fix: textOrNull(d.fix),
                 traceback: traceback(d.traceback)
             })),
-            dataflow: textOrNull(raw.dataflow)
+            dataflow: textOrNull(major === '1' ? raw.dataflow : raw.diagram)
         }
     };
 }
@@ -454,19 +460,25 @@ export function stepLocation(boundTo: string, steps: readonly LibraryStep[]): { 
 
 /**
  * `--report PATH`, before the runner's other arguments; `--dry-run` for a check, which validates
- * the libraries against the justification and calls no step; and `--dataflow PATH` when the run is
- * to be drawn (jpipe-runner ADR-0022), which a check draws too, from what the steps declare. The
- * file's suffix is its format.
+ * the libraries against the justification and calls no step; and the dataflow's `flag` and path
+ * when the run is to be drawn, which a check draws too, from what the steps declare. The file's
+ * suffix is its format.
  *
- * Only the dataflow view is asked for. It is the argument as the compiler draws it, with each
+ * Only the dataflow is asked for. It is the argument as the compiler draws it, with each
  * element's status over it once steps ran, plus the files and values the steps declare; the
- * runner's other view, the argument alone, is what the preview already shows (ADR-VSC-0031).
+ * argument alone is what the preview already shows (ADR-VSC-0031). Which option draws it depends
+ * on the runner's release (`dataflowFlag`).
  */
-export function withReport(runnerArgs: readonly string[], report: string, check = false, dataflow?: string): string[] {
+export function withReport(
+    runnerArgs: readonly string[],
+    report: string,
+    check = false,
+    dataflow?: { path: string; flag: DataflowFlag }
+): string[] {
     return [
         ...(check ? ['--dry-run'] : []),
         '--report', report,
-        ...(dataflow ? ['--dataflow', dataflow] : []),
+        ...(dataflow ? [dataflow.flag, dataflow.path] : []),
         ...runnerArgs
     ];
 }

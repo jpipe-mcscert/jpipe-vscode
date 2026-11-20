@@ -250,6 +250,18 @@ describe('nodes', () => {
         expect(post).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'open' }));
     });
 
+    test('a template slot\'s placeholder selects and opens the element that fills it', () => {
+        // jpipe-runner after 4.0 draws a template's @support slot as a node of its own, named
+        // after the element that fills it.
+        const fixture = readFileSync(join(here, 'fixtures', 'svg', 'runner-dataflow-with-template.svg'), 'utf8');
+        const elements = ['release:Signoff:review', 'release:Signoff:s', 'release:Signoff:c'];
+        newPage().apply(state({ dataflow: fixture, elements }));
+        click('release:Signoff:review@abstract', 1);
+        expect(post).toHaveBeenLastCalledWith({ type: 'select', element: 'release:Signoff:review' });
+        click('release:Signoff:review@abstract', 2);
+        expect(post).toHaveBeenLastCalledWith({ type: 'open', element: 'release:Signoff:review' });
+    });
+
     test('a second click on the selected node clears the selection', () => {
         newPage().apply(state());
         click('release:e', 1);

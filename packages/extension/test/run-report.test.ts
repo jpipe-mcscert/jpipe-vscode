@@ -74,7 +74,7 @@ describe('reading the report', () => {
 
     test.each([
         ['what is not JSON', 'jpipe-runner 4.0.0\n{}', 'not JSON'],
-        ['another major version', document({ schema_version: '2.0' }), 'version 2.0'],
+        ['a major version this extension does not know', document({ schema_version: '3.0' }), 'version 3.0'],
         ['a report without a version', '{"verdict":"pass"}', 'version (none)'],
         ['a report without a verdict', document({ verdict: 'maybe' }), 'no verdict']
     ])('%s is refused, with the reason', (_case, content, reason) => {
@@ -286,16 +286,25 @@ describe('around the report', () => {
     });
 
     test('a run is asked to draw its dataflow only, after its report and before its libraries', () => {
-        expect(withReport(['-l', '/w/a.py', '/tmp/m.json'], '/tmp/r.json', false, '/tmp/m-dataflow.svg'))
-            .toEqual(['--report', '/tmp/r.json', '--dataflow', '/tmp/m-dataflow.svg', '-l', '/w/a.py', '/tmp/m.json']);
-        expect(withReport(['/tmp/m.json'], '/tmp/r.json', true, 'd.svg'))
+        expect(withReport(['-l', '/w/a.py', '/tmp/m.json'], '/tmp/r.json', false, { path: '/tmp/m-dataflow.svg', flag: '--diagram' }))
+            .toEqual(['--report', '/tmp/r.json', '--diagram', '/tmp/m-dataflow.svg', '-l', '/w/a.py', '/tmp/m.json']);
+        expect(withReport(['/tmp/m.json'], '/tmp/r.json', true, { path: 'd.svg', flag: '--dataflow' }))
             .toEqual(['--dry-run', '--report', '/tmp/r.json', '--dataflow', 'd.svg', '/tmp/m.json']);
     });
 
-    test('the report says where the runner drew the dataflow, or that it drew nothing', () => {
+    test('in a version 1 report, the dataflow is `dataflow`; `diagram` is the argument alone, never asked for', () => {
         expect(read({ dataflow: '/tmp/m-dataflow.svg' })).toMatchObject({ dataflow: '/tmp/m-dataflow.svg' });
+        expect(read({ diagram: '/tmp/m.svg', dataflow: null })).toMatchObject({ dataflow: null });
         expect(read({})).toMatchObject({ dataflow: null });
         expect(parseReport(JSON.stringify({ schema_version: '1.0', verdict: 'pass' }))).toMatchObject({ report: { dataflow: null } });
+    });
+
+    test('in a version 2 report, the one diagram is the dataflow', () => {
+        // jpipe-runner after 4.0 draws one diagram, the dataflow, and names it `diagram`.
+        const v2 = (over: Record<string, unknown>) => parseReport(document({ schema_version: '2.0', dataflow: undefined, ...over }));
+        expect(v2({ diagram: '/tmp/m-dataflow.svg' })).toMatchObject({ report: { dataflow: '/tmp/m-dataflow.svg' } });
+        expect(v2({ diagram: null })).toMatchObject({ report: { dataflow: null } });
+        expect(v2({ diagram: null, dataflow: '/tmp/stale.svg' })).toMatchObject({ report: { dataflow: null } });
     });
 
     test.each([[187, '187 B'], [1234, '1.2 kB'], [3_400_000, '3.4 MB']])('%i bytes reads %s', (bytes, shown) => {
