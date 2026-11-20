@@ -13,6 +13,7 @@ import {
     installationSummary,
     meetsMinimum,
     PYLANCE_EXTENSION,
+    pylanceLine,
     REQUIREMENTS,
     type InstallationFacts
 } from '../src/extension/requirements.js';
@@ -128,6 +129,14 @@ describe('installationSummary', () => {
 
     test('all present: ready, nothing to press', () => {
         expect(installationSummary(ready)).toEqual({ severity: 'info', title: 'jPipe is ready and can run models.' });
+    });
+});
+
+describe('pylanceLine', () => {
+    test('a missing Pylance may be a disabled one, and the line does not pretend to know which', () => {
+        // The editor reports a disabled extension as absent.
+        expect(pylanceLine(true)).toBe('Pylance: installed');
+        expect(pylanceLine(false)).toBe('Pylance: not installed, or disabled');
     });
 });
 

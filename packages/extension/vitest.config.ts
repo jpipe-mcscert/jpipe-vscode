@@ -55,6 +55,8 @@ export default defineConfig({
                 'src/extension/runner/step-terminal.ts',
                 'src/extension/runner/new-library-flow.ts',
                 'src/extension/runner/environment.ts',
+                'src/extension/runner/pylance.ts',
+                'src/extension/installation-check.ts',
                 'src/extension/workspace-paths.ts',
                 'src/language/main.ts',
                 'src/webview/preview.ts',
