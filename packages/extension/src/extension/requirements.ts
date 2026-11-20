@@ -71,7 +71,8 @@ export function compilerVerdict(
     version: { nums: ReleaseNumbers; pre: string | undefined } | undefined
 ): CompilerVerdict {
     if (!version) return { kind: 'unknown' };
-    const shown = `${formatRelease(version.nums)}${version.pre ? `-${version.pre}` : ''}`;
+    const pre = version.pre ? '-' + version.pre : '';
+    const shown = formatRelease(version.nums) + pre;
     return meetsMinimum(version.nums, REQUIREMENTS.compiler)
         ? { kind: 'supported', version: shown }
         : { kind: 'too-old', version: shown };

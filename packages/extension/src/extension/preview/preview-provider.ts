@@ -470,13 +470,7 @@ export class PreviewProvider {
             await this.sendRender(revision, this.extractSvgFromOutput(stdout), document, editor, diagramName, null);
         } catch (error: unknown) {
             if (error instanceof CompilerTooOldError) {
-                // Nothing was run, so this is no render failure, and the output channel is not
-                // brought forward on every save. The panel says why instead: the diagnostic view
-                // shows the reason as its text (jpipe-vscode ADR-VSC-0032).
-                this.logger.debug(`Preview of ${document.fileName} not rendered: ${error.message}`);
-                if (this.diagramDisposition(revision) !== 'deliver') return;
-                this.viewMode = 'diagnostic';
-                await this.updateDiagnostic(document);
+                await this.explainNoDiagram(document, revision, error);
                 return;
             }
             const { stdout = '', exitCode } = asProcessFailure(error);
@@ -497,6 +491,18 @@ export class PreviewProvider {
                 if (!this.lastRender) this.post({ type: 'view', mode: 'empty' });
             }
         }
+    }
+
+    /**
+     * The preview of a compiler too old to be run. Nothing was run, so this is no render failure,
+     * and the output channel is not brought forward on every save. The panel says why instead:
+     * the diagnostic view shows the reason as its text (jpipe-vscode ADR-VSC-0032).
+     */
+    private async explainNoDiagram(document: vscode.TextDocument, revision: number, error: CompilerTooOldError): Promise<void> {
+        this.logger.debug(`Preview of ${document.fileName} not rendered: ${error.message}`);
+        if (this.diagramDisposition(revision) !== 'deliver') return;
+        this.viewMode = 'diagnostic';
+        await this.updateDiagnostic(document);
     }
 
     /** Build and send a render message, and remember it for the `ready` replay. */
