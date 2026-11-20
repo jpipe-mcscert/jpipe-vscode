@@ -327,8 +327,9 @@ resolve it to a model (`targetOf` in `commands.ts`).
 The preview panel auto-refreshes on file save, highlights the node under the cursor (via LSP `textDocument/documentSymbol`), and has zoom controls (+/−/0 keys or toolbar buttons).
 
 The **Run panel** is a second webview, opened by every ▶ and ✓ and never by opening a file (a check
-imports the libraries). It shows the last run only — the runner's dataflow SVG (`--dataflow`; the
-argument-only view is left to the preview), under a bar that says *Execution* or *Check · no step
+imports the libraries). It shows the last run only — the runner's dataflow SVG (`--dataflow` on
+jpipe-runner 4.0.x, `--diagram` on every later or unknown release, chosen by `dataflowFlag`; the
+report's `dataflow` in schema 1, `diagram` in schema 2; the argument-only view is left to the preview), under a bar that says *Execution* or *Check · no step
 called* first. It shares that run with the Results view through `RunSession`, and the two come
 forward together; until a report arrives Results lists one status row. A node click lights it and
 everything downstream (walked from the SVG's edge titles, `webview/flow.ts`) and selects an

@@ -1,6 +1,6 @@
 import type { HostToRunPanel, RunKind, RunPanelState, RunPanelToHost, Tone } from '../shared/run-protocol.js';
 import { DiagramCanvas } from './canvas.js';
-import { applyFocus, downstream, nameOf, nodeNamed } from './flow.js';
+import { applyFocus, downstream, elementOf, nameOf, nodeNamed } from './flow.js';
 import type { Box } from './viewbox.js';
 
 /**
@@ -220,8 +220,7 @@ export class RunPage {
         if (name === this.selected) return;
         this.selected = name;
         this.applySelection(false);
-        const element = name !== null && this.state?.elements.includes(name) ? name : null;
-        this.post({ type: 'select', element });
+        this.post({ type: 'select', element: name === null ? null : this.elementNamed(name) });
     }
 
     /**
@@ -229,12 +228,29 @@ export class RunPage {
      * click on the background does. A double click opens an element where it is written.
      */
     private nodeClicked(node: SVGGElement, twice: boolean): void {
-        const name = nameOf(node);
+        const name = this.standIn(nameOf(node));
         if (twice) {
-            if (this.state?.elements.includes(name)) this.post({ type: 'open', element: name });
+            const element = this.elementNamed(name);
+            if (element) this.post({ type: 'open', element });
             return;
         }
         this.select(name === this.selected ? null : name);
+    }
+
+    /**
+     * The node a click on `name` acts on: a template slot's placeholder stands for the node of the
+     * element that fills it, so selecting either is selecting that element — here, and when
+     * Results selects it back — and lights the same flow, placeholder included.
+     */
+    private standIn(name: string): string {
+        const filler = elementOf(name);
+        const svg = this.canvas.svg;
+        return filler !== name && svg && nodeNamed(svg, filler) ? filler : name;
+    }
+
+    /** The run's element named `name`, if it is one. */
+    private elementNamed(name: string): string | null {
+        return this.state?.elements.includes(name) ? name : null;
     }
 
     private bindControls(): void {

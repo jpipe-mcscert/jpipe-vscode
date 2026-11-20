@@ -250,6 +250,38 @@ describe('nodes', () => {
         expect(post).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'open' }));
     });
 
+    describe('a template slot\'s placeholder', () => {
+        // jpipe-runner after 4.0 draws a template's @support slot as a node of its own, in the
+        // template's cluster, named after the element that fills it.
+        const fixture = readFileSync(join(here, 'fixtures', 'svg', 'runner-dataflow-with-template.svg'), 'utf8');
+        const elements = ['release:Signoff:review', 'release:Signoff:s', 'release:Signoff:c'];
+        const lit = (id: string) => !byId('svg-wrapper').querySelector(`[id="${id}"]`)!.classList.contains('jpipe-dimmed');
+
+        test('a click is a click on the filling element: selected here and in Results, placeholder lit', () => {
+            newPage().apply(state({ dataflow: fixture, elements }));
+            click('release:Signoff:review@abstract', 1);
+            expect(post).toHaveBeenLastCalledWith({ type: 'select', element: 'release:Signoff:review' });
+            expect(byId('svg-wrapper').querySelector('[id="release:Signoff:review"]')!.classList.contains('jpipe-origin')).toBe(true);
+            expect(lit('release:Signoff:review@abstract')).toBe(true);
+        });
+
+        test('Results selecting it back keeps it, and a second click clears it', () => {
+            const page = newPage();
+            page.apply(state({ dataflow: fixture, elements }));
+            click('release:Signoff:review@abstract', 1);
+            page.receive({ type: 'select', element: 'release:Signoff:review' });
+            click('release:Signoff:review@abstract', 1);
+            expect(post).toHaveBeenLastCalledWith({ type: 'select', element: null });
+            expect(byId('svg-wrapper').querySelectorAll('.jpipe-dimmed')).toHaveLength(0);
+        });
+
+        test('a double click opens the filling element', () => {
+            newPage().apply(state({ dataflow: fixture, elements }));
+            click('release:Signoff:review@abstract', 2);
+            expect(post).toHaveBeenLastCalledWith({ type: 'open', element: 'release:Signoff:review' });
+        });
+    });
+
     test('a second click on the selected node clears the selection', () => {
         newPage().apply(state());
         click('release:e', 1);

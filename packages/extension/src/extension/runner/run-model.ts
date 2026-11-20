@@ -10,7 +10,7 @@ import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
 import { MODELS_VIEW_ID } from '../models-view/models-view.js';
-import { RUNNER_COMMAND_SETTING, cannotRun, resolveRunner, runnerArguments } from './runner-invocation.js';
+import { RUNNER_COMMAND_SETTING, cannotRun, dataflowFlag, resolveRunner, runnerArguments, type DataflowFlag } from './runner-invocation.js';
 import type { RunnerEnvironment } from './environment.js';
 import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
 import type { ResultsView } from './results-view.js';
@@ -190,8 +190,10 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
     const { document, name, check } = run;
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    const runnerArgs = withReport(runnerArguments(run.libraries, files.compiled.fsPath), files.report.fsPath, check, draw ? files.dataflow.fsPath : undefined);
-    const invocation = await chooseInvocation(deps, token, folder, runnerArgs);
+    const argsFor = (flag: DataflowFlag | undefined): string[] => withReport(
+        runnerArguments(run.libraries, files.compiled.fsPath), files.report.fsPath, check,
+        flag ? { path: files.dataflow.fsPath, flag } : undefined);
+    const invocation = await chooseInvocation(deps, token, { folder, cwd, draw }, argsFor);
     if (!invocation) return;
     // Compiling and finding the environment take time, in which another run may have started, or
     // this one been stopped: a run no longer on show is never launched, where no ■ could reach it.
@@ -224,6 +226,13 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
     } else {
         await showReport(deps, token, run, files, ended, read.report);
     }
+}
+
+/** The option that draws the dataflow, for the runner release that will run (`dataflowFlag`). */
+function flagFor(deps: RunDeps, release: string | undefined): DataflowFlag {
+    const flag = dataflowFlag(release);
+    deps.logger.debug(`jpipe-runner ${release ?? '(release unknown)'} draws the dataflow with ${flag}`);
+    return flag;
 }
 
 /** How a run's task ended, for what is said about it. */
@@ -422,13 +431,22 @@ async function readReport(file: vscode.Uri): Promise<ReturnType<typeof parseRepo
 async function chooseInvocation(
     deps: RunDeps,
     token: number,
-    folder: vscode.WorkspaceFolder | undefined,
-    runnerArgs: string[]
+    where: { folder: vscode.WorkspaceFolder | undefined; cwd: string; draw: boolean },
+    argsFor: (flag: DataflowFlag | undefined) => string[]
 ): Promise<(Command & { env?: Record<string, string> }) | undefined> {
+    const { folder, cwd, draw } = where;
+    // The option that draws depends on the release of the very runner that will run. So it is
+    // asked of that runner, now — the last environment check may predate an upgrade — with the
+    // environment and the folder the run will have, so that the same program answers.
+    const flagOf = async (ask: () => Promise<string | undefined>): Promise<DataflowFlag | undefined> =>
+        draw ? flagFor(deps, await ask()) : undefined;
     const status = await deps.environment.settled();
     if (status.kind === 'external') {
         const configured = vscode.workspace.getConfiguration('jpipe', folder?.uri).get<string>(RUNNER_COMMAND_SETTING, '') ?? '';
-        return { program: resolveRunner(configured, os.homedir()), args: runnerArgs };
+        const program = resolveRunner(configured, os.homedir());
+        // The run inherits the editor's environment: it is the user's program, run as they set it.
+        const flag = await flagOf(() => deps.environment.releaseOf({ program, args: ['--version'] }, { cwd }));
+        return { program, args: argsFor(flag) };
     }
     const python = runnablePython(status);
     if (!python) {
@@ -441,7 +459,9 @@ async function chooseInvocation(
         deps.session.endWith(token, 'blocked', notice);
         return undefined;
     }
-    return { ...moduleInvocation(python, runnerArgs), env: deps.environment.runEnv(python) as Record<string, string> };
+    const env = deps.environment.runEnv(python);
+    const flag = await flagOf(() => deps.environment.runnerReleaseNow(python, { cwd, env }));
+    return { ...moduleInvocation(python, argsFor(flag)), env: env as Record<string, string> };
 }
 
 /** The document and model to run, or `undefined` after saying why there is none. */

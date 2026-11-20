@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { bindSteps, designates, stepLabel, stepNote, type LibraryStep } from '../src/extension/runner/step-binding.js';
-import { DEFAULT_RUNNER, cannotRun, resolveRunner, runnerArguments } from '../src/extension/runner/runner-invocation.js';
+import { DEFAULT_RUNNER, cannotRun, dataflowFlag, resolveRunner, runnerArguments } from '../src/extension/runner/runner-invocation.js';
 
 /**
  * Preparing a run: which step implements which element, and how the runner is launched.
@@ -109,6 +109,26 @@ describe('launching the runner', () => {
     test('one --library per library, then the compiled justification', () => {
         expect(runnerArguments(['/w/a.py', '/w/b.py'], '/tmp/release.json'))
             .toEqual(['-l', '/w/a.py', '-l', '/w/b.py', '/tmp/release.json']);
+    });
+
+    test('jpipe-runner 4.0 draws the dataflow with --dataflow', () => {
+        // Its --diagram draws the argument alone, without the files and values.
+        expect(dataflowFlag('4.0.0')).toBe('--dataflow');
+        expect(dataflowFlag('4.0.3')).toBe('--dataflow');
+        expect(dataflowFlag('4.0.1rc1')).toBe('--dataflow');
+    });
+
+    test('the releases after it draw it with --diagram, and refuse --dataflow', () => {
+        expect(dataflowFlag('4.1.0')).toBe('--diagram');
+        expect(dataflowFlag('4.1.0.dev0')).toBe('--diagram');
+        expect(dataflowFlag('5.0.0rc1')).toBe('--diagram');
+    });
+
+    test('a runner whose release is unknown is asked for --diagram, which every release accepts', () => {
+        // On 4.0 that draws less; --dataflow on a later release would stop every run.
+        expect(dataflowFlag(undefined)).toBe('--diagram');
+        expect(dataflowFlag('')).toBe('--diagram');
+        expect(dataflowFlag('installed')).toBe('--diagram');
     });
 
     test('a template cannot be run', () => {

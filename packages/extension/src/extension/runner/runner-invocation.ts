@@ -28,6 +28,26 @@ export function resolveRunner(configured: string, home: string): string {
     return configured.trim() ? expandTilde(configured.trim(), home) : DEFAULT_RUNNER;
 }
 
+/** The option that asks jpipe-runner to draw the run's dataflow. */
+export type DataflowFlag = '--dataflow' | '--diagram';
+
+/**
+ * Which option draws the dataflow, for the jpipe-runner release that will run (`4.0.0`,
+ * `4.1.0.dev0`, `5.0.0rc1`).
+ *
+ * 4.0 drew two diagrams: `--diagram` the argument alone, `--dataflow` the argument with the files
+ * and values its steps declare. The releases after it draw one, the dataflow, with `--diagram`,
+ * and refuse `--dataflow` as an unknown option, so nothing runs (jpipe-runner ADR-0029). So 4.0.x
+ * is asked for `--dataflow`, and everything else for `--diagram`, an unknown release included —
+ * a runner named in the settings that does not answer `--version`, or a source checkout with no
+ * version. On a 4.0 runner that draws the argument without its files and values; `--dataflow` on
+ * a later one would stop every run (jpipe-vscode ADR-VSC-0031).
+ */
+export function dataflowFlag(runnerRelease: string | undefined): DataflowFlag {
+    const [major, minor] = (runnerRelease ?? '').split('.').map(part => Number.parseInt(part, 10));
+    return major === 4 && minor === 0 ? '--dataflow' : '--diagram';
+}
+
 /** `-l` once per library, then the compiled justification, as `jpipe-runner --help` documents. */
 export function runnerArguments(libraries: readonly string[], justification: string): string[] {
     return [...libraries.flatMap(library => ['-l', library]), justification];

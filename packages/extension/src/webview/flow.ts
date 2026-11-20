@@ -14,6 +14,17 @@ export function nameOf(group: Element): string {
     return title?.textContent?.trim() ?? '';
 }
 
+/**
+ * The suffix jpipe-runner gives the node of a template's `@support` slot, drawn in the template's
+ * cluster beside the element that fills it, and named after it (from jpipe-runner 4.1).
+ */
+const PLACEHOLDER = '@abstract';
+
+/** The element a node stands for: the one it names, or for a placeholder, the one filling its slot. */
+export function elementOf(name: string): string {
+    return name.endsWith(PLACEHOLDER) ? name.slice(0, -PLACEHOLDER.length) : name;
+}
+
 /** The node named `name`, if the drawing has one. */
 export function nodeNamed(svg: SVGSVGElement, name: string): SVGGElement | null {
     return Array.from(svg.querySelectorAll<SVGGElement>('g.node')).find(node => nameOf(node) === name) ?? null;
