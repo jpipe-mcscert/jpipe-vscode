@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node';
 import { ImageGenerator, ImageFormat, type DiagnosticRun } from '../compiler/image-generator.js';
+import { CompilerTooOldError } from '../requirements.js';
 import { getShellHtml } from './preview-shell.js';
 import { responseToCursorMove } from './preview-refresh.js';
 import { panelExportTarget } from './export-target.js';
@@ -468,6 +469,16 @@ export class PreviewProvider {
             if (this.diagramDisposition(revision) !== 'deliver') return;
             await this.sendRender(revision, this.extractSvgFromOutput(stdout), document, editor, diagramName, null);
         } catch (error: unknown) {
+            if (error instanceof CompilerTooOldError) {
+                // Nothing was run, so this is no render failure, and the output channel is not
+                // brought forward on every save. The panel says why instead: the diagnostic view
+                // shows the reason as its text (jpipe-vscode ADR-VSC-0032).
+                this.logger.debug(`Preview of ${document.fileName} not rendered: ${error.message}`);
+                if (this.diagramDisposition(revision) !== 'deliver') return;
+                this.viewMode = 'diagnostic';
+                await this.updateDiagnostic(document);
+                return;
+            }
             const { stdout = '', exitCode } = asProcessFailure(error);
             this.logRenderError(document.fileName, exitCode, error);
             this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');

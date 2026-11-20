@@ -172,6 +172,9 @@ export function compilerLine(verdict: CompilerVerdict): string {
     }
 }
 
-/** The report's line about Pylance. */
+/**
+ * The report's line about Pylance. The editor cannot tell a disabled extension from a missing
+ * one, so neither does the line.
+ */
 export const pylanceLine = (installed: boolean): string =>
-    installed ? 'Pylance: installed' : 'Pylance: not installed';
+    installed ? 'Pylance: installed' : 'Pylance: not installed, or disabled';

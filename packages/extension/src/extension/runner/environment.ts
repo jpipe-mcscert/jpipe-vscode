@@ -6,7 +6,7 @@ import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import { runInTerminal } from './step-terminal.js';
 import { installPylance, pylanceInstalled } from './pylance.js';
-import { PYLANCE_OFFER } from '../requirements.js';
+import { PYLANCE_OFFER, pylanceLine } from '../requirements.js';
 import { execFileText } from '../process-launcher.js';
 import { envWithPath } from '../compiler/image-generator.js';
 import { expandTilde } from '../compiler/compiler-invocation.js';
@@ -367,7 +367,7 @@ export class RunnerEnvironment implements vscode.Disposable {
         this.recheck();
         const status = await this.settled();
         if (status.kind === 'external') {
-            return { runner: 'external', detail: 'Runs use the runner command named in the settings.' };
+            return { runner: 'external', detail: `Runs use the runner command named in the settings.\n${pylanceLine(pylanceInstalled())}` };
         }
         return { runner: runnablePython(status) ? 'ready' : 'needs-setup', detail: this.detail() };
     }
@@ -384,8 +384,10 @@ export class RunnerEnvironment implements vscode.Disposable {
         const notNow = 'Not Now';
         const answer = await vscode.window.showInformationMessage(PYLANCE_OFFER, install, notNow);
         this.logger.info(`Offered Pylance: ${answer ?? 'dismissed'}.`);
+        // Any answer but Install ends the offer for this workspace, dismissing it included: it is a
+        // suggestion, made once, and Check jPipe Installation still offers it on request.
         if (answer === install) await installPylance(this.logger);
-        if (answer === notNow) await this.context.workspaceState.update(PYLANCE_DECLINED_KEY, true);
+        else await this.context.workspaceState.update(PYLANCE_DECLINED_KEY, true);
     }
 
     /**

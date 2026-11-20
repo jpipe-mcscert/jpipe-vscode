@@ -173,6 +173,11 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
         await this.write(entries);
     }
 
+    /** Once the scan in progress, if any, is done: before asking how many libraries there are. */
+    async ready(): Promise<void> {
+        await this.scanning;
+    }
+
     async checkAll(): Promise<void> {
         await this.scanning;
         const checked = this.checkedUris();

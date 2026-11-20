@@ -6,7 +6,7 @@ import type { RunnerEnvironment } from './runner/environment.js';
 import type { LibrariesView } from './runner/libraries-view.js';
 import { accessMethodHeader } from './compiler/release-presentation.js';
 import { installPylance, pylanceInstalled } from './runner/pylance.js';
-import { compilerUpdate, installationSummary, pylanceLine, type InstallationAction, type InstallationFacts } from './requirements.js';
+import { compilerUpdate, installationSummary, type InstallationAction, type InstallationFacts } from './requirements.js';
 
 export interface InstallationCheckDeps {
     logger: JpipeLogger;
@@ -28,6 +28,7 @@ export async function checkInstallation(deps: InstallationCheckDeps): Promise<vo
     const { imageGenerator, releaseManager, runnerEnvironment, librariesView, logger } = deps;
     const mode = vscode.workspace.getConfiguration('jpipe').get<string>('executionMode', 'cli');
     const compiler = await imageGenerator.check();
+    await librariesView.ready();
     const hasLibraries = librariesView.allLibraries().length > 0;
     const runs = hasLibraries ? await runnerEnvironment.describe() : undefined;
     const pylance = pylanceInstalled();
@@ -36,7 +37,7 @@ export async function checkInstallation(deps: InstallationCheckDeps): Promise<vo
     const summary = installationSummary(facts);
     const sections = [
         [accessMethodHeader(mode, releaseManager.getInstalled()), compiler.version, compiler.message].filter(Boolean).join('\n'),
-        runs ? `Running models in this workspace\n${runs.detail}` : pylanceLine(pylance)
+        ...(runs ? [`Running models in this workspace\n${runs.detail}`] : [])
     ];
     const detail = sections.join('\n\n');
     logger.info(`Check jPipe Installation: ${summary.title}`);

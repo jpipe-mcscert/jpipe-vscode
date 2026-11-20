@@ -225,17 +225,23 @@ export class ImageGenerator {
             return { status: 'unreachable', message: messageOf(e) };
         }
 
+        const execKey = execKeyOf(resolved);
+        this.verdicts.delete(execKey);
+        this.rejectsJson.delete(execKey);
+        const verdict = await this.verdictFor(resolved, config);
+        const version = compilerLine(verdict);
+
         let output: string;
         try {
             const { stdout, stderr } = await runCompiler(resolved.file, [...resolved.args, '--headless', 'doctor'], { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             output = (stdout + stderr).trim() || 'jPipe is accessible.';
         } catch (error: unknown) {
-            return { status: 'unreachable', message: `Cannot access jPipe: ${detailOf(error)}` };
+            // A compiler older than `doctor` fails here, and its version is the reason worth
+            // giving: it has an update to offer, where "cannot access" has none.
+            const message = `Cannot access jPipe: ${detailOf(error)}`;
+            return verdict.kind === 'too-old' ? { status: 'too-old', message, version } : { status: 'unreachable', message };
         }
-
-        this.verdicts.delete(execKeyOf(resolved));
-        const verdict = await this.verdictFor(resolved, config);
-        return { status: verdict.kind === 'too-old' ? 'too-old' : 'ready', message: output, version: compilerLine(verdict) };
+        return { status: verdict.kind === 'too-old' ? 'too-old' : 'ready', message: output, version };
     }
 
     /**
@@ -282,6 +288,7 @@ export class ImageGenerator {
             // does not know `-f json`, so it predates what this extension needs. Said as such
             // rather than shown as picocli's usage dump.
             const tooOld = new CompilerTooOldError(undefined);
+            this.rejectsJson.add(execKeyOf(resolved));
             this.tellTooOld(execKeyOf(resolved), tooOld);
             return { raw: tooOld.message, report: null, exitCode: undefined };
         }
@@ -315,8 +322,9 @@ export class ImageGenerator {
     /**
      * What each compiler's version means for this extension, by resolved command.
      *
-     * Only a usable answer is kept: the version is a property of the build, and running
-     * `--version` before every save would be a second process for a fact that cannot change.
+     * Only a usable answer, from a compiler that did answer, is kept: the version is a property
+     * of the build, and running `--version` before every save would be a second process for a
+     * fact that cannot change.
      * A compiler found too old is asked again next time, because the next thing its user does
      * is update it — often in place, under the same command — and a cached refusal would outlive
      * the update until the window is reloaded. Keyed by the resolved command, so pointing
@@ -327,15 +335,23 @@ export class ImageGenerator {
     /** The too-old compilers the user has been told about, by command and version: once each. */
     private readonly toldTooOld = new Set<string>();
 
+    /**
+     * The compilers that rejected `diagnostic -f json` whatever their version said: too old for
+     * every feature, not only the diagnostics, until Check jPipe Installation asks again.
+     */
+    private readonly rejectsJson = new Set<string>();
+
     private async verdictFor(
         resolved: { file: string; args: string[] },
         config: vscode.WorkspaceConfiguration
     ): Promise<CompilerVerdict> {
         const execKey = execKeyOf(resolved);
+        if (this.rejectsJson.has(execKey)) return { kind: 'too-old', version: undefined };
         const cached = this.verdicts.get(execKey);
         if (cached) return cached;
 
         let verdict: CompilerVerdict = { kind: 'unknown' };
+        let answered = false;
         try {
             const { stdout, stderr } = await runCompiler(
                 resolved.file,
@@ -343,14 +359,17 @@ export class ImageGenerator {
                 { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES }
             );
             verdict = compilerVerdict(parseCompilerVersion(`${stdout}\n${stderr}`));
+            answered = true;
             this.logger.debug(`Compiler at '${execKey}': ${compilerLine(verdict)}`);
         } catch (e: unknown) {
-            // A build that cannot even be asked its version is let through: the run itself will
-            // report the real problem, if there is one.
+            // A build that cannot be asked its version this time is let through: the run itself
+            // will report the real problem, if there is one. Not remembered, since the failure
+            // may be passing — a cold JVM over the timeout — and remembering it would let an old
+            // compiler through for the rest of the session.
             this.logger.debug(`Could not read the compiler version from '${execKey}': ${messageOf(e)}`);
         }
 
-        if (verdict.kind !== 'too-old') this.verdicts.set(execKey, verdict);
+        if (answered && verdict.kind !== 'too-old') this.verdicts.set(execKey, verdict);
         return verdict;
     }
 
