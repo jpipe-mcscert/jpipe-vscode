@@ -226,6 +226,14 @@ describe('a run under way whose events are read', () => {
         expect(panelState(stopped, 4).progress).toBeNull();
     });
 
+    test('its elements can be selected and opened from the drawing before the report, and after a stop', () => {
+        expect(panelState(running, 3).elements).toEqual(['release:e1', 'release:e2', 'release:c']);
+        const stopped = endedWithout(running, 'stopped', { text: 'release was stopped.', action: null }, new Date());
+        expect(panelState(stopped, 4).elements).toEqual(['release:e1', 'release:e2', 'release:c']);
+        // Once there is one, the report says which elements there are.
+        expect(panelState({ ...done(), progress }, 5).elements).toEqual(['release:e', 'release:c']);
+    });
+
     test('several steps running at once are counted', () => {
         const two = reading(
             { event: 'run.started', schema_version: '1.0', elements: ['j:a', 'j:b'] },

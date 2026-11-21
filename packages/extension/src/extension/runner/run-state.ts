@@ -98,7 +98,9 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
         notice: run.notice,
         dataflow: run.dataflow,
         drawingMissing: run.drawingMissing,
-        elements: report?.elements.map(e => e.id) ?? [],
+        // The report's, once there is one; before it, the events', so that the drawing of a run
+        // under way, or stopped short of its report, selects and opens its elements too.
+        elements: report?.elements.map(e => e.id) ?? [...(run.progress?.elements ?? [])],
         outOfDate: run.outOfDate
     };
 }
