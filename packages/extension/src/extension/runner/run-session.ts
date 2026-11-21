@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { Notice } from '../../shared/run-protocol.js';
-import { outOfDateReason, startedRun, type Change, type ShownRun } from './run-state.js';
+import { endedWithout, outOfDateReason, startedRun, type Change, type ShownRun } from './run-state.js';
 
 /** What the session needs to know about the Libraries view: which libraries are checked, and when that changes. */
 export interface CheckedLibraries {
@@ -92,12 +92,10 @@ export class RunSession implements vscode.Disposable {
         if (this.shown) this.show({ ...this.shown, notice });
     }
 
-    /**
-     * End run `token` without a report, saying why. The previous run's drawing, kept under the busy
-     * overlay, goes too: its colours are another run's, and nothing would say so.
-     */
+    /** End run `token` without a report, saying why (`endedWithout`). */
     endWith(token: number, phase: 'blocked' | 'stopped', notice: Notice): void {
-        this.update(token, { phase, notice, endedAt: new Date(), dataflow: null, live: false });
+        if (!this.isCurrent(token) || !this.shown) return;
+        this.show(endedWithout(this.shown, phase, notice, new Date()));
     }
 
     /** The task run `token` is executing in, so that it can be stopped. */

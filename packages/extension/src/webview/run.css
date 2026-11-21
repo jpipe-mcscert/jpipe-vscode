@@ -131,7 +131,7 @@
 #svg-wrapper g.node { cursor: pointer; }
 
 /* Where the lit chain starts. */
-#svg-wrapper g.node.jpipe-origin :is(polygon, ellipse, path) { stroke-width: 3; }
+#svg-wrapper g.node.jpipe-origin :is(polygon, ellipse, path):not(g.jpipe-underway *, g.jpipe-pending *) { stroke-width: 3; }
 #container.dragging g.node { cursor: grabbing; }
 
 /*

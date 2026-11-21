@@ -222,7 +222,7 @@ export class RunPage {
      * when it ends, and its steps under way marked.
      */
     private showDrawing(state: RunPanelState): void {
-        const statuses = state.phase === 'running' ? state.progress?.statuses : null;
+        const statuses = state.progress?.statuses;
         const svg = state.dataflow !== null && statuses ? colourRun(state.dataflow, statuses) : state.dataflow;
         if (svg === null) {
             this.drawn = null;
@@ -320,7 +320,8 @@ export class RunPage {
         click('stop-button', () => this.post({ type: 'stop' }));
         click('results-button', () => this.post({ type: 'results', row: null }));
         click('output-button', () => this.post({ type: 'output' }));
-        click('download-button', () => this.post({ type: 'download' }));
+        // What is on show, colours included: a run that ended without its report has no other.
+        click('download-button', () => this.post({ type: 'download', svg: this.drawn?.svg ?? null }));
         click('notice-action', () => {
             const id = this.state?.notice?.action?.id;
             if (id) this.post({ type: 'action', id });

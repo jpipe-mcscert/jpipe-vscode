@@ -123,6 +123,6 @@ export type RunPanelToHost =
     | { type: 'select'; element: string | null }
     /** A node was double-clicked: open the element in its `.jd` file. */
     | { type: 'open'; element: string }
-    /** Save the drawing. */
-    | { type: 'download' }
+    /** Save the drawing on show, as the page draws it, or the host's own when the page has none. */
+    | { type: 'download'; svg: string | null }
     | { type: 'action'; id: NoticeAction };

@@ -72,7 +72,11 @@ replaces what they said when the run ends.
   while its step runs, still for whoever asks for less motion, and a clock while it waits. Every
   mark is a shape: what a run says never rests on colour alone. When the run ends, the runner's own drawing replaces it, in the
   same framing; it puts every node where the coloured one had it. A drawing gone before it could be
-  read, in a run that short, leaves the run under the busy overlay until its end, as before.
+  read, in a run that short, leaves the run under the busy overlay until its end, as before. A run
+  stopped, or ended without its report, keeps its drawing with what it decided, and no element
+  marked running or waiting: those are its only results. A drawing read by a launch that has since
+  ended is not shown, so a run launched again, without its drawing, never shows the first launch's.
+  Saving the drawing saves it as it is shown, coloured.
 - **The report replaces it** when the run ends, and is the only thing read for the verdict, the
   counts and the rows. What the report cannot say, how long each step took, is kept from the
   events and shown beside each element.

@@ -135,7 +135,22 @@ describe('a run that ended', () => {
     test('saves the drawing', () => {
         newPage().apply(state());
         button('download-button').click();
-        expect(post).toHaveBeenCalledWith({ type: 'download' });
+        expect(post).toHaveBeenCalledWith({ type: 'download', svg: DATAFLOW });
+    });
+
+    test('a run stopped on its own drawing keeps its colours, and saves them, with nothing marked running or waiting', () => {
+        const page = newPage();
+        const failed = { id: 'release:e', status: 'fail' as const, reason: null, rootCause: false, produced: [], unreachable: [] };
+        page.apply(state({
+            revision: 1, phase: 'stopped', verdict: null, notice: { text: 'release was stopped.', action: null },
+            progress: { decided: '1 of 2 decided', counts: [], running: null, statuses: [failed], underway: [], pending: [] }
+        }));
+        const node = document.querySelector('#svg-wrapper g[id="release:e"]')!;
+        expect(node.textContent).toContain('✘');
+        expect(document.querySelectorAll('#svg-wrapper g.jpipe-underway, #svg-wrapper g.jpipe-pending')).toHaveLength(0);
+        button('download-button').click();
+        const saved = post.mock.calls.map(([m]) => m).find(m => m.type === 'download') as { svg: string };
+        expect(saved.svg).toContain('✘');
     });
 
     test('a state older than the one on show is dropped', () => {

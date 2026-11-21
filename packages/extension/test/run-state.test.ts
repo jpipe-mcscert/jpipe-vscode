@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { parseReport, type RunReport } from '../src/extension/runner/run-report.js';
 import {
-    clockTime, elementCandidates, kindOf, outOfDateReason, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
+    clockTime, elementCandidates, endedWithout, kindOf, outOfDateReason, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
     underWay, type ShownRun
 } from '../src/extension/runner/run-state.js';
 import { RunEventReader, type RunProgress } from '../src/extension/runner/run-events.js';
@@ -211,6 +211,22 @@ describe('a run under way whose events are read', () => {
         expect(panelState({ ...running, labels }, 3).progress?.running).toBe('The changelog is up to date');
         expect(rowsWithoutReport({ ...running, labels }).find(r => r.id === 'group/Running')!.children[0].label)
             .toBe('The changelog is up to date');
+    });
+
+    test('stopped, its own drawing keeps the colours of what it decided, and nothing runs or waits', () => {
+        const notice = { text: 'release was stopped.', action: null };
+        const stopped = endedWithout({ ...running, dataflow: '<svg>own</svg>', live: true }, 'stopped', notice, new Date(2026, 10, 21));
+        expect(stopped).toMatchObject({ phase: 'stopped', notice, dataflow: '<svg>own</svg>', live: true });
+        expect(panelState(stopped, 4).progress).toMatchObject({
+            statuses: [{ id: 'release:e1', status: 'fail' }], underway: [], pending: [], running: null
+        });
+    });
+
+    test('stopped over another run\'s drawing, the drawing goes: its colours would say what this run did not', () => {
+        const notice = { text: 'release was stopped.', action: null };
+        const stopped = endedWithout({ ...running, dataflow: '<svg>older</svg>', live: false }, 'blocked', notice, new Date());
+        expect(stopped.dataflow).toBeNull();
+        expect(panelState(stopped, 4).progress).toBeNull();
     });
 
     test('several steps running at once are counted', () => {

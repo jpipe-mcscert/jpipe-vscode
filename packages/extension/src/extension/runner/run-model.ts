@@ -281,16 +281,25 @@ function follow(deps: RunDeps, token: number, taskName: string, file: string): E
     // By path: the runner draws each run in a directory of its own, so a new path is a new drawing,
     // even in a file a runner emptied and started again.
     let previewed: string | null = null;
-    return followEvents(
+    // A drawing still being read when this launch ends is not shown: a launch again, of the same
+    // run, has a drawing of its own or none.
+    let following = true;
+    const follower = followEvents(
         file,
         progress => {
             deps.session.update(token, { progress });
             if (progress.preview && progress.preview !== previewed) {
                 previewed = progress.preview;
-                void showPreview(deps, token, taskName, progress.preview);
+                void showPreview(deps, token, taskName, progress.preview, () => following);
             }
         },
         problem => deps.logger.warn(`${taskName}: ${problem}, so the run is shown when it ends`));
+    return {
+        async stop(): Promise<void> {
+            await follower.stop();
+            following = false;
+        }
+    };
 }
 
 /**
@@ -299,13 +308,15 @@ function follow(deps: RunDeps, token: number, taskName: string, file: string): E
  * it once the run has ended, so it is read at once; one already gone, or a run already over, is
  * left to the drawing the run ends with.
  */
-async function showPreview(deps: RunDeps, token: number, taskName: string, file: string): Promise<void> {
+async function showPreview(
+    deps: RunDeps, token: number, taskName: string, file: string, followed: () => boolean
+): Promise<void> {
     const svg = await readFileText(vscode.Uri.file(file));
     if (svg === null) {
         deps.logger.debug(`${taskName}: the drawing made before the first step was gone before it was read`);
         return;
     }
-    if (deps.session.isCurrent(token) && deps.session.running) {
+    if (followed() && deps.session.isCurrent(token) && deps.session.running) {
         deps.session.update(token, { dataflow: svg, live: true, drawingMissing: null });
     }
 }

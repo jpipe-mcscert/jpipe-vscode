@@ -137,7 +137,7 @@ export class RunPanel implements vscode.Disposable {
                 await this.openElement(msg.element);
                 break;
             case 'download':
-                await this.download();
+                await this.download(typeof msg.svg === 'string' ? msg.svg : null);
                 break;
             case 'action':
                 await this.noticeAction(msg.id);
@@ -221,10 +221,13 @@ export class RunPanel implements vscode.Disposable {
         });
     }
 
-    /** Save the runner's drawing where the user says. */
-    private async download(): Promise<void> {
+    /**
+     * Save the drawing where the user says: the one the page shows, which, while a run's own drawing
+     * is coloured as it goes, is the runner's with the statuses the run has decided so far.
+     */
+    private async download(shown: string | null): Promise<void> {
         const run = this.session.run;
-        const svg = run?.dataflow;
+        const svg = shown ?? run?.dataflow;
         if (!run || !svg) return;
         const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.parse(run.uri))?.uri;
         const name = `${run.name}-dataflow.svg`;

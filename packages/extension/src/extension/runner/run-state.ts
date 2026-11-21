@@ -67,6 +67,17 @@ export function startedRun(
     };
 }
 
+/**
+ * A run that ended without a report, stopped or unable to go on, saying why. A previous run's
+ * drawing, kept under the busy overlay, goes: its colours are another run's, and nothing would say
+ * so. The run's own drawing stays, coloured with what it decided before it ended: those are this
+ * run's results, the only ones it has.
+ */
+export function endedWithout(run: ShownRun, phase: 'blocked' | 'stopped', notice: Notice, at: Date): ShownRun {
+    const ended = { ...run, phase, notice, endedAt: at };
+    return run.live ? ended : { ...ended, dataflow: null };
+}
+
 /** `14:02`, in the hours and minutes of the run's own clock. */
 export function clockTime(date: Date): string {
     const two = (n: number) => String(n).padStart(2, '0');
@@ -89,7 +100,9 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
             at: run.endedAt ? clockTime(run.endedAt) : null,
             libraries: run.libraries.map(library => library.display)
         },
-        progress: run.phase === 'running' && run.progress ? progressOf(run.progress, run.labels, run.live) : null,
+        progress: run.progress && (run.phase === 'running' || (run.live && run.phase !== 'done'))
+            ? progressOf(run.progress, run.labels, run.live, run.phase === 'running')
+            : null,
         notice: run.notice,
         dataflow: run.dataflow,
         drawingMissing: run.drawingMissing,
@@ -103,10 +116,12 @@ const decidedOf = (progress: RunProgress): string => `${progress.decided.size} o
 
 /**
  * How far a run under way is, for the panel: its verdict bar names the step running by its label,
- * and, when the drawing on show is the run's own (`live`), its elements are coloured as decided.
+ * and, when the drawing on show is the run's own (`live`), its elements are coloured as decided,
+ * and those not decided yet marked, running or waiting. A run that ended without its report keeps
+ * its colours, but nothing runs or waits any more (`underWay` false).
  */
-export function progressOf(progress: RunProgress, labels: Labels = new Map(), live = false): Progress {
-    const running = [...progress.running.keys()];
+export function progressOf(progress: RunProgress, labels: Labels = new Map(), live = false, underWay = true): Progress {
+    const running = underWay ? [...progress.running.keys()] : [];
     const one = running.length === 1 ? labels.get(running[0]) ?? running[0] : null;
     const decided = [...progress.decided.values()].map(d => d.element);
     return {
@@ -119,7 +134,7 @@ export function progressOf(progress: RunProgress, labels: Labels = new Map(), li
             unreachable: e.artifacts.filter(a => !a.reachable).map(a => a.declared)
         }]) : null,
         underway: running,
-        pending: progress.elements.filter(id => !progress.decided.has(id) && !progress.running.has(id))
+        pending: underWay ? progress.elements.filter(id => !progress.decided.has(id) && !progress.running.has(id)) : []
     };
 }
 
