@@ -18,7 +18,7 @@ import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command
 import type { ResultsView } from './results-view.js';
 import type { LibraryStep } from './step-binding.js';
 import { compiledLabels, durationsOf, parseReport, verdictSentence, withReport, type RunReport } from './run-report.js';
-import { followEvents } from './run-events.js';
+import { followEvents, type EventFollower } from './run-events.js';
 import type { RunSession } from './run-session.js';
 import type { RunPanel } from './run-panel.js';
 import type { Notice } from '../../shared/run-protocol.js';
@@ -216,10 +216,14 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
     const invocation = await chooseInvocation(deps, token, { folder, cwd, askRelease: draw || !check }, argsFor);
     if (!invocation) return;
     const events = eventsFor(invocation.release);
-    // What names an element still running or waiting, before its event carries its label.
-    if (events) deps.session.update(token, { labels: compiledLabels(await readFileText(files.compiled) ?? '') });
-    // Compiling and finding the environment take time, in which another run may have started, or
-    // this one been stopped: a run no longer on show is never launched, where no ■ could reach it.
+    if (events) {
+        // What names an element still running or waiting, before its event carries its label.
+        deps.session.update(token, { labels: compiledLabels(await readFileText(files.compiled) ?? '') });
+        await forgetEvents(files.events);
+    }
+    // Compiling, finding the environment and preparing to follow take time, in which another run
+    // may have started, or this one been stopped: a run no longer on show is never launched, where
+    // no ■ could reach it. Nothing is awaited from here until its task starts.
     if (!deps.session.isCurrent(token)) {
         deps.logger.info(`${name}: not launched, a newer run has taken its place`);
         return;
@@ -233,7 +237,7 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
     const task = runTask(run, folder, cwd, invocation);
     const showOutput = (): void => terminalOf(task)?.show();
     deps.results.attach({ cwd, steps: run.steps });
-    const follower = events ? await follow(deps, token, task.name, files.events) : undefined;
+    const follower = events ? follow(deps, token, task.name, events) : undefined;
     let exitCode: number | undefined;
     try {
         exitCode = await vscode.window.withProgress(
@@ -257,19 +261,22 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
 }
 
 /**
- * Follow the events a run writes to `file`, into what the session shows of run `token`. The file
- * is removed first: a run launched again without its drawing writes it anew, and the first launch's
- * lines must not be read as the second's.
+ * Remove an earlier launch's events: a run launched again without its drawing writes the file
+ * anew, and the first launch's lines must not be read as the second's.
  */
-async function follow(deps: RunDeps, token: number, taskName: string, file: vscode.Uri): Promise<{ stop(): Promise<void> }> {
+async function forgetEvents(file: vscode.Uri): Promise<void> {
     try {
         await vscode.workspace.fs.delete(file);
     } catch {
         // There was none.
     }
-    deps.logger.debug(`${taskName}: following the run's events in ${file.fsPath}`);
+}
+
+/** Follow the events a run writes to `file`, into what the session shows of run `token`. */
+function follow(deps: RunDeps, token: number, taskName: string, file: string): EventFollower {
+    deps.logger.debug(`${taskName}: following the run's events in ${file}`);
     return followEvents(
-        file.fsPath,
+        file,
         progress => deps.session.update(token, { progress }),
         problem => deps.logger.warn(`${taskName}: ${problem}, so the run is shown when it ends`));
 }
