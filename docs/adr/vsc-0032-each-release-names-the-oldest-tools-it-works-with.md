@@ -48,6 +48,13 @@ minimum.
 **jpipe-runner and Python keep their existing treatment**, now reading the same table: an older
 runner is a workspace that cannot run yet, and the environment fix upgrades it.
 
+**A tool may also have a recommended release**, in the same file (`RECOMMENDED`): the oldest that
+has everything this release uses, where the minimum is the oldest it works with at all. A release
+between the two works, without what the recommended one adds, and is never refused for it. The
+code asks for what the recommended release adds only of a release that has it, and Check jPipe
+Installation says, below it, what upgrading brings. jpipe-runner's is 4.1.0, which follows a run
+as it goes (jpipe-vscode ADR-VSC-0033).
+
 **Pylance is wanted, not required.** It is not an `extensionDependencies` or `extensionPack`
 entry. A workspace with step libraries is offered it once, after the environment's own offer and
 silenced by the same setting. Check jPipe Installation and Check the Python Environment report
@@ -78,6 +85,10 @@ installed. Its single button fixes the first problem in that order.
   every other non-Microsoft build of VS Code, where Pylance cannot be installed, and would put
   Python tooling on the machine of a user who only writes models. An extension pack avoids the
   first cost but not the second.
+- **A recommended release, rather than a raised minimum, for what only makes a feature better.**
+  Raising jpipe-runner's minimum to 4.1 would have stopped every workspace still on 4.0 from
+  running, for a run that is followed as it goes rather than read when it ends. A recommendation
+  costs those users nothing, and says what they would gain.
 - **The compiler is asked again while it is too old.** A user told to update often updates in
   place, under the same command. A cached refusal would outlive the update until the window
   reloaded. A compiler found usable is cached, as before.
@@ -97,6 +108,10 @@ installed. Its single button fixes the first problem in that order.
 - **Nothing tests the extension against the minimum it declares.** The table states what the
   code was written against. No CI job runs it against those releases. A feature that silently
   needs a newer compiler is caught by its user, not by the build.
+- **The extension is not released before the recommended releases it names are published.**
+  Otherwise its changelog and its Marketplace page describe what no user can install yet, short
+  of a development build. Like the minimums, the recommended releases are stated in the Marketplace
+  README, which `test/requirements.test.ts` holds to the table.
 - **Pylance's absence is visible but never blocking.** A user who declines it gets no editor
   checks on step libraries and no underline for the environment fix to answer. Runs are
   unaffected.

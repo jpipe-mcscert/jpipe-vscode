@@ -37,9 +37,10 @@ asks for that file, is in the extension's storage, outside the workspace.
 An execution is followed from its events whenever the runner can write them, and the report
 replaces what they said when the run ends.
 
-- **Asked for from 4.1.** `--events <run folder>/<name>.events.jsonl` is passed to a runner whose
-  release, asked of it as it is launched (ADR-VSC-0031), is 4.1 or later, development builds
-  included (`streamsEvents` in `runner/runner-invocation.ts`). A runner whose release is unknown
+- **Asked for from 4.1, the recommended release.** `--events <run folder>/<name>.events.jsonl` is
+  passed to a runner whose release, asked of it as it is launched (ADR-VSC-0031), is at least
+  jpipe-runner's recommended release (`RECOMMENDED.runner` in `requirements.ts`, ADR-VSC-0032),
+  development builds included (`streamsEvents` in `runner/runner-invocation.ts`). A runner whose release is unknown
   is not asked. A check is not asked either: it calls no step, so its stream would say nothing the
   report does not. A development build of 4.1 from before the option reports the release that has
   it, and refuses it with a usage error and no report: a run asked for its events that ends so is
@@ -104,7 +105,9 @@ run's drawing with an execution's statuses gives that execution's drawing.
   drawing's option. There, the wrong option on a later runner stops every run. Here, the option on
   a runner that does not know it stops the run, while leaving it out only loses the preview.
 - **No new minimum runner.** The events make a run nicer to watch; they change nothing it can do.
-  Raising the minimum to 4.1 (ADR-VSC-0032) would stop working setups for that.
+  Raising the minimum to 4.1 (ADR-VSC-0032) would stop working setups for that. 4.1 is the
+  recommended release instead, and Check jPipe Installation says, of an older runner, what
+  upgrading brings.
 - **A set of running elements, and no order assumed** beyond the runner's promises, so that nothing
   here changes when the runner calls steps together (jpipe-runner#174).
 - **Labels from the compiled model**, because `element.started` and `run.started` give ids only,

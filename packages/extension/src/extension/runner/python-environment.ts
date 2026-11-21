@@ -10,7 +10,8 @@
  */
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { meetsMinimum, pylanceLine, REQUIREMENTS } from '../requirements.js';
+import { formatRelease, meetsMinimum, pylanceLine, RECOMMENDED, releaseNumbers, REQUIREMENTS } from '../requirements.js';
+import { streamsEvents } from './runner-invocation.js';
 
 /** The Python jpipe-runner runs on (`../requirements.ts` says why). */
 export const MIN_PYTHON = REQUIREMENTS.python;
@@ -379,9 +380,12 @@ function runnerLines(probe: Probe | undefined, declaredLocal: string | undefined
     // The version first, always: a local copy has one too, and it is what a report is read for.
     const version = probe.runnerVersion ?? 'installed';
     const local = probe.localSource;
-    if (!local) return [`jpipe-runner: ${version}`];
-    const lines = [`jpipe-runner: ${version} (local copy)`, `  ${short(local)}`];
-    if (declaredLocal && declaredLocal !== probe.runnerVersion) lines.push(`  now ${declaredLocal}: reinstall it`);
+    const lines = local ? [`jpipe-runner: ${version} (local copy)`, `  ${short(local)}`] : [`jpipe-runner: ${version}`];
+    if (local && declaredLocal && declaredLocal !== probe.runnerVersion) lines.push(`  now ${declaredLocal}: reinstall it`);
+    // Below the recommended release, what upgrading brings: a run followed as it goes.
+    if (!streamsEvents(probe.runnerVersion) && releaseNumbers(probe.runnerVersion) !== undefined) {
+        lines.push(`  ${formatRelease(RECOMMENDED.runner)} or newer shows runs as they go`);
+    }
     return lines;
 }
 

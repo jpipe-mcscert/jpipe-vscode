@@ -6,6 +6,7 @@
  * other mode, a program the user names, and what is common to both.
  */
 import { expandTilde } from '../compiler/compiler-invocation.js';
+import { RECOMMENDED, meetsMinimum, releaseNumbers } from '../requirements.js';
 
 /** The library-selection setting: workspace paths of the checked step libraries. */
 export const LIBRARIES_SETTING = 'runner.libraries';
@@ -49,17 +50,17 @@ export function dataflowFlag(runnerRelease: string | undefined): DataflowFlag {
 }
 
 /**
- * Whether the jpipe-runner release that will run streams its events with `--events PATH`: 4.1
- * and later do (jpipe-runner ADR-0030), development builds of 4.1 included (`4.1.0.dev0`).
+ * Whether the jpipe-runner release that will run streams its events with `--events PATH`: the
+ * recommended release and later do (`RECOMMENDED.runner`, 4.1; jpipe-runner ADR-0030), its
+ * development builds included (`4.1.0.dev0`).
  *
  * An unknown release is not asked, the reverse of `dataflowFlag`'s choice: a runner that does not
  * know the option stops before anything runs, while a run without its events is only shown when
  * it ends, as before (jpipe-vscode ADR-VSC-0033).
  */
 export function streamsEvents(runnerRelease: string | undefined): boolean {
-    const [major, minor] = (runnerRelease ?? '').split('.').map(part => Number.parseInt(part, 10));
-    if (Number.isNaN(major) || Number.isNaN(minor)) return false;
-    return major > 4 || (major === 4 && minor >= 1);
+    const numbers = releaseNumbers(runnerRelease);
+    return numbers !== undefined && meetsMinimum(numbers, RECOMMENDED.runner);
 }
 
 /** What jpipe-runner exits with when its command line is wrong, an unknown option among them. */

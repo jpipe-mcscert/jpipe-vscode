@@ -205,9 +205,23 @@ describe('the report', () => {
             'Environment: .venv',
             'Python: 3.15.2',
             'jpipe-runner: 4.0.0',
+            '  4.1.0 or newer shows runs as they go',
             'Editor: uses this environment',
             'Also on this computer: 4.0.0'
         ].join('\n'));
+    });
+
+    test('says what upgrading jpipe-runner brings only below the recommended release, and when its release is known', () => {
+        const report = (runnerVersion?: string) => environmentReport({
+            environment: { python: '/home/me/work/demo/.venv/bin/python' },
+            probe: probe({ version: [3, 15, 2], hasRunner: true, ...(runnerVersion ? { runnerVersion } : {}) }),
+            editorPython: '/home/me/work/demo/.venv/bin/python',
+            editorFollows: true
+        }, places);
+        expect(report('4.0.3')).toContain('4.1.0 or newer shows runs as they go');
+        for (const version of ['4.1.0', '4.1.0.dev0', '5.0.0rc1', undefined]) {
+            expect(report(version)).not.toContain('or newer shows runs');
+        }
     });
 
     test('a local runner has its version too, with where it is, beside the one on this computer', () => {

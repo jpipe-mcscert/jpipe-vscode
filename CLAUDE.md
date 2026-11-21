@@ -173,7 +173,7 @@ The `JpipeCompletionProvider` deliberately never falls through to Langium's glob
 Exit codes: `1` = model has errors, `42` = compiler crashed.
 
 ### Required versions
-`src/extension/requirements.ts` names the **oldest** compiler, jpipe-runner and Python this release works with, and no newest (jpipe-vscode ADR-VSC-0032). A compiler below the minimum is refused before any run, with an update offered; the managed install lists only releases at or above it. Raising a minimum is a user-facing change: changelog entry, and the Marketplace README's "Required software" (held by `test/requirements.test.ts`). Pylance is a soft dependency — never add it to `extensionDependencies` or `extensionPack`.
+`src/extension/requirements.ts` names the **oldest** compiler, jpipe-runner and Python this release works with, and no newest (jpipe-vscode ADR-VSC-0032). A compiler below the minimum is refused before any run, with an update offered; the managed install lists only releases at or above it. Raising a minimum is a user-facing change: changelog entry, and the Marketplace README's "Required software" (held by `test/requirements.test.ts`). `RECOMMENDED` names releases that are better but not required (jpipe-runner 4.1.0, which follows a run as it goes): code asks for what they add only of a release that has it, Check jPipe Installation says what upgrading brings, and the extension is not released before they are published. Pylance is a soft dependency — never add it to `extensionDependencies` or `extensionPack`.
 
 ---
 
