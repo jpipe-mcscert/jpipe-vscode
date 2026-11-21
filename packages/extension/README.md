@@ -36,7 +36,8 @@ You can provide the compiler in three ways, selected via the `jpipe.executionMod
 
 Running models (the ▶ button) also needs, in the workspace's Python environment,
 [jpipe-runner](https://github.com/jpipe-mcscert/jpipe-runner) 4.0.0 or newer on Python 3.11 or
-newer; the plugin offers to set that environment up. [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance)
+newer; the plugin offers to set that environment up. With jpipe-runner 4.1 or newer, a run's
+results appear as each step finishes rather than when the run ends. [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance)
 is recommended for writing step libraries, and offered, but not required.
 
 **jPipe: Check jPipe Installation** reports all of it at once, with a button for the first

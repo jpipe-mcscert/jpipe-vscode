@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import type { LibraryStep } from './step-binding.js';
-import { resultRows, stepLocation, type ResultRow, type RowIcon, type RunReport } from './run-report.js';
+import { resultRows, stepLocation, type Durations, type ResultRow, type RowIcon, type RunReport } from './run-report.js';
 import type { RunSession } from './run-session.js';
-import { kindOf, statusRow } from './run-state.js';
+import { kindOf, rowsWithoutReport } from './run-state.js';
 
 export const RESULTS_VIEW_ID = 'jpipe.results';
 /** Set once a run has a report, which is when the panel has something to show. */
@@ -32,19 +32,25 @@ const ICONS: Readonly<Record<RowIcon, [codicon: string, colour?: string]>> = {
     'stopped': ['debug-stop']
 };
 
+/** A run as its rows need it, to open what they name: known as soon as it is launched. */
+export interface RunContext {
+    /** Where the run ran: the report's paths are relative to it. */
+    cwd: string;
+    /** The steps of the libraries the run loaded. */
+    steps: LibraryStep[];
+}
+
 /** A run, as the view needs it. */
-export interface RunResult {
+export interface RunResult extends RunContext {
     report: RunReport;
     /** The model run, for a report that does not name it. */
     name: string;
     /** Whether it was a check: the libraries validated against the model, and no step called. */
     check: boolean;
-    /** Where the run ran: the report's paths are relative to it. */
-    cwd: string;
-    /** The steps of the libraries the run loaded. */
-    steps: LibraryStep[];
     /** The terminal the runner printed in. */
     showOutput: () => void;
+    /** How long each element's step took, when the run's events said. */
+    durations?: Durations;
 }
 
 /**
@@ -55,7 +61,8 @@ export interface RunResult {
  *
  * It lists the run the run panel draws, and comes forward with it (jpipe-vscode ADR-VSC-0031):
  * while the run has no report, it says in one row that it is under way, or why it ended without
- * one. Selecting an element here selects its node there, and a node clicked there selects its row
+ * one. A run under way whose events are read lists its elements as they are decided, below that
+ * row (jpipe-vscode ADR-VSC-0033). Selecting an element here selects its node there, and a node clicked there selects its row
  * here.
  */
 export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.Disposable {
@@ -68,6 +75,8 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
     private readonly view: vscode.TreeView<ResultRow>;
     private readonly disposables: vscode.Disposable[] = [];
     private result: RunResult | undefined;
+    /** The run under way, for its rows to open what they name before there is a report. */
+    private live: RunContext | undefined;
     private rows: ResultRow[] = [];
     private readonly parents = new Map<ResultRow, ResultRow | undefined>();
     private readonly byId = new Map<string, ResultRow>();
@@ -87,7 +96,9 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
     /** Show a run's report, and bring the view forward without taking the focus. */
     async show(result: RunResult): Promise<void> {
         this.result = result;
-        this.setRows(resultRows(result.report, result.name, result.check), result.report.justification ?? result.name, result.check);
+        this.live = undefined;
+        this.setRows(resultRows(result.report, result.name, result.check, result.durations),
+            result.report.justification ?? result.name, result.check);
         await this.bringForward();
     }
 
@@ -101,13 +112,18 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
         if (first) await this.view.reveal(first, { select: false, focus: false });
     }
 
-    /** A run with no report yet, or none at all, is listed as one row saying so. */
+    /** The run just launched: what its rows open before it has a report. */
+    attach(context: RunContext): void {
+        this.live = context;
+    }
+
+    /** A run with no report yet, or none at all, is listed from its events, or as one row saying so. */
     private followSession(): void {
         const run = this.session.run;
-        const status = run && statusRow(run);
-        if (!run || !status) return;
+        const rows = run ? rowsWithoutReport(run) : [];
+        if (!run || rows.length === 0) return;
         this.result = undefined;
-        this.setRows([status], run.name, run.check);
+        this.setRows(rows, run.name, run.check);
     }
 
     private setRows(rows: ResultRow[], name: string, check: boolean): void {
@@ -162,8 +178,9 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
             const [codicon, colour] = ICONS[row.icon];
             item.iconPath = new vscode.ThemeIcon(codicon, colour ? new vscode.ThemeColor(colour) : undefined);
         }
-        if (row.open && this.result) {
-            const file = vscode.Uri.file(path.resolve(this.result.cwd, row.open.path));
+        const context = this.result ?? this.live;
+        if (row.open && context) {
+            const file = vscode.Uri.file(path.resolve(context.cwd, row.open.path));
             const line = (row.open.line ?? 1) - 1;
             item.command = {
                 command: 'vscode.open',
@@ -183,13 +200,14 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
 
     private async activate(id: string): Promise<void> {
         const row = this.byId.get(id);
-        if (!row || !this.result) return;
+        const context = this.result ?? this.live;
+        if (!row || !context) return;
         if (row.goTo) {
             const target = this.byId.get(row.goTo);
             if (target) await this.view.reveal(target, { select: true, focus: true, expand: true });
             return;
         }
-        const location = row.step && stepLocation(row.step, this.result.steps);
+        const location = row.step && stepLocation(row.step, context.steps);
         if (!location) {
             void vscode.window.showInformationMessage(`${row.step} is not in a library of the Libraries view.`);
             return;

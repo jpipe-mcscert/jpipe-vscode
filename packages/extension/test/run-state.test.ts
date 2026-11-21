@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import { parseReport, type RunReport } from '../src/extension/runner/run-report.js';
 import {
-    clockTime, elementCandidates, kindOf, outOfDateReason, panelState, startedRun, statusRow, underWay, type ShownRun
+    clockTime, elementCandidates, kindOf, outOfDateReason, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
+    underWay, type ShownRun
 } from '../src/extension/runner/run-state.js';
+import { RunEventReader, type RunProgress } from '../src/extension/runner/run-events.js';
 
 /**
  * What the run panel is told about the last run, and when that run stops saying what a run would
@@ -161,5 +163,60 @@ describe('where to look for an element of the report', () => {
     test('an id with no model in it, or another justification\'s, has only what it names', () => {
         expect(elementCandidates('c', 'release')).toEqual([]);
         expect(elementCandidates('other:c', 'release')).toEqual([{ model: 'other', element: 'c' }]);
+    });
+});
+
+describe('a run under way whose events are read', () => {
+
+    const reading = (...events: Record<string, unknown>[]): RunProgress => {
+        const reader = new RunEventReader();
+        events.forEach((event, seq) => reader.read(new TextEncoder().encode(`${JSON.stringify({ seq, elapsed_ms: 0, ...event })}\n`)));
+        return reader.progress!;
+    };
+    const progress = reading(
+        { event: 'run.started', schema_version: '1.0', elements: ['release:e1', 'release:e2', 'release:c'] },
+        { event: 'element.decided', element: { id: 'release:e1', status: 'fail' }, diagnostics: [] },
+        { event: 'element.started', id: 'release:e2' }
+    );
+    const running: ShownRun = { ...startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined), progress };
+
+    test('the verdict bar says how far it is, and which step runs', () => {
+        expect(panelState(running, 3).progress).toEqual({
+            decided: '1 of 3 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2'
+        });
+    });
+
+    test('the step running is named by its label, when the compiled model has one', () => {
+        const labels = new Map([['release:e2', 'The changelog is up to date']]);
+        expect(panelState({ ...running, labels }, 3).progress?.running).toBe('The changelog is up to date');
+        expect(rowsWithoutReport({ ...running, labels }).find(r => r.id === 'group/Running')!.children[0].label)
+            .toBe('The changelog is up to date');
+    });
+
+    test('several steps running at once are counted', () => {
+        const two = reading(
+            { event: 'run.started', schema_version: '1.0', elements: ['j:a', 'j:b'] },
+            { event: 'element.started', id: 'j:a' }, { event: 'element.started', id: 'j:b' });
+        expect(progressOf(two).running).toBe('2 steps');
+        expect(progressOf(reading({ event: 'run.started', schema_version: '1.0', elements: ['j:a'] })).running).toBeNull();
+    });
+
+    test('once it ended, the verdict says the rest', () => {
+        expect(panelState({ ...done(), progress }, 4).progress).toBeNull();
+        expect(panelState(startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined), 1).progress).toBeNull();
+    });
+
+    test('Results lists its elements below the row that says it is under way', () => {
+        const rows = rowsWithoutReport(running);
+        expect(rows[0]).toMatchObject({ id: 'status', label: 'Executing release…', description: '1 of 3 decided' });
+        expect(rows.slice(1).map(r => r.id)).toEqual(['group/Failed', 'group/Running', 'group/Waiting']);
+    });
+
+    test('without events, the one row; once ended without a report, why; with a report, nothing', () => {
+        const bare = startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined);
+        expect(rowsWithoutReport(bare)).toEqual([statusRow(bare)]);
+        const notice = { text: 'release was stopped.', action: null };
+        expect(rowsWithoutReport({ ...running, phase: 'stopped', notice }).map(r => r.label)).toEqual(['release was stopped.']);
+        expect(rowsWithoutReport({ ...done(), progress })).toEqual([]);
     });
 });

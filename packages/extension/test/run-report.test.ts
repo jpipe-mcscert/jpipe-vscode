@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
-    fileSize, parseReport, resultRows, stepLocation, verdictLinks, verdictSentence, withReport,
-    type ResultRow, type RunReport
+    compiledLabels, duration, durationsOf, fileSize, outcomeLinks, parseReport, progressRows, resultRows, stepLocation, verdictLinks,
+    verdictSentence, withReport, type ResultRow, type RunReport
 } from '../src/extension/runner/run-report.js';
+import { RunEventReader, type RunProgress } from '../src/extension/runner/run-events.js';
 
 /**
  * A run's JSON report, as the Results view lists it.
@@ -292,6 +293,13 @@ describe('around the report', () => {
             .toEqual(['--dry-run', '--report', '/tmp/r.json', '--dataflow', 'd.svg', '/tmp/m.json']);
     });
 
+    test('an execution is asked for its events, after the drawing and before its libraries', () => {
+        expect(withReport(['/tmp/m.json'], '/tmp/r.json', false, { path: 'd.svg', flag: '--diagram' }, '/tmp/m.events.jsonl'))
+            .toEqual(['--report', '/tmp/r.json', '--diagram', 'd.svg', '--events', '/tmp/m.events.jsonl', '/tmp/m.json']);
+        expect(withReport(['/tmp/m.json'], '/tmp/r.json', false, undefined, '/tmp/e.jsonl'))
+            .toEqual(['--report', '/tmp/r.json', '--events', '/tmp/e.jsonl', '/tmp/m.json']);
+    });
+
     test('in a version 1 report, the drawing is `dataflow`, or `diagram` when that is what was asked for', () => {
         expect(read({ dataflow: '/tmp/m-dataflow.svg' })).toMatchObject({ dataflow: '/tmp/m-dataflow.svg' });
         // A 4.0 runner whose release was unknown is asked for --diagram, and draws the argument there.
@@ -310,5 +318,105 @@ describe('around the report', () => {
 
     test.each([[187, '187 B'], [1234, '1.2 kB'], [3_400_000, '3.4 MB']])('%i bytes reads %s', (bytes, shown) => {
         expect(fileSize(bytes)).toBe(shown);
+    });
+});
+
+describe('a run under way, from its events', () => {
+
+    /** The progress after the events of `lines`, each an event without its envelope. */
+    const progressOf = (...events: Record<string, unknown>[]): RunProgress => {
+        const reader = new RunEventReader();
+        events.forEach((event, seq) => reader.read(new TextEncoder().encode(`${JSON.stringify({ seq, elapsed_ms: 0, ...event })}\n`)));
+        return reader.progress!;
+    };
+    const runStarted = { event: 'run.started', schema_version: '1.0', elements: ['release:e1', 'release:e2', 'release:s', 'release:c'] };
+    const startedAt = (id: string, at: number) => ({ event: 'element.started', id, elapsed_ms: at });
+    const decidedAt = (over: Record<string, unknown>, at: number, diagnostics: unknown[] = []) =>
+        ({ event: 'element.decided', element: element(over), diagnostics, elapsed_ms: at });
+
+    const titles = (rows: ResultRow[]) => rows.map(r => `${r.label} ${r.description ?? ''}`.trim());
+
+    test('lists what is decided as the report would, then what runs, then what waits', () => {
+        const progress = progressOf(runStarted,
+            startedAt('release:e1', 0), decidedAt({ id: 'release:e1', label: 'Tests pass', status: 'fail', reason: 'two failed' }, 2400),
+            startedAt('release:e2', 2400));
+        const rows = progressRows(progress, 'release');
+        expect(titles(rows)).toEqual(['Failed 1', 'Running 1', 'Waiting 2']);
+        expect(rows[0].children[0]).toMatchObject({
+            id: 'element/release:e1', label: 'Tests pass', description: 'evidence · 2.4 s · two failed', icon: 'fail'
+        });
+        expect(rows[1]).toMatchObject({ expanded: true, children: [{ id: 'element/release:e2', label: 'release:e2', icon: 'running' }] });
+        expect(rows[2].expanded).toBe(false);
+        expect(rows[2].children.map(r => r.id)).toEqual(['element/release:s', 'element/release:c']);
+    });
+
+    test('an element running or waiting is named by its label in the compiled model, else by its id', () => {
+        const progress = progressOf(runStarted, startedAt('release:e1', 0));
+        const labels = new Map([['release:e1', 'The test suite passes'], ['release:s', 'All release gates pass']]);
+        const rows = progressRows(progress, 'release', labels);
+        expect(rows[0].children[0]).toMatchObject({ label: 'The test suite passes', tooltip: 'release:e1' });
+        expect(rows[1].children.map(r => r.label)).toEqual(['release:e2', 'All release gates pass', 'release:c']);
+    });
+
+    test('the labels are read from the compiler\'s JSON, with the ids the runner uses', () => {
+        // The release example's compiled justification, cut to what is read.
+        const compiled = JSON.stringify({
+            name: 'release', type: 'justification', relations: [],
+            elements: [
+                { escaped: 'the_test_suite_passes', id: 'release:e1', label: 'The test suite passes', type: 'evidence' },
+                { id: 'release:c', label: '', type: 'conclusion' },
+                { id: 7, label: 'not an id' }
+            ]
+        });
+        expect([...compiledLabels(compiled)]).toEqual([['release:e1', 'The test suite passes']]);
+        expect(compiledLabels('not JSON').size).toBe(0);
+        expect(compiledLabels('[1, 2]').size).toBe(0);
+    });
+
+    test('what passed is folded while something has failed, as in a report', () => {
+        const progress = progressOf(runStarted,
+            decidedAt({ id: 'release:e1', status: 'fail' }, 0), decidedAt({ id: 'release:e2', status: 'pass' }, 0));
+        const passed = progressRows(progress, 'release').find(r => r.id === 'group/Passed')!;
+        expect(passed.expanded).toBe(false);
+    });
+
+    test('a problem validation found about no element is listed first', () => {
+        const progress = progressOf(runStarted, {
+            event: 'validation.ended', passed: true,
+            diagnostics: [{ code: 'JP030', severity: 'warning', element: null, message: 'a library declares no step' }]
+        });
+        expect(titles(progressRows(progress, 'release'))).toEqual(['Problems 1', 'Waiting 4']);
+    });
+
+    test('a problem about an element waits for it, and comes with it once decided', () => {
+        const problem = { code: 'JP019', severity: 'error', element: 'release:e1', message: 'cannot read mock/junit.xml' };
+        const waiting = progressOf(runStarted, { event: 'validation.ended', passed: true, diagnostics: [problem] });
+        expect(titles(progressRows(waiting, 'release'))).toEqual(['Waiting 4']);
+        const decided = progressOf(runStarted, decidedAt({ id: 'release:e1', status: 'fail' }, 0, [problem]));
+        expect(progressRows(decided, 'release')[0].children[0].children[0]).toMatchObject({ label: 'cannot read mock/junit.xml', icon: 'error' });
+    });
+
+    test('the counts so far each open their group', () => {
+        const progress = progressOf(runStarted,
+            decidedAt({ id: 'release:e1', status: 'fail' }, 0), decidedAt({ id: 'release:e2', status: 'pass' }, 0));
+        expect(outcomeLinks([...progress.decided.values()].map(d => d.element))).toEqual([
+            { text: '1 passed', row: 'group/Passed' }, { text: '1 failed', row: 'group/Failed' }
+        ]);
+    });
+
+    test('the report, once it is read, keeps how long each step took', () => {
+        const progress = progressOf(runStarted, startedAt('release:e1', 100), decidedAt({ id: 'release:e1', status: 'fail' }, 1100),
+            decidedAt({ id: 'release:s', status: 'skip' }, 1100));
+        const durations = durationsOf(progress);
+        expect([...durations]).toEqual([['release:e1', 1000]]);
+        const failed = resultRows(read(RELEASE), 'release', false, durations).find(r => r.id === 'group/Failed')!;
+        expect(failed.children[0].description).toBe('evidence · 1.0 s · mock/junit.xml: 2 tests failed');
+    });
+
+    test.each([
+        [0, '0 ms'], [340, '340 ms'], [999, '999 ms'], [1000, '1.0 s'], [2449, '2.4 s'], [59_900, '59.9 s'],
+        [60_000, '1 min 0 s'], [185_000, '3 min 5 s']
+    ])('%i ms reads %s', (ms, shown) => {
+        expect(duration(ms)).toBe(shown);
     });
 });

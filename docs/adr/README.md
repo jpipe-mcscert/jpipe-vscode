@@ -69,3 +69,4 @@ The compiler's records are at
 | [VSC-0030](vsc-0030-dev-integrates-main-holds-releases.md) | `dev` integrates, `main` holds releases | 2026-11-15 | Accepted |
 | [VSC-0031](vsc-0031-a-run-is-drawn-in-a-panel-of-its-own.md) | A run is drawn in a panel of its own, beside the editor | 2026-11-15 | Accepted |
 | [VSC-0032](vsc-0032-each-release-names-the-oldest-tools-it-works-with.md) | Each release names the oldest tools it works with | 2026-11-19 | Accepted |
+| [VSC-0033](vsc-0033-a-run-is-followed-from-its-events.md) | A run is followed from its events, which preview its report | 2026-11-21 | Accepted |

@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { bindSteps, designates, stepLabel, stepNote, type LibraryStep } from '../src/extension/runner/step-binding.js';
-import { DEFAULT_RUNNER, cannotRun, dataflowFlag, resolveRunner, runnerArguments } from '../src/extension/runner/runner-invocation.js';
+import { DEFAULT_RUNNER, cannotRun, dataflowFlag, resolveRunner, runnerArguments, streamsEvents } from '../src/extension/runner/runner-invocation.js';
 
 /**
  * Preparing a run: which step implements which element, and how the runner is launched.
@@ -129,6 +129,22 @@ describe('launching the runner', () => {
         expect(dataflowFlag(undefined)).toBe('--diagram');
         expect(dataflowFlag('')).toBe('--diagram');
         expect(dataflowFlag('installed')).toBe('--diagram');
+    });
+
+    test('4.1 and the releases after it stream their events, development builds included', () => {
+        expect(streamsEvents('4.1.0')).toBe(true);
+        expect(streamsEvents('4.1.0.dev0')).toBe(true);
+        expect(streamsEvents('4.2.3')).toBe(true);
+        expect(streamsEvents('5.0.0rc1')).toBe(true);
+    });
+
+    test('4.0 does not, and neither is a runner whose release is unknown asked: the option would stop it', () => {
+        expect(streamsEvents('4.0.3')).toBe(false);
+        expect(streamsEvents('3.6.0')).toBe(false);
+        expect(streamsEvents(undefined)).toBe(false);
+        expect(streamsEvents('')).toBe(false);
+        expect(streamsEvents('installed')).toBe(false);
+        expect(streamsEvents('4')).toBe(false);
     });
 
     test('a template cannot be run', () => {

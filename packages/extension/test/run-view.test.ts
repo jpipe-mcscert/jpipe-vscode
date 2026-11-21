@@ -46,6 +46,7 @@ const state = (over: Partial<RunPanelState> = {}): RunPanelState => ({
         counts: [{ text: '1 passed', row: 'group/Passed' }, { text: '1 failed', row: 'group/Failed' }],
         at: '14:02', libraries: ['steps.py']
     },
+    progress: null,
     notice: null,
     dataflow: DATAFLOW,
     drawingMissing: null,
@@ -161,6 +162,27 @@ describe('a run under way', () => {
         newPage().apply(state({ phase: 'running', verdict: null, dataflow: null }));
         expect(byId('verdict-kind').textContent).toBe('Execution');
         expect(byId('empty-message').textContent).toBe('Executing release…');
+    });
+
+    test('says how far it is, each count opening its group, and which step runs', () => {
+        newPage().apply(state({
+            phase: 'running', verdict: null,
+            progress: { decided: '2 of 4 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2' }
+        }));
+        expect(byId('verdict-label').textContent).toBe('release, under way');
+        expect(byId('verdict-counts').textContent).toBe('2 of 4 decided1 failed');
+        expect(byId('verdict-when').textContent).toBe('running release:e2');
+        (byId('verdict-counts').querySelector('button.verdict-count') as HTMLButtonElement).click();
+        expect(post).toHaveBeenCalledWith({ type: 'results', row: 'group/Failed' });
+    });
+
+    test('between two steps, says none runs; once ended, the verdict replaces it', () => {
+        const page = newPage();
+        page.apply(state({ revision: 1, phase: 'running', verdict: null, progress: { decided: '1 of 4 decided', counts: [], running: null } }));
+        expect(byId('verdict-when').textContent).toBe('');
+        page.apply(state({ revision: 2 }));
+        expect(byId('verdict-counts').textContent).toBe('1 passed1 failed');
+        expect(byId('verdict-when').textContent).toBe('14:02');
     });
 });
 

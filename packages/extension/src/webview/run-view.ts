@@ -1,4 +1,4 @@
-import type { HostToRunPanel, RunKind, RunPanelState, RunPanelToHost, Tone } from '../shared/run-protocol.js';
+import type { HostToRunPanel, Progress, RunKind, RunPanelState, RunPanelToHost, Tone, VerdictCount } from '../shared/run-protocol.js';
 import { DiagramCanvas } from './canvas.js';
 import { applyFocus, downstream, elementOf, nameOf, nodeNamed } from './flow.js';
 import type { Box } from './viewbox.js';
@@ -132,28 +132,46 @@ export class RunPage {
         const kindLabel = byId(this.doc, 'verdict-kind');
         kindLabel.textContent = kind.says;
         kindLabel.title = kind.explains;
+        const when = byId(this.doc, 'verdict-when');
         if (!verdict) {
             bar.dataset.tone = 'running';
             byId(this.doc, 'verdict-glyph').textContent = '…';
             byId(this.doc, 'verdict-label').textContent = running ? `${state.name}, under way` : '';
-            byId(this.doc, 'verdict-when').textContent = '';
+            when.textContent = '';
+            when.title = '';
+            if (running && state.progress) this.showProgress(state.progress, counts, when);
             return;
         }
         bar.dataset.tone = verdict.tone;
         byId(this.doc, 'verdict-glyph').textContent = GLYPHS[verdict.tone];
         byId(this.doc, 'verdict-label').textContent = verdict.label;
-        for (const count of verdict.counts) {
-            const link = this.doc.createElement('button');
-            link.type = 'button';
-            link.className = 'verdict-count';
-            link.textContent = count.text;
-            link.title = 'Show in Results';
-            link.addEventListener('click', () => this.post({ type: 'results', row: count.row }));
-            counts.append(link);
-        }
-        const when = byId(this.doc, 'verdict-when');
+        counts.append(...verdict.counts.map(count => this.countLink(count)));
         when.textContent = verdict.at ?? '';
         when.title = verdict.libraries.length > 0 ? `Loaded ${verdict.libraries.join(', ')}` : '';
+    }
+
+    /**
+     * How far a run under way is, from its events: how many elements are decided, how they ended so
+     * far, each count opening its group in Results as the verdict's do, and the step running.
+     */
+    private showProgress(progress: Progress, counts: HTMLElement, when: HTMLElement): void {
+        const decided = this.doc.createElement('span');
+        decided.className = 'verdict-progress';
+        decided.textContent = progress.decided;
+        counts.append(decided, ...progress.counts.map(count => this.countLink(count)));
+        when.textContent = progress.running ? `running ${progress.running}` : '';
+        when.title = progress.running ? 'The step under way' : '';
+    }
+
+    /** A count of the verdict bar: a button that opens what it counts in Results. */
+    private countLink(count: VerdictCount): HTMLButtonElement {
+        const link = this.doc.createElement('button');
+        link.type = 'button';
+        link.className = 'verdict-count';
+        link.textContent = count.text;
+        link.title = 'Show in Results';
+        link.addEventListener('click', () => this.post({ type: 'results', row: count.row }));
+        return link;
     }
 
     private showNotice(state: RunPanelState): void {

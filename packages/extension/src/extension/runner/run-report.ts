@@ -11,6 +11,7 @@
  */
 import type { LibraryStep } from './step-binding.js';
 import type { DataflowFlag } from './runner-invocation.js';
+import type { RunProgress } from './run-events.js';
 
 export type Status = 'pass' | 'fail' | 'skip' | null;
 export type Verdict = 'pass' | 'fail' | 'skip' | 'invalid' | 'valid';
@@ -110,7 +111,8 @@ function traceback(raw: unknown): Traceback | null {
     };
 }
 
-function element(e: Record<string, unknown>): ReportElement {
+/** An element as the report writes it, and as an `element.decided` event carries it. */
+export function parseElement(e: Record<string, unknown>): ReportElement {
     return {
         id: text(e.id),
         label: text(e.label),
@@ -133,6 +135,18 @@ function element(e: Record<string, unknown>): ReportElement {
     };
 }
 
+/** Diagnostics as the report writes them, and as the events carry them. */
+export function parseDiagnostics(raw: unknown): ReportDiagnostic[] {
+    return objects(raw).map(d => ({
+        code: text(d.code),
+        severity: oneOf(d.severity, ['error', 'warning', 'info'] as const) ?? 'error',
+        element: textOrNull(d.element),
+        message: text(d.message),
+        fix: textOrNull(d.fix),
+        traceback: traceback(d.traceback)
+    }));
+}
+
 /** The report in `content`, or why it cannot be shown. */
 export function parseReport(content: string): { report: RunReport } | { problem: string } {
     let raw: Record<string, unknown>;
@@ -153,15 +167,8 @@ export function parseReport(content: string): { report: RunReport } | { problem:
         report: {
             justification: textOrNull(raw.justification),
             verdict,
-            elements: objects(raw.elements).map(element),
-            diagnostics: objects(raw.diagnostics).map(d => ({
-                code: text(d.code),
-                severity: oneOf(d.severity, ['error', 'warning', 'info'] as const) ?? 'error',
-                element: textOrNull(d.element),
-                message: text(d.message),
-                fix: textOrNull(d.fix),
-                traceback: traceback(d.traceback)
-            })),
+            elements: objects(raw.elements).map(parseElement),
+            diagnostics: parseDiagnostics(raw.diagnostics),
             dataflow: major === '1' ? textOrNull(raw.dataflow) ?? textOrNull(raw.diagram) : textOrNull(raw.diagram)
         }
     };
@@ -223,6 +230,41 @@ export function fileSize(bytes: number): string {
     if (bytes < 1000) return `${bytes} B`;
     if (bytes < 1_000_000) return `${(bytes / 1000).toFixed(1)} kB`;
     return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+/** How long a step took: `340 ms`, `2.4 s`, `3 min 5 s`. */
+export function duration(ms: number): string {
+    if (ms < 1000) return `${Math.round(ms)} ms`;
+    if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
+    const seconds = Math.round(ms / 1000);
+    return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+}
+
+/** How long each element's step took, by id: only a run's events say (`run-events.ts`). */
+export type Durations = ReadonlyMap<string, number>;
+
+/** Each element's label, by id. */
+export type Labels = ReadonlyMap<string, string>;
+
+/**
+ * The labels of the compiled justification the runner reads (the compiler's JSON, jpipe-runner
+ * ADR-0001), by id. The runner takes its ids from that file, so they are the ids its events give:
+ * what names an element still running or waiting, before its event carries its label. Empty for
+ * content that is not such a file.
+ */
+export function compiledLabels(content: string): Map<string, string> {
+    const labels = new Map<string, string>();
+    let raw: unknown;
+    try {
+        raw = JSON.parse(content);
+    } catch {
+        return labels;
+    }
+    const elements = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>).elements : undefined;
+    for (const e of objects(elements)) {
+        if (typeof e.id === 'string' && typeof e.label === 'string' && e.label) labels.set(e.id, e.label);
+    }
+    return labels;
 }
 
 /** Whether no step was called: a check, or a run that validation, an import or the model stopped. */
@@ -288,14 +330,19 @@ export function verdictLinks(report: RunReport): { text: string; row: string }[]
             if (n > 0) links.push({ text: plural(n, severity), row: 'group/With problems' });
         }
     } else {
-        for (const [status, says] of OUTCOMES) {
-            const n = report.elements.filter(e => e.status === status).length;
-            const group = GROUPS.find(g => g.status === status)!;
-            if (n > 0) links.push({ text: `${n} ${says}`, row: `group/${group.title}` });
-        }
+        links.push(...outcomeLinks(report.elements));
     }
     if (general.length > 0) links.push({ text: plural(general.length, 'problem'), row: 'problems' });
     return links;
+}
+
+/** How many elements ended each way, leaving out the ways none did: `1 failed` opens Failed. */
+export function outcomeLinks(elements: readonly ReportElement[]): { text: string; row: string }[] {
+    return OUTCOMES.flatMap(([status, says]) => {
+        const n = elements.filter(e => e.status === status).length;
+        const group = GROUPS.find(g => g.status === status)!;
+        return n > 0 ? [{ text: `${n} ${says}`, row: `group/${group.title}` }] : [];
+    });
 }
 
 function tracebackRows(id: string, trace: Traceback): ResultRow[] {
@@ -337,7 +384,7 @@ function artifactRow(id: string, a: Artifact): ResultRow {
     return { id, label: a.path, description, icon: 'file', children: [], open: { path: a.path } };
 }
 
-function elementRow(e: ReportElement, report: RunReport): ResultRow {
+function elementRow(e: ReportElement, report: RunReport, durations?: Durations): ResultRow {
     const id = `element/${e.id}`;
     const labelOf = (other: string): string => report.elements.find(x => x.id === other)?.label || other;
     const link = (role: 'supports' | 'blocked', says: string) => (other: string, i: number): ResultRow => ({
@@ -373,10 +420,11 @@ function elementRow(e: ReportElement, report: RunReport): ResultRow {
     );
 
     const note = e.blockedBy.length > 0 ? `stopped by ${e.blockedBy.map(labelOf).join(', ')}` : e.reason;
+    const took = durations?.get(e.id);
     return {
         id,
         label: e.label || e.id,
-        description: note ? `${e.kind} · ${note}` : e.kind,
+        description: [e.kind, took === undefined ? null : duration(took), note].filter(Boolean).join(' · '),
         tooltip: [`${e.kind} ${e.id}`, e.label, e.reason].filter(Boolean).join('\n'),
         icon: elementIcon(e, problems),
         expanded: e.status === 'fail' || (e.status === null && problems.length > 0),
@@ -390,14 +438,36 @@ function elementIcon(e: ReportElement, problems: readonly ReportDiagnostic[]): R
     return worst ?? GROUPS.find(g => g.status === e.status)!.icon;
 }
 
-function groupRow(title: string, elements: readonly ReportElement[], report: RunReport, expanded: boolean): ResultRow {
+function groupRow(
+    title: string, elements: readonly ReportElement[], report: RunReport, expanded: boolean, durations?: Durations
+): ResultRow {
     return {
         id: `group/${title}`,
         label: title,
         description: String(elements.length),
         expanded,
-        children: elements.map(e => elementRow(e, report))
+        children: elements.map(e => elementRow(e, report, durations))
     };
+}
+
+/** The row of the problems about no element of the run: why nothing ran, most often. */
+function problemsRow(general: readonly ReportDiagnostic[]): ResultRow {
+    return {
+        id: 'problems',
+        label: 'Problems',
+        description: String(general.length),
+        expanded: true,
+        children: general.map((d, i) => diagnosticRow(`problems/${i}`, d))
+    };
+}
+
+/** The elements by outcome, failures first; what passed is not what a failed run is opened for. */
+function outcomeGroups(report: RunReport, durations?: Durations): ResultRow[] {
+    const failed = report.elements.some(e => e.status === 'fail');
+    return GROUPS.flatMap(group => {
+        const elements = report.elements.filter(e => e.status === group.status);
+        return elements.length > 0 ? [groupRow(group.title, elements, report, group.status !== 'pass' || !failed, durations)] : [];
+    });
 }
 
 /**
@@ -408,18 +478,10 @@ function groupRow(title: string, elements: readonly ReportElement[], report: Run
  * When no step was called — a check (`--dry-run`), or a run stopped before it began — no element
  * has an outcome, and they are grouped by whether a problem is about them instead.
  */
-export function resultRows(report: RunReport, name: string, check = false): ResultRow[] {
+export function resultRows(report: RunReport, name: string, check = false, durations?: Durations): ResultRow[] {
     const general = generalProblems(report);
     const rows: ResultRow[] = [verdictRow(report, name, check)];
-    if (general.length > 0) {
-        rows.push({
-            id: 'problems',
-            label: 'Problems',
-            description: String(general.length),
-            expanded: true,
-            children: general.map((d, i) => diagnosticRow(`problems/${i}`, d))
-        });
-    }
+    if (general.length > 0) rows.push(problemsRow(general));
     if (nothingRan(report)) {
         const flagged = new Set(report.diagnostics.map(d => d.element));
         for (const [title, wanted] of [['With problems', true], ['No problem', false]] as const) {
@@ -428,12 +490,59 @@ export function resultRows(report: RunReport, name: string, check = false): Resu
         }
         return rows;
     }
-    const failed = report.elements.some(e => e.status === 'fail');
-    for (const group of GROUPS) {
-        const elements = report.elements.filter(e => e.status === group.status);
-        // What passed is not what a failed run is opened for.
-        if (elements.length > 0) rows.push(groupRow(group.title, elements, report, group.status !== 'pass' || !failed));
+    rows.push(...outcomeGroups(report, durations));
+    return rows;
+}
+
+/** How long each decided element's step took, from a run's events. */
+export function durationsOf(progress: RunProgress): Map<string, number> {
+    const durations = new Map<string, number>();
+    for (const [id, decided] of progress.decided) {
+        if (decided.durationMs !== null) durations.set(id, decided.durationMs);
     }
+    return durations;
+}
+
+/**
+ * The rows of a run under way, from its events (`run-events.ts`), below the row that says it is
+ * under way: the problems validation found about no element, the elements decided so far grouped
+ * as the report's rows are, then those whose step is running, then those still waiting.
+ *
+ * An event's element is the report's, so a decided element's row is the one the report will give
+ * it. A running or waiting element is named by its label in the compiled model, `labels`, until it
+ * is decided, and by its id when it has none there.
+ */
+export function progressRows(progress: RunProgress, name: string, labels: Labels = new Map()): ResultRow[] {
+    const ordered = [...new Set([...progress.elements, ...progress.decided.keys(), ...progress.running.keys()])];
+    const decided = ordered.flatMap(id => {
+        const d = progress.decided.get(id);
+        return d ? [d] : [];
+    });
+    const partial: RunReport = {
+        justification: name,
+        verdict: 'pass',
+        elements: decided.map(d => d.element),
+        diagnostics: [...(progress.validation?.diagnostics ?? []), ...decided.flatMap(d => d.diagnostics)],
+        dataflow: null
+    };
+    const known = new Set(ordered);
+    const general = partial.diagnostics.filter(d => d.element === null || !known.has(d.element));
+    const rows: ResultRow[] = general.length > 0 ? [problemsRow(general)] : [];
+    rows.push(...outcomeGroups(partial, durationsOf(progress)));
+    const pending = (title: string, ids: readonly string[], expanded: boolean, icon: RowIcon, says: string): void => {
+        if (ids.length === 0) return;
+        rows.push({
+            id: `group/${title}`,
+            label: title,
+            description: String(ids.length),
+            expanded,
+            children: ids.map((id): ResultRow => ({
+                id: `element/${id}`, label: labels.get(id) ?? id, description: says, tooltip: id, icon, children: []
+            }))
+        });
+    };
+    pending('Running', ordered.filter(id => progress.running.has(id)), true, 'running', 'running');
+    pending('Waiting', ordered.filter(id => !progress.running.has(id) && !progress.decided.has(id)), false, 'not-run', 'waiting');
     return rows;
 }
 
@@ -469,17 +578,22 @@ export function stepLocation(boundTo: string, steps: readonly LibraryStep[]): { 
  * element's status over it once steps ran, plus the files and values the steps declare; the
  * argument alone is what the preview already shows (ADR-VSC-0031). Which option draws it depends
  * on the runner's release (`dataflowFlag`).
+ *
+ * With `events`, the runner also writes the run's events to that file as it goes, for the views to
+ * follow (`streamsEvents`, jpipe-vscode ADR-VSC-0033).
  */
 export function withReport(
     runnerArgs: readonly string[],
     report: string,
     check = false,
-    dataflow?: { path: string; flag: DataflowFlag }
+    dataflow?: { path: string; flag: DataflowFlag },
+    events?: string
 ): string[] {
     return [
         ...(check ? ['--dry-run'] : []),
         '--report', report,
         ...(dataflow ? [dataflow.flag, dataflow.path] : []),
+        ...(events ? ['--events', events] : []),
         ...runnerArgs
     ];
 }

@@ -45,6 +45,16 @@ export interface Verdict {
     libraries: string[];
 }
 
+/** How far a run under way is, from the events jpipe-runner writes as it goes (ADR-VSC-0033). */
+export interface Progress {
+    /** `3 of 12 decided`. */
+    decided: string;
+    /** The outcomes so far, each opening its group in Results. */
+    counts: VerdictCount[];
+    /** The step under way, by its element's label, or `2 steps` when several are; null between steps. */
+    running: string | null;
+}
+
 /** Everything the page shows. */
 export interface RunPanelState {
     /** Newer states have higher numbers, and the page drops anything older than what it shows. */
@@ -55,6 +65,8 @@ export interface RunPanelState {
     phase: RunPhase;
     /** Set once a run has a report. */
     verdict: Verdict | null;
+    /** How far the run is, while it is under way and its events are read; null otherwise. */
+    progress: Progress | null;
     notice: Notice | null;
     /**
      * The runner's SVG of the run's dataflow, its argument with the files and values its steps

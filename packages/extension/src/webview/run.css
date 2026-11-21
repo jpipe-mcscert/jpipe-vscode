@@ -75,6 +75,13 @@
 
 .verdict-count:hover { background: var(--vscode-toolbar-hoverBackground); }
 
+/* How far a run under way is: said, not a link, so it reads as the counts' caption. */
+.verdict-progress {
+    align-self: center;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+}
+
 #verdict-when {
     margin-left: auto;
     color: var(--vscode-descriptionForeground);
