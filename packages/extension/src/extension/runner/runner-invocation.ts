@@ -48,6 +48,43 @@ export function dataflowFlag(runnerRelease: string | undefined): DataflowFlag {
     return major === 4 && minor === 0 ? '--dataflow' : '--diagram';
 }
 
+/**
+ * Whether the jpipe-runner release that will run streams its events with `--events PATH`: 4.1
+ * and later do (jpipe-runner ADR-0030), development builds of 4.1 included (`4.1.0.dev0`).
+ *
+ * An unknown release is not asked, the reverse of `dataflowFlag`'s choice: a runner that does not
+ * know the option stops before anything runs, while a run without its events is only shown when
+ * it ends, as before (jpipe-vscode ADR-VSC-0033).
+ */
+export function streamsEvents(runnerRelease: string | undefined): boolean {
+    const [major, minor] = (runnerRelease ?? '').split('.').map(part => Number.parseInt(part, 10));
+    if (Number.isNaN(major) || Number.isNaN(minor)) return false;
+    return major > 4 || (major === 4 && minor >= 1);
+}
+
+/** What jpipe-runner exits with when its command line is wrong, an unknown option among them. */
+export const USAGE_EXIT = 2;
+/**
+ * What it exits with when a file could not be read or written: a diagram among them, which
+ * includes a drawing that needs Graphviz when it is not installed.
+ */
+export const FILE_PROBLEM_EXIT = 4;
+
+/**
+ * What to launch a run again without, when it ended with `exitCode` and no report, having asked
+ * for a drawing (`drew`) and for its events (`streamed`); `undefined` when launching it again
+ * would end the same way. Nothing ran in either case, so launching again costs nothing.
+ *
+ * - **The events**, on a usage error: a development build of 4.1 from before `--events` reports
+ *   the release that has it, and refuses the option.
+ * - **The drawing**, when a file could not be written: most often, Graphviz is missing.
+ */
+export function relaunchWithout(exitCode: number | undefined, drew: boolean, streamed: boolean): 'events' | 'drawing' | undefined {
+    if (streamed && exitCode === USAGE_EXIT) return 'events';
+    if (drew && exitCode === FILE_PROBLEM_EXIT) return 'drawing';
+    return undefined;
+}
+
 /** `-l` once per library, then the compiled justification, as `jpipe-runner --help` documents. */
 export function runnerArguments(libraries: readonly string[], justification: string): string[] {
     return [...libraries.flatMap(library => ['-l', library]), justification];

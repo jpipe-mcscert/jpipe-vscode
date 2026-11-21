@@ -6,8 +6,9 @@
  * it, what Results says while it has no report, when it stops saying what a run would, and where an
  * element of the report is written.
  */
-import type { Notice, RunKind, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
-import { verdictLabel, verdictLinks, type ResultRow, type RunReport } from './run-report.js';
+import type { Notice, Progress, RunKind, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
+import type { RunProgress } from './run-events.js';
+import { outcomeLinks, progressRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport } from './run-report.js';
 
 /** The run the panel and the Results view show. */
 export interface ShownRun {
@@ -17,6 +18,13 @@ export interface ShownRun {
     check: boolean;
     phase: RunPhase;
     report: RunReport | null;
+    /**
+     * What the runner's events said, when it wrote them (ADR-VSC-0033): how far the run is while it
+     * goes, and, once the report replaces it, how long each step took, which only the events say.
+     */
+    progress: RunProgress | null;
+    /** Each element's label in the compiled model, by id: what names it before it is decided. */
+    labels: Labels;
     /** The runner's SVG of the run's dataflow. */
     dataflow: string | null;
     drawingMissing: string | null;
@@ -46,7 +54,7 @@ export function startedRun(
     // to redraw it is no reason to blank it. Another justification's drawing would be misleading.
     const same = previous?.name === name && previous.uri === uri;
     return {
-        name, uri, check, phase: 'running', report: null,
+        name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(),
         dataflow: same ? previous.dataflow : null,
         drawingMissing: null,
         libraries, endedAt: null, notice: null, outOfDate: null
@@ -75,11 +83,26 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
             at: run.endedAt ? clockTime(run.endedAt) : null,
             libraries: run.libraries.map(library => library.display)
         },
+        progress: run.phase === 'running' && run.progress ? progressOf(run.progress, run.labels) : null,
         notice: run.notice,
         dataflow: run.dataflow,
         drawingMissing: run.drawingMissing,
         elements: report?.elements.map(e => e.id) ?? [],
         outOfDate: run.outOfDate
+    };
+}
+
+/** `3 of 12 decided`. */
+const decidedOf = (progress: RunProgress): string => `${progress.decided.size} of ${progress.elements.length} decided`;
+
+/** How far a run under way is, for the panel's verdict bar: the step running is named by its label. */
+export function progressOf(progress: RunProgress, labels: Labels = new Map()): Progress {
+    const running = [...progress.running.keys()];
+    const one = running.length === 1 ? labels.get(running[0]) ?? running[0] : null;
+    return {
+        decided: decidedOf(progress),
+        counts: outcomeLinks([...progress.decided.values()].map(d => d.element)),
+        running: running.length > 1 ? `${running.length} steps` : one
     };
 }
 
@@ -89,7 +112,8 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
  */
 export function statusRow(run: ShownRun): ResultRow | undefined {
     if (run.phase === 'running') {
-        return { id: 'status', label: underWay(run.name, run.check), icon: 'running', children: [] };
+        const description = run.progress ? decidedOf(run.progress) : undefined;
+        return { id: 'status', label: underWay(run.name, run.check), description, icon: 'running', children: [] };
     }
     if (run.phase === 'done' || !run.notice) return undefined;
     return {
@@ -99,6 +123,17 @@ export function statusRow(run: ShownRun): ResultRow | undefined {
         icon: run.phase === 'stopped' ? 'stopped' : 'error',
         children: []
     };
+}
+
+/**
+ * What the Results view lists for a run without a report: a run under way whose events are read
+ * lists the elements as they are decided, below its status row (`progressRows`); otherwise the
+ * status row alone.
+ */
+export function rowsWithoutReport(run: ShownRun): ResultRow[] {
+    const status = statusRow(run);
+    if (!status) return [];
+    return run.phase === 'running' && run.progress ? [status, ...progressRows(run.progress, run.name, run.labels)] : [status];
 }
 
 /** Something that may make the run on show say something other than a run would now. */

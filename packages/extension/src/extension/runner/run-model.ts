@@ -10,12 +10,15 @@ import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
 import { MODELS_VIEW_ID } from '../models-view/models-view.js';
-import { RUNNER_COMMAND_SETTING, cannotRun, dataflowFlag, resolveRunner, runnerArguments, type DataflowFlag } from './runner-invocation.js';
+import {
+    RUNNER_COMMAND_SETTING, cannotRun, dataflowFlag, relaunchWithout, resolveRunner, runnerArguments, streamsEvents, type DataflowFlag
+} from './runner-invocation.js';
 import type { RunnerEnvironment } from './environment.js';
 import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
 import type { ResultsView } from './results-view.js';
 import type { LibraryStep } from './step-binding.js';
-import { parseReport, verdictSentence, withReport, type RunReport } from './run-report.js';
+import { compiledLabels, durationsOf, parseReport, verdictSentence, withReport, type RunReport } from './run-report.js';
+import { followEvents, type EventFollower } from './run-events.js';
 import type { RunSession } from './run-session.js';
 import type { RunPanel } from './run-panel.js';
 import type { Notice } from '../../shared/run-protocol.js';
@@ -34,12 +37,6 @@ export interface RunDeps {
     session: RunSession;
     panel: RunPanel;
 }
-
-/**
- * What jpipe-runner exits with when a file could not be read or written: a diagram among them,
- * which includes a drawing that needs Graphviz when it is not installed. Nothing ran then.
- */
-const FILE_PROBLEM_EXIT = 4;
 
 /**
  * Save what a run reads: the compiler and the runner read files, not editors. That is the model,
@@ -79,7 +76,8 @@ async function compile(
             folder,
             compiled,
             report: vscode.Uri.joinPath(folder, `${name}.report.json`),
-            dataflow: vscode.Uri.joinPath(folder, `${name}-dataflow.svg`)
+            dataflow: vscode.Uri.joinPath(folder, `${name}-dataflow.svg`),
+            events: vscode.Uri.joinPath(folder, `${name}.events.jsonl`)
         };
     } catch (err: unknown) {
         deps.logger.warn(`${name} could not be compiled: ${messageOf(err)}`);
@@ -102,6 +100,8 @@ interface RunFiles {
     report: vscode.Uri;
     /** The drawing of the run's dataflow (jpipe-runner ADR-0022). */
     dataflow: vscode.Uri;
+    /** The events the runner writes as the run goes (jpipe-runner ADR-0030). */
+    events: vscode.Uri;
 }
 
 /**
@@ -162,7 +162,8 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
     const files = await compile(deps, token, document, name);
     if (!files) return;
     try {
-        await launch(deps, token, { document, name, check, libraries: libraries.map(library => library.uri.fsPath), steps }, files, true);
+        await launch(deps, token, { document, name, check, libraries: libraries.map(library => library.uri.fsPath), steps }, files,
+            { draw: true, stream: true });
     } finally {
         await discard(files.folder);
     }
@@ -178,6 +179,14 @@ interface Run {
     steps: LibraryStep[];
 }
 
+/** What a launch asks the runner for besides its report. */
+interface Asked {
+    /** The run's dataflow, drawn. */
+    draw: boolean;
+    /** The run's events, when its release writes them. */
+    stream: boolean;
+}
+
 /**
  * Start the runner on a compiled model, wait for it, and show what its report says.
  *
@@ -185,18 +194,36 @@ interface Run {
  * runner that cannot draw stops before any step runs, writing no report; so when a run asked to
  * draw ends that way, it is launched once more without the drawing, which costs nothing since
  * nothing ran, and the panel says why it has none.
+ *
+ * With `stream`, an execution by a runner that streams its events is followed as it goes: the
+ * panel and Results show each element as soon as it is decided, until the report replaces what the
+ * events said (jpipe-vscode ADR-VSC-0033). A check calls no step, so it has nothing to stream. A
+ * runner that refuses the option is launched once more without it (`relaunchWithout`).
  */
-async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, draw: boolean): Promise<void> {
+async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, asked: Asked): Promise<void> {
     const { document, name, check } = run;
+    const { draw } = asked;
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    const argsFor = (flag: DataflowFlag | undefined): string[] => withReport(
+    // A launch again starts from nothing: what an earlier one's events said is not this one's.
+    deps.session.update(token, { progress: null });
+    const eventsFor = (release: string | undefined): string | undefined =>
+        asked.stream && !check && streamsEvents(release) ? files.events.fsPath : undefined;
+    const argsFor = (release: string | undefined): string[] => withReport(
         runnerArguments(run.libraries, files.compiled.fsPath), files.report.fsPath, check,
-        flag ? { path: files.dataflow.fsPath, flag } : undefined);
-    const invocation = await chooseInvocation(deps, token, { folder, cwd, draw }, argsFor);
+        draw ? { path: files.dataflow.fsPath, flag: flagFor(deps, release) } : undefined,
+        eventsFor(release));
+    const invocation = await chooseInvocation(deps, token, { folder, cwd, askRelease: draw || !check }, argsFor);
     if (!invocation) return;
-    // Compiling and finding the environment take time, in which another run may have started, or
-    // this one been stopped: a run no longer on show is never launched, where no ■ could reach it.
+    const events = eventsFor(invocation.release);
+    if (events) {
+        // What names an element still running or waiting, before its event carries its label.
+        deps.session.update(token, { labels: compiledLabels(await readFileText(files.compiled) ?? '') });
+        await forgetEvents(files.events);
+    }
+    // Compiling, finding the environment and preparing to follow take time, in which another run
+    // may have started, or this one been stopped: a run no longer on show is never launched, where
+    // no ■ could reach it. Nothing is awaited from here until its task starts.
     if (!deps.session.isCurrent(token)) {
         deps.logger.info(`${name}: not launched, a newer run has taken its place`);
         return;
@@ -209,6 +236,8 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
 
     const task = runTask(run, folder, cwd, invocation);
     const showOutput = (): void => terminalOf(task)?.show();
+    deps.results.attach({ cwd, steps: run.steps });
+    const follower = events ? follow(deps, token, task.name, events) : undefined;
     let exitCode: number | undefined;
     try {
         exitCode = await vscode.window.withProgress(
@@ -217,15 +246,39 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
     } catch (err: unknown) {
         deps.session.endWith(token, 'blocked', { text: `Could not start jpipe-runner: ${messageOf(err)}`, action: null });
         return;
+    } finally {
+        // What the runner wrote last is read before the report: the two then agree.
+        await follower?.stop();
     }
 
     const read = await readReport(files.report);
     const ended: Ended = { taskName: task.name, exitCode, cwd, showOutput };
     if ('problem' in read) {
-        await endedWithoutReport(deps, token, run, files, draw, ended, read.problem);
+        await endedWithoutReport(deps, token, run, files, { draw, stream: events !== undefined }, ended, read.problem);
     } else {
         await showReport(deps, token, run, files, ended, read.report);
     }
+}
+
+/**
+ * Remove an earlier launch's events: a run launched again without its drawing writes the file
+ * anew, and the first launch's lines must not be read as the second's.
+ */
+async function forgetEvents(file: vscode.Uri): Promise<void> {
+    try {
+        await vscode.workspace.fs.delete(file);
+    } catch {
+        // There was none.
+    }
+}
+
+/** Follow the events a run writes to `file`, into what the session shows of run `token`. */
+function follow(deps: RunDeps, token: number, taskName: string, file: string): EventFollower {
+    deps.logger.debug(`${taskName}: following the run's events in ${file}`);
+    return followEvents(
+        file,
+        progress => deps.session.update(token, { progress }),
+        problem => deps.logger.warn(`${taskName}: ${problem}, so the run is shown when it ends`));
 }
 
 /** The option that draws the dataflow, for the runner release that will run (`dataflowFlag`). */
@@ -271,10 +324,11 @@ function runTask(
 
 /**
  * Say why a run ended without a report: a usage error, a file that could not be read, a runner
- * that did not start — or one that could not draw, which is launched once more without drawing.
+ * that did not start — or one that refused what it was asked for besides its report, which is
+ * launched once more without it: a drawing it could not make, or events it does not know.
  */
 async function endedWithoutReport(
-    deps: RunDeps, token: number, run: Run, files: RunFiles, draw: boolean, ended: Ended, problem: string
+    deps: RunDeps, token: number, run: Run, files: RunFiles, asked: Asked, ended: Ended, problem: string
 ): Promise<void> {
     const { name, check } = run;
     deps.logger.warn(`${ended.taskName} ended with exit code ${ended.exitCode ?? '(none)'}: ${problem}`);
@@ -285,9 +339,15 @@ async function endedWithoutReport(
         deps.session.endWith(token, 'stopped', { text: `${name} was stopped.`, action: { label: 'Show Output', id: 'showOutput' } });
         return;
     }
-    if (draw && ended.exitCode === FILE_PROBLEM_EXIT) {
+    const without = relaunchWithout(ended.exitCode, asked.draw, asked.stream);
+    if (without === 'drawing') {
         deps.logger.warn(`${ended.taskName}: launched again without the drawing, which may need Graphviz`);
-        await launch(deps, token, run, files, false);
+        await launch(deps, token, run, files, { ...asked, draw: false });
+        return;
+    }
+    if (without === 'events') {
+        deps.logger.warn(`${ended.taskName}: launched again without --events, which this jpipe-runner build may not know`);
+        await launch(deps, token, run, files, { ...asked, stream: false });
         return;
     }
     ended.showOutput();
@@ -306,6 +366,8 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
         return;
     }
     const dataflow = await readText(files.dataflow, report.dataflow);
+    // The events, if the runner wrote them, are kept: only they say how long each step took.
+    const progress = deps.session.run?.progress;
     const shown = deps.session.update(token, {
         phase: 'done',
         report,
@@ -316,7 +378,10 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
     });
     // A newer run may have started while the drawing was read: Results stays with it, as the panel does.
     if (!shown) return;
-    await deps.results.show({ report, name, check, cwd: ended.cwd, steps, showOutput: ended.showOutput });
+    await deps.results.show({
+        report, name, check, cwd: ended.cwd, steps, showOutput: ended.showOutput,
+        durations: progress ? durationsOf(progress) : undefined
+    });
 }
 
 /** Why a run has no drawing: the runner could not draw, which is most often Graphviz missing. */
@@ -324,7 +389,11 @@ const NO_DRAWING = 'jpipe-runner could not draw this run. Drawing needs Graphviz
 
 /** The SVG the runner drew in `file`, when its report says it drew one. */
 async function readText(file: vscode.Uri, recorded: string | null): Promise<string | null> {
-    if (recorded === null) return null;
+    return recorded === null ? null : readFileText(file);
+}
+
+/** The text of `file`, or null if it cannot be read. */
+async function readFileText(file: vscode.Uri): Promise<string | null> {
     try {
         return new TextDecoder('utf-8').decode(await vscode.workspace.fs.readFile(file));
     } catch {
@@ -431,22 +500,23 @@ async function readReport(file: vscode.Uri): Promise<ReturnType<typeof parseRepo
 async function chooseInvocation(
     deps: RunDeps,
     token: number,
-    where: { folder: vscode.WorkspaceFolder | undefined; cwd: string; draw: boolean },
-    argsFor: (flag: DataflowFlag | undefined) => string[]
-): Promise<(Command & { env?: Record<string, string> }) | undefined> {
-    const { folder, cwd, draw } = where;
-    // The option that draws depends on the release of the very runner that will run. So it is
-    // asked of that runner, now — the last environment check may predate an upgrade — with the
-    // environment and the folder the run will have, so that the same program answers.
-    const flagOf = async (ask: () => Promise<string | undefined>): Promise<DataflowFlag | undefined> =>
-        draw ? flagFor(deps, await ask()) : undefined;
+    where: { folder: vscode.WorkspaceFolder | undefined; cwd: string; askRelease: boolean },
+    argsFor: (release: string | undefined) => string[]
+): Promise<(Command & { env?: Record<string, string>; release: string | undefined }) | undefined> {
+    const { folder, cwd, askRelease } = where;
+    // The option that draws, and whether the run's events can be asked for, depend on the release
+    // of the very runner that will run. So it is asked of that runner, now — the last environment
+    // check may predate an upgrade — with the environment and the folder the run will have, so
+    // that the same program answers. A check that does not draw needs neither.
+    const releaseOf = async (ask: () => Promise<string | undefined>): Promise<string | undefined> =>
+        askRelease ? ask() : undefined;
     const status = await deps.environment.settled();
     if (status.kind === 'external') {
         const configured = vscode.workspace.getConfiguration('jpipe', folder?.uri).get<string>(RUNNER_COMMAND_SETTING, '') ?? '';
         const program = resolveRunner(configured, os.homedir());
         // The run inherits the editor's environment: it is the user's program, run as they set it.
-        const flag = await flagOf(() => deps.environment.releaseOf({ program, args: ['--version'] }, { cwd }));
-        return { program, args: argsFor(flag) };
+        const release = await releaseOf(() => deps.environment.releaseOf({ program, args: ['--version'] }, { cwd }));
+        return { program, args: argsFor(release), release };
     }
     const python = runnablePython(status);
     if (!python) {
@@ -460,8 +530,8 @@ async function chooseInvocation(
         return undefined;
     }
     const env = deps.environment.runEnv(python);
-    const flag = await flagOf(() => deps.environment.runnerReleaseNow(python, { cwd, env }));
-    return { ...moduleInvocation(python, argsFor(flag)), env: env as Record<string, string> };
+    const release = await releaseOf(() => deps.environment.runnerReleaseNow(python, { cwd, env }));
+    return { ...moduleInvocation(python, argsFor(release)), env: env as Record<string, string>, release };
 }
 
 /** The document and model to run, or `undefined` after saying why there is none. */

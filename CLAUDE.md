@@ -74,6 +74,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             libraries-view.ts   ← the Libraries view; checkboxes = `jpipe.runner.libraries`
             run-model.ts        ← ▶ and ✓: compile to JSON, launch the runner as a VS Code task, hand its report and drawings to the session
             run-report.ts       ← the runner's JSON report → the rows of the Results view (tested; ADR-VSC-0029)
+            run-events.ts       ← the runner's events (`--events`, 4.1+), polled while it runs → its progress (tested; ADR-VSC-0033)
             run-session.ts      ← the last run: the one the Run panel draws and Results lists (ADR-VSC-0031)
             run-state.ts        ← what the Run panel shows, when a run is out of date (tested)
             run-panel.ts        ← the Run panel beside the editor: lifecycle, messages, open element, save drawing
@@ -331,7 +332,8 @@ imports the libraries). It shows the last run only — the runner's dataflow SVG
 jpipe-runner 4.0.x, `--diagram` on every later or unknown release, chosen by `dataflowFlag`; the
 report's `dataflow` in schema 1, `diagram` in schema 2; the argument-only view is left to the preview), under a bar that says *Execution* or *Check · no step
 called* first. It shares that run with the Results view through `RunSession`, and the two come
-forward together; until a report arrives Results lists one status row. A node click lights it and
+forward together; until a report arrives Results lists one status row, and, with jpipe-runner 4.1 or
+later, the elements as their events decide them, while the verdict bar counts them (ADR-VSC-0033). A node click lights it and
 everything downstream (walked from the SVG's edge titles, `webview/flow.ts`) and selects an
 element's row in Results; a second click, the background or Escape clears; a double-click opens
 the element. A runner that cannot draw (Graphviz

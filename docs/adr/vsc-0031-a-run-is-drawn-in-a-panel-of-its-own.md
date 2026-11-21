@@ -124,9 +124,10 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
   a usage error and no report, which the panel says, pointing at the terminal.
 - **Two report versions and two options are read and passed** until the minimum runner moves past
   4.0 (jpipe-vscode ADR-VSC-0032). Then the `--dataflow` branch and version 1 go.
-- **The panel shows nothing while a run is under way** but a busy overlay over the last drawing:
-  the report arrives whole. Statuses appearing as steps finish, and clickable file and variable
-  nodes in the dataflow, wait for jpipe-runner (#169).
+- **The drawing shows nothing while a run is under way** but a busy overlay over the last one: the
+  runner draws it when the run ends. With a runner that streams its events, the verdict bar and
+  Results follow the run as it goes (jpipe-vscode ADR-VSC-0033); colouring the drawing as well waits
+  for the runner to draw it before the first step (jpipe-mcscert/jpipe-runner#185).
 - **`preview.ts` lost its canvas to `canvas.ts`.** A change to how the preview pans or zooms now
   changes the run panel too, which is the point, and is tested in `test/canvas.test.ts`.
 - **The panel itself needs the editor**, so its round trip through the extension host is checked by
