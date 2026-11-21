@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import type { LiveStatus } from '../src/shared/run-protocol.js';
-import { colourRun, markUnderway } from '../src/webview/run-colours.js';
+import { colourRun, markProgress } from '../src/webview/run-colours.js';
 
 /**
  * Colouring a run's drawing as it goes, held to what jpipe-runner draws (jpipe-vscode
@@ -127,27 +127,47 @@ describe('the steps under way', () => {
         document.body.innerHTML = svg.slice(svg.indexOf('<svg'));
         return document.querySelector('svg')!;
     };
-    const marks = (svg: SVGSVGElement) => Array.from(svg.querySelectorAll('text.jpipe-underway'))
-        .map(mark => [mark.closest('g.node')!.id, mark.textContent]);
+    const marks = (svg: SVGSVGElement) => Array.from(svg.querySelectorAll('g.jpipe-underway, g.jpipe-pending'))
+        .map(mark => [mark.closest('g.node')!.id, mark.getAttribute('class')]).sort();
 
-    test('are marked ⟳, a symbol rather than a colour, and unmarked once decided', () => {
+    test('running and waiting are each marked with a shape, not a colour; decided, with neither', () => {
         const svg = show(DRY);
-        markUnderway(svg, ['release:e1', 'release:e2']);
-        expect(marks(svg)).toEqual([['release:e1', '⟳'], ['release:e2', '⟳']]);
-        markUnderway(svg, ['release:e2']);
-        expect(marks(svg)).toEqual([['release:e2', '⟳']]);
-        markUnderway(svg, ['release:e2']);
-        expect(marks(svg)).toHaveLength(1);
+        markProgress(svg, { underway: ['release:e1'], pending: ['release:e2', 'release:s', 'release:c'] });
+        expect(marks(svg)).toEqual([
+            ['release:c', 'jpipe-pending'], ['release:e1', 'jpipe-underway'], ['release:e2', 'jpipe-pending'], ['release:s', 'jpipe-pending']
+        ]);
+        // release:e1 decided, release:e2 started.
+        markProgress(svg, { underway: ['release:e2'], pending: ['release:s', 'release:c'] });
+        expect(marks(svg)).toEqual([['release:c', 'jpipe-pending'], ['release:e2', 'jpipe-underway'], ['release:s', 'jpipe-pending']]);
+        markProgress(svg, { underway: ['release:e2'], pending: ['release:s', 'release:c'] });
+        expect(marks(svg)).toHaveLength(3);
+        markProgress(svg, { underway: [], pending: [] });
+        expect(marks(svg)).toEqual([]);
     });
 
-    test('the mark sits where the status\'s symbol will, in the label\'s colour', () => {
+    test('running is the Results view\'s spinner, a circle with a gap; waiting, its clock', () => {
+        const svg = show(DRY);
+        markProgress(svg, { underway: ['release:e1'], pending: ['release:e2'] });
+        const running = svg.querySelector('g.jpipe-underway')!;
+        expect(Array.from(running.children).map(c => c.tagName.toLowerCase())).toEqual(['circle']);
+        expect(running.children[0].getAttribute('stroke-dasharray')).toMatch(/^\S+ \S+$/);
+        const waiting = svg.querySelector('g.jpipe-pending')!;
+        expect(Array.from(waiting.children).map(c => c.tagName.toLowerCase())).toEqual(['circle', 'path']);
+    });
+
+    test('a mark sits in the cell the status\'s symbol will take, in the label\'s colour', () => {
         const svg = show(DRY);
         svg.querySelector('g[id="release:s"] text')!.setAttribute('fill', 'currentColor');
-        markUnderway(svg, ['release:s']);
-        const mark = svg.querySelector('text.jpipe-underway')!;
-        const decided = parse(fixture('release-mixed.svg')).getElementById('release:s')!.querySelector('text')!;
-        expect([mark.getAttribute('x'), mark.getAttribute('y'), mark.getAttribute('font-size')])
-            .toEqual([decided.getAttribute('x'), decided.getAttribute('y'), decided.getAttribute('font-size')]);
-        expect(mark.getAttribute('fill')).toBe('currentColor');
+        markProgress(svg, { underway: ['release:s'], pending: ['release:e1'] });
+        // The runner's symbol, once decided: where it starts, at 20 points, beside the label.
+        const decided = parse(fixture('release-mixed.svg')).getElementById('release:s')!.querySelectorAll('text');
+        const [symbol, label] = [decided[0], decided[1]].map(t => Number.parseFloat(t.getAttribute('x')!));
+        const circle = svg.querySelector('g.jpipe-underway circle')!;
+        const [cx, r] = ['cx', 'r'].map(a => Number.parseFloat(circle.getAttribute(a)!));
+        expect(cx - r).toBeGreaterThanOrEqual(symbol - 2);
+        expect(cx + r).toBeLessThanOrEqual(label - 2);
+        expect(circle.getAttribute('stroke')).toBe('currentColor');
+        // A label with no colour of its own is black, SVG's default.
+        expect(svg.querySelector('g.jpipe-pending circle')!.getAttribute('stroke')).toBe('black');
     });
 });

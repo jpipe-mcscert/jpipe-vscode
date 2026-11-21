@@ -1,7 +1,7 @@
 import type { HostToRunPanel, Progress, RunKind, RunPanelState, RunPanelToHost, Tone, VerdictCount } from '../shared/run-protocol.js';
 import { DiagramCanvas } from './canvas.js';
 import { applyFocus, downstream, elementOf, nameOf, nodeNamed } from './flow.js';
-import { colourRun, markUnderway } from './run-colours.js';
+import { colourRun, markProgress } from './run-colours.js';
 import type { Box } from './viewbox.js';
 
 /**
@@ -245,11 +245,14 @@ export class RunPage {
         this.applyMarks();
     }
 
-    /** What the page draws over the drawing on show: the steps under way, and the selection. */
+    /**
+     * What the page draws over the drawing on show: where a run under way is, on its own drawing
+     * (a spinner on what runs, a clock on what waits, as in Results), and the selection.
+     */
     private applyMarks(): void {
         const svg = this.canvas.svg;
-        const state = this.state;
-        if (svg && state) markUnderway(svg, state.phase === 'running' ? state.progress?.underway ?? [] : []);
+        const progress = this.state?.phase === 'running' && this.state.progress?.statuses ? this.state.progress : null;
+        if (svg) markProgress(svg, { underway: progress?.underway ?? [], pending: progress?.pending ?? [] });
         this.applySelection(false);
     }
 

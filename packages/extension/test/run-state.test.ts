@@ -183,7 +183,7 @@ describe('a run under way whose events are read', () => {
     test('the verdict bar says how far it is, and which step runs', () => {
         expect(panelState(running, 3).progress).toEqual({
             decided: '1 of 3 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2',
-            statuses: null, underway: ['release:e2']
+            statuses: null, underway: ['release:e2'], pending: ['release:c']
         });
     });
 

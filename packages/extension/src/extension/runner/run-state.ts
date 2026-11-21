@@ -118,7 +118,8 @@ export function progressOf(progress: RunProgress, labels: Labels = new Map(), li
             produced: e.produced.map(([name]) => name),
             unreachable: e.artifacts.filter(a => !a.reachable).map(a => a.declared)
         }]) : null,
-        underway: running
+        underway: running,
+        pending: progress.elements.filter(id => !progress.decided.has(id) && !progress.running.has(id))
     };
 }
 

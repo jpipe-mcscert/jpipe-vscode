@@ -347,6 +347,8 @@ describe('a run under way, from its events', () => {
         });
         expect(rows[1]).toMatchObject({ expanded: true, children: [{ id: 'element/release:e2', label: 'release:e2', icon: 'running' }] });
         expect(rows[2].expanded).toBe(false);
+        // Waiting for its turn, which a report's "Not run" is not.
+        expect(rows[2].children.map(r => r.icon)).toEqual(['waiting', 'waiting']);
         expect(rows[2].children.map(r => r.id)).toEqual(['element/release:s', 'element/release:c']);
     });
 

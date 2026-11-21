@@ -29,6 +29,8 @@ const ICONS: Readonly<Record<RowIcon, [codicon: string, colour?: string]>> = {
     'supports': ['arrow-up'],
     'blocked': ['circle-slash'],
     'running': ['loading~spin'],
+    // Not `not-run`'s circle: waiting for its turn is not having been left out of a run.
+    'waiting': ['clock'],
     'stopped': ['debug-stop']
 };
 

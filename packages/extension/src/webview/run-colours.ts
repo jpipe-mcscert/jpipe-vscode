@@ -50,12 +50,21 @@ const SYMBOL_OFFSET = { x: -22, y: 2.25 };
 /** The mark of a file or a variable that is a problem, and where it sits from the label: in a 22-point cell. */
 const WARNING = { glyph: '⚠', size: '14.00', x: -17.13, y: 2.25 };
 /**
- * The mark of an element whose step runs: a symbol, in the cell its status's symbol will take, so
- * that it reads without colour, as the statuses do. Not the runner's: it never draws a run under
- * way.
+ * The marks of a run under way, each a symbol drawn in the cell its element's status will take, so
+ * that they read without colour, as the statuses do. They are the Results view's icons for the
+ * same rows, drawn as shapes since the drawing has no icon font: a circle with a gap, which spins,
+ * for an element whose step runs (`loading~spin`), and a clock for one waiting for its turn
+ * (`clock`). Not the runner's: it never draws a run under way.
  */
-const UNDERWAY = { glyph: '⟳', size: SYMBOL_SIZE, ...SYMBOL_OFFSET };
-const UNDERWAY_CLASS = 'jpipe-underway';
+const MARKS = { underway: 'jpipe-underway', pending: 'jpipe-pending' } as const;
+/**
+ * The middle of a status's cell, from its label: the cell, 28 points wide, ends 2 points before
+ * the label's leftmost line, and is centred on the label's lines, whose middle lies about 4.5
+ * points above the middle of their baselines.
+ */
+const CELL_CENTRE = { x: -16, y: -4.5 };
+/** How big a mark is drawn, in points: about the size of a status's symbol. */
+const MARK_RADIUS = 7;
 
 const SHAPES = 'polygon, polyline, path, ellipse';
 
@@ -217,23 +226,60 @@ function paint(shape: Element, attributes: Readonly<Record<string, string>>): vo
     for (const [name, value] of Object.entries(attributes)) shape.setAttribute(name, value);
 }
 
+/** Where a run under way is: the elements whose step runs, and those waiting for their turn. */
+export interface RunMarks {
+    underway: readonly string[];
+    pending: readonly string[];
+}
+
 /**
- * Mark the elements whose step runs with ⟳ in the drawing on show, and unmark the others: a mark of
- * the page's own, not the runner's, so it is set on the live drawing, after the canvas has
- * installed it and adapted it to the theme. It takes the label's colour, as a status's symbol does.
+ * Mark the elements of a run under way in the drawing on show, running and waiting, and unmark
+ * the others: marks of the page's own, not the runner's, so they are set on the live drawing,
+ * after the canvas has installed it and adapted it to the theme. Each takes the label's colour, as
+ * a status's symbol does. A decided element has its status's symbol instead, in the drawing itself.
  */
-export function markUnderway(svg: SVGSVGElement, ids: readonly string[]): void {
-    const underway = new Set(ids);
+export function markProgress(svg: SVGSVGElement, marks: RunMarks): void {
+    const kinds = new Map<string, keyof typeof MARKS>([
+        ...marks.pending.map(id => [id, 'pending'] as const),
+        ...marks.underway.map(id => [id, 'underway'] as const)
+    ]);
+    const selector = Object.values(MARKS).map(className => `g.${className}`).join(', ');
     for (const node of groups(svg, 'node')) {
-        const marked = node.querySelector(`text.${UNDERWAY_CLASS}`);
-        if (!underway.has(nameOf(node))) {
-            marked?.remove();
-            continue;
-        }
+        const wanted = kinds.get(nameOf(node));
+        const marked = node.querySelector(selector);
+        if (marked && (!wanted || marked.getAttribute('class') !== MARKS[wanted])) marked.remove();
+        if (!wanted || (marked?.isConnected ?? false)) continue;
         const labels = Array.from(node.querySelectorAll('text'));
-        if (marked || labels.length === 0) continue;
-        const symbol = symbolFor(svg.ownerDocument, labels, { ...UNDERWAY, fill: labels[0].getAttribute('fill') });
-        symbol.setAttribute('class', UNDERWAY_CLASS);
-        labels[0].before(symbol);
+        if (labels.length > 0) labels[0].before(markFor(svg.ownerDocument, labels, wanted));
     }
+}
+
+/** A mark, drawn in the middle of the status's cell, in the label's colour (black, SVG's default). */
+function markFor(doc: Document, labels: readonly Element[], kind: keyof typeof MARKS): Element {
+    const xs = labels.map(label => Number.parseFloat(label.getAttribute('x') ?? '0'));
+    const ys = labels.map(label => Number.parseFloat(label.getAttribute('y') ?? '0'));
+    const cx = Math.min(...xs) + CELL_CENTRE.x;
+    const cy = ys.reduce((sum, y) => sum + y, 0) / ys.length + CELL_CENTRE.y;
+    const colour = labels[0].getAttribute('fill') ?? 'black';
+    const shape = (tag: string, attributes: Readonly<Record<string, string>>): Element => {
+        const el = doc.createElementNS(SVG, tag);
+        paint(el, { fill: 'none', stroke: colour, 'stroke-linecap': 'round', ...attributes });
+        return el;
+    };
+    const group = doc.createElementNS(SVG, 'g');
+    group.setAttribute('class', MARKS[kind]);
+    const r = MARK_RADIUS;
+    const circle = { cx: points(cx), cy: points(cy), r: String(r) };
+    if (kind === 'underway') {
+        // Three quarters of a circle, as the Results view's spinner.
+        const quarter = (Math.PI * r) / 2;
+        group.append(shape('circle', { ...circle, 'stroke-width': '2', 'stroke-dasharray': `${points(3 * quarter)} ${points(quarter)}` }));
+    } else {
+        // A clock face, its hands at three o'clock.
+        group.append(
+            shape('circle', { ...circle, 'stroke-width': '1.5' }),
+            shape('path', { d: `M${points(cx)},${points(cy - r * 0.6)} V${points(cy)} H${points(cx + r * 0.5)}`, 'stroke-width': '1.5' })
+        );
+    }
+    return group;
 }

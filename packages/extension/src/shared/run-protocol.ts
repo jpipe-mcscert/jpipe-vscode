@@ -71,8 +71,10 @@ export interface Progress {
      * drawn before its first step; null otherwise, and the drawing stays under the busy overlay.
      */
     statuses: LiveStatus[] | null;
-    /** The ids of the elements whose step runs, to mark in the drawing. */
+    /** The ids of the elements whose step runs, to mark with a spinner in the drawing, as in Results. */
     underway: string[];
+    /** The ids of the elements neither decided nor running yet, to mark with a clock in the drawing, as in Results. */
+    pending: string[];
 }
 
 /** Everything the page shows. */

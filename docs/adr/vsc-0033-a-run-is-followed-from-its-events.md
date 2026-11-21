@@ -67,9 +67,10 @@ replaces what they said when the run ends.
   once, since the runner deletes it when the run ends, and replaces the busy overlay: the run is
   watched, not waited for. Each element decided is drawn over it as the runner draws its status —
   its fill, border and symbol, its tooltip, the support edges it starts, the variables it did not
-  produce and the files it could not reach — and each step under way is marked ⟳, in the cell its
-  status's symbol will take, turning unless the reader asks for less motion. Every mark is a
-  symbol: what a run says never rests on colour alone. When the run ends, the runner's own drawing replaces it, in the
+  produce and the files it could not reach. Each element not decided yet is marked in the cell its
+  status's symbol will take, with the Results view's icon for its row: a spinning circle with a gap
+  while its step runs, still for whoever asks for less motion, and a clock while it waits. Every
+  mark is a shape: what a run says never rests on colour alone. When the run ends, the runner's own drawing replaces it, in the
   same framing; it puts every node where the coloured one had it. A drawing gone before it could be
   read, in a run that short, leaves the run under the busy overlay until its end, as before.
 - **The report replaces it** when the run ends, and is the only thing read for the verdict, the
@@ -107,12 +108,14 @@ run's drawing with an execution's statuses gives that execution's drawing.
   to a dark theme from its colours: a label on an unfilled node turns light. Colouring the drawing
   on show, after that, would leave a skipped node's light label on its light grey fill. Coloured
   before the canvas installs it, the drawing is adapted, and copied into the minimap, as the
-  runner's final one is. The ⟳ of a step under way is the page's own mark, set on the drawing on
-  show, in its label's colour.
-- **⟳, not an outline, for a step under way.** A coloured or dashed outline would say it by colour
-  and line alone, and a dashed border already means skipped in the runner's notation. A symbol in
-  the cell a status will fill reads without colour, as ✔, ✘ and ◌ do, and one of them replaces it
-  when the element is decided.
+  runner's final one is. The marks of elements not decided yet are the page's own, set on the
+  drawing on show, in their labels' colour.
+- **A mark in the symbol's cell, not an outline, for an element not decided yet.** A coloured or
+  dashed outline would say it by colour and line alone, and a dashed border already means skipped
+  in the runner's notation. A shape in the cell a status will fill reads without colour, as ✔, ✘
+  and ◌ do, and one of them replaces it when the element is decided. The shapes are the Results
+  view's icons, drawn, since the drawing has no icon font: one notation for a run under way,
+  wherever it is shown.
 - **The runner's rules, restated, rather than a drawing per decision.** Asking the runner to draw
   again at each decision would cost a Graphviz layout per element, in the run's own time. Its
   rules are few and its layout fixed, so the page draws a status as it would, and a test holds the
