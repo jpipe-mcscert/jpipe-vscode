@@ -135,19 +135,17 @@
 #container.dragging g.node { cursor: grabbing; }
 
 /*
- * A step under way: its outline marches, in the editor's focus colour, until its element is
- * decided and drawn in its status's colours. Still for whoever asks for less motion: a thick
- * dashed outline says the same.
+ * A step under way is marked ⟳, in the cell its status's symbol will take: the symbol says it,
+ * whatever the colours. It turns, unless the reader asks for less motion.
  */
-#svg-wrapper g.node.jpipe-underway :is(polygon, ellipse, path) {
-    stroke: var(--vscode-focusBorder);
-    stroke-width: 3;
-    stroke-dasharray: 6 4;
-    animation: jpipe-underway 0.8s linear infinite;
+#svg-wrapper text.jpipe-underway {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: jpipe-underway 1.2s linear infinite;
 }
 
-@keyframes jpipe-underway { to { stroke-dashoffset: -10; } }
+@keyframes jpipe-underway { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
-    #svg-wrapper g.node.jpipe-underway :is(polygon, ellipse, path) { animation: none; }
+    #svg-wrapper text.jpipe-underway { animation: none; }
 }

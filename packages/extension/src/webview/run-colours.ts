@@ -49,6 +49,13 @@ const SYMBOL_SIZE = '20.00';
 const SYMBOL_OFFSET = { x: -22, y: 2.25 };
 /** The mark of a file or a variable that is a problem, and where it sits from the label: in a 22-point cell. */
 const WARNING = { glyph: '⚠', size: '14.00', x: -17.13, y: 2.25 };
+/**
+ * The mark of an element whose step runs: a symbol, in the cell its status's symbol will take, so
+ * that it reads without colour, as the statuses do. Not the runner's: it never draws a run under
+ * way.
+ */
+const UNDERWAY = { glyph: '⟳', size: SYMBOL_SIZE, ...SYMBOL_OFFSET };
+const UNDERWAY_CLASS = 'jpipe-underway';
 
 const SHAPES = 'polygon, polyline, path, ellipse';
 
@@ -211,12 +218,22 @@ function paint(shape: Element, attributes: Readonly<Record<string, string>>): vo
 }
 
 /**
- * Mark the nodes of the elements whose step runs, in the drawing on show: a mark of the page's
- * own, not the runner's, so it is set on the live drawing, after the canvas has installed it.
+ * Mark the elements whose step runs with ⟳ in the drawing on show, and unmark the others: a mark of
+ * the page's own, not the runner's, so it is set on the live drawing, after the canvas has
+ * installed it and adapted it to the theme. It takes the label's colour, as a status's symbol does.
  */
 export function markUnderway(svg: SVGSVGElement, ids: readonly string[]): void {
     const underway = new Set(ids);
     for (const node of groups(svg, 'node')) {
-        node.classList.toggle('jpipe-underway', underway.has(nameOf(node)));
+        const marked = node.querySelector(`text.${UNDERWAY_CLASS}`);
+        if (!underway.has(nameOf(node))) {
+            marked?.remove();
+            continue;
+        }
+        const labels = Array.from(node.querySelectorAll('text'));
+        if (marked || labels.length === 0) continue;
+        const symbol = symbolFor(svg.ownerDocument, labels, { ...UNDERWAY, fill: labels[0].getAttribute('fill') });
+        symbol.setAttribute('class', UNDERWAY_CLASS);
+        labels[0].before(symbol);
     }
 }

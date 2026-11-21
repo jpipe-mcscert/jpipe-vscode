@@ -206,10 +206,10 @@ describe('a run under way', () => {
         const node = (id: string) => document.querySelector(`#svg-wrapper g[id="${id}"]`)!;
         expect(node('release:e').querySelector('polygon')!.getAttribute('fill')).toBe('#d55e00');
         expect(node('release:e').textContent).toContain('✘');
-        expect(node('release:c').classList.contains('jpipe-underway')).toBe(true);
+        expect(node('release:c').querySelector('.jpipe-underway')?.textContent).toBe('⟳');
         // The run's end: the runner's drawing, with nothing of the page's over it.
         page.apply(state({ revision: 2 }));
-        expect(node('release:c').classList.contains('jpipe-underway')).toBe(false);
+        expect(node('release:c').querySelector('.jpipe-underway')).toBeNull();
         expect(node('release:e').textContent).not.toContain('✘');
     });
 
@@ -218,7 +218,7 @@ describe('a run under way', () => {
         const progress = { decided: '0 of 2 decided', counts: [], running: 'release:e', statuses: [], underway: ['release:e'] };
         page.apply(state({ revision: 1, phase: 'running', verdict: null, progress }));
         page.apply(state({ revision: 2, phase: 'running', verdict: null, progress: { ...progress, running: 'release:c', underway: ['release:c'] } }));
-        const marked = Array.from(document.querySelectorAll('#svg-wrapper .jpipe-underway')).map(n => n.id);
+        const marked = Array.from(document.querySelectorAll('#svg-wrapper .jpipe-underway')).map(n => n.closest('g.node')!.id);
         expect(marked).toEqual(['release:c']);
     });
 

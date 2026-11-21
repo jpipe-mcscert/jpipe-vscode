@@ -123,13 +123,31 @@ describe('a run\'s drawing, coloured as its elements are decided', () => {
 
 describe('the steps under way', () => {
 
-    test('are marked in the drawing on show, and unmarked once decided', () => {
-        document.body.innerHTML = DRY.slice(DRY.indexOf('<svg'));
-        const svg = document.querySelector('svg')!;
+    const show = (svg: string): SVGSVGElement => {
+        document.body.innerHTML = svg.slice(svg.indexOf('<svg'));
+        return document.querySelector('svg')!;
+    };
+    const marks = (svg: SVGSVGElement) => Array.from(svg.querySelectorAll('text.jpipe-underway'))
+        .map(mark => [mark.closest('g.node')!.id, mark.textContent]);
+
+    test('are marked ⟳, a symbol rather than a colour, and unmarked once decided', () => {
+        const svg = show(DRY);
         markUnderway(svg, ['release:e1', 'release:e2']);
-        const marked = () => Array.from(svg.querySelectorAll('.jpipe-underway')).map(n => n.id);
-        expect(marked()).toEqual(['release:e1', 'release:e2']);
+        expect(marks(svg)).toEqual([['release:e1', '⟳'], ['release:e2', '⟳']]);
         markUnderway(svg, ['release:e2']);
-        expect(marked()).toEqual(['release:e2']);
+        expect(marks(svg)).toEqual([['release:e2', '⟳']]);
+        markUnderway(svg, ['release:e2']);
+        expect(marks(svg)).toHaveLength(1);
+    });
+
+    test('the mark sits where the status\'s symbol will, in the label\'s colour', () => {
+        const svg = show(DRY);
+        svg.querySelector('g[id="release:s"] text')!.setAttribute('fill', 'currentColor');
+        markUnderway(svg, ['release:s']);
+        const mark = svg.querySelector('text.jpipe-underway')!;
+        const decided = parse(fixture('release-mixed.svg')).getElementById('release:s')!.querySelector('text')!;
+        expect([mark.getAttribute('x'), mark.getAttribute('y'), mark.getAttribute('font-size')])
+            .toEqual([decided.getAttribute('x'), decided.getAttribute('y'), decided.getAttribute('font-size')]);
+        expect(mark.getAttribute('fill')).toBe('currentColor');
     });
 });
