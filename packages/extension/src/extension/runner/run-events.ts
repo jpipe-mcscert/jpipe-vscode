@@ -52,48 +52,58 @@ export interface StreamProblem {
 const texts = (value: unknown): string[] => Array.isArray(value) ? value.filter(v => typeof v === 'string') : [];
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
+/** A stream that starts: every element, and nothing decided; or why it is not read. */
+function startedRun(event: Record<string, unknown>): RunProgress | StreamProblem {
+    const version = typeof event.schema_version === 'string' ? event.schema_version : '';
+    if (version.split('.')[0] !== MAJOR) {
+        return { problem: `jpipe-runner wrote its events in version ${version || '(none)'}, and this extension reads version ${MAJOR}` };
+    }
+    return { elements: texts(event.elements), running: new Map(), decided: new Map(), validation: null, ended: false };
+}
+
+/** `progress` once an element is decided, `at` milliseconds into the stream. */
+function decidedElement(progress: RunProgress, event: Record<string, unknown>, at: number): RunProgress {
+    if (!isObject(event.element)) return progress;
+    const element = parseElement(event.element);
+    const started = progress.running.get(element.id);
+    const running = new Map(progress.running);
+    running.delete(element.id);
+    const decided = new Map(progress.decided).set(element.id, {
+        element,
+        diagnostics: parseDiagnostics(event.diagnostics),
+        durationMs: started === undefined ? null : Math.max(0, at - started)
+    });
+    return { ...progress, running, decided };
+}
+
+/** The event on `line`, if it is a JSON object. */
+function eventOn(line: string): Record<string, unknown> | undefined {
+    try {
+        const event: unknown = JSON.parse(line);
+        return isObject(event) ? event : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 /**
  * The progress once the event on `line` is read: `progress` itself when the line changes nothing
  * (an event or a line this does not read, or any event before `run.started`), and a problem when
  * the stream is in a version this does not read.
  */
 export function nextProgress(progress: RunProgress | null, line: string): RunProgress | null | StreamProblem {
-    let event: unknown;
-    try {
-        event = JSON.parse(line);
-    } catch {
-        return progress;
-    }
-    if (!isObject(event)) return progress;
-    if (event.event === 'run.started') {
-        const version = typeof event.schema_version === 'string' ? event.schema_version : '';
-        if (version.split('.')[0] !== MAJOR) {
-            return { problem: `jpipe-runner wrote its events in version ${version || '(none)'}, and this extension reads version ${MAJOR}` };
-        }
-        return { elements: texts(event.elements), running: new Map(), decided: new Map(), validation: null, ended: false };
-    }
+    const event = eventOn(line);
+    if (!event) return progress;
+    if (event.event === 'run.started') return startedRun(event);
     if (!progress) return progress;
     const at = typeof event.elapsed_ms === 'number' ? event.elapsed_ms : 0;
     switch (event.event) {
         case 'validation.ended':
             return { ...progress, validation: { passed: event.passed === true, diagnostics: parseDiagnostics(event.diagnostics) } };
-        case 'element.started': {
-            if (typeof event.id !== 'string') return progress;
-            return { ...progress, running: new Map(progress.running).set(event.id, at) };
-        }
-        case 'element.decided': {
-            if (!isObject(event.element)) return progress;
-            const element = parseElement(event.element);
-            const started = progress.running.get(element.id);
-            const running = new Map(progress.running);
-            running.delete(element.id);
-            const decided = new Map(progress.decided).set(element.id, {
-                element,
-                diagnostics: parseDiagnostics(event.diagnostics),
-                durationMs: started === undefined ? null : Math.max(0, at - started)
-            });
-            return { ...progress, running, decided };
-        }
+        case 'element.started':
+            return typeof event.id === 'string' ? { ...progress, running: new Map(progress.running).set(event.id, at) } : progress;
+        case 'element.decided':
+            return decidedElement(progress, event, at);
         case 'run.ended':
             return { ...progress, ended: true };
         default:
