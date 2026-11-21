@@ -38,6 +38,12 @@ export interface RunProgress {
     running: ReadonlyMap<string, number>;
     /** The elements decided, by id. */
     decided: ReadonlyMap<string, DecidedElement>;
+    /**
+     * The sources observed so far, as the elements' `sources` name them (`source.observed`), each
+     * with whether it was reached: false as soon as one element could not reach it. They are
+     * observed before the step that observes them is called, so before its element is decided.
+     */
+    observed: ReadonlyMap<string, boolean>;
     /** What validation reported, once it is over. */
     validation: { passed: boolean; diagnostics: ReportDiagnostic[] } | null;
     /**
@@ -64,7 +70,10 @@ function startedRun(event: Record<string, unknown>): RunProgress | StreamProblem
     if (version.split('.')[0] !== MAJOR) {
         return { problem: `jpipe-runner wrote its events in version ${version || '(none)'}, and this extension reads version ${MAJOR}` };
     }
-    return { elements: texts(event.elements), running: new Map(), decided: new Map(), validation: null, preview: null, ended: false };
+    return {
+        elements: texts(event.elements), running: new Map(), decided: new Map(), observed: new Map(),
+        validation: null, preview: null, ended: false
+    };
 }
 
 /** `progress` once an element is decided, `at` milliseconds into the stream. */
@@ -80,6 +89,13 @@ function decidedElement(progress: RunProgress, event: Record<string, unknown>, a
         durationMs: started === undefined ? null : Math.max(0, at - started)
     });
     return { ...progress, running, decided };
+}
+
+/** `progress` once a source is observed. */
+function observedSource(progress: RunProgress, event: Record<string, unknown>): RunProgress {
+    if (typeof event.source !== 'string' || !event.source || typeof event.reachable !== 'boolean') return progress;
+    const reached = (progress.observed.get(event.source) ?? true) && event.reachable;
+    return { ...progress, observed: new Map(progress.observed).set(event.source, reached) };
 }
 
 /** The event on `line`, if it is a JSON object. */
@@ -110,6 +126,8 @@ export function nextProgress(progress: RunProgress | null, line: string): RunPro
             return typeof event.path === 'string' && event.path ? { ...progress, preview: event.path } : progress;
         case 'element.started':
             return typeof event.id === 'string' ? { ...progress, running: new Map(progress.running).set(event.id, at) } : progress;
+        case 'source.observed':
+            return observedSource(progress, event);
         case 'element.decided':
             return decidedElement(progress, event, at);
         case 'run.ended':

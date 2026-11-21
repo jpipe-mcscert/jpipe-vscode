@@ -124,6 +124,23 @@ describe('a run that ended', () => {
         expect(persist).toHaveBeenCalled();
     });
 
+    test('a new run clears the drawing, and keeps the framing for the drawing it makes of the same justification', () => {
+        const page = newPage();
+        page.apply(state());
+        button('zoom-in').click();
+        const view = (): number[] => byId('svg-wrapper').querySelector('svg')!.getAttribute('viewBox')!.split(' ').map(Number);
+        const sameView = (a: number[], b: number[]): boolean => a.every((n, i) => Math.abs(n - b[i]) < 1e-6);
+        const framed = view();
+        page.apply(state({ revision: 2, phase: 'running', verdict: null, dataflow: null }));
+        expect(document.body.dataset.mode).toBe('empty');
+        expect(byId('svg-wrapper').querySelector('svg')).toBeNull();
+        page.apply(state({ revision: 3, dataflow: svg('release (dataflow)', 'release:e', 'release:c') }));
+        expect(sameView(view(), framed)).toBe(true);
+        // Another justification opens on its own.
+        page.apply(state({ revision: 4, name: 'other', dataflow: svg('other (dataflow)', 'other:e') }));
+        expect(sameView(view(), framed)).toBe(false);
+    });
+
     test('with no drawing, says why', () => {
         newPage().apply(state({ dataflow: null, drawingMissing: 'Drawing needs Graphviz.' }));
         expect(document.body.dataset.mode).toBe('empty');
@@ -143,7 +160,7 @@ describe('a run that ended', () => {
         const failed = { id: 'release:e', status: 'fail' as const, reason: null, rootCause: false, produced: [], unreachable: [] };
         page.apply(state({
             revision: 1, phase: 'stopped', verdict: null, notice: { text: 'release was stopped.', action: null },
-            progress: { decided: '1 of 2 decided', counts: [], running: null, statuses: [failed], underway: [], pending: [] }
+            progress: { decided: '1 of 2 decided', counts: [], running: null, statuses: [failed], underway: [], pending: [], observed: [] }
         }));
         const node = document.querySelector('#svg-wrapper g[id="release:e"]')!;
         expect(node.textContent).toContain('✘');
@@ -182,7 +199,7 @@ describe('a run under way', () => {
     test('says how far it is, each count opening its group, and which step runs', () => {
         newPage().apply(state({
             phase: 'running', verdict: null,
-            progress: { decided: '2 of 4 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2', statuses: null, underway: [], pending: [] }
+            progress: { decided: '2 of 4 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2', statuses: null, underway: [], pending: [], observed: [] }
         }));
         expect(byId('verdict-label').textContent).toBe('release, under way');
         expect(byId('verdict-counts').textContent).toBe('2 of 4 decided1 failed');
@@ -193,7 +210,7 @@ describe('a run under way', () => {
 
     test('a count is not rebuilt by a state that leaves it as it was, so a click on it is not lost', () => {
         const page = newPage();
-        const progress = { decided: '1 of 4 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'e2', statuses: null, underway: [], pending: [] };
+        const progress = { decided: '1 of 4 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'e2', statuses: null, underway: [], pending: [], observed: [] };
         page.apply(state({ revision: 1, phase: 'running', verdict: null, progress }));
         const count = byId('verdict-counts').querySelector('button')!;
         page.apply(state({ revision: 2, phase: 'running', verdict: null, progress: { ...progress, running: 'e3' } }));
@@ -215,7 +232,7 @@ describe('a run under way', () => {
         const failed = { id: 'release:e', status: 'fail' as const, reason: 'two tests failed', rootCause: false, produced: [], unreachable: [] };
         page.apply(state({
             revision: 1, phase: 'running', verdict: null,
-            progress: { decided: '1 of 2 decided', counts: [], running: 'release:c', statuses: [failed], underway: ['release:c'], pending: [] }
+            progress: { decided: '1 of 2 decided', counts: [], running: 'release:c', statuses: [failed], underway: ['release:c'], pending: [], observed: [] }
         }));
         expect(document.body.classList.contains('busy')).toBe(false);
         const node = (id: string) => document.querySelector(`#svg-wrapper g[id="${id}"]`)!;
@@ -230,16 +247,16 @@ describe('a run under way', () => {
 
     test('a step marked under way stays marked when a state leaves the drawing as it was', () => {
         const page = newPage();
-        const progress = { decided: '0 of 2 decided', counts: [], running: 'release:e', statuses: [], underway: ['release:e'], pending: [] };
+        const progress = { decided: '0 of 2 decided', counts: [], running: 'release:e', statuses: [], underway: ['release:e'], pending: [], observed: [] };
         page.apply(state({ revision: 1, phase: 'running', verdict: null, progress }));
-        page.apply(state({ revision: 2, phase: 'running', verdict: null, progress: { ...progress, running: 'release:c', underway: ['release:c'], pending: [] } }));
+        page.apply(state({ revision: 2, phase: 'running', verdict: null, progress: { ...progress, running: 'release:c', underway: ['release:c'], pending: [], observed: [] } }));
         const marked = Array.from(document.querySelectorAll('#svg-wrapper .jpipe-underway')).map(n => n.closest('g.node')!.id);
         expect(marked).toEqual(['release:c']);
     });
 
     test('marks what waits with a clock on its own drawing, and nothing on another run\'s', () => {
         const page = newPage();
-        const waiting = { decided: '0 of 2 decided', counts: [], running: null, statuses: [], underway: [], pending: ['release:e', 'release:c'] };
+        const waiting = { decided: '0 of 2 decided', counts: [], running: null, statuses: [], underway: [], pending: ['release:e', 'release:c'], observed: [] };
         page.apply(state({ revision: 1, phase: 'running', verdict: null, progress: waiting }));
         const marks = () => Array.from(document.querySelectorAll('#svg-wrapper g.jpipe-pending')).map(m => m.closest('g.node')!.id);
         expect(marks()).toEqual(['release:e', 'release:c']);
@@ -247,17 +264,17 @@ describe('a run under way', () => {
         expect(marks()).toEqual([]);
     });
 
-    test('with another run\'s drawing, waits under the busy overlay', () => {
+    test('without its own drawing, waits under the busy overlay', () => {
         newPage().apply(state({
             phase: 'running', verdict: null,
-            progress: { decided: '0 of 2 decided', counts: [], running: null, statuses: null, underway: [], pending: [] }
+            progress: { decided: '0 of 2 decided', counts: [], running: null, statuses: null, underway: [], pending: [], observed: [] }
         }));
         expect(document.body.classList.contains('busy')).toBe(true);
     });
 
     test('between two steps, says none runs; once ended, the verdict replaces it', () => {
         const page = newPage();
-        page.apply(state({ revision: 1, phase: 'running', verdict: null, progress: { decided: '1 of 4 decided', counts: [], running: null, statuses: null, underway: [], pending: [] } }));
+        page.apply(state({ revision: 1, phase: 'running', verdict: null, progress: { decided: '1 of 4 decided', counts: [], running: null, statuses: null, underway: [], pending: [], observed: [] } }));
         expect(byId('verdict-when').textContent).toBe('');
         page.apply(state({ revision: 2 }));
         expect(byId('verdict-counts').textContent).toBe('1 passed1 failed');

@@ -205,8 +205,8 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
     const { draw } = asked;
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    // A launch again starts from nothing: what an earlier one's events said is not this one's.
-    deps.session.update(token, { progress: null, live: false });
+    // A launch again starts from nothing: what an earlier one's events said, or drew, is not this one's.
+    deps.session.update(token, { progress: null, live: false, dataflow: null });
     const eventsFor = (release: string | undefined): string | undefined =>
         asked.stream && !check && streamsEvents(release) ? files.events.fsPath : undefined;
     const argsFor = (release: string | undefined): string[] => withReport(

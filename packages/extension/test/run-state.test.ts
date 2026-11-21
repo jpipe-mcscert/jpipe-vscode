@@ -24,7 +24,7 @@ const report = (over: Record<string, unknown>): RunReport => {
 const LIBRARIES = [{ path: '/w/steps.py', display: 'steps.py' }];
 
 const done = (over: Partial<ShownRun> = {}): ShownRun => ({
-    ...startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined),
+    ...startedRun('release', 'file:///w/release.jd', false, LIBRARIES),
     phase: 'done',
     report: report({ elements: [{ id: 'release:e', status: 'pass' }, { id: 'release:c', status: 'pass' }] }),
     dataflow: '<svg>dataflow</svg>',
@@ -35,16 +35,13 @@ const done = (over: Partial<ShownRun> = {}): ShownRun => ({
 describe('a run starting', () => {
 
     test('is under way, with nothing to say yet', () => {
-        const run = startedRun('release', 'file:///w/release.jd', true, LIBRARIES, undefined);
+        const run = startedRun('release', 'file:///w/release.jd', true, LIBRARIES);
         expect(run).toMatchObject({ phase: 'running', check: true, report: null, notice: null, outOfDate: null, dataflow: null });
     });
 
-    test('keeps the drawing of the same justification under it, and drops another\'s', () => {
-        const previous = done();
-        expect(startedRun('release', 'file:///w/release.jd', false, LIBRARIES, previous).dataflow).toBe(previous.dataflow);
-        expect(startedRun('other', 'file:///w/release.jd', false, LIBRARIES, previous).dataflow).toBeNull();
-        // Names are unique only within a file.
-        expect(startedRun('release', 'file:///w/elsewhere.jd', false, LIBRARIES, previous).dataflow).toBeNull();
+    test('starts from an empty panel: nothing of the previous run stays, not even its drawing', () => {
+        const run = startedRun('release', 'file:///w/release.jd', false, LIBRARIES);
+        expect(run).toMatchObject({ dataflow: null, live: false, progress: null, report: null, drawingMissing: null });
     });
 });
 
@@ -70,7 +67,7 @@ describe('the page\'s state', () => {
     });
 
     test('has no verdict while the run is under way, or when it ended without a report', () => {
-        const running = startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined);
+        const running = startedRun('release', 'file:///w/release.jd', false, LIBRARIES);
         expect(panelState(running, 1)).toMatchObject({ verdict: null, elements: [], phase: 'running' });
         const notice = { text: 'No step library is checked.', action: { label: 'Show Libraries', id: 'showLibraries' as const } };
         expect(panelState({ ...running, phase: 'blocked', notice }, 2)).toMatchObject({ verdict: null, notice });
@@ -107,20 +104,20 @@ describe('going out of date', () => {
     });
 
     test('a change made while the run is under way counts: it is not what the run read', () => {
-        const running = startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined);
+        const running = startedRun('release', 'file:///w/release.jd', false, LIBRARIES);
         expect(outOfDateReason(running, saved('/w/release.jd', true))).toBe('release.jd changed since this execution.');
         expect(outOfDateReason(running, { kind: 'checked', paths: [] })).toBeDefined();
     });
 
     test('a run that ended without a report has nothing to be out of date', () => {
-        const running = startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined);
+        const running = startedRun('release', 'file:///w/release.jd', false, LIBRARIES);
         expect(outOfDateReason({ ...running, phase: 'blocked' }, saved('/w/release.jd', true))).toBeUndefined();
         expect(outOfDateReason({ ...running, phase: 'stopped' }, saved('/w/release.jd', true))).toBeUndefined();
     });
 });
 
 describe('what Results lists while a run has no report', () => {
-    const running = startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined);
+    const running = startedRun('release', 'file:///w/release.jd', false, LIBRARIES);
 
     test('a run under way, as one row', () => {
         expect(statusRow(running)).toMatchObject({ id: 'status', label: 'Executing release…', icon: 'running' });
@@ -178,12 +175,12 @@ describe('a run under way whose events are read', () => {
         { event: 'element.decided', element: { id: 'release:e1', status: 'fail' }, diagnostics: [] },
         { event: 'element.started', id: 'release:e2' }
     );
-    const running: ShownRun = { ...startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined), progress };
+    const running: ShownRun = { ...startedRun('release', 'file:///w/release.jd', false, LIBRARIES), progress };
 
     test('the verdict bar says how far it is, and which step runs', () => {
         expect(panelState(running, 3).progress).toEqual({
             decided: '1 of 3 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2',
-            statuses: null, underway: ['release:e2'], pending: ['release:c']
+            statuses: null, observed: [], underway: ['release:e2'], pending: ['release:c']
         });
     });
 
@@ -196,7 +193,7 @@ describe('a run under way whose events are read', () => {
             }, diagnostics: [] },
             { event: 'element.decided', element: { id: 'j:e2', status: 'skip', reason: 'later', produced: { ok: { value: true } } }, diagnostics: [] },
             { event: 'element.decided', element: { id: 'j:s', status: 'skip', blocked_by: ['j:e1'] }, diagnostics: [] });
-        const live = { ...startedRun('j', 'file:///w/j.jd', false, LIBRARIES, undefined), progress: decided, live: true };
+        const live = { ...startedRun('j', 'file:///w/j.jd', false, LIBRARIES), progress: decided, live: true };
         expect(panelState(live, 1).progress?.statuses).toEqual([
             { id: 'j:e1', status: 'fail', reason: 'cannot read x', rootCause: false, produced: [], unreachable: ['x'] },
             { id: 'j:e2', status: 'skip', reason: 'later', rootCause: true, produced: ['ok'], unreachable: [] },
@@ -222,9 +219,9 @@ describe('a run under way whose events are read', () => {
         });
     });
 
-    test('stopped over another run\'s drawing, the drawing goes: its colours would say what this run did not', () => {
-        const notice = { text: 'release was stopped.', action: null };
-        const stopped = endedWithout({ ...running, dataflow: '<svg>older</svg>', live: false }, 'blocked', notice, new Date());
+    test('stopped before the runner drew it, it has no drawing, and nothing to colour', () => {
+        const notice = { text: 'release could not start.', action: null };
+        const stopped = endedWithout(running, 'blocked', notice, new Date());
         expect(stopped.dataflow).toBeNull();
         expect(panelState(stopped, 4).progress).toBeNull();
     });
@@ -239,7 +236,7 @@ describe('a run under way whose events are read', () => {
 
     test('once it ended, the verdict says the rest', () => {
         expect(panelState({ ...done(), progress }, 4).progress).toBeNull();
-        expect(panelState(startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined), 1).progress).toBeNull();
+        expect(panelState(startedRun('release', 'file:///w/release.jd', false, LIBRARIES), 1).progress).toBeNull();
     });
 
     test('Results lists its elements below the row that says it is under way', () => {
@@ -249,7 +246,7 @@ describe('a run under way whose events are read', () => {
     });
 
     test('without events, the one row; once ended without a report, why; with a report, nothing', () => {
-        const bare = startedRun('release', 'file:///w/release.jd', false, LIBRARIES, undefined);
+        const bare = startedRun('release', 'file:///w/release.jd', false, LIBRARIES);
         expect(rowsWithoutReport(bare)).toEqual([statusRow(bare)]);
         const notice = { text: 'release was stopped.', action: null };
         expect(rowsWithoutReport({ ...running, phase: 'stopped', notice }).map(r => r.label)).toEqual(['release was stopped.']);

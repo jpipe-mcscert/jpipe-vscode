@@ -66,7 +66,7 @@ export class RunSession implements vscode.Disposable {
         this.execution = undefined;
         this.stopRequested = false;
         this.output = undefined;
-        this.show(startedRun(name, uri, check, libraries, this.shown));
+        this.show(startedRun(name, uri, check, libraries));
         return this.latest;
     }
 

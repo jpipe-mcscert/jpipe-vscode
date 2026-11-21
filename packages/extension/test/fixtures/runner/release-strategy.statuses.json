@@ -1,40 +1,52 @@
-[
- {
-  "id": "release:e1",
-  "status": "pass",
-  "reason": null,
-  "blocked_by": [],
-  "produced": [
-   "tests_pass"
-  ],
-  "unreachable": []
- },
- {
-  "id": "release:e2",
-  "status": "pass",
-  "reason": null,
-  "blocked_by": [],
-  "produced": [
-   "changelog_ok"
-  ],
-  "unreachable": []
- },
- {
-  "id": "release:s",
-  "status": "fail",
-  "reason": "a gate was waived",
-  "blocked_by": [],
-  "produced": [],
-  "unreachable": []
- },
- {
-  "id": "release:c",
-  "status": "skip",
-  "reason": "not run: release:s did not pass",
-  "blocked_by": [
-   "release:s"
-  ],
-  "produced": [],
-  "unreachable": []
- }
-]
+{
+ "statuses": [
+  {
+   "id": "release:e1",
+   "status": "pass",
+   "reason": null,
+   "blocked_by": [],
+   "produced": [
+    "tests_pass"
+   ],
+   "unreachable": []
+  },
+  {
+   "id": "release:e2",
+   "status": "pass",
+   "reason": null,
+   "blocked_by": [],
+   "produced": [
+    "changelog_ok"
+   ],
+   "unreachable": []
+  },
+  {
+   "id": "release:s",
+   "status": "fail",
+   "reason": "a gate was waived",
+   "blocked_by": [],
+   "produced": [],
+   "unreachable": []
+  },
+  {
+   "id": "release:c",
+   "status": "skip",
+   "reason": "not run: release:s did not pass",
+   "blocked_by": [
+    "release:s"
+   ],
+   "produced": [],
+   "unreachable": []
+  }
+ ],
+ "observed": [
+  {
+   "source": "mock/junit.xml",
+   "reachable": true
+  },
+  {
+   "source": "mock/CHANGELOG.md",
+   "reachable": true
+  }
+ ]
+}

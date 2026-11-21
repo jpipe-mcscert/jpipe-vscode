@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
-import type { LiveStatus } from '../src/shared/run-protocol.js';
+import type { LiveStatus, ObservedSource } from '../src/shared/run-protocol.js';
 import { colourRun, markProgress } from '../src/webview/run-colours.js';
 
 /**
@@ -30,11 +30,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string): string => readFileSync(join(here, 'fixtures', 'runner', name), 'utf8');
 const DRY = fixture('release-dry.svg');
 
+/** The sources an execution observed, as its events would say, from its report. */
+const observedOf = (run: string): ObservedSource[] =>
+    (JSON.parse(fixture(`release-${run}.statuses.json`)) as { observed: ObservedSource[] }).observed;
+
 /** An execution's statuses, as its report gave them. */
 function statusesOf(run: string): LiveStatus[] {
-    const elements = JSON.parse(fixture(`release-${run}.statuses.json`)) as {
+    const elements = (JSON.parse(fixture(`release-${run}.statuses.json`)) as { statuses: {
         id: string; status: LiveStatus['status']; reason: string | null; blocked_by: string[]; produced: string[]; unreachable: string[];
-    }[];
+    }[] }).statuses;
     return elements.map(e => ({
         id: e.id, status: e.status, reason: e.reason, rootCause: e.status === 'skip' && e.blocked_by.length === 0,
         produced: e.produced, unreachable: e.unreachable
@@ -71,7 +75,7 @@ function drawing(svg: string): Map<string, string[]> {
 describe('a run\'s drawing, coloured as its elements are decided', () => {
 
     test.each(['mixed', 'strategy', 'pass', 'missing'])('the %s run comes out as the runner drew it', run => {
-        const coloured = drawing(colourRun(DRY, statusesOf(run)));
+        const coloured = drawing(colourRun(DRY, statusesOf(run), observedOf(run)));
         const drawn = drawing(fixture(`release-${run}.svg`));
         expect([...coloured.keys()].sort()).toEqual([...drawn.keys()].sort());
         for (const [name, shapes] of drawn) expect(coloured.get(name), name).toEqual(shapes);
@@ -88,6 +92,21 @@ describe('a run\'s drawing, coloured as its elements are decided', () => {
         const dry = drawing(DRY);
         expect(coloured.get('release:e1')).not.toEqual(dry.get('release:e1'));
         for (const name of ['release:e2', 'release:s', 'release:c', 'release:s->release:c']) expect(coloured.get(name)).toEqual(dry.get(name));
+    });
+
+    test('a source is marked ✔ as soon as it is observed, before its element is decided', () => {
+        const dry = drawing(DRY);
+        const junit = 'artifact mock/junit.xml';
+        const observing = drawing(colourRun(DRY, [], [{ source: 'mock/junit.xml', reachable: true }]));
+        expect(observing.get(junit)).toEqual(drawing(fixture('release-pass.svg')).get(junit));
+        expect(observing.get('release:e1')).toEqual(dry.get('release:e1'));
+        expect(observing.get('artifact mock/CHANGELOG.md')).toEqual(dry.get('artifact mock/CHANGELOG.md'));
+    });
+
+    test('a source that could not be reached is marked ⚠, in vermillion, as soon as it is observed', () => {
+        const changelog = 'artifact mock/CHANGELOG.md';
+        const missing = drawing(colourRun(DRY, [], [{ source: 'mock/CHANGELOG.md', reachable: false }]));
+        expect(missing.get(changelog)).toEqual(drawing(fixture('release-missing.svg')).get(changelog));
     });
 
     test('an edge to a file or a variable keeps its colour', () => {

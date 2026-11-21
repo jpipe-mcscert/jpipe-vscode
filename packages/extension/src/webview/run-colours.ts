@@ -15,7 +15,9 @@
  *   takes the colour of its status, thicker from a failure, dashed from a skip;
  * - a variable its decided producer did not produce is dashed and grey, unless it is drawn as a
  *   problem already;
- * - a file a decided element could not reach is drawn in vermillion, 2 points wide, and marked ⚠;
+ * - a source an element observed (a file, a glob, a value, a variable of the environment) is marked
+ *   ✔ once it was reached, and ⚠ in vermillion, 2 points wide, when it could not be: as soon as
+ *   the runner observes it, before the step that observes it is called;
  * - each element's tooltip gives its status and reason.
  *
  * It colours the drawing's text, before the canvas installs it, rather than the drawing on show:
@@ -23,7 +25,7 @@
  * adapted as the runner's final one is. `test/run-colours.test.ts` holds the result to drawings the
  * runner made.
  */
-import type { LiveStatus } from '../shared/run-protocol.js';
+import type { LiveStatus, ObservedSource } from '../shared/run-protocol.js';
 import { elementOf, nameOf } from './flow.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -47,8 +49,10 @@ const SYMBOL_SIZE = '20.00';
  * points before that line, 2.25 points below the middle of the label's lines.
  */
 const SYMBOL_OFFSET = { x: -22, y: 2.25 };
-/** The mark of a file or a variable that is a problem, and where it sits from the label: in a 22-point cell. */
-const WARNING = { glyph: '⚠', size: '14.00', x: -17.13, y: 2.25 };
+/** A source's marks, and where they sit from its label: in a 22-point cell, at 14 points. */
+const SOURCE_MARK = { size: '14.00', x: -17.13, y: 2.25 };
+const OBSERVED = '✔';
+const WARNING = '⚠';
 /**
  * The marks of a run under way, each a symbol drawn in the cell its element's status will take, so
  * that they read without colour, as the statuses do. They are the Results view's icons for the
@@ -76,77 +80,110 @@ const groups = (root: ParentNode, kind: 'node' | 'edge'): Element[] =>
 const points = (value: number): string => String(Math.round(value * 100) / 100);
 
 /**
- * `svgText`, the runner's drawing of a run before its first step, with `statuses` drawn over it.
- * Text that is no drawing is given back as it is.
+ * `svgText`, the runner's drawing of a run before its first step, with `statuses` drawn over it,
+ * and the sources it `observed` so far marked. Text that is no drawing is given back as it is.
  */
-export function colourRun(svgText: string, statuses: readonly LiveStatus[]): string {
-    if (statuses.length === 0) return svgText;
-    let doc: Document;
-    try {
-        doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
-    } catch {
-        return svgText;
-    }
-    if (doc.documentElement.nodeName !== 'svg') return svgText;
+export function colourRun(svgText: string, statuses: readonly LiveStatus[], observed: readonly ObservedSource[] = []): string {
+    if (statuses.length === 0 && observed.length === 0) return svgText;
+    const doc = parsed(svgText);
+    if (!doc) return svgText;
     const byId = new Map(statuses.map(status => [status.id, status]));
-    // An element's node is the one the runner gave its id: a file's or a variable's is `nodeN`,
-    // a placeholder's is named after the element that fills it.
-    const elements = new Set(groups(doc, 'node')
-        .filter(node => node.getAttribute('id') === nameOf(node) && elementOf(nameOf(node)) === nameOf(node))
-        .map(nameOf));
-    const decided = [...byId.values()];
+    const elements = elementNames(doc);
+    const reached = sourcesReached(statuses, observed);
     for (const node of groups(doc, 'node')) {
         const name = nameOf(node);
         const status = elements.has(name) ? byId.get(name) : undefined;
         if (status) colourNode(doc, node, status);
-        else if (name.startsWith('artifact ')) colourFile(doc, node, name.slice('artifact '.length), decided);
+        else if (name.startsWith('artifact ')) colourSource(doc, node, reached.get(name.slice('artifact '.length)));
         else if (name.startsWith('variable ')) colourVariable(doc, node, byId, elements);
     }
-    for (const edge of groups(doc, 'edge')) {
-        const name = nameOf(edge);
-        const cut = name.indexOf('->');
-        if (cut < 0) continue;
-        const head = name.slice(cut + 2);
-        const status = byId.get(elementOf(name.slice(0, cut)));
-        // A support: what an element, or the placeholder of the slot it fills, supports. Not a
-        // file it observes, a variable it produces, or the link to its own placeholder.
-        if (status && elements.has(head)) colourEdge(edge, status);
-    }
+    colourSupports(doc, byId, elements);
     return new XMLSerializer().serializeToString(doc);
 }
+
+/** The drawing in `svgText`, or null when it is none. */
+function parsed(svgText: string): Document | null {
+    try {
+        const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+        return doc.documentElement.nodeName === 'svg' ? doc : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * The names of the elements' nodes: an element's node is the one the runner gave its id. A file's
+ * or a variable's is `nodeN`, and a placeholder's is named after the element that fills it.
+ */
+function elementNames(doc: Document): Set<string> {
+    return new Set(groups(doc, 'node')
+        .filter(node => node.getAttribute('id') === nameOf(node) && elementOf(nameOf(node)) === nameOf(node))
+        .map(nameOf));
+}
+
+/**
+ * Whether each source observed so far was reached, by the name the drawing gives it: false as soon
+ * as one element could not reach it, as the runner draws it. What the events said of it as it was
+ * observed, and what a decided element says it could not reach.
+ */
+function sourcesReached(statuses: readonly LiveStatus[], observed: readonly ObservedSource[]): Map<string, boolean> {
+    const reached = new Map<string, boolean>();
+    for (const { source, reachable } of observed) reached.set(source, (reached.get(source) ?? true) && reachable);
+    for (const source of statuses.flatMap(status => status.unreachable)) reached.set(source, false);
+    return reached;
+}
+
+/**
+ * The supports a decided element starts, in its status's colour: from the element, or from the
+ * placeholder of the slot it fills, to another element. Not what links it to a file it observes, a
+ * variable it produces, or its own placeholder.
+ */
+function colourSupports(doc: Document, byId: ReadonlyMap<string, LiveStatus>, elements: ReadonlySet<string>): void {
+    for (const edge of groups(doc, 'edge')) {
+        const [tail, head] = nameOf(edge).split('->');
+        const status = head === undefined ? undefined : byId.get(elementOf(tail));
+        if (status && elements.has(head)) colourEdge(edge, status);
+    }
+}
+
+/** How each status paints an element's shapes and label, given the outline a fill goes to. */
+const PAINTERS: Readonly<Record<LiveStatus['status'], (shapes: Element[], labels: Element[], outline: Element | undefined, status: LiveStatus) => void>> = {
+    pass: shapes => {
+        for (const shape of shapes) paint(shape, { stroke: GREEN, 'stroke-width': THICK });
+    },
+    fail: (shapes, labels, outline) => {
+        outline?.setAttribute('fill', VERMILLION);
+        for (const shape of shapes) shape.setAttribute('stroke-width', THICK);
+        for (const label of labels) label.setAttribute('fill', 'white');
+    },
+    skip: (shapes, _labels, outline, status) => {
+        outline?.setAttribute('fill', LIGHT_GREY);
+        const width: Record<string, string> = status.rootCause ? { 'stroke-width': THICK } : {};
+        for (const shape of shapes) paint(shape, { stroke: GREY, ...width, 'stroke-dasharray': DASHES });
+    }
+};
 
 function colourNode(doc: Document, node: Element, status: LiveStatus): void {
     const shapes = Array.from(node.querySelectorAll(SHAPES));
     const labels = Array.from(node.querySelectorAll('text'));
     // The outline: what a filled status fills. A note's fold is drawn as polylines, never filled.
-    const outline = shapes.find(shape => shape.tagName.toLowerCase() !== 'polyline');
-    switch (status.status) {
-        case 'pass':
-            for (const shape of shapes) paint(shape, { stroke: GREEN, 'stroke-width': THICK });
-            break;
-        case 'fail':
-            if (outline) outline.setAttribute('fill', VERMILLION);
-            for (const shape of shapes) shape.setAttribute('stroke-width', THICK);
-            for (const label of labels) label.setAttribute('fill', 'white');
-            break;
-        case 'skip':
-            if (outline) outline.setAttribute('fill', LIGHT_GREY);
-            for (const shape of shapes) {
-                paint(shape, { stroke: GREY, ...(status.rootCause ? { 'stroke-width': THICK } : {}), 'stroke-dasharray': DASHES });
-            }
-            break;
-    }
+    PAINTERS[status.status](shapes, labels, shapes.find(shape => shape.tagName.toLowerCase() !== 'polyline'), status);
     const mark = { glyph: SYMBOLS[status.status], size: SYMBOL_SIZE, ...SYMBOL_OFFSET, fill: status.status === 'fail' ? 'white' : null };
     if (labels.length > 0) labels[0].before(symbolFor(doc, labels, mark));
     withTooltip(doc, node, status);
 }
 
-/** A file: in vermillion and marked ⚠ once an element that observes it could not reach it. */
-function colourFile(doc: Document, node: Element, declared: string, decided: readonly LiveStatus[]): void {
-    if (!decided.some(status => status.unreachable.includes(declared))) return;
-    for (const shape of Array.from(node.querySelectorAll(SHAPES))) paint(shape, { stroke: VERMILLION, 'stroke-width': THICK });
+/**
+ * A source, once observed: ✔ when it was reached, ⚠ in vermillion when it could not be. One not
+ * observed yet (`reached` undefined) is drawn as before the run.
+ */
+function colourSource(doc: Document, node: Element, reached: boolean | undefined): void {
+    if (reached === undefined) return;
+    if (!reached) {
+        for (const shape of Array.from(node.querySelectorAll(SHAPES))) paint(shape, { stroke: VERMILLION, 'stroke-width': THICK });
+    }
     const labels = Array.from(node.querySelectorAll('text'));
-    if (labels.length > 0) labels[0].before(symbolFor(doc, labels, { ...WARNING, fill: null }));
+    if (labels.length > 0) labels[0].before(symbolFor(doc, labels, { ...SOURCE_MARK, glyph: reached ? OBSERVED : WARNING, fill: null }));
 }
 
 /**

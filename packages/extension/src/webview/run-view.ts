@@ -57,6 +57,12 @@ export class RunPage {
     /** What is on the canvas, so a state that changes something else does not redraw it. */
     private drawn: { name: string; svg: string } | null = null;
     /**
+     * The justification whose drawing the canvas was last framed on: kept when a new run clears
+     * the canvas, so that the drawing it makes of the same justification opens as the reader left
+     * the last one.
+     */
+    private framed: string | null = null;
+    /**
      * The node selected, by the name Graphviz gave it, which is the element's id for an element:
      * kept across a redraw, where the node itself is replaced.
      */
@@ -223,7 +229,7 @@ export class RunPage {
      */
     private showDrawing(state: RunPanelState): void {
         const statuses = state.progress?.statuses;
-        const svg = state.dataflow !== null && statuses ? colourRun(state.dataflow, statuses) : state.dataflow;
+        const svg = state.dataflow !== null && statuses ? colourRun(state.dataflow, statuses, state.progress?.observed) : state.dataflow;
         if (svg === null) {
             this.drawn = null;
             this.canvas.clear();
@@ -239,9 +245,10 @@ export class RunPage {
         }
         // The same justification keeps its framing from one run to the next, and from the drawing
         // a run is coloured on to the one it ends with, which puts every node in the same place.
-        const keep = this.drawn?.name === state.name;
+        const keep = this.framed === state.name;
         this.canvas.show(svg, { documentPath: null, diagramName: `${state.name} (dataflow)` }, keep);
         this.drawn = { name: state.name, svg };
+        this.framed = state.name;
         this.applyMarks();
     }
 

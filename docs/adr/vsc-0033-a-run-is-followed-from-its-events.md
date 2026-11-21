@@ -13,7 +13,9 @@ everything at once.
 From 4.1, jpipe-runner writes a run's events as it goes, with `--events PATH` (jpipe-runner
 ADR-0030, its `docs/events.md`): a file in JSON Lines, one event per line, written whole and
 flushed as it happens. `run.started` lists every element's id; `validation.ended` says what
-validation found; `element.started` says that a step is about to be called; `element.decided`
+validation found; `element.started` says that a step is about to be called; `source.observed`, that
+a source the step declares — a file, a glob, a value in a JSON file, a variable of the environment
+— was observed, and whether it was reached, before the step is called; `element.decided`
 carries the element exactly as the report will write it; `run.ended` gives the verdict. The events
 have a version of their own (`1.x`), which only adds events and fields within a major version.
 They promise a causal order and nothing more: two elements' events may interleave, since the
@@ -66,8 +68,10 @@ replaces what they said when the run ends.
 - **The drawing is coloured as the run goes.** The drawing `diagram.drawn` announces is read at
   once, since the runner deletes it when the run ends, and replaces the busy overlay: the run is
   watched, not waited for. Each element decided is drawn over it as the runner draws its status —
-  its fill, border and symbol, its tooltip, the support edges it starts, the variables it did not
-  produce and the files it could not reach. Each element not decided yet is marked in the cell its
+  its fill, border and symbol, its tooltip, the support edges it starts and the variables it did not
+  produce. Each source is marked as soon as `source.observed` says it was observed, while the step
+  that observes it may still run for minutes: ✔ when it was reached, ⚠ in vermillion when it could
+  not be, as the runner marks it in its final drawing. Each element not decided yet is marked in the cell its
   status's symbol will take, with the Results view's icon for its row: a spinning circle with a gap
   while its step runs, still for whoever asks for less motion, and a clock while it waits. Every
   mark is a shape: what a run says never rests on colour alone. When the run ends, the runner's own drawing replaces it, in the

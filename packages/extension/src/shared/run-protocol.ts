@@ -58,6 +58,13 @@ export interface LiveStatus {
     unreachable: string[];
 }
 
+/** A source an element observes, as the drawing names it, once the run observed it. */
+export interface ObservedSource {
+    source: string;
+    /** False as soon as one element could not reach it. */
+    reachable: boolean;
+}
+
 /** How far a run under way is, from the events jpipe-runner writes as it goes (ADR-VSC-0033). */
 export interface Progress {
     /** `3 of 12 decided`. */
@@ -68,9 +75,11 @@ export interface Progress {
     running: string | null;
     /**
      * The elements decided so far, to draw over the drawing, when the drawing is the run's own,
-     * drawn before its first step; null otherwise, and the drawing stays under the busy overlay.
+     * drawn before its first step; null otherwise, and the run is waited for under the busy overlay.
      */
     statuses: LiveStatus[] | null;
+    /** The sources observed so far, to mark ✔ or ⚠ in the drawing; empty unless `statuses` is sent. */
+    observed: ObservedSource[];
     /** The ids of the elements whose step runs, to mark with a spinner in the drawing, as in Results. */
     underway: string[];
     /** The ids of the elements neither decided nor running yet, to mark with a clock in the drawing, as in Results. */

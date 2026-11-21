@@ -29,8 +29,7 @@ export interface ShownRun {
     dataflow: string | null;
     /**
      * Whether `dataflow` is the drawing the runner made of this run before its first step, which
-     * the page colours as elements are decided (ADR-VSC-0033), rather than one it drew at the end,
-     * or another run's.
+     * the page colours as elements are decided (ADR-VSC-0033), rather than one it drew at the end.
      */
     live: boolean;
     drawingMissing: string | null;
@@ -48,34 +47,27 @@ export const kindOf = (check: boolean): RunKind => check ? 'check' : 'execution'
 /** `Executing release…`, `Checking release…`. */
 export const underWay = (name: string, check: boolean): string => `${check ? 'Checking' : 'Executing'} ${name}…`;
 
-/** A run of `name` just started: what is shown until it ends. */
-export function startedRun(
-    name: string,
-    uri: string,
-    check: boolean,
-    libraries: ShownRun['libraries'],
-    previous: ShownRun | undefined
-): ShownRun {
-    // The last drawing of the same justification stays under the busy overlay: a run that is about
-    // to redraw it is no reason to blank it. Another justification's drawing would be misleading.
-    const same = previous?.name === name && previous.uri === uri;
+/**
+ * A run of `name` just started: what is shown until it ends. Nothing of the previous run stays, its
+ * drawing included, even of the same justification: its colours and marks are another run's, and
+ * a reader watching this one would take them for its own. The page keeps the framing.
+ */
+export function startedRun(name: string, uri: string, check: boolean, libraries: ShownRun['libraries']): ShownRun {
     return {
         name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(), live: false,
-        dataflow: same ? previous.dataflow : null,
+        dataflow: null,
         drawingMissing: null,
         libraries, endedAt: null, notice: null, outOfDate: null
     };
 }
 
 /**
- * A run that ended without a report, stopped or unable to go on, saying why. A previous run's
- * drawing, kept under the busy overlay, goes: its colours are another run's, and nothing would say
- * so. The run's own drawing stays, coloured with what it decided before it ended: those are this
- * run's results, the only ones it has.
+ * A run that ended without a report, stopped or unable to go on, saying why. Its own drawing, if
+ * the runner made one before the first step, stays, coloured with what it decided before it ended:
+ * those are this run's results, the only ones it has.
  */
 export function endedWithout(run: ShownRun, phase: 'blocked' | 'stopped', notice: Notice, at: Date): ShownRun {
-    const ended = { ...run, phase, notice, endedAt: at };
-    return run.live ? ended : { ...ended, dataflow: null };
+    return { ...run, phase, notice, endedAt: at };
 }
 
 /** `14:02`, in the hours and minutes of the run's own clock. */
@@ -133,6 +125,7 @@ export function progressOf(progress: RunProgress, labels: Labels = new Map(), li
             produced: e.produced.map(([name]) => name),
             unreachable: e.artifacts.filter(a => !a.reachable).map(a => a.declared)
         }]) : null,
+        observed: live ? [...progress.observed].map(([source, reachable]) => ({ source, reachable })) : [],
         underway: running,
         pending: underWay ? progress.elements.filter(id => !progress.decided.has(id) && !progress.running.has(id)) : []
     };
