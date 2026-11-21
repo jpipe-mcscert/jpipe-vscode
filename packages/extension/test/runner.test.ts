@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { bindSteps, designates, stepLabel, stepNote, type LibraryStep } from '../src/extension/runner/step-binding.js';
-import { DEFAULT_RUNNER, cannotRun, dataflowFlag, resolveRunner, runnerArguments, streamsEvents } from '../src/extension/runner/runner-invocation.js';
+import { DEFAULT_RUNNER, cannotRun, dataflowFlag, relaunchWithout, resolveRunner, runnerArguments, streamsEvents } from '../src/extension/runner/runner-invocation.js';
 
 /**
  * Preparing a run: which step implements which element, and how the runner is launched.
@@ -145,6 +145,22 @@ describe('launching the runner', () => {
         expect(streamsEvents('')).toBe(false);
         expect(streamsEvents('installed')).toBe(false);
         expect(streamsEvents('4')).toBe(false);
+    });
+
+    test('a runner that refuses --events is launched again without it: a 4.1 build from before the option', () => {
+        expect(relaunchWithout(2, true, true)).toBe('events');
+        expect(relaunchWithout(2, false, true)).toBe('events');
+        // Not asked for the events, a usage error is the user's to read.
+        expect(relaunchWithout(2, true, false)).toBeUndefined();
+    });
+
+    test('a runner that cannot draw is launched again without the drawing', () => {
+        expect(relaunchWithout(4, true, true)).toBe('drawing');
+        expect(relaunchWithout(4, false, true)).toBeUndefined();
+    });
+
+    test('any other end is not launched again', () => {
+        for (const code of [0, 1, 3, 42, undefined]) expect(relaunchWithout(code, true, true)).toBeUndefined();
     });
 
     test('a template cannot be run', () => {

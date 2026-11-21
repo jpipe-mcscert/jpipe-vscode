@@ -358,6 +358,22 @@ describe('a run under way, from its events', () => {
         expect(rows[1].children.map(r => r.label)).toEqual(['release:e2', 'All release gates pass', 'release:c']);
     });
 
+    test('what a decided element supports is named by its label, though it is not decided yet', () => {
+        const progress = progressOf(runStarted, decidedAt({ id: 'release:e1', status: 'fail', supports: ['release:s'] }, 0));
+        const rows = progressRows(progress, 'release', new Map([['release:s', 'All release gates pass']]));
+        const supports = rows[0].children[0].children.find(r => r.icon === 'supports')!;
+        expect(supports).toMatchObject({ label: 'All release gates pass', goTo: 'element/release:s' });
+    });
+
+    test('what validation found about an element not decided yet is listed under it', () => {
+        const problem = { code: 'JP030', severity: 'warning', element: 'release:c', message: 'release:c has no step' };
+        const progress = progressOf(runStarted, { event: 'validation.ended', passed: true, diagnostics: [problem] });
+        const waiting = progressRows(progress, 'release').find(r => r.id === 'group/Waiting')!;
+        const conclusion = waiting.children.find(r => r.id === 'element/release:c')!;
+        expect(conclusion).toMatchObject({ expanded: true, children: [{ label: 'release:c has no step', icon: 'warning' }] });
+        expect(waiting.children.find(r => r.id === 'element/release:s')!.children).toEqual([]);
+    });
+
     test('the labels are read from the compiler\'s JSON, with the ids the runner uses', () => {
         // The release example's compiled justification, cut to what is read.
         const compiled = JSON.stringify({
@@ -415,7 +431,7 @@ describe('a run under way, from its events', () => {
 
     test.each([
         [0, '0 ms'], [340, '340 ms'], [999, '999 ms'], [1000, '1.0 s'], [2449, '2.4 s'], [59_900, '59.9 s'],
-        [60_000, '1 min 0 s'], [185_000, '3 min 5 s']
+        [59_949, '59.9 s'], [59_960, '1 min 0 s'], [60_000, '1 min 0 s'], [185_000, '3 min 5 s']
     ])('%i ms reads %s', (ms, shown) => {
         expect(duration(ms)).toBe(shown);
     });

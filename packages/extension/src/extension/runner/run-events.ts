@@ -199,7 +199,8 @@ export function followEvents(
         } catch {
             // A read that failed is tried again at the next poll.
         } finally {
-            await handle.close();
+            // Never fails a poll: following a run must not stop it being shown when it ends.
+            await handle.close().catch(() => undefined);
         }
     };
 

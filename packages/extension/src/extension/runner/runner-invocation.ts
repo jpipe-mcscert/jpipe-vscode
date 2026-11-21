@@ -62,6 +62,29 @@ export function streamsEvents(runnerRelease: string | undefined): boolean {
     return major > 4 || (major === 4 && minor >= 1);
 }
 
+/** What jpipe-runner exits with when its command line is wrong, an unknown option among them. */
+export const USAGE_EXIT = 2;
+/**
+ * What it exits with when a file could not be read or written: a diagram among them, which
+ * includes a drawing that needs Graphviz when it is not installed.
+ */
+export const FILE_PROBLEM_EXIT = 4;
+
+/**
+ * What to launch a run again without, when it ended with `exitCode` and no report, having asked
+ * for a drawing (`drew`) and for its events (`streamed`); `undefined` when launching it again
+ * would end the same way. Nothing ran in either case, so launching again costs nothing.
+ *
+ * - **The events**, on a usage error: a development build of 4.1 from before `--events` reports
+ *   the release that has it, and refuses the option.
+ * - **The drawing**, when a file could not be written: most often, Graphviz is missing.
+ */
+export function relaunchWithout(exitCode: number | undefined, drew: boolean, streamed: boolean): 'events' | 'drawing' | undefined {
+    if (streamed && exitCode === USAGE_EXIT) return 'events';
+    if (drew && exitCode === FILE_PROBLEM_EXIT) return 'drawing';
+    return undefined;
+}
+
 /** `-l` once per library, then the compiled justification, as `jpipe-runner --help` documents. */
 export function runnerArguments(libraries: readonly string[], justification: string): string[] {
     return [...libraries.flatMap(library => ['-l', library]), justification];

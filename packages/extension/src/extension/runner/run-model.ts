@@ -10,7 +10,9 @@ import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
 import { MODELS_VIEW_ID } from '../models-view/models-view.js';
-import { RUNNER_COMMAND_SETTING, cannotRun, dataflowFlag, resolveRunner, runnerArguments, streamsEvents, type DataflowFlag } from './runner-invocation.js';
+import {
+    RUNNER_COMMAND_SETTING, cannotRun, dataflowFlag, relaunchWithout, resolveRunner, runnerArguments, streamsEvents, type DataflowFlag
+} from './runner-invocation.js';
 import type { RunnerEnvironment } from './environment.js';
 import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
 import type { ResultsView } from './results-view.js';
@@ -35,12 +37,6 @@ export interface RunDeps {
     session: RunSession;
     panel: RunPanel;
 }
-
-/**
- * What jpipe-runner exits with when a file could not be read or written: a diagram among them,
- * which includes a drawing that needs Graphviz when it is not installed. Nothing ran then.
- */
-const FILE_PROBLEM_EXIT = 4;
 
 /**
  * Save what a run reads: the compiler and the runner read files, not editors. That is the model,
@@ -166,7 +162,8 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
     const files = await compile(deps, token, document, name);
     if (!files) return;
     try {
-        await launch(deps, token, { document, name, check, libraries: libraries.map(library => library.uri.fsPath), steps }, files, true);
+        await launch(deps, token, { document, name, check, libraries: libraries.map(library => library.uri.fsPath), steps }, files,
+            { draw: true, stream: true });
     } finally {
         await discard(files.folder);
     }
@@ -182,6 +179,14 @@ interface Run {
     steps: LibraryStep[];
 }
 
+/** What a launch asks the runner for besides its report. */
+interface Asked {
+    /** The run's dataflow, drawn. */
+    draw: boolean;
+    /** The run's events, when its release writes them. */
+    stream: boolean;
+}
+
 /**
  * Start the runner on a compiled model, wait for it, and show what its report says.
  *
@@ -190,16 +195,20 @@ interface Run {
  * draw ends that way, it is launched once more without the drawing, which costs nothing since
  * nothing ran, and the panel says why it has none.
  *
- * An execution by a runner that streams its events is followed as it goes: the panel and Results
- * show each element as soon as it is decided, until the report replaces what the events said
- * (jpipe-vscode ADR-VSC-0033). A check calls no step, so it has nothing to stream.
+ * With `stream`, an execution by a runner that streams its events is followed as it goes: the
+ * panel and Results show each element as soon as it is decided, until the report replaces what the
+ * events said (jpipe-vscode ADR-VSC-0033). A check calls no step, so it has nothing to stream. A
+ * runner that refuses the option is launched once more without it (`relaunchWithout`).
  */
-async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, draw: boolean): Promise<void> {
+async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, asked: Asked): Promise<void> {
     const { document, name, check } = run;
+    const { draw } = asked;
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
+    // A launch again starts from nothing: what an earlier one's events said is not this one's.
+    deps.session.update(token, { progress: null });
     const eventsFor = (release: string | undefined): string | undefined =>
-        !check && streamsEvents(release) ? files.events.fsPath : undefined;
+        asked.stream && !check && streamsEvents(release) ? files.events.fsPath : undefined;
     const argsFor = (release: string | undefined): string[] => withReport(
         runnerArguments(run.libraries, files.compiled.fsPath), files.report.fsPath, check,
         draw ? { path: files.dataflow.fsPath, flag: flagFor(deps, release) } : undefined,
@@ -241,7 +250,7 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, d
     const read = await readReport(files.report);
     const ended: Ended = { taskName: task.name, exitCode, cwd, showOutput };
     if ('problem' in read) {
-        await endedWithoutReport(deps, token, run, files, draw, ended, read.problem);
+        await endedWithoutReport(deps, token, run, files, { draw, stream: events !== undefined }, ended, read.problem);
     } else {
         await showReport(deps, token, run, files, ended, read.report);
     }
@@ -308,10 +317,11 @@ function runTask(
 
 /**
  * Say why a run ended without a report: a usage error, a file that could not be read, a runner
- * that did not start — or one that could not draw, which is launched once more without drawing.
+ * that did not start — or one that refused what it was asked for besides its report, which is
+ * launched once more without it: a drawing it could not make, or events it does not know.
  */
 async function endedWithoutReport(
-    deps: RunDeps, token: number, run: Run, files: RunFiles, draw: boolean, ended: Ended, problem: string
+    deps: RunDeps, token: number, run: Run, files: RunFiles, asked: Asked, ended: Ended, problem: string
 ): Promise<void> {
     const { name, check } = run;
     deps.logger.warn(`${ended.taskName} ended with exit code ${ended.exitCode ?? '(none)'}: ${problem}`);
@@ -322,9 +332,15 @@ async function endedWithoutReport(
         deps.session.endWith(token, 'stopped', { text: `${name} was stopped.`, action: { label: 'Show Output', id: 'showOutput' } });
         return;
     }
-    if (draw && ended.exitCode === FILE_PROBLEM_EXIT) {
+    const without = relaunchWithout(ended.exitCode, asked.draw, asked.stream);
+    if (without === 'drawing') {
         deps.logger.warn(`${ended.taskName}: launched again without the drawing, which may need Graphviz`);
-        await launch(deps, token, run, files, false);
+        await launch(deps, token, run, files, { ...asked, draw: false });
+        return;
+    }
+    if (without === 'events') {
+        deps.logger.warn(`${ended.taskName}: launched again without --events, which this jpipe-runner build may not know`);
+        await launch(deps, token, run, files, { ...asked, stream: false });
         return;
     }
     ended.showOutput();

@@ -235,7 +235,9 @@ export function fileSize(bytes: number): string {
 /** How long a step took: `340 ms`, `2.4 s`, `3 min 5 s`. */
 export function duration(ms: number): string {
     if (ms < 1000) return `${Math.round(ms)} ms`;
-    if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
+    // Rounded before the unit is chosen, so 59.96 s is a minute, not `60.0 s`.
+    const tenths = Math.round(ms / 100);
+    if (tenths < 600) return `${(tenths / 10).toFixed(1)} s`;
     const seconds = Math.round(ms / 1000);
     return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
 }
@@ -384,9 +386,16 @@ function artifactRow(id: string, a: Artifact): ResultRow {
     return { id, label: a.path, description, icon: 'file', children: [], open: { path: a.path } };
 }
 
-function elementRow(e: ReportElement, report: RunReport, durations?: Durations): ResultRow {
+/** What a row says beyond the report: how long steps took, and labels for elements not in it yet. */
+interface RowExtras {
+    durations?: Durations;
+    labels?: Labels;
+}
+
+function elementRow(e: ReportElement, report: RunReport, extras: RowExtras = {}): ResultRow {
     const id = `element/${e.id}`;
-    const labelOf = (other: string): string => report.elements.find(x => x.id === other)?.label || other;
+    const labelOf = (other: string): string =>
+        report.elements.find(x => x.id === other)?.label || extras.labels?.get(other) || other;
     const link = (role: 'supports' | 'blocked', says: string) => (other: string, i: number): ResultRow => ({
         // By position: a report that names an element twice must not give two rows one id.
         id: `${id}/${role}${i}`,
@@ -420,7 +429,7 @@ function elementRow(e: ReportElement, report: RunReport, durations?: Durations):
     );
 
     const note = e.blockedBy.length > 0 ? `stopped by ${e.blockedBy.map(labelOf).join(', ')}` : e.reason;
-    const took = durations?.get(e.id);
+    const took = extras.durations?.get(e.id);
     return {
         id,
         label: e.label || e.id,
@@ -439,14 +448,14 @@ function elementIcon(e: ReportElement, problems: readonly ReportDiagnostic[]): R
 }
 
 function groupRow(
-    title: string, elements: readonly ReportElement[], report: RunReport, expanded: boolean, durations?: Durations
+    title: string, elements: readonly ReportElement[], report: RunReport, expanded: boolean, extras: RowExtras = {}
 ): ResultRow {
     return {
         id: `group/${title}`,
         label: title,
         description: String(elements.length),
         expanded,
-        children: elements.map(e => elementRow(e, report, durations))
+        children: elements.map(e => elementRow(e, report, extras))
     };
 }
 
@@ -462,11 +471,11 @@ function problemsRow(general: readonly ReportDiagnostic[]): ResultRow {
 }
 
 /** The elements by outcome, failures first; what passed is not what a failed run is opened for. */
-function outcomeGroups(report: RunReport, durations?: Durations): ResultRow[] {
+function outcomeGroups(report: RunReport, extras: RowExtras = {}): ResultRow[] {
     const failed = report.elements.some(e => e.status === 'fail');
     return GROUPS.flatMap(group => {
         const elements = report.elements.filter(e => e.status === group.status);
-        return elements.length > 0 ? [groupRow(group.title, elements, report, group.status !== 'pass' || !failed, durations)] : [];
+        return elements.length > 0 ? [groupRow(group.title, elements, report, group.status !== 'pass' || !failed, extras)] : [];
     });
 }
 
@@ -490,7 +499,7 @@ export function resultRows(report: RunReport, name: string, check = false, durat
         }
         return rows;
     }
-    rows.push(...outcomeGroups(report, durations));
+    rows.push(...outcomeGroups(report, { durations }));
     return rows;
 }
 
@@ -510,7 +519,8 @@ export function durationsOf(progress: RunProgress): Map<string, number> {
  *
  * An event's element is the report's, so a decided element's row is the one the report will give
  * it. A running or waiting element is named by its label in the compiled model, `labels`, until it
- * is decided, and by its id when it has none there.
+ * is decided, and by its id when it has none there; what validation found about it is listed under
+ * it, as it will be once it is decided.
  */
 export function progressRows(progress: RunProgress, name: string, labels: Labels = new Map()): ResultRow[] {
     const ordered = [...new Set([...progress.elements, ...progress.decided.keys(), ...progress.running.keys()])];
@@ -528,7 +538,16 @@ export function progressRows(progress: RunProgress, name: string, labels: Labels
     const known = new Set(ordered);
     const general = partial.diagnostics.filter(d => d.element === null || !known.has(d.element));
     const rows: ResultRow[] = general.length > 0 ? [problemsRow(general)] : [];
-    rows.push(...outcomeGroups(partial, durationsOf(progress)));
+    rows.push(...outcomeGroups(partial, { durations: durationsOf(progress), labels }));
+    const validation = progress.validation?.diagnostics ?? [];
+    const pendingRow = (id: string, icon: RowIcon, says: string): ResultRow => {
+        const problems = validation.filter(d => d.element === id);
+        return {
+            id: `element/${id}`, label: labels.get(id) ?? id, description: says, tooltip: id, icon,
+            expanded: problems.length > 0,
+            children: problems.map((d, i) => diagnosticRow(`element/${id}/diagnostic${i}`, d))
+        };
+    };
     const pending = (title: string, ids: readonly string[], expanded: boolean, icon: RowIcon, says: string): void => {
         if (ids.length === 0) return;
         rows.push({
@@ -536,9 +555,7 @@ export function progressRows(progress: RunProgress, name: string, labels: Labels
             label: title,
             description: String(ids.length),
             expanded,
-            children: ids.map((id): ResultRow => ({
-                id: `element/${id}`, label: labels.get(id) ?? id, description: says, tooltip: id, icon, children: []
-            }))
+            children: ids.map(id => pendingRow(id, icon, says))
         });
     };
     pending('Running', ordered.filter(id => progress.running.has(id)), true, 'running', 'running');

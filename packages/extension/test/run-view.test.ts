@@ -176,6 +176,25 @@ describe('a run under way', () => {
         expect(post).toHaveBeenCalledWith({ type: 'results', row: 'group/Failed' });
     });
 
+    test('a count is not rebuilt by a state that leaves it as it was, so a click on it is not lost', () => {
+        const page = newPage();
+        const progress = { decided: '1 of 4 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'e2' };
+        page.apply(state({ revision: 1, phase: 'running', verdict: null, progress }));
+        const count = byId('verdict-counts').querySelector('button')!;
+        page.apply(state({ revision: 2, phase: 'running', verdict: null, progress: { ...progress, running: 'e3' } }));
+        expect(byId('verdict-counts').querySelector('button')).toBe(count);
+        page.apply(state({ revision: 3, phase: 'running', verdict: null, progress: { ...progress, decided: '2 of 4 decided' } }));
+        expect(byId('verdict-counts').querySelector('button')).not.toBe(count);
+    });
+
+    test('is read aloud when it ends, not at every step', () => {
+        const page = newPage();
+        page.apply(state({ revision: 1, phase: 'running', verdict: null }));
+        expect(byId('verdict-bar').getAttribute('aria-live')).toBe('off');
+        page.apply(state({ revision: 2 }));
+        expect(byId('verdict-bar').getAttribute('aria-live')).toBe('polite');
+    });
+
     test('between two steps, says none runs; once ended, the verdict replaces it', () => {
         const page = newPage();
         page.apply(state({ revision: 1, phase: 'running', verdict: null, progress: { decided: '1 of 4 decided', counts: [], running: null } }));

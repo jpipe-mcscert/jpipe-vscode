@@ -32,7 +32,11 @@ replaces what they said when the run ends.
   release, asked of it as it is launched (ADR-VSC-0031), is 4.1 or later, development builds
   included (`streamsEvents` in `runner/runner-invocation.ts`). A runner whose release is unknown
   is not asked. A check is not asked either: it calls no step, so its stream would say nothing the
-  report does not.
+  report does not. A development build of 4.1 from before the option reports the release that has
+  it, and refuses it with a usage error and no report: a run asked for its events that ends so is
+  launched once more without them, as a run that cannot draw is launched again without its drawing
+  (ADR-VSC-0031). Nothing ran either time, so this costs one start of the runner (`relaunchWithout`).
+  Each launch starts from no progress, so a launch again never shows the first one's.
 - **The file is polled**, every 150 ms while the task runs and once more after it ends, reading
   from where the last read stopped. Only lines that end with `\n` are read, and UTF-8 is decoded
   across reads. A file not written yet is waited for; one that shrinks was emptied by a runner
@@ -89,7 +93,10 @@ quoted from the runner's documentation and against files written while they are 
   (jpipe-mcscert/jpipe-runner#185, jpipe-vscode#112).
 - **The extension reads a second contract of the runner's**, with its own version. A runner that
   moves its events to version 2 is shown when its runs end until this is updated.
-- **A run writes one more file**, in its own folder, removed with it.
+- **A run writes one more file**, in its own folder, removed with it. A runner that cannot write
+  it stops with the exit code of a runner that cannot draw, and is taken for one: launched again
+  without its drawing, it stops the same way, and says so. The folder is the extension's own, so
+  this is a disk that cannot be written at all.
 - **Results is rebuilt at each poll that brings news.** The tree keeps expansion and selection by
   row id, which is stable from one poll to the next, and from the last poll to the report.
 - **Polling the file and the tree's redraws need the editor**, and are checked by hand
