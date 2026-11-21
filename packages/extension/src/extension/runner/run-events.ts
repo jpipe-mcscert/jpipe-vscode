@@ -40,6 +40,12 @@ export interface RunProgress {
     decided: ReadonlyMap<string, DecidedElement>;
     /** What validation reported, once it is over. */
     validation: { passed: boolean; diagnostics: ReportDiagnostic[] } | null;
+    /**
+     * Where the runner drew the run's dataflow before its first step, every element without a
+     * status (`diagram.drawn`, jpipe-runner ADR-0032): a temporary file, deleted once the run has
+     * ended, so read as soon as it is announced. Null until then, and for a run that drew none.
+     */
+    preview: string | null;
     /** Whether the run has ended: its report is then written. */
     ended: boolean;
 }
@@ -58,7 +64,7 @@ function startedRun(event: Record<string, unknown>): RunProgress | StreamProblem
     if (version.split('.')[0] !== MAJOR) {
         return { problem: `jpipe-runner wrote its events in version ${version || '(none)'}, and this extension reads version ${MAJOR}` };
     }
-    return { elements: texts(event.elements), running: new Map(), decided: new Map(), validation: null, ended: false };
+    return { elements: texts(event.elements), running: new Map(), decided: new Map(), validation: null, preview: null, ended: false };
 }
 
 /** `progress` once an element is decided, `at` milliseconds into the stream. */
@@ -100,6 +106,8 @@ export function nextProgress(progress: RunProgress | null, line: string): RunPro
     switch (event.event) {
         case 'validation.ended':
             return { ...progress, validation: { passed: event.passed === true, diagnostics: parseDiagnostics(event.diagnostics) } };
+        case 'diagram.drawn':
+            return typeof event.path === 'string' && event.path ? { ...progress, preview: event.path } : progress;
         case 'element.started':
             return typeof event.id === 'string' ? { ...progress, running: new Map(progress.running).set(event.id, at) } : progress;
         case 'element.decided':

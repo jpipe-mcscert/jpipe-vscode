@@ -6,7 +6,7 @@
  * it, what Results says while it has no report, when it stops saying what a run would, and where an
  * element of the report is written.
  */
-import type { Notice, Progress, RunKind, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
+import type { LiveStatus, Notice, Progress, RunKind, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
 import type { RunProgress } from './run-events.js';
 import { outcomeLinks, progressRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport } from './run-report.js';
 
@@ -27,6 +27,12 @@ export interface ShownRun {
     labels: Labels;
     /** The runner's SVG of the run's dataflow. */
     dataflow: string | null;
+    /**
+     * Whether `dataflow` is the drawing the runner made of this run before its first step, which
+     * the page colours as elements are decided (ADR-VSC-0033), rather than one it drew at the end,
+     * or another run's.
+     */
+    live: boolean;
     drawingMissing: string | null;
     /** The libraries it loaded: their paths, to tell when they change, and how the workspace names them. */
     libraries: { path: string; display: string }[];
@@ -54,7 +60,7 @@ export function startedRun(
     // to redraw it is no reason to blank it. Another justification's drawing would be misleading.
     const same = previous?.name === name && previous.uri === uri;
     return {
-        name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(),
+        name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(), live: false,
         dataflow: same ? previous.dataflow : null,
         drawingMissing: null,
         libraries, endedAt: null, notice: null, outOfDate: null
@@ -83,7 +89,7 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
             at: run.endedAt ? clockTime(run.endedAt) : null,
             libraries: run.libraries.map(library => library.display)
         },
-        progress: run.phase === 'running' && run.progress ? progressOf(run.progress, run.labels) : null,
+        progress: run.phase === 'running' && run.progress ? progressOf(run.progress, run.labels, run.live) : null,
         notice: run.notice,
         dataflow: run.dataflow,
         drawingMissing: run.drawingMissing,
@@ -95,14 +101,24 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
 /** `3 of 12 decided`. */
 const decidedOf = (progress: RunProgress): string => `${progress.decided.size} of ${progress.elements.length} decided`;
 
-/** How far a run under way is, for the panel's verdict bar: the step running is named by its label. */
-export function progressOf(progress: RunProgress, labels: Labels = new Map()): Progress {
+/**
+ * How far a run under way is, for the panel: its verdict bar names the step running by its label,
+ * and, when the drawing on show is the run's own (`live`), its elements are coloured as decided.
+ */
+export function progressOf(progress: RunProgress, labels: Labels = new Map(), live = false): Progress {
     const running = [...progress.running.keys()];
     const one = running.length === 1 ? labels.get(running[0]) ?? running[0] : null;
+    const decided = [...progress.decided.values()].map(d => d.element);
     return {
         decided: decidedOf(progress),
-        counts: outcomeLinks([...progress.decided.values()].map(d => d.element)),
-        running: running.length > 1 ? `${running.length} steps` : one
+        counts: outcomeLinks(decided),
+        running: running.length > 1 ? `${running.length} steps` : one,
+        statuses: live ? decided.flatMap((e): LiveStatus[] => e.status === null ? [] : [{
+            id: e.id, status: e.status, reason: e.reason, rootCause: e.status === 'skip' && e.blockedBy.length === 0,
+            produced: e.produced.map(([name]) => name),
+            unreachable: e.artifacts.filter(a => !a.reachable).map(a => a.declared)
+        }]) : null,
+        underway: running
     };
 }
 

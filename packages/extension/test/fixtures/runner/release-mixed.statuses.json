@@ -1,0 +1,40 @@
+[
+ {
+  "id": "release:e1",
+  "status": "fail",
+  "reason": "mock/junit.xml: 2 tests failed",
+  "blocked_by": [],
+  "produced": [],
+  "unreachable": []
+ },
+ {
+  "id": "release:e2",
+  "status": "skip",
+  "reason": "no changelog for a patch release",
+  "blocked_by": [],
+  "produced": [],
+  "unreachable": []
+ },
+ {
+  "id": "release:s",
+  "status": "skip",
+  "reason": "not run: release:e1, release:e2 did not pass",
+  "blocked_by": [
+   "release:e1",
+   "release:e2"
+  ],
+  "produced": [],
+  "unreachable": []
+ },
+ {
+  "id": "release:c",
+  "status": "skip",
+  "reason": "not run: release:e1, release:e2 did not pass",
+  "blocked_by": [
+   "release:e1",
+   "release:e2"
+  ],
+  "produced": [],
+  "unreachable": []
+ }
+]

@@ -1,0 +1,38 @@
+[
+ {
+  "id": "release:e1",
+  "status": "pass",
+  "reason": null,
+  "blocked_by": [],
+  "produced": [
+   "tests_pass"
+  ],
+  "unreachable": []
+ },
+ {
+  "id": "release:e2",
+  "status": "pass",
+  "reason": null,
+  "blocked_by": [],
+  "produced": [
+   "changelog_ok"
+  ],
+  "unreachable": []
+ },
+ {
+  "id": "release:s",
+  "status": "pass",
+  "reason": null,
+  "blocked_by": [],
+  "produced": [],
+  "unreachable": []
+ },
+ {
+  "id": "release:c",
+  "status": "pass",
+  "reason": null,
+  "blocked_by": [],
+  "produced": [],
+  "unreachable": []
+ }
+]

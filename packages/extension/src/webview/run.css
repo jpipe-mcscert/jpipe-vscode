@@ -133,3 +133,21 @@
 /* Where the lit chain starts. */
 #svg-wrapper g.node.jpipe-origin :is(polygon, ellipse, path) { stroke-width: 3; }
 #container.dragging g.node { cursor: grabbing; }
+
+/*
+ * A step under way: its outline marches, in the editor's focus colour, until its element is
+ * decided and drawn in its status's colours. Still for whoever asks for less motion: a thick
+ * dashed outline says the same.
+ */
+#svg-wrapper g.node.jpipe-underway :is(polygon, ellipse, path) {
+    stroke: var(--vscode-focusBorder);
+    stroke-width: 3;
+    stroke-dasharray: 6 4;
+    animation: jpipe-underway 0.8s linear infinite;
+}
+
+@keyframes jpipe-underway { to { stroke-dashoffset: -10; } }
+
+@media (prefers-reduced-motion: reduce) {
+    #svg-wrapper g.node.jpipe-underway :is(polygon, ellipse, path) { animation: none; }
+}

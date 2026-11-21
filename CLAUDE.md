@@ -101,6 +101,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
           preview.ts            ← preview page: modes, banners, highlight, message dispatch
           canvas.ts             ← the diagram canvas both pages share: pan/zoom, minimap, theme (tested)
           run.ts / run-view.ts  ← the Run panel's page: entry point / its logic (run-view tested)
+          run-colours.ts        ← a run's drawing coloured as it goes, by the runner's rules (tested against its drawings; ADR-VSC-0033)
           diagnostic-view.ts    ← the diagnostics tables
           viewbox.ts            ← pure viewbox maths (tested)
         shared/                 ← the ONLY code both bundles may import (ADR-VSC-0005)
@@ -333,7 +334,8 @@ jpipe-runner 4.0.x, `--diagram` on every later or unknown release, chosen by `da
 report's `dataflow` in schema 1, `diagram` in schema 2; the argument-only view is left to the preview), under a bar that says *Execution* or *Check · no step
 called* first. It shares that run with the Results view through `RunSession`, and the two come
 forward together; until a report arrives Results lists one status row, and, with jpipe-runner 4.1 or
-later, the elements as their events decide them, while the verdict bar counts them (ADR-VSC-0033). A node click lights it and
+later, the elements as their events decide them, while the verdict bar counts them and the drawing
+the runner made before the first step (`diagram.drawn`) is coloured as they are (ADR-VSC-0033). A node click lights it and
 everything downstream (walked from the SVG's edge titles, `webview/flow.ts`) and selects an
 element's row in Results; a second click, the background or Escape clears; a double-click opens
 the element. A runner that cannot draw (Graphviz

@@ -167,7 +167,7 @@ describe('a run under way', () => {
     test('says how far it is, each count opening its group, and which step runs', () => {
         newPage().apply(state({
             phase: 'running', verdict: null,
-            progress: { decided: '2 of 4 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2' }
+            progress: { decided: '2 of 4 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2', statuses: null, underway: [] }
         }));
         expect(byId('verdict-label').textContent).toBe('release, under way');
         expect(byId('verdict-counts').textContent).toBe('2 of 4 decided1 failed');
@@ -178,7 +178,7 @@ describe('a run under way', () => {
 
     test('a count is not rebuilt by a state that leaves it as it was, so a click on it is not lost', () => {
         const page = newPage();
-        const progress = { decided: '1 of 4 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'e2' };
+        const progress = { decided: '1 of 4 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'e2', statuses: null, underway: [] };
         page.apply(state({ revision: 1, phase: 'running', verdict: null, progress }));
         const count = byId('verdict-counts').querySelector('button')!;
         page.apply(state({ revision: 2, phase: 'running', verdict: null, progress: { ...progress, running: 'e3' } }));
@@ -195,9 +195,44 @@ describe('a run under way', () => {
         expect(byId('verdict-bar').getAttribute('aria-live')).toBe('polite');
     });
 
+    test('with its own drawing on show, is watched rather than waited for: decided elements coloured, steps under way marked', () => {
+        const page = newPage();
+        const failed = { id: 'release:e', status: 'fail' as const, reason: 'two tests failed', rootCause: false, produced: [], unreachable: [] };
+        page.apply(state({
+            revision: 1, phase: 'running', verdict: null,
+            progress: { decided: '1 of 2 decided', counts: [], running: 'release:c', statuses: [failed], underway: ['release:c'] }
+        }));
+        expect(document.body.classList.contains('busy')).toBe(false);
+        const node = (id: string) => document.querySelector(`#svg-wrapper g[id="${id}"]`)!;
+        expect(node('release:e').querySelector('polygon')!.getAttribute('fill')).toBe('#d55e00');
+        expect(node('release:e').textContent).toContain('✘');
+        expect(node('release:c').classList.contains('jpipe-underway')).toBe(true);
+        // The run's end: the runner's drawing, with nothing of the page's over it.
+        page.apply(state({ revision: 2 }));
+        expect(node('release:c').classList.contains('jpipe-underway')).toBe(false);
+        expect(node('release:e').textContent).not.toContain('✘');
+    });
+
+    test('a step marked under way stays marked when a state leaves the drawing as it was', () => {
+        const page = newPage();
+        const progress = { decided: '0 of 2 decided', counts: [], running: 'release:e', statuses: [], underway: ['release:e'] };
+        page.apply(state({ revision: 1, phase: 'running', verdict: null, progress }));
+        page.apply(state({ revision: 2, phase: 'running', verdict: null, progress: { ...progress, running: 'release:c', underway: ['release:c'] } }));
+        const marked = Array.from(document.querySelectorAll('#svg-wrapper .jpipe-underway')).map(n => n.id);
+        expect(marked).toEqual(['release:c']);
+    });
+
+    test('with another run\'s drawing, waits under the busy overlay', () => {
+        newPage().apply(state({
+            phase: 'running', verdict: null,
+            progress: { decided: '0 of 2 decided', counts: [], running: null, statuses: null, underway: [] }
+        }));
+        expect(document.body.classList.contains('busy')).toBe(true);
+    });
+
     test('between two steps, says none runs; once ended, the verdict replaces it', () => {
         const page = newPage();
-        page.apply(state({ revision: 1, phase: 'running', verdict: null, progress: { decided: '1 of 4 decided', counts: [], running: null } }));
+        page.apply(state({ revision: 1, phase: 'running', verdict: null, progress: { decided: '1 of 4 decided', counts: [], running: null, statuses: null, underway: [] } }));
         expect(byId('verdict-when').textContent).toBe('');
         page.apply(state({ revision: 2 }));
         expect(byId('verdict-counts').textContent).toBe('1 passed1 failed');

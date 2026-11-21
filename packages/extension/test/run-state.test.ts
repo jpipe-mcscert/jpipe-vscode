@@ -182,8 +182,28 @@ describe('a run under way whose events are read', () => {
 
     test('the verdict bar says how far it is, and which step runs', () => {
         expect(panelState(running, 3).progress).toEqual({
-            decided: '1 of 3 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2'
+            decided: '1 of 3 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2',
+            statuses: null, underway: ['release:e2']
         });
+    });
+
+    test('on its own drawing, the elements decided are sent to be coloured, with what the drawing needs', () => {
+        const decided = reading(
+            { event: 'run.started', schema_version: '1.0', elements: ['j:e1', 'j:e2', 'j:s'] },
+            { event: 'element.decided', element: {
+                id: 'j:e1', status: 'fail', reason: 'cannot read x', produced: {},
+                artifacts: [{ path: 'x', declared: 'x', reachable: false }, { path: 'a/y', declared: 'a/*', reachable: true }]
+            }, diagnostics: [] },
+            { event: 'element.decided', element: { id: 'j:e2', status: 'skip', reason: 'later', produced: { ok: { value: true } } }, diagnostics: [] },
+            { event: 'element.decided', element: { id: 'j:s', status: 'skip', blocked_by: ['j:e1'] }, diagnostics: [] });
+        const live = { ...startedRun('j', 'file:///w/j.jd', false, LIBRARIES, undefined), progress: decided, live: true };
+        expect(panelState(live, 1).progress?.statuses).toEqual([
+            { id: 'j:e1', status: 'fail', reason: 'cannot read x', rootCause: false, produced: [], unreachable: ['x'] },
+            { id: 'j:e2', status: 'skip', reason: 'later', rootCause: true, produced: ['ok'], unreachable: [] },
+            { id: 'j:s', status: 'skip', reason: null, rootCause: false, produced: [], unreachable: [] }
+        ]);
+        // Another run's drawing, kept under the busy overlay, is not coloured with this one's.
+        expect(panelState({ ...live, live: false }, 1).progress?.statuses).toBeNull();
     });
 
     test('the step running is named by its label, when the compiled model has one', () => {

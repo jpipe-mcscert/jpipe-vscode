@@ -1,6 +1,7 @@
 import type { HostToRunPanel, Progress, RunKind, RunPanelState, RunPanelToHost, Tone, VerdictCount } from '../shared/run-protocol.js';
 import { DiagramCanvas } from './canvas.js';
 import { applyFocus, downstream, elementOf, nameOf, nodeNamed } from './flow.js';
+import { colourRun, markUnderway } from './run-colours.js';
 import type { Box } from './viewbox.js';
 
 /**
@@ -83,7 +84,7 @@ export class RunPage {
                 isShowing: () => this.body.dataset.mode === 'diagram',
                 isChrome: target => target instanceof Element && target.closest('#toolbar, #banners, #minimap') !== null,
                 onViewChange: () => this.persist({ vb: this.canvas.view ?? undefined }),
-                onRebuilt: () => this.applySelection(false),
+                onRebuilt: () => this.applyMarks(),
                 onNodeClick: (node, twice) => this.nodeClicked(node, twice),
                 onBackgroundClick: () => this.select(null)
             }
@@ -116,7 +117,8 @@ export class RunPage {
         this.state = state;
         const running = state.phase === 'running';
         this.body.dataset.phase = state.phase;
-        this.body.classList.toggle('busy', running);
+        // A run whose own drawing is on show is watched as it goes, not waited for.
+        this.body.classList.toggle('busy', running && !state.progress?.statuses);
         byId<HTMLButtonElement>(this.doc, 'run-button').disabled = running;
         byId<HTMLButtonElement>(this.doc, 'check-button').disabled = running;
         byId<HTMLButtonElement>(this.doc, 'stop-button').disabled = !running;
@@ -214,9 +216,14 @@ export class RunPage {
         byId(this.doc, 'out-of-date-action').textContent = state.check ? 'Check again' : 'Execute again';
     }
 
-    /** Draw the run's dataflow, or say why there is nothing to draw. */
+    /**
+     * Draw the run's dataflow, or say why there is nothing to draw. A run under way whose own
+     * drawing is on show has its decided elements coloured over it, as the runner will colour them
+     * when it ends, and its steps under way marked.
+     */
     private showDrawing(state: RunPanelState): void {
-        const svg = state.dataflow;
+        const statuses = state.phase === 'running' ? state.progress?.statuses : null;
+        const svg = state.dataflow !== null && statuses ? colourRun(state.dataflow, statuses) : state.dataflow;
         if (svg === null) {
             this.drawn = null;
             this.canvas.clear();
@@ -227,12 +234,22 @@ export class RunPage {
         this.body.dataset.mode = 'diagram';
         if (this.drawn?.svg === svg) {
             this.canvas.refreshMinimap();
+            this.applyMarks();
             return;
         }
-        // The same justification keeps its framing from one run to the next.
+        // The same justification keeps its framing from one run to the next, and from the drawing
+        // a run is coloured on to the one it ends with, which puts every node in the same place.
         const keep = this.drawn?.name === state.name;
         this.canvas.show(svg, { documentPath: null, diagramName: `${state.name} (dataflow)` }, keep);
         this.drawn = { name: state.name, svg };
+        this.applyMarks();
+    }
+
+    /** What the page draws over the drawing on show: the steps under way, and the selection. */
+    private applyMarks(): void {
+        const svg = this.canvas.svg;
+        const state = this.state;
+        if (svg && state) markUnderway(svg, state.phase === 'running' ? state.progress?.underway ?? [] : []);
         this.applySelection(false);
     }
 

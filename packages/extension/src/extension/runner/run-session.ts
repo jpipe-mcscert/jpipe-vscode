@@ -97,7 +97,7 @@ export class RunSession implements vscode.Disposable {
      * overlay, goes too: its colours are another run's, and nothing would say so.
      */
     endWith(token: number, phase: 'blocked' | 'stopped', notice: Notice): void {
-        this.update(token, { phase, notice, endedAt: new Date(), dataflow: null });
+        this.update(token, { phase, notice, endedAt: new Date(), dataflow: null, live: false });
     }
 
     /** The task run `token` is executing in, so that it can be stopped. */

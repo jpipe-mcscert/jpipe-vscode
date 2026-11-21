@@ -18,6 +18,8 @@ export type Verdict = 'pass' | 'fail' | 'skip' | 'invalid' | 'valid';
 
 export interface Artifact {
     path: string;
+    /** The path or glob the step declared, which matched `path`: what the drawing names. */
+    declared: string;
     reachable: boolean;
     size: number | null;
 }
@@ -129,6 +131,7 @@ export function parseElement(e: Record<string, unknown>): ReportElement {
             .map(([name, value]) => [name, producedValue(value)]),
         artifacts: objects(e.artifacts).map(a => ({
             path: text(a.path),
+            declared: text(a.declared, text(a.path)),
             reachable: a.reachable === true,
             size: typeof a.size === 'number' ? a.size : null
         }))

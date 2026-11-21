@@ -19,6 +19,13 @@ have a version of their own (`1.x`), which only adds events and fields within a 
 They promise a causal order and nothing more: two elements' events may interleave, since the
 runner may later call independent steps together (jpipe-runner#174).
 
+A run's drawing is the runner's too (ADR-VSC-0031), and an execution's is written when it ends. So
+with `--events`, the runner also draws the dataflow before the first step, with no status on it,
+in a temporary SVG file it deletes once the run has ended, and announces it with `diagram.drawn`
+(jpipe-runner ADR-0032). A status never moves a node there: every element's label keeps an empty
+cell of fixed size for its symbol, and a failure keeps its font. That drawing, with each element's
+status drawn over it, is the drawing the run ends with.
+
 The extension launches the runner as a VS Code task (ADR-VSC-0029), so it holds none of the
 runner's pipes: a file is the only way to read the events. The run's folder, where the extension
 asks for that file, is in the extension's storage, outside the workspace.
@@ -56,12 +63,22 @@ replaces what they said when the run ends.
   in the compiled model the run reads, which carries the ids the runner's events use.
 - **The panel's verdict bar** says how far the run is (`2 of 4 decided`), its outcomes so far, each
   opening its group in Results as the verdict's counts do, and which step runs, by its label.
+- **The drawing is coloured as the run goes.** The drawing `diagram.drawn` announces is read at
+  once, since the runner deletes it when the run ends, and replaces the busy overlay: the run is
+  watched, not waited for. Each element decided is drawn over it as the runner draws its status —
+  its fill, border and symbol, its tooltip, the support edges it starts, the variables it did not
+  produce and the files it could not reach — and each step under way has a marching outline, still
+  for whoever asks for less motion. When the run ends, the runner's own drawing replaces it, in the
+  same framing; it puts every node where the coloured one had it. A drawing gone before it could be
+  read, in a run that short, leaves the run under the busy overlay until its end, as before.
 - **The report replaces it** when the run ends, and is the only thing read for the verdict, the
   counts and the rows. What the report cannot say, how long each step took, is kept from the
   events and shown beside each element.
 
 The reading is in `runner/run-events.ts`, which imports no `vscode` and is tested against a stream
-quoted from the runner's documentation and against files written while they are followed.
+quoted from the runner's documentation and against files written while they are followed. The
+colouring is in `webview/run-colours.ts`, tested against drawings the runner made: colouring a dry
+run's drawing with an execution's statuses gives that execution's drawing.
 
 ## Rationale
 
@@ -85,12 +102,21 @@ quoted from the runner's documentation and against files written while they are 
   file (jpipe-runner ADR-0001), so the two agree with no matching of names; an id the file does not
   have is shown as it is.
 
+- **The page colours the drawing's text, not the drawing on show.** The canvas adapts a drawing
+  to a dark theme from its colours: a label on an unfilled node turns light. Colouring the drawing
+  on show, after that, would leave a skipped node's light label on its light grey fill. Coloured
+  before the canvas installs it, the drawing is adapted, and copied into the minimap, as the
+  runner's final one is. The marching outline is the page's own mark, set on the drawing on show.
+- **The runner's rules, restated, rather than a drawing per decision.** Asking the runner to draw
+  again at each decision would cost a Graphviz layout per element, in the run's own time. Its
+  rules are few and its layout fixed, so the page draws a status as it would, and a test holds the
+  result to the runner's drawings.
+
 ## Consequences
 
-- **A run with jpipe-runner 4.1 or later shows each element as soon as it is decided**, in Results
-  and in the panel's counts. Earlier runners, and runs whose events cannot be read, are shown as
-  before. The drawing itself is still coloured only when the run ends: the runner draws it then
-  (jpipe-mcscert/jpipe-runner#185, jpipe-vscode#112).
+- **A run with jpipe-runner 4.1 or later shows each element as soon as it is decided**, in Results,
+  in the panel's counts and on its drawing. Earlier runners, and runs whose events cannot be read,
+  are shown as before.
 - **The extension reads a second contract of the runner's**, with its own version. A runner that
   moves its events to version 2 is shown when its runs end until this is updated.
 - **A run writes one more file**, in its own folder, removed with it. A runner that cannot write
@@ -99,5 +125,13 @@ quoted from the runner's documentation and against files written while they are 
   this is a disk that cannot be written at all.
 - **Results is rebuilt at each poll that brings news.** The tree keeps expansion and selection by
   row id, which is stable from one poll to the next, and from the last poll to the report.
+- **The page restates how the runner draws a status**: its palette, its symbols and where they
+  sit in their cells. A runner that changes them draws its final drawing differently from the
+  coloured one, which then changes when the run ends. `test/run-colours.test.ts` compares the two
+  on drawings kept as fixtures, which have to be drawn again when the runner's drawing changes.
+- **A support edge moves by less than a point** when the run ends: it ends at the border of the
+  node it reaches, and the runner lays it out against the 2-point border of a decided element.
+- **The panel's state is sent again at each poll that brings news**, the drawing with it, since
+  it is coloured anew; the page redraws it only when it changed.
 - **Polling the file and the tree's redraws need the editor**, and are checked by hand
   (ADR-VSC-0004); what they show is decided in tested modules.
