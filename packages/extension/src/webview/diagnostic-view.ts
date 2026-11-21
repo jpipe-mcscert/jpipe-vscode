@@ -787,7 +787,7 @@ export class DiagnosticView {
         const container = el('div', 'diag-tree');
         // A filter that matched inside a macro has already pruned away everything else under it,
         // so opening the survivors is the only way the match is visible at all.
-        this.appendActionNodes(container, tree, this.needle() !== '');
+        this.appendActionNodes(container, tree, this.needle() !== '', 0);
         this.elements.panel.append(container);
     }
 
@@ -836,7 +836,13 @@ export class DiagnosticView {
         this.elements.controlsExtra.append(expandAll, collapseAll);
     }
 
-    private appendActionNodes(parent: HTMLElement, nodes: readonly ActionNode[], forceOpen: boolean): void {
+    /**
+     * The rows of `nodes`, `depth` macros deep. What a macro expanded to is indented under it, one
+     * level per macro, with a guide line down from the macro's twisty, as an editor's tree draws
+     * one. The numbers stay in a column of their own, unindented, so they read as the raw text
+     * numbers its steps.
+     */
+    private appendActionNodes(parent: HTMLElement, nodes: readonly ActionNode[], forceOpen: boolean, depth: number): void {
         for (const node of nodes) {
             const hasChildren = node.children.length > 0;
             const open = forceOpen || this.expandedMacros.has(node.action.index);
@@ -845,6 +851,10 @@ export class DiagnosticView {
             // The compiler's own numbering, not the array position: only one of the two is a
             // promise, and it is what makes the tree and the raw text reconcilable.
             row.append(el('span', 'diag-action-index', `${node.action.index}.`));
+            const indent = el('span', 'diag-indent');
+            indent.setAttribute('aria-hidden', 'true');
+            for (let level = 0; level < depth; level++) indent.append(el('span', 'diag-guide'));
+            row.append(indent);
 
             let glyph = '·';
             if (hasChildren) glyph = open ? '▾' : '▸';
@@ -872,7 +882,8 @@ export class DiagnosticView {
 
             if (hasChildren && open) {
                 const children = el('div', 'diag-children');
-                this.appendActionNodes(children, node.children, forceOpen);
+                children.setAttribute('role', 'group');
+                this.appendActionNodes(children, node.children, forceOpen, depth + 1);
                 parent.append(children);
             }
         }

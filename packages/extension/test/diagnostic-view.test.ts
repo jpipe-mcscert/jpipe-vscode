@@ -579,6 +579,29 @@ describe('the actions tab', () => {
         expect(actionRows()).toHaveLength(36);
     });
 
+    test('what a macro expanded to is indented under it, one level per macro, its numbers left in their column', () => {
+        view.show(loadCrossFile, '');
+        click(elements.panel.querySelector('.diag-twisty:not(.leaf)'));
+        const depths = actionRows().map(r => r.querySelectorAll('.diag-indent .diag-guide').length);
+        // 9 steps, one of them a macro whose 3 steps now show beneath it.
+        expect(depths.filter(d => d === 0)).toHaveLength(9);
+        expect(depths.filter(d => d === 1)).toHaveLength(3);
+        const macro = depths.findIndex((d, i) => d === 0 && depths[i + 1] === 1);
+        expect(depths.slice(macro + 1, macro + 4)).toEqual([1, 1, 1]);
+        // Every row starts with its number, whatever its depth.
+        expect(actionRows().every(r => r.firstElementChild?.classList.contains('diag-action-index'))).toBe(true);
+        expect(elements.panel.querySelector('.diag-children')?.getAttribute('role')).toBe('group');
+    });
+
+    test('a macro inside a macro is indented twice', () => {
+        // No compiler trace among the fixtures nests a macro in a macro, so this one is made up.
+        const step = (index: number, depth: number, macro = false) => ({ index, depth, macro, description: `step ${index}` });
+        view.show({ ...loadCrossFile, actions: [step(1, 0, true), step(2, 1, true), step(3, 2), step(4, 1), step(5, 0)] }, '');
+        const [expandAll] = Array.from(elements.controlsExtra.querySelectorAll<HTMLElement>('.diag-chip-btn'));
+        click(expandAll);
+        expect(actionRows().map(r => r.querySelectorAll('.diag-guide').length)).toEqual([0, 1, 2, 1, 0]);
+    });
+
     test('shows the compiler’s own numbering', () => {
         // Not the array position: only one of the two is a promise, and it is what makes the
         // tree reconcilable with the raw text.
