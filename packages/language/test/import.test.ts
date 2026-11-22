@@ -64,6 +64,33 @@ justification J implements lib:T {
         }
     });
 
+    // A closed file between the loading file and the template it implements: its own references
+    // must follow the template when it changes, while its nodes stay the ones others point at.
+    test('follows a change to the file it loads in turn', async () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
+        try {
+            const basePath = path.join(tmpDir, 'base.jd');
+            fs.writeFileSync(basePath, 'template B {\n conclusion c is "C"\n strategy s is "S"\n @support a is "A"\n a supports s\n s supports c\n}');
+            fs.writeFileSync(path.join(tmpDir, 'middle.jd'), 'load "./base.jd"\ntemplate M implements B { @support m is "M" }');
+            document = await parse('load "./middle.jd"\njustification J implements M { evidence B:a is "A" evidence M:m is "M" }',
+                { documentUri: pathToFileURL(path.join(tmpDir, 'user.jd')).toString() });
+            const middle = document.parseResult.value.body.find(isJustification)?.parent?.ref;
+            const idsOfBase = () => (middle?.parent?.ref?.contents?.body ?? []).map(e => e.id?.parts.join(':'));
+            expect(idsOfBase()).toEqual(['c', 's', 'a']);
+
+            fs.writeFileSync(basePath, 'template B {\n conclusion c is "C"\n strategy s is "S"\n @support a is "A"\n @support extra is "X"\n a supports s\n extra supports s\n s supports c\n}');
+            const later = new Date(Date.now() + 10_000);
+            fs.utimesSync(basePath, later, later);
+            await services.shared.workspace.DocumentBuilder.update([], []);
+
+            // The same middle node, now pointing at the base as it is on disk.
+            expect(document.parseResult.value.body.find(isJustification)?.parent?.ref).toBe(middle);
+            expect(idsOfBase()).toEqual(['c', 's', 'a', 'extra']);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true });
+        }
+    });
+
     test('is parsed once for each version of it on disk', async () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
         try {

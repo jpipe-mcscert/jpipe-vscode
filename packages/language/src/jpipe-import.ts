@@ -55,14 +55,32 @@ export class JpipeImportService {
     }
 
     /**
-     * Drops memoised glob expansions. Wired to `DocumentBuilder.onUpdate` in `jpipe-module.ts`.
-     *
-     * Known gap: a `.jd` file created outside the editor does not trigger a document update, so a
-     * pattern's match set can be stale until the next edit. The extension registers no file
-     * watcher today (`synchronize.fileEvents` is unset).
+     * Drops memoised glob expansions. See `invalidateCaches`.
      */
     invalidateGlobCache(): void {
         this.globCache.clear();
+    }
+
+    /**
+     * Called on every document update (`DocumentBuilder.onUpdate`, wired in `jpipe-module.ts`).
+     *
+     * Drops the memoised glob expansions, and unlinks every file parsed from disk without
+     * reparsing it. Its nodes stay the ones other documents point at, which is what the parse is
+     * kept for, while its own references, such as a closed `middle.jd`'s `implements` into
+     * `base.jd`, are resolved again against the files as they now are. Without this, editing
+     * `base.jd` left `middle.jd` pointing at the version it first resolved.
+     *
+     * Known gap: a `.jd` file created or changed outside the editor does not trigger a document
+     * update, so a pattern's match set, or what a closed file's references point at, can be stale
+     * until the next edit. The extension registers no file watcher today (`synchronize.fileEvents`
+     * is unset).
+     */
+    invalidateCaches(): void {
+        this.invalidateGlobCache();
+        const linker = this.services.references.Linker;
+        for (const { document } of this.shadowDocuments.values()) {
+            linker.unlink(document);
+        }
     }
 
     /**

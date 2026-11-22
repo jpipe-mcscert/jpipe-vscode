@@ -156,6 +156,11 @@ async function jpipeCodesIn(source: string): Promise<Array<string | undefined>> 
         .map(d => issueCodeOf(d));
 }
 
+/** Every diagnostic reported for `source`. */
+async function diagnosticsIn(source: string): Promise<Diagnostic[]> {
+    return (await parse(source)).diagnostics ?? [];
+}
+
 /** Langium's linking errors for `source`: the unresolved references. */
 async function linkingErrorsIn(source: string): Promise<Diagnostic[]> {
     const document = await parse(source);
@@ -313,6 +318,17 @@ describe('a model that implements a template inherits its conclusion', () => {
             const source = `${BASE}\njustification J implements T { conclusion T:e is "E" }`;
             expect((await jpipeCodesIn(source)).sort())
                 .toEqual([JpipeIssue.InheritedConclusion, JpipeIssue.NoAbstractSupport].sort());
+        });
+
+        // An intermediate template's discarded conclusion overrides nothing either, so a model
+        // further down still owes the override (compiler 4.0.0: no-abstract-support on 'T:e').
+        test('spelled as an override in an intermediate template, it excuses no one below', async () => {
+            const source = `${BASE}\ntemplate U implements T { conclusion T:e is "E" @support f is "F" }\n`
+                + 'justification J implements U { evidence U:f is "F" }';
+            const missing = (await diagnosticsIn(source))
+                .filter(d => issueCodeOf(d) === JpipeIssue.NoAbstractSupport)
+                .map(d => (d.data as JpipeIssueData<typeof JpipeIssue.NoAbstractSupport>).expectedKey);
+            expect(missing).toEqual(['T:e']);
         });
 
         test('its id clashes with nothing', async () => {

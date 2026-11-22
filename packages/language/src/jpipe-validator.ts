@@ -12,6 +12,7 @@ import {
     type Template,
     type Justification,
     type Load,
+    type Relation,
     isTemplate,
     isJustification,
     isAbstractSupport,
@@ -421,8 +422,8 @@ export class JpipeValidator {
         if (!body?.rels) return;
 
         // `to` is absent while `e supports ` is still being typed, which is most of the time. A
-        // relation from a discarded conclusion is discarded with it, so it supports nothing.
-        const incoming = body.rels.filter(r => r.to?.ref === strategy && !isDiscardedConclusion(r.from?.ref));
+        // relation using a discarded conclusion is discarded with it, so it supports nothing.
+        const incoming = body.rels.filter(r => r.to?.ref === strategy && !isDiscardedRelation(r));
         if (incoming.length === 0) {
             report(accept, JpipeIssue.StrategySupported, `Strategy '${qualifiedIdText(strategy.id)}' is not supported by any evidence, sub-conclusion, or @support.`,
                    { node: strategy, property: 'id' }, { targetId: qualifiedIdText(strategy.id) });
@@ -550,7 +551,7 @@ export class JpipeValidator {
         const local = template.contents?.body ?? [];
         // Keys of non-abstract elements defined directly in this template (these override parent abstracts)
         const localOverrideKeys = new Set(
-            local.filter(e => !isAbstractSupport(e)).map(e => qualifiedIdText(e.id))
+            local.filter(e => !isAbstractSupport(e) && !isDiscardedConclusion(e)).map(e => qualifiedIdText(e.id))
         );
         const result: Array<{ support: AbstractSupport; expectedKey: string; sourceTemplateId: string }> = [];
 
@@ -594,4 +595,21 @@ export class JpipeValidator {
  */
 function isDiscardedConclusion(element: AstNode | undefined): boolean {
     return isConclusion(element) && element.$container?.$container?.parent !== undefined;
+}
+
+/**
+ * Whether the compiler drops `relation` along with a discarded conclusion: whether either end is
+ * *written* as that conclusion's id (`ActionListProvider`, its `rejectedConclusions`).
+ *
+ * Matched on the text, as the compiler matches, rather than on what the reference resolves to:
+ * a short name the scope aliases to the conclusion is not its id, and the compiler keeps that
+ * relation.
+ */
+function isDiscardedRelation(relation: Relation): boolean {
+    const rejected = new Set((relation.$container.body ?? [])
+        .filter(isDiscardedConclusion)
+        .map(element => qualifiedIdText((element as Conclusion).id)));
+    if (rejected.size === 0) return false;
+    return [relation.from?.$refText, relation.to?.$refText]
+        .some(text => text !== undefined && rejected.has(text.replace(/\s+/g, '')));
 }
