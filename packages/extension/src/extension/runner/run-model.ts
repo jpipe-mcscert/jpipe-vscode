@@ -137,6 +137,9 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
     // The libraries and their steps as this run loads them: the libraries checked may change while
     // it runs. What it reads is saved before it begins, so that its own saves are not changes made
     // since it began, which would put it out of date (ADR-VSC-0031).
+    // The libraries are found in the background, and found again on Refresh: until they are,
+    // none would count as checked, and the run would be refused for want of one.
+    await deps.libraries.ready();
     const libraries = deps.libraries.checkedLibraries();
     const steps = deps.libraries.checkedSteps();
     const unsaved = libraries.length > 0 ? await saveInputs(document, libraries.map(library => library.uri)) : undefined;

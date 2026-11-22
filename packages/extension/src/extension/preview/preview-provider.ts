@@ -23,6 +23,12 @@ export class PreviewProvider {
     private static webviewDisposed: boolean = true;
     private unsaved: boolean = false;
     private viewMode: 'diagram' | 'diagnostic' = 'diagram';
+    /**
+     * Whether the diagnostic view is on show because the compiler is too old to draw, rather than
+     * because the user chose it: the diagram is then tried again at the next update, so that it
+     * comes back by itself once the compiler is updated.
+     */
+    private diagnosticForced = false;
     private readonly subscriptions: vscode.Disposable[] = [];
     private lastRenderedDocumentUri: string | undefined;
     private lastRenderedDiagramName: string | undefined;
@@ -357,6 +363,7 @@ export class PreviewProvider {
             return;
         }
         this.viewMode = this.viewMode === 'diagram' ? 'diagnostic' : 'diagram';
+        this.diagnosticForced = false;
         await this.updatePreview(resolved.document, resolved.editor);
     }
 
@@ -369,6 +376,12 @@ export class PreviewProvider {
      */
     private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         if (!PreviewProvider.webviewPanel) return;
+        if (this.diagnosticForced) {
+            // The compiler may have been updated since: draw again, which goes back to the
+            // diagnostic view at once if it is still too old (`explainNoDiagram`).
+            this.diagnosticForced = false;
+            this.viewMode = 'diagram';
+        }
         if (this.viewMode === 'diagnostic') {
             await this.updateDiagnostic(document);
             return;
@@ -513,6 +526,7 @@ export class PreviewProvider {
         this.logger.debug(`Preview of ${document.fileName} not rendered: ${error.message}`);
         if (this.diagramDisposition(revision) !== 'deliver') return;
         this.viewMode = 'diagnostic';
+        this.diagnosticForced = true;
         await this.updateDiagnostic(document);
     }
 

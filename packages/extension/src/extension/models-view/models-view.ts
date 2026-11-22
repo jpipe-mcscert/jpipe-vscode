@@ -282,6 +282,13 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
      * the jPipe activity has ever been opened.
      */
     async freshModels(): Promise<readonly Model[]> {
+        // A change still waiting out its debounce counts as one: a command that runs right after
+        // an edit or a new file must see it, not the list from before it.
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = undefined;
+            this.stale = true;
+        }
         if (this.stale) this.startLoad();
         await this.loading;
         return this.models;
