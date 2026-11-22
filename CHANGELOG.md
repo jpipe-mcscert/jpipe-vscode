@@ -1,6 +1,6 @@
 ## Changelog
 
-### v2.0.0 (Unreleased)
+### v2.0.0 (2026-11-21)
 - Leader: Sébastien Mosser
   - Upgrading from 1.x:
     - **The jPipe compiler 3.0.0 or newer is required.** An older compiler is no longer used: previews, exports, diagnostics and runs stop and tell you to update it. If the extension manages your compiler, its notification updates it for you; if you installed it with Homebrew, Scoop or a JAR of your own, update it there
