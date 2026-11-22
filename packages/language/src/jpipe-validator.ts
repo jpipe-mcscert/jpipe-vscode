@@ -1,4 +1,4 @@
-import { AstUtils, type AstNode, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
+import { AstUtils, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
 import { GlobExpansionError, isGlobPattern } from './jpipe-glob.js';
 import {
     type JpipeAstType,
@@ -35,7 +35,10 @@ import {
     operatorSpec,
     requiredConfigKeys
 } from './jpipe-operators.js';
-import { cannotSeeAllElements, expandedElements, getAllElements, getLocalElements, hookTarget, qualifiedIdText } from './jpipe-utils.js';
+import {
+    cannotSeeAllElements, expandedElements, getAllElements, getLocalElements, hookTarget, isDiscardedConclusion,
+    qualifiedIdText, requiredOverrides
+} from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 import { messageOf } from './jpipe-errors.js';
@@ -503,7 +506,7 @@ export class JpipeValidator {
             .filter(e => !isDiscardedConclusion(e))
             .map(e => [qualifiedIdText(e.id), e]));
 
-        const required = this.getRequiredOverrides(template, parentRefText);
+        const required = requiredOverrides(template, parentRefText);
         // Every gap is listed on each diagnostic, so a single action can close them all at once.
         const allMissing = required
             .filter(req => !localById.has(req.expectedKey))
@@ -533,68 +536,7 @@ export class JpipeValidator {
         }
     }
 
-    /**
-     * The `@support` elements a justification implementing `template` must override.
-     *
-     * `seen` guards the `implements` walk: a template may point back at itself, which the
-     * compiler reports as `cyclic-implements`, and the model sits in that state while it is being
-     * edited. Recursing through such a chain would exhaust the stack and abort validation for the
-     * whole document.
-     */
-    private getRequiredOverrides(
-        template: Template,
-        refText: string,
-        seen: Set<Template> = new Set()
-    ): Array<{ support: AbstractSupport; expectedKey: string; sourceTemplateId: string }> {
-        if (seen.has(template)) return [];
-        seen.add(template);
-        const local = template.contents?.body ?? [];
-        // Keys of non-abstract elements defined directly in this template (these override parent abstracts)
-        const localOverrideKeys = new Set(
-            local.filter(e => !isAbstractSupport(e) && !isDiscardedConclusion(e)).map(e => qualifiedIdText(e.id))
-        );
-        const result: Array<{ support: AbstractSupport; expectedKey: string; sourceTemplateId: string }> = [];
 
-        // Abstract supports declared directly in this template
-        for (const elem of local) {
-            if (isAbstractSupport(elem)) {
-                result.push({
-                    support: elem,
-                    expectedKey: `${refText}:${qualifiedIdText(elem.id)}`,
-                    sourceTemplateId: template.id
-                });
-            }
-        }
-
-        // Propagate unresolved abstract supports from the parent chain
-        if (template.parent?.ref) {
-            const parentRefText = template.parent.$refText ?? template.parent.ref.id;
-            for (const req of this.getRequiredOverrides(template.parent.ref, parentRefText, seen)) {
-                // Skip if this template already provides a non-abstract override for it
-                if (!localOverrideKeys.has(req.expectedKey)) {
-                    result.push(req);
-                }
-            }
-        }
-
-        return result;
-    }
-
-
-}
-
-/**
- * Whether `element` is a conclusion the compiler throws away: one declared by a model that
- * `implements` a template, and so inherits its conclusion.
- *
- * The compiler refuses it while reading the file (`inherited-conclusion`, from the declaration
- * alone) and drops it together with every relation that uses it, before any other rule runs. Every
- * check here must therefore read the model as if it were not written: it does not satisfy
- * `conclusion-present`, support a strategy, override a `@support`, clash with another id, or need
- * support of its own.
- */
-function isDiscardedConclusion(element: AstNode | undefined): boolean {
-    return isConclusion(element) && element.$container?.$container?.parent !== undefined;
 }
 
 /**

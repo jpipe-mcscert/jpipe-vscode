@@ -244,8 +244,8 @@ export class JpipeImportService {
      *
      * The parse is kept across builds, not dropped on each document update: a document that an
      * update does not relink still holds references into it, and a fresh parse would break them
-     * the same way. It is read again only when the file's size or modification time changes, which
-     * is also what picks up a change made outside the editor, such as a `git checkout`.
+     * the same way. It is read again only when the file's stamp changes (`stampOf`), which is also
+     * what picks up a change made outside the editor, such as a `git checkout`.
      */
     parseDocumentFromPath(filePath: string, relativeToDoc?: LangiumDocument): LangiumDocument | undefined {
         const resolvedPath = this.resolveFsPath(filePath, relativeToDoc);
@@ -253,6 +253,9 @@ export class JpipeImportService {
         const resolvedUri = URI.file(resolvedPath);
         const existingDoc = this.services.shared.workspace.LangiumDocuments.getDocument(resolvedUri);
         if (existingDoc) {
+            // The open document is the file now. What pointed into the old parse is relinked by
+            // the update that opened it, which reports the file's URI as changed.
+            this.shadowDocuments.delete(resolvedPath);
             return existingDoc;
         }
         const stamp = this.stampOf(resolvedPath);
@@ -286,11 +289,17 @@ export class JpipeImportService {
         }
     }
 
-    /** The file's size and modification time, or `undefined` if it is not a readable file. */
+    /**
+     * What tells one version of a file on disk from the next, or `undefined` if it is not a file.
+     *
+     * Size and modification time alone miss a same-size edit within one tick of a coarse clock
+     * (FAT, some network mounts), or a tool that restores the modification time. The change time
+     * cannot be set back, and a file replaced rather than written in place gets a new inode.
+     */
     private stampOf(filePath: string): string | undefined {
         try {
             const stat = fs.statSync(filePath);
-            return stat.isFile() ? `${stat.size}:${stat.mtimeMs}` : undefined;
+            return stat.isFile() ? `${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}` : undefined;
         } catch {
             return undefined;
         }

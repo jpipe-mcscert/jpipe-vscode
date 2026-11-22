@@ -331,6 +331,18 @@ describe('a model that implements a template inherits its conclusion', () => {
             expect(missing).toEqual(['T:e']);
         });
 
+        // compiler 4.0.0 finds `T:c`, the conclusion the model keeps, and does not find `x`.
+        test('a refine hook finds the inherited conclusion, not the discarded one', async () => {
+            const source = `${BASE}\njustification J implements T { evidence T:e is "E" conclusion x is "X" }\n`
+                + 'justification B { conclusion d is "D" }\n'
+                + 'justification R is refine(J, B) { hook: "T:c" }\n'
+                + 'justification R2 is refine(J, B) { hook: "x" }';
+            const unknown = (await diagnosticsIn(source))
+                .filter(d => issueCodeOf(d) === JpipeIssue.UnknownHook)
+                .map(d => (d.data as JpipeIssueData<typeof JpipeIssue.UnknownHook>).actual);
+            expect(unknown).toEqual(['x']);
+        });
+
         test('its id clashes with nothing', async () => {
             const source = `${BASE}\njustification J implements T { evidence T:e is "E" conclusion x is "X" evidence x is "Y" }`;
             expect(await jpipeCodesIn(source)).toEqual([JpipeIssue.InheritedConclusion]);

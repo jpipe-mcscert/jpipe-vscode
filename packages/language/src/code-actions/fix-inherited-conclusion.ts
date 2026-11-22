@@ -6,15 +6,19 @@
  * sub-conclusion is exactly that: the relations that use it stay valid, and the id and label stay
  * as written. Removing the declaration instead would leave every relation naming it unresolved.
  *
- * A conclusion whose id is qualified, `conclusion T:a`, is an override written with the wrong
- * keyword: only an override carries its template's name. The compiler discards it and reports the
- * `@support` as not overridden, so the repair is the one `fix-override-type` offers for any other
- * wrong keyword, `evidence` first since it needs nothing else to be valid, then `sub-conclusion`.
+ * A conclusion whose id is a `@support` the model must override, `conclusion T:a`, is that
+ * override written with the wrong keyword. The compiler discards it and reports the `@support` as
+ * not overridden, so the repair is the one `fix-override-type` offers for any other wrong keyword,
+ * `evidence` first since it needs nothing else to be valid, then `sub-conclusion`. Any other
+ * qualified id, such as the template's own conclusion `T:c`, gets no fix: no keyword makes it
+ * valid, and offering one would trade this error for another.
  */
+import type { Reference } from 'langium';
 import type { CodeAction } from 'vscode-languageserver';
-import { isConclusion } from '../generated/ast.js';
+import { isConclusion, isTemplate, type Template } from '../generated/ast.js';
 import { nodeForDiagnostic } from '../jpipe-ast-context.js';
 import { JpipeIssue } from '../jpipe-diagnostic-codes.js';
+import { qualifiedIdText, requiredOverrides } from '../jpipe-utils.js';
 import { quickFix } from './types.js';
 
 const KEYWORD = 'conclusion';
@@ -29,7 +33,9 @@ export const fixInheritedConclusion = quickFix<typeof JpipeIssue.InheritedConclu
         const node = nodeForDiagnostic(context.document, diagnostic);
         const conclusion = node && isConclusion(node) ? node : node?.$container;
         // Re-checked against the document, which may have moved on since the diagnostic was made.
-        if (!conclusion || !isConclusion(conclusion) || !conclusion.$container?.$container?.parent) return [];
+        if (!conclusion || !isConclusion(conclusion)) return [];
+        const parent = conclusion.$container?.$container?.parent;
+        if (!parent) return [];
 
         const declaration = conclusion.$cstNode;
         if (!declaration?.text.startsWith(KEYWORD)) return [];
@@ -39,8 +45,7 @@ export const fixInheritedConclusion = quickFix<typeof JpipeIssue.InheritedConclu
             end: { line: start.line, character: start.character + KEYWORD.length }
         };
 
-        const isOverride = (conclusion.id?.parts.length ?? 0) > 1;
-        const keywords = isOverride ? ['evidence', 'sub-conclusion'] : ['sub-conclusion'];
+        const keywords = keywordsFor(conclusion.id?.parts.length ?? 0, qualifiedIdText(conclusion.id), parent);
         return keywords.map((keyword, index) => ({
             title: `Change '${KEYWORD}' to '${keyword}'`,
             isPreferred: index === 0,
@@ -52,3 +57,14 @@ export const fixInheritedConclusion = quickFix<typeof JpipeIssue.InheritedConclu
         }));
     }
 });
+
+/** The keywords that make the conclusion valid: none when its qualified id names no `@support`. */
+function keywordsFor(parts: number, id: string, parent: Reference<Template>): string[] {
+    if (parts <= 1) return ['sub-conclusion'];
+    const template = parent.ref;
+    if (!isTemplate(template)) return [];
+    const refText = parent.$refText ?? template.id;
+    return requiredOverrides(template, refText).some(required => required.expectedKey === id)
+        ? ['evidence', 'sub-conclusion']
+        : [];
+}

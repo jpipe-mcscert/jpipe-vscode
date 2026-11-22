@@ -1,6 +1,7 @@
 import { type AstNode, type CstNode, GrammarUtils, URI } from 'langium';
 import { DefaultNameProvider } from 'langium';
 import {
+    type AbstractSupport,
     isAbstractSupport,
     isConclusion,
     type Justification,
@@ -195,9 +196,9 @@ export interface ExpandedElement {
  * is the template that declared it, and an id already qualified keeps its qualifier — so an element
  * `U` declares is `U:e` in a model two `implements` below it, never `T:U:e`. A local element keeps
  * the id it is written with, and replaces the inherited one it shares an id with: that is how
- * `evidence T:a` overrides `@support a`. A local conclusion likewise displaces an inherited one.
- * The compiler rejects that last pairing outright, and letting the local one win keeps a hook from
- * adding a second, misleading error to a model already reported for it.
+ * `evidence T:a` overrides `@support a`. A conclusion written in a model that `implements` a
+ * template is left out: the compiler reports it as `inherited-conclusion` and discards it, so the
+ * model keeps the conclusion it inherits, and a hook or an override answers to that one.
  *
  * Inherited elements come first and local ones after, which is the compiler's order and the one a
  * suffix match is first-found in. The AST node is the declaration, so identity survives the
@@ -214,12 +215,11 @@ export function expandedElements(
         ? expandedElements(parent, seen).map(({ element, id }) =>
             ({ element, id: id.includes(':') ? id : `${parent.id}:${id}` }))
         : [];
-    const local = getLocalElements(model).map(element => ({ element, id: qualifiedIdText(element.id) }));
+    const local = getLocalElements(model)
+        .filter(element => !isDiscardedConclusion(element))
+        .map(element => ({ element, id: qualifiedIdText(element.id) }));
     const replaced = new Set(local.map(entry => entry.id));
-    const ownConclusion = local.some(entry => isConclusion(entry.element));
-    const kept = inherited.filter(entry =>
-        !replaced.has(entry.id) && !(ownConclusion && isConclusion(entry.element)));
-    return [...kept, ...local];
+    return [...inherited.filter(entry => !replaced.has(entry.id)), ...local];
 }
 
 /**
@@ -251,4 +251,72 @@ export function hookTarget(
     if (cannotSeeAllElements(base)) return undefined;
     const suffix = `:${hook}`;
     return elements.find(entry => !isConclusion(entry.element) && entry.id.endsWith(suffix))?.element;
+}
+
+/**
+ * Whether `element` is a conclusion the compiler throws away: one declared by a model that
+ * `implements` a template, and so inherits its conclusion.
+ *
+ * The compiler refuses it while reading the file (`inherited-conclusion`, from the declaration
+ * alone) and drops it together with every relation that uses it, before any other rule runs. Every
+ * check must therefore read the model as if it were not written: it does not satisfy
+ * `conclusion-present`, support a strategy, override a `@support`, clash with another id, or need
+ * support of its own.
+ */
+export function isDiscardedConclusion(element: AstNode | undefined): boolean {
+    return isConclusion(element) && element.$container?.$container?.parent !== undefined;
+}
+
+/** A `@support` a justification must override, and the id the override has to be written with. */
+export interface RequiredOverride {
+    readonly support: AbstractSupport;
+    readonly expectedKey: string;
+    readonly sourceTemplateId: string;
+}
+
+/**
+ * The `@support` elements a justification implementing `template` must override.
+ *
+ * `seen` guards the `implements` walk: a template may point back at itself, which the
+ * compiler reports as `cyclic-implements`, and the model sits in that state while it is being
+ * edited. Recursing through such a chain would exhaust the stack and abort validation for the
+ * whole document.
+ */
+export function requiredOverrides(
+    template: Template,
+    refText: string,
+    seen: Set<Template> = new Set()
+): RequiredOverride[] {
+    if (seen.has(template)) return [];
+    seen.add(template);
+    const local = template.contents?.body ?? [];
+    // Keys of non-abstract elements defined directly in this template (these override parent abstracts)
+    const localOverrideKeys = new Set(
+        local.filter(e => !isAbstractSupport(e) && !isDiscardedConclusion(e)).map(e => qualifiedIdText(e.id))
+    );
+    const result: RequiredOverride[] = [];
+
+    // Abstract supports declared directly in this template
+    for (const elem of local) {
+        if (isAbstractSupport(elem)) {
+            result.push({
+                support: elem,
+                expectedKey: `${refText}:${qualifiedIdText(elem.id)}`,
+                sourceTemplateId: template.id
+            });
+        }
+    }
+
+    // Propagate unresolved abstract supports from the parent chain
+    if (template.parent?.ref) {
+        const parentRefText = template.parent.$refText ?? template.parent.ref.id;
+        for (const req of requiredOverrides(template.parent.ref, parentRefText, seen)) {
+            // Skip if this template already provides a non-abstract override for it
+            if (!localOverrideKeys.has(req.expectedKey)) {
+                result.push(req);
+            }
+        }
+    }
+
+    return result;
 }

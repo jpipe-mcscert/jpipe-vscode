@@ -710,6 +710,13 @@ describe('fix-inherited-conclusion', () => {
         expect((reparsed.diagnostics ?? []).map(d => issueCodeOf(d))).toEqual([]);
     });
 
+    // `B:c` is the template's own conclusion, not a `@support`: an evidence or a sub-conclusion
+    // under that id is refused too, so any keyword would trade this error for another.
+    test.each(['B:c', 'X:e'])('offers nothing for %s, which names no @support', async id => {
+        const source = `${BASE}\njustification J implements B { evidence B:e is "E1"  conclusion ${id} is "C" }`;
+        expect(await titlesMatching(source, /^Change 'conclusion'/)).toEqual([]);
+    });
+
     test('is not offered for a conclusion a model may declare', async () => {
         expect(await titlesMatching(BASE, /^Change 'conclusion'/)).toEqual([]);
     });
