@@ -25,6 +25,7 @@ export const JpipeIssue = {
     HasAbstractSupport:     'has-abstract-support',
     ConclusionPresent:      'conclusion-present',
     SingleConclusion:       'single-conclusion',
+    InheritedConclusion:    'inherited-conclusion',
     UnknownOperator:        'unknown-operator',
     OperatorArity:          'operator-arity',
     UnknownConfigKey:       'unknown-config-key',
@@ -73,6 +74,7 @@ export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     [JpipeIssue.HasAbstractSupport]:    'error',   // rejected under this same code
     [JpipeIssue.ConclusionPresent]:     'error',   // rejected under this same code
     [JpipeIssue.SingleConclusion]:      'error',   // rejected under this same code
+    [JpipeIssue.InheritedConclusion]:   'error',   // rejected under this same code (from 4.0.0)
     [JpipeIssue.NoAbstractSupport]:     'error',   // rejected under this same code
     [JpipeIssue.StrategySupported]:     'error',   // rejected under this same code
     [JpipeIssue.ConclusionSupported]:   'error',   // rejected under this same code
@@ -178,6 +180,8 @@ export interface JpipeIssuePayloads {
     [JpipeIssue.HasAbstractSupport]:    { id: string };
     [JpipeIssue.ConclusionPresent]:     { id: string };
     [JpipeIssue.SingleConclusion]:      { modelId: string; id: string };
+    /** `parentId` is the template as the `implements` line spells it, e.g. `lib:T`. */
+    [JpipeIssue.InheritedConclusion]:   { modelId: string; parentId: string; id: string };
     /** `candidates` are the ids a hook could name here, for a fix that offers the near misses. */
     [JpipeIssue.UnknownHook]:           { actual: string; modelId: string; candidates: string[] };
     // `Record<never, never>` rather than `Record<string, never>`: only the former has `keyof`

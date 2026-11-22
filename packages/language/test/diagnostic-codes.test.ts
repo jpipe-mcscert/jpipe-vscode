@@ -52,6 +52,8 @@ async function payloadFor<C extends JpipeIssueCode>(source: string, code: C): Pr
 }
 
 const TEMPLATE = 'template T { @support a is "A" @support b is "B" conclusion c is "C" strategy s is "S"\n a supports s\n b supports s\n s supports c }';
+/** A justification of `T` that overrides neither `@support`, and has nothing else wrong with it. */
+const MISSING_OVERRIDES = `${TEMPLATE}\njustification J implements T { evidence e is "E" }`;
 
 describe('diagnostic codes', () => {
 
@@ -68,6 +70,7 @@ describe('diagnostic codes', () => {
         [JpipeIssue.HasAbstractSupport, 'template T { conclusion c is "C" }'],
         [JpipeIssue.ConclusionPresent, 'justification J { evidence e is "E" }'],
         [JpipeIssue.SingleConclusion, 'justification J { conclusion c1 is "A" conclusion c2 is "B" }'],
+        [JpipeIssue.InheritedConclusion, `${TEMPLATE}\njustification J implements T { evidence T:a is "A" evidence T:b is "B" conclusion x is "X" }`],
         [JpipeIssue.UnknownOperator, 'justification A { conclusion c is "C" }\njustification B is nope(A)'],
         [JpipeIssue.UnknownConfigKey, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" strategyLabel: "S" nope: "X" }'],
         [JpipeIssue.MissingConfigKey, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" }'],
@@ -79,7 +82,7 @@ describe('diagnostic codes', () => {
         [JpipeIssue.InvalidSupport, 'justification J { conclusion c is "C" strategy s is "S" strategy t is "T"\n t supports s\n s supports c }'],
         [JpipeIssue.ConclusionSupported, 'justification J { conclusion c is "C" }'],
         [JpipeIssue.LoadUnresolved, 'load "nowhere.jd"\njustification J { conclusion c is "C" }'],
-        [JpipeIssue.NoAbstractSupport, `${TEMPLATE}\njustification J implements T { conclusion x is "X" strategy y is "Y"\n y supports x }`],
+        [JpipeIssue.NoAbstractSupport, MISSING_OVERRIDES],
         [JpipeIssue.SupportOverrideType, `${TEMPLATE}\njustification J implements T { strategy T:a is "A" evidence T:b is "B" }`]
     ])('%s is reported with its code', async (code, source) => {
         await expect(diagnosticFor(source, code)).resolves.toBeDefined();
@@ -94,8 +97,9 @@ describe('diagnostic codes', () => {
             'justification A { conclusion c is "C" }\njustification B is nope(A)',
             'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" wrong: "X" }',
             'justification J { conclusion c is "C" strategy s is "S"\n s supports c }',
-            `${TEMPLATE}\njustification J implements T { conclusion x is "X" strategy y is "Y"\n y supports x }`,
+            MISSING_OVERRIDES,
             `${TEMPLATE}\njustification J implements T { strategy T:a is "A" evidence T:b is "B" }`,
+            `${TEMPLATE}\njustification J implements T { conclusion x is "X" strategy y is "Y"\n y supports x }`,
             'justification J { conclusion c is "C" }\njustification J { conclusion c is "C" }'
         ];
         const uncoded: string[] = [];
@@ -144,6 +148,26 @@ describe('one code, two checks', () => {
     });
 });
 
+/** The codes of this language's own diagnostics for `source`, Langium's linking errors left out. */
+async function jpipeCodesIn(source: string): Promise<Array<string | undefined>> {
+    const document = await parse(source);
+    return (document.diagnostics ?? [])
+        .filter(d => (d.data as { code?: string } | undefined)?.code !== 'linking-error')
+        .map(d => issueCodeOf(d));
+}
+
+/** Every diagnostic reported for `source`. */
+async function diagnosticsIn(source: string): Promise<Diagnostic[]> {
+    return (await parse(source)).diagnostics ?? [];
+}
+
+/** Langium's linking errors for `source`: the unresolved references. */
+async function linkingErrorsIn(source: string): Promise<Diagnostic[]> {
+    const document = await parse(source);
+    return (document.diagnostics ?? [])
+        .filter(d => (d.data as { code?: string } | undefined)?.code === 'linking-error');
+}
+
 /** The messages of the errors reported for `source`. */
 async function errorsIn(source: string): Promise<string[]> {
     const document = await parse(source);
@@ -182,6 +206,145 @@ describe('a model must have a conclusion', () => {
         const source = 'justification A { conclusion c is "C" }\n'
             + 'justification B is assemble(A) { conclusionLabel: "All of it" strategyLabel: "Together" }';
         expect(await errorsIn(source)).not.toContain("Model 'B' has no conclusion");
+    });
+
+    // jpipe-compiler `examples/invalid/037_operator_on_an_unbuilt_model.jd`: the compiler reports
+    // the unknown template and nothing else, since the conclusion would come from it (#129).
+    test('a model under an implements that does not resolve is not called empty', async () => {
+        const source = 'justification j implements missing {\n    evidence e is "An evidence"\n}';
+        expect(await jpipeCodesIn(source)).toEqual([]);
+        expect(await linkingErrorsIn(source)).toHaveLength(1);
+    });
+
+    test('nor is a template there said to declare no abstract support', async () => {
+        const source = 'template t implements missing {\n    evidence e is "An evidence"\n}';
+        expect(await jpipeCodesIn(source)).toEqual([]);
+        expect(await linkingErrorsIn(source)).toHaveLength(1);
+    });
+
+    // jpipe-compiler `examples/invalid/010_implements_cycle.jd`: the compiler reports the cycle
+    // and nothing about either model's completeness, since a loop gives them no element list.
+    test('nor is a model whose implements chain loops back on itself', async () => {
+        const source = 'template t1 implements t2 {\n conclusion c is "C"\n strategy s is "S"\n s supports c\n'
+            + ' @support p is "P"\n p supports s\n}\n'
+            + 'template t2 implements t1 {\n sub-conclusion t1:p is "P2"\n strategy s is "S2"\n s supports c\n'
+            + ' @support p is "P"\n p supports s\n}';
+        const codes = await jpipeCodesIn(source);
+        expect(codes).not.toContain(JpipeIssue.ConclusionPresent);
+        expect(codes).not.toContain(JpipeIssue.HasAbstractSupport);
+    });
+
+    // The chain is followed to its end: a break two `implements` up hides the conclusion as well.
+    test('a break further up the chain counts too', async () => {
+        const source = 'template u implements missing { @support h is "H" }\n'
+            + 'justification j implements u { evidence u:h is "H" }';
+        expect(await jpipeCodesIn(source)).toEqual([]);
+    });
+});
+
+/**
+ * A model that `implements` a template inherits its conclusion, and the compiler refuses one of its
+ * own (`inherited-conclusion`, from compiler 4.0.0). Every case below was run through
+ * `jpipe diagnostic` 4.0.0, and the expected errors are the ones it printed.
+ */
+describe('a model that implements a template inherits its conclusion', () => {
+
+    const BASE = 'template T { conclusion c is "C"  strategy s is "S"  @support e is "E"  s supports c  e supports s }';
+
+    test('a conclusion of its own is refused, in the compiler\'s words', async () => {
+        const source = `${BASE}\njustification J implements T { evidence T:e is "E1"  conclusion x is "X" }`;
+        expect(await errorsIn(source))
+            .toEqual(["Model 'J' implements 'T' and inherits its conclusion: it cannot declare its own"]);
+    });
+
+    test('it is anchored on the conclusion\'s id, where the compiler puts it', async () => {
+        const source = `${BASE}\njustification J implements T { evidence T:e is "E1"  conclusion x is "X" }`;
+        const diagnostic = await diagnosticFor(source, JpipeIssue.InheritedConclusion);
+        expect(diagnostic.range.start).toEqual({ line: 1, character: 64 });
+    });
+
+    // The compiler reports each one under this code, and neither `single-conclusion` nor
+    // `conclusion-supported`, since it discards them all.
+    test('every one of several is refused, and nothing else is said about them', async () => {
+        const source = `${BASE}\njustification J implements T { evidence T:e is "E1"  conclusion x is "X" conclusion z is "Z" strategy y is "Y"\n T:e supports y\n y supports x }`;
+        expect(await jpipeCodesIn(source))
+            .toEqual([JpipeIssue.InheritedConclusion, JpipeIssue.InheritedConclusion]);
+    });
+
+    // What the compiler still reports: the strategy that only supported the discarded conclusion
+    // has nothing supporting it, and the overrides are still missing.
+    test('the rest of the model is still judged', async () => {
+        const source = `${TEMPLATE}\njustification J implements T { conclusion x is "X" strategy y is "Y"\n y supports x }`;
+        expect((await jpipeCodesIn(source)).sort()).toEqual([
+            JpipeIssue.InheritedConclusion,
+            JpipeIssue.NoAbstractSupport,
+            JpipeIssue.NoAbstractSupport,
+            JpipeIssue.StrategySupported
+        ].sort());
+    });
+
+    // The rule reads the declaration alone, so it holds whether or not the template resolves.
+    test('it holds under an implements that does not resolve', async () => {
+        const source = 'justification j implements missing {\n    conclusion c is "C"\n}';
+        expect(await errorsIn(source))
+            .toContain("Model 'j' implements 'missing' and inherits its conclusion: it cannot declare its own");
+    });
+
+    test('a template is held to the rule as well', async () => {
+        const source = `${BASE}\ntemplate U implements T { @support f is "F"  conclusion x is "X" }`;
+        expect(await jpipeCodesIn(source)).toContain(JpipeIssue.InheritedConclusion);
+    });
+
+    // The compiler discards the conclusion with its relations before any other rule runs, so the
+    // model is judged as if it were not written. Each expectation is what compiler 4.0.0 printed.
+    describe('the discarded conclusion is not part of the model', () => {
+
+        test('a relation from it supports nothing', async () => {
+            const source = `${BASE}\njustification J implements T { evidence T:e is "E" conclusion x is "X" strategy y is "Y" x supports y }`;
+            expect(await jpipeCodesIn(source))
+                .toEqual([JpipeIssue.InheritedConclusion, JpipeIssue.StrategySupported]);
+        });
+
+        test('it is not the model\'s conclusion when the template has none', async () => {
+            const source = 'template T { @support a is "A" strategy s is "S" a supports s }\n'
+                + 'justification J implements T { evidence T:a is "A" conclusion x is "X" }';
+            expect(await errorsIn(source)).toEqual(expect.arrayContaining([
+                "Model 'J' implements 'T' and inherits its conclusion: it cannot declare its own",
+                "Model 'J' has no conclusion"
+            ]));
+        });
+
+        test('spelled as an override, it leaves the @support missing rather than overridden', async () => {
+            const source = `${BASE}\njustification J implements T { conclusion T:e is "E" }`;
+            expect((await jpipeCodesIn(source)).sort())
+                .toEqual([JpipeIssue.InheritedConclusion, JpipeIssue.NoAbstractSupport].sort());
+        });
+
+        // An intermediate template's discarded conclusion overrides nothing either, so a model
+        // further down still owes the override (compiler 4.0.0: no-abstract-support on 'T:e').
+        test('spelled as an override in an intermediate template, it excuses no one below', async () => {
+            const source = `${BASE}\ntemplate U implements T { conclusion T:e is "E" @support f is "F" }\n`
+                + 'justification J implements U { evidence U:f is "F" }';
+            const missing = (await diagnosticsIn(source))
+                .filter(d => issueCodeOf(d) === JpipeIssue.NoAbstractSupport)
+                .map(d => (d.data as JpipeIssueData<typeof JpipeIssue.NoAbstractSupport>).expectedKey);
+            expect(missing).toEqual(['T:e']);
+        });
+
+        test('its id clashes with nothing', async () => {
+            const source = `${BASE}\njustification J implements T { evidence T:e is "E" conclusion x is "X" evidence x is "Y" }`;
+            expect(await jpipeCodesIn(source)).toEqual([JpipeIssue.InheritedConclusion]);
+        });
+    });
+
+    test('a model with no implements may declare its conclusion', async () => {
+        expect(await jpipeCodesIn(BASE)).toEqual([]);
+    });
+
+    test('the payload names the model, the template as written, and the conclusion', async () => {
+        const source = `${BASE}\njustification J implements T { evidence T:e is "E1"  conclusion x is "X" }`;
+        const payload = await payloadFor(source, JpipeIssue.InheritedConclusion);
+        expect(payload).toMatchObject({ modelId: 'J', parentId: 'T', id: 'x' });
     });
 });
 
@@ -316,14 +479,14 @@ describe('severity follows the compiler', () => {
 describe('payloads carry what a fix needs', () => {
 
     test('a missing override names the id the declaration must be given', async () => {
-        const payload = await payloadFor(`${TEMPLATE}\njustification J implements T { conclusion x is "X" strategy y is "Y"\n y supports x }`, JpipeIssue.NoAbstractSupport);
+        const payload = await payloadFor(MISSING_OVERRIDES, JpipeIssue.NoAbstractSupport);
         expect(payload.expectedKey).toBe('T:a');
         expect(payload.supportLabel).toBe('A');
         expect(payload.sourceTemplateId).toBe('T');
     });
 
     test('every missing override is listed on each of them, so one action can close them all', async () => {
-        const payload = await payloadFor(`${TEMPLATE}\njustification J implements T { conclusion x is "X" strategy y is "Y"\n y supports x }`, JpipeIssue.NoAbstractSupport);
+        const payload = await payloadFor(MISSING_OVERRIDES, JpipeIssue.NoAbstractSupport);
         expect(payload.allMissing.map(m => m.expectedKey)).toEqual(['T:a', 'T:b']);
     });
 
@@ -383,7 +546,7 @@ describe('payloads carry what a fix needs', () => {
 
     // The payload rides in a diagnostic's `data`, out to the client and back.
     test('payloads survive a JSON round trip unchanged', async () => {
-        const payload = await payloadFor(`${TEMPLATE}\njustification J implements T { conclusion x is "X" strategy y is "Y"\n y supports x }`, JpipeIssue.NoAbstractSupport);
+        const payload = await payloadFor(MISSING_OVERRIDES, JpipeIssue.NoAbstractSupport);
         expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
     });
 });

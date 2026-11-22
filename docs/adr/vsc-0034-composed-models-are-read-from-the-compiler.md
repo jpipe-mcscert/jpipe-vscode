@@ -18,7 +18,7 @@ the rules `conclusion-present`, `has-abstract-support`, `unknown-hook`, `ambiguo
 `unique-identifiers`, and also completion, hover, rename and go-to-definition through such a
 model. Until 2.0.1 some of these rules reported errors on models the compiler builds
 (jpipe-compiler example 028, #126). The fix makes them stay silent on such models
-(`buildsOnComposition` in `jpipe-utils.ts`), which leaves models the compiler refuses shown clean
+(`cannotSeeAllElements` in `jpipe-utils.ts`), which leaves models the compiler refuses shown clean
 (#127).
 
 There were two ways to give the editor those elements. One was to port the operators to
@@ -39,7 +39,7 @@ holds:
 - **One question, one answer type.** A consumer asks for a model's contents and receives either
   its effective elements, under the ids the compiler gives them, or *cannot tell*. Validation
   rules, completion, hover, rename and definition all ask this question. None of them calls
-  `buildsOnComposition` or reads a body directly.
+  `cannotSeeAllElements` or reads a body directly.
 - **Two implementations behind it.**
   - *Declared* contents serve a model whose `implements` chain is plain. They are read from the
     bodies, as `expandedElements` reads them today.
@@ -79,7 +79,7 @@ holds:
   nothing it did not know before. Reporting on a guess would put errors on models that build,
   which is the trade jpipe-vscode ADR-VSC-0022 refuses for composed models.
 - **A stub that always says *cannot tell* was rejected as the end state.** It is what
-  `buildsOnComposition` amounts to today. It is correct, but it leaves features blind exactly
+  `cannotSeeAllElements` amounts to today. It is correct, but it leaves features blind exactly
   where the language is hardest to follow.
 
 ## Consequences

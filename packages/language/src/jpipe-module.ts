@@ -140,11 +140,13 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
     registerValidationChecks(Jpipe);
     // Wired here rather than in the service constructor, where reaching for DocumentBuilder
     // during injection would risk a dependency cycle.
-    shared.workspace.DocumentBuilder.onUpdate(() => Jpipe.references.JpipeImportService.invalidateGlobCache());
+    shared.workspace.DocumentBuilder.onUpdate(() => Jpipe.references.JpipeImportService.invalidateCaches());
     if (!context.connection) {
-        // We don't run inside a language server
-        // Therefore, initialize the configuration provider instantly
-        shared.workspace.ConfigurationProvider.initialized({});
+        // Outside a language server (tests, a CLI) nothing will send `initialized`, so it is
+        // called here. Deliberately not awaited: with empty params it neither registers nor
+        // fetches anything, so it cannot reject, and `createJpipeServices` is synchronous by
+        // contract for every caller (#125).
+        void shared.workspace.ConfigurationProvider.initialized({});
     }
     return { shared, Jpipe };
 }

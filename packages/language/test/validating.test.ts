@@ -194,11 +194,7 @@ describe('Validation tests', () => {
                 s supports c
             }
             justification J implements T {
-                conclusion c is "Claim"
-                strategy s is "Strategy"
                 evidence T:abs is "Concrete evidence"
-                T:abs supports s
-                s supports c
             }
         `);
         assertNoParseErrors(doc);

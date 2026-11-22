@@ -39,9 +39,9 @@ export const COMPILER_CODES = [
     'incompatible-unification',
     'execution-error',
     'unresolved-symbol',
-    // From 4.0.0. The editor checks `duplicate-model` under the same code, and what
-    // `invalid-operator-call` covers under finer codes of its own, listed below; it leaves the
-    // other two to the compiler (jpipe-vscode ADR-VSC-0022).
+    // From 4.0.0. The editor checks `duplicate-model` and `inherited-conclusion` under the same
+    // codes, and what `invalid-operator-call` covers under finer codes of its own, listed below; it
+    // leaves `ambiguous-id` to the compiler (jpipe-vscode ADR-VSC-0022).
     'duplicate-model',
     'inherited-conclusion',
     'invalid-operator-call',

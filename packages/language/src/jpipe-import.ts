@@ -43,6 +43,11 @@ export class JpipeImportService {
     private readonly logger: JpipeServerLogger;
     /** Memoised glob expansions, keyed by base directory + pattern. See `invalidateGlobCache`. */
     private readonly globCache = new Map<string, string[]>();
+    /**
+     * Files parsed from disk because no open document holds them, keyed by resolved path, with
+     * the file's size and modification time when it was read. See `parseDocumentFromPath`.
+     */
+    private readonly shadowDocuments = new Map<string, { document: LangiumDocument; stamp: string }>();
 
     public constructor(services: JpipeServices) {
         this.services = services;
@@ -50,14 +55,32 @@ export class JpipeImportService {
     }
 
     /**
-     * Drops memoised glob expansions. Wired to `DocumentBuilder.onUpdate` in `jpipe-module.ts`.
-     *
-     * Known gap: a `.jd` file created outside the editor does not trigger a document update, so a
-     * pattern's match set can be stale until the next edit. The extension registers no file
-     * watcher today (`synchronize.fileEvents` is unset).
+     * Drops memoised glob expansions. See `invalidateCaches`.
      */
     invalidateGlobCache(): void {
         this.globCache.clear();
+    }
+
+    /**
+     * Called on every document update (`DocumentBuilder.onUpdate`, wired in `jpipe-module.ts`).
+     *
+     * Drops the memoised glob expansions, and unlinks every file parsed from disk without
+     * reparsing it. Its nodes stay the ones other documents point at, which is what the parse is
+     * kept for, while its own references, such as a closed `middle.jd`'s `implements` into
+     * `base.jd`, are resolved again against the files as they now are. Without this, editing
+     * `base.jd` left `middle.jd` pointing at the version it first resolved.
+     *
+     * Known gap: a `.jd` file created or changed outside the editor does not trigger a document
+     * update, so a pattern's match set, or what a closed file's references point at, can be stale
+     * until the next edit. The extension registers no file watcher today (`synchronize.fileEvents`
+     * is unset).
+     */
+    invalidateCaches(): void {
+        this.invalidateGlobCache();
+        const linker = this.services.references.Linker;
+        for (const { document } of this.shadowDocuments.values()) {
+            linker.unlink(document);
+        }
     }
 
     /**
@@ -209,6 +232,21 @@ export class JpipeImportService {
         }
     }
 
+    /**
+     * The document for a loaded file: the open one if there is one, otherwise a parse of the file
+     * on disk.
+     *
+     * A file parsed from disk is parsed **once for each version of it on disk**, and every caller
+     * gets the same document. Callers compare AST nodes by identity — whether a template belongs
+     * to the unit a `load` brought in decides the alias its elements are keyed under — and two
+     * parses of one file share no node. Parsing on every call made `lib:T:s` fail to resolve
+     * whenever the file it reached into was not open (#37).
+     *
+     * The parse is kept across builds, not dropped on each document update: a document that an
+     * update does not relink still holds references into it, and a fresh parse would break them
+     * the same way. It is read again only when the file's size or modification time changes, which
+     * is also what picks up a change made outside the editor, such as a `git checkout`.
+     */
     parseDocumentFromPath(filePath: string, relativeToDoc?: LangiumDocument): LangiumDocument | undefined {
         const resolvedPath = this.resolveFsPath(filePath, relativeToDoc);
 
@@ -217,10 +255,15 @@ export class JpipeImportService {
         if (existingDoc) {
             return existingDoc;
         }
-
-        if (!fs.existsSync(resolvedPath)) {
+        const stamp = this.stampOf(resolvedPath);
+        if (stamp === undefined) {
+            this.shadowDocuments.delete(resolvedPath);
             this.logger.warn(`Import not found: ${resolvedPath}`);
             return undefined;
+        }
+        const shadow = this.shadowDocuments.get(resolvedPath);
+        if (shadow?.stamp === stamp) {
+            return shadow.document;
         }
 
         try {
@@ -235,9 +278,20 @@ export class JpipeImportService {
             }
 
             this.logger.debug(`Parsed import: ${resolvedPath}`);
+            this.shadowDocuments.set(resolvedPath, { document: doc, stamp });
             return doc;
         } catch (error) {
             this.logger.error(`Failed to parse document: ${resolvedPath}: ${messageOf(error)}`);
+            return undefined;
+        }
+    }
+
+    /** The file's size and modification time, or `undefined` if it is not a readable file. */
+    private stampOf(filePath: string): string | undefined {
+        try {
+            const stat = fs.statSync(filePath);
+            return stat.isFile() ? `${stat.size}:${stat.mtimeMs}` : undefined;
+        } catch {
             return undefined;
         }
     }
