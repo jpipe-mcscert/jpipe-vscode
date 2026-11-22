@@ -231,7 +231,7 @@ This repository follows the jPipe workflow in the organisation's [contributing g
 - Accumulate changes under a top `### vX.Y.Z (Unreleased)` heading while work is in flight. Closing the section out is `scripts/release.sh prepare X.Y.Z`'s job — don't date the heading by hand.
 - Follow the existing structure: `Leader:` line, then `Features:` / `Bug Fixes:` / `Documentation:` sub-lists. Prefix each item with the affected area in bold (e.g. **Language Server:**, **Extension:**, **Grammar:**, **CI/CD:**). Reference the closed issue/PR where relevant.
 - The version lives in **four** places that must agree — the three `package.json` files (root, `packages/extension`, `packages/language`) *and* the `jpipe-language` dependency inside `packages/extension/package.json`. `scripts/release.sh prepare` sets all four and reconciles the lockfile; see "How to cut a release?" in the README for why doing it by hand is fiddly.
-- SemVer: new capability → minor bump; fixes/docs only → patch bump.
+- SemVer: a breaking change → major bump, and raising a minimum version is one (a compiler or runner that worked is refused); new capability → minor bump; fixes/docs only → patch bump. A major release's section opens with an `Upgrading from N.x:` sub-list saying what users must do.
 
 **Editorial style — write for users, not developers.** The changelog is read by people using the extension, not by contributors. Each entry should describe *what changed for the user* and *why it helps*, in plain language:
 
