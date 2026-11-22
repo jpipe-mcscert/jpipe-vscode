@@ -29,6 +29,63 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
+// A loaded file that is not open is parsed from disk. Every lookup must get the
+// same parse, or the nodes of one are not found among the nodes of another and
+// references through a `load … as` alias stop resolving (#37). Only the loading
+// file is built here, which is the configuration the bug needed.
+// ---------------------------------------------------------------------------
+
+describe('A loaded file that is not open', () => {
+
+    const LIBRARY = `template T {
+ @support a is "A"
+ strategy s is "S"
+ conclusion c is "C"
+ a supports s
+ s supports c
+}`;
+
+    test('resolves references through its alias into an inherited template', async () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
+        try {
+            fs.writeFileSync(path.join(tmpDir, 'library.jd'), LIBRARY);
+            document = await parse(`load "./library.jd" as lib
+
+justification J implements lib:T {
+ evidence lib:T:a is "Signed off"
+ lib:T:a supports lib:T:s
+}`, { documentUri: pathToFileURL(path.join(tmpDir, 'user.jd')).toString(), validation: true });
+
+            expect(diagnosticMessages(document)).toEqual([]);
+            const relation = document.parseResult.value.body.find(isJustification)?.contents?.rels[0];
+            expect(relation?.to?.ref?.$type).toBe('Strategy');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true });
+        }
+    });
+
+    test('is parsed once, until the caches are invalidated', async () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
+        try {
+            fs.writeFileSync(path.join(tmpDir, 'library.jd'), LIBRARY);
+            document = await parse('load "./library.jd"\njustification J implements T { evidence T:a is "A" }',
+                { documentUri: pathToFileURL(path.join(tmpDir, 'user.jd')).toString() });
+            const importService = services.Jpipe.references.JpipeImportService;
+
+            const first = importService.parseDocumentFromPath('./library.jd', document);
+            expect(importService.parseDocumentFromPath('./library.jd', document)).toBe(first);
+
+            importService.invalidateCaches();
+            const reread = importService.parseDocumentFromPath('./library.jd', document);
+            expect(reread).toBeDefined();
+            expect(reread).not.toBe(first);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true });
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Relative import resolution — exercises the `relativeToDoc` branch of
 // JpipeImportService.parseDocumentFromPath, the exact code path that was
 // malformed on Windows. Runs green on POSIX before and after the fix, so it

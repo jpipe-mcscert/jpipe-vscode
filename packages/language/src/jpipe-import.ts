@@ -41,8 +41,13 @@ const MAX_WALK_ENTRIES = 20_000;
 export class JpipeImportService {
     private readonly services: JpipeServices;
     private readonly logger: JpipeServerLogger;
-    /** Memoised glob expansions, keyed by base directory + pattern. See `invalidateGlobCache`. */
+    /** Memoised glob expansions, keyed by base directory + pattern. See `invalidateCaches`. */
     private readonly globCache = new Map<string, string[]>();
+    /**
+     * Files parsed from disk because no open document holds them, keyed by resolved path. See
+     * `parseDocumentFromPath` for why each must be parsed once, and `invalidateCaches`.
+     */
+    private readonly shadowDocuments = new Map<string, LangiumDocument>();
 
     public constructor(services: JpipeServices) {
         this.services = services;
@@ -50,14 +55,17 @@ export class JpipeImportService {
     }
 
     /**
-     * Drops memoised glob expansions. Wired to `DocumentBuilder.onUpdate` in `jpipe-module.ts`.
+     * Drops memoised glob expansions and the files parsed from disk. Wired to
+     * `DocumentBuilder.onUpdate` in `jpipe-module.ts`, so both hold for the length of one build and
+     * are read again for the next.
      *
-     * Known gap: a `.jd` file created outside the editor does not trigger a document update, so a
-     * pattern's match set can be stale until the next edit. The extension registers no file
-     * watcher today (`synchronize.fileEvents` is unset).
+     * Known gap: a `.jd` file created or changed outside the editor does not trigger a document
+     * update, so a pattern's match set, or a closed file's contents, can be stale until the next
+     * edit. The extension registers no file watcher today (`synchronize.fileEvents` is unset).
      */
-    invalidateGlobCache(): void {
+    invalidateCaches(): void {
         this.globCache.clear();
+        this.shadowDocuments.clear();
     }
 
     /**
@@ -209,6 +217,16 @@ export class JpipeImportService {
         }
     }
 
+    /**
+     * The document for a loaded file: the open one if there is one, otherwise a parse of the file
+     * on disk.
+     *
+     * A file parsed from disk is parsed **once** until the caches are next invalidated, and every
+     * caller gets the same document. Callers compare AST nodes by identity — whether a template
+     * belongs to the unit a `load` brought in decides the alias its elements are keyed under — and
+     * two parses of one file share no node. Parsing on every call made `lib:T:s` fail to resolve
+     * whenever the file it reached into was not open (#37).
+     */
     parseDocumentFromPath(filePath: string, relativeToDoc?: LangiumDocument): LangiumDocument | undefined {
         const resolvedPath = this.resolveFsPath(filePath, relativeToDoc);
 
@@ -216,6 +234,10 @@ export class JpipeImportService {
         const existingDoc = this.services.shared.workspace.LangiumDocuments.getDocument(resolvedUri);
         if (existingDoc) {
             return existingDoc;
+        }
+        const shadow = this.shadowDocuments.get(resolvedPath);
+        if (shadow) {
+            return shadow;
         }
 
         if (!fs.existsSync(resolvedPath)) {
@@ -235,6 +257,7 @@ export class JpipeImportService {
             }
 
             this.logger.debug(`Parsed import: ${resolvedPath}`);
+            this.shadowDocuments.set(resolvedPath, doc);
             return doc;
         } catch (error) {
             this.logger.error(`Failed to parse document: ${resolvedPath}: ${messageOf(error)}`);

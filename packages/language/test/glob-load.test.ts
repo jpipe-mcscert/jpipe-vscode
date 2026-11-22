@@ -30,7 +30,7 @@ afterEach(async () => {
     document = undefined;
     if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
     // Expansions are memoised per base directory; each test builds a fresh tree.
-    services.Jpipe.references.JpipeImportService.invalidateGlobCache();
+    services.Jpipe.references.JpipeImportService.invalidateCaches();
 });
 
 function template(id: string): string {

@@ -140,7 +140,7 @@ export function createJpipeServices(context: DefaultSharedModuleContext, logLeve
     registerValidationChecks(Jpipe);
     // Wired here rather than in the service constructor, where reaching for DocumentBuilder
     // during injection would risk a dependency cycle.
-    shared.workspace.DocumentBuilder.onUpdate(() => Jpipe.references.JpipeImportService.invalidateGlobCache());
+    shared.workspace.DocumentBuilder.onUpdate(() => Jpipe.references.JpipeImportService.invalidateCaches());
     if (!context.connection) {
         // We don't run inside a language server
         // Therefore, initialize the configuration provider instantly
