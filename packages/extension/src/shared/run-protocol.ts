@@ -45,6 +45,26 @@ export interface Verdict {
     libraries: string[];
 }
 
+/** An element decided, as the drawing shows it while the run goes on. */
+export interface LiveStatus {
+    id: string;
+    status: 'pass' | 'fail' | 'skip';
+    reason: string | null;
+    /** A skip on its own account, not because of an element it depends on: drawn thicker. */
+    rootCause: boolean;
+    /** The variables its step produced: one it declares and did not produce is drawn dashed. */
+    produced: string[];
+    /** The files it observes that could not be reached, as declared: drawn in vermillion. */
+    unreachable: string[];
+}
+
+/** A source an element observes, as the drawing names it, once the run observed it. */
+export interface ObservedSource {
+    source: string;
+    /** False as soon as one element could not reach it. */
+    reachable: boolean;
+}
+
 /** How far a run under way is, from the events jpipe-runner writes as it goes (ADR-VSC-0033). */
 export interface Progress {
     /** `3 of 12 decided`. */
@@ -53,6 +73,17 @@ export interface Progress {
     counts: VerdictCount[];
     /** The step under way, by its element's label, or `2 steps` when several are; null between steps. */
     running: string | null;
+    /**
+     * The elements decided so far, to draw over the drawing, when the drawing is the run's own,
+     * drawn before its first step; null otherwise, and the run is waited for under the busy overlay.
+     */
+    statuses: LiveStatus[] | null;
+    /** The sources observed so far, to mark ✔ or ⚠ in the drawing; empty unless `statuses` is sent. */
+    observed: ObservedSource[];
+    /** The ids of the elements whose step runs, to mark with a spinner in the drawing, as in Results. */
+    underway: string[];
+    /** The ids of the elements neither decided nor running yet, to mark with a clock in the drawing, as in Results. */
+    pending: string[];
 }
 
 /** Everything the page shows. */
@@ -101,6 +132,6 @@ export type RunPanelToHost =
     | { type: 'select'; element: string | null }
     /** A node was double-clicked: open the element in its `.jd` file. */
     | { type: 'open'; element: string }
-    /** Save the drawing. */
-    | { type: 'download' }
+    /** Save the drawing on show, as the page draws it, or the host's own when the page has none. */
+    | { type: 'download'; svg: string | null }
     | { type: 'action'; id: NoticeAction };

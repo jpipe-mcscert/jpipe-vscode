@@ -101,6 +101,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
           preview.ts            ← preview page: modes, banners, highlight, message dispatch
           canvas.ts             ← the diagram canvas both pages share: pan/zoom, minimap, theme (tested)
           run.ts / run-view.ts  ← the Run panel's page: entry point / its logic (run-view tested)
+          run-colours.ts        ← a run's drawing coloured as it goes, by the runner's rules (tested against its drawings; ADR-VSC-0033)
           diagnostic-view.ts    ← the diagnostics tables
           viewbox.ts            ← pure viewbox maths (tested)
         shared/                 ← the ONLY code both bundles may import (ADR-VSC-0005)
@@ -172,7 +173,7 @@ The `JpipeCompletionProvider` deliberately never falls through to Langium's glob
 Exit codes: `1` = model has errors, `42` = compiler crashed.
 
 ### Required versions
-`src/extension/requirements.ts` names the **oldest** compiler, jpipe-runner and Python this release works with, and no newest (jpipe-vscode ADR-VSC-0032). A compiler below the minimum is refused before any run, with an update offered; the managed install lists only releases at or above it. Raising a minimum is a user-facing change: changelog entry, and the Marketplace README's "Required software" (held by `test/requirements.test.ts`). Pylance is a soft dependency — never add it to `extensionDependencies` or `extensionPack`.
+`src/extension/requirements.ts` names the **oldest** compiler, jpipe-runner and Python this release works with, and no newest (jpipe-vscode ADR-VSC-0032). A compiler below the minimum is refused before any run, with an update offered; the managed install lists only releases at or above it. Raising a minimum is a user-facing change: changelog entry, and the Marketplace README's "Required software" (held by `test/requirements.test.ts`). `RECOMMENDED` names releases that are better but not required (jpipe-runner 4.1.0, which follows a run as it goes): code asks for what they add only of a release that has it, Check jPipe Installation says what upgrading brings, and the extension is not released before they are published. Pylance is a soft dependency — never add it to `extensionDependencies` or `extensionPack`.
 
 ---
 
@@ -333,7 +334,8 @@ jpipe-runner 4.0.x, `--diagram` on every later or unknown release, chosen by `da
 report's `dataflow` in schema 1, `diagram` in schema 2; the argument-only view is left to the preview), under a bar that says *Execution* or *Check · no step
 called* first. It shares that run with the Results view through `RunSession`, and the two come
 forward together; until a report arrives Results lists one status row, and, with jpipe-runner 4.1 or
-later, the elements as their events decide them, while the verdict bar counts them (ADR-VSC-0033). A node click lights it and
+later, the elements as their events decide them, while the verdict bar counts them and the drawing
+the runner made before the first step (`diagram.drawn`) is coloured as they are (ADR-VSC-0033). A node click lights it and
 everything downstream (walked from the SVG's edge titles, `webview/flow.ts`) and selects an
 element's row in Results; a second click, the background or Escape clears; a double-click opens
 the element. A runner that cannot draw (Graphviz

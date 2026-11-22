@@ -14,6 +14,8 @@ import {
     meetsMinimum,
     PYLANCE_EXTENSION,
     pylanceLine,
+    RECOMMENDED,
+    releaseNumbers,
     REQUIREMENTS,
     type InstallationFacts
 } from '../src/extension/requirements.js';
@@ -152,6 +154,24 @@ describe('Pylance stays a soft dependency', () => {
     });
 });
 
+describe('the release numbers a version starts with', () => {
+    test.each([
+        ['4.1.0', [4, 1, 0]],
+        ['4.1.0.dev0', [4, 1, 0]],
+        ['5.0.0rc1', [5, 0, 0]],
+        ['4', [4]],
+        ['installed', undefined],
+        ['', undefined],
+        [undefined, undefined]
+    ])('%s → %j', (version, numbers) => {
+        expect(releaseNumbers(version)).toEqual(numbers);
+    });
+
+    test('the recommended jpipe-runner is no older than the one required', () => {
+        expect(meetsMinimum(RECOMMENDED.runner, REQUIREMENTS.runner)).toBe(true);
+    });
+});
+
 describe('the Marketplace page states the same requirements', () => {
     // Users read the minimums there before installing; a raised minimum must not leave it behind.
     const readme = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'README.md'), 'utf8');
@@ -160,5 +180,9 @@ describe('the Marketplace page states the same requirements', () => {
         expect(readme).toContain(`version ${formatRelease(REQUIREMENTS.compiler)} or newer`);
         expect(readme).toContain(`${formatRelease(REQUIREMENTS.runner)} or newer`);
         expect(readme).toContain(`Python ${formatRelease(REQUIREMENTS.python)} or`);
+    });
+
+    test('so is the recommended jpipe-runner, which follows a run as it goes', () => {
+        expect(readme).toContain(`jpipe-runner ${formatRelease(RECOMMENDED.runner)} or newer, the recommended release`);
     });
 });

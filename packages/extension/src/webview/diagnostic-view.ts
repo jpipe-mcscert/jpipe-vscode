@@ -787,7 +787,7 @@ export class DiagnosticView {
         const container = el('div', 'diag-tree');
         // A filter that matched inside a macro has already pruned away everything else under it,
         // so opening the survivors is the only way the match is visible at all.
-        this.appendActionNodes(container, tree, this.needle() !== '');
+        this.appendActionNodes(container, tree, this.needle() !== '', 0);
         this.elements.panel.append(container);
     }
 
@@ -836,45 +836,58 @@ export class DiagnosticView {
         this.elements.controlsExtra.append(expandAll, collapseAll);
     }
 
-    private appendActionNodes(parent: HTMLElement, nodes: readonly ActionNode[], forceOpen: boolean): void {
+    /**
+     * The rows of `nodes`, `depth` macros deep. What a macro expanded to is indented under it, one
+     * level per macro, with a guide line down from the macro's twisty, as an editor's tree draws
+     * one. The numbers stay in a column of their own, unindented, so they read as the raw text
+     * numbers its steps.
+     */
+    private appendActionNodes(parent: HTMLElement, nodes: readonly ActionNode[], forceOpen: boolean, depth: number): void {
         for (const node of nodes) {
-            const hasChildren = node.children.length > 0;
-            const open = forceOpen || this.expandedMacros.has(node.action.index);
-
-            const row = el('div', 'diag-action');
-            // The compiler's own numbering, not the array position: only one of the two is a
-            // promise, and it is what makes the tree and the raw text reconcilable.
-            row.append(el('span', 'diag-action-index', `${node.action.index}.`));
-
-            let glyph = '·';
-            if (hasChildren) glyph = open ? '▾' : '▸';
-            const twisty = el('button', hasChildren ? 'diag-twisty' : 'diag-twisty leaf', glyph);
-            if (hasChildren) {
-                twisty.setAttribute('aria-expanded', String(open));
-                twisty.addEventListener('click', () => {
-                    if (this.expandedMacros.has(node.action.index)) this.expandedMacros.delete(node.action.index);
-                    else this.expandedMacros.add(node.action.index);
-                    this.renderPanel();
-                    this.host.persist();
-                });
-            } else {
-                twisty.setAttribute('aria-hidden', 'true');
-            }
-            row.append(twisty);
-
-            if (node.action.macro) row.append(el('span', 'diag-action-macro', 'macro'));
-            row.append(el('span', undefined, node.action.description));
-
-            if (hasChildren && !open) {
-                row.append(el('span', 'diag-hidden-count', `(${countDescendants(node)} hidden)`));
-            }
-            parent.append(row);
-
-            if (hasChildren && open) {
+            const open = node.children.length > 0 && (forceOpen || this.expandedMacros.has(node.action.index));
+            parent.append(this.actionRow(node, open, depth));
+            if (open) {
                 const children = el('div', 'diag-children');
-                this.appendActionNodes(children, node.children, forceOpen);
+                children.setAttribute('role', 'group');
+                this.appendActionNodes(children, node.children, forceOpen, depth + 1);
                 parent.append(children);
             }
         }
+    }
+
+    /** One step of the trace: its number, its indent, its twisty, and what it did. */
+    private actionRow(node: ActionNode, open: boolean, depth: number): HTMLElement {
+        const row = el('div', 'diag-action');
+        // The compiler's own numbering, not the array position: only one of the two is a
+        // promise, and it is what makes the tree and the raw text reconcilable.
+        row.append(el('span', 'diag-action-index', `${node.action.index}.`));
+        const indent = el('span', 'diag-indent');
+        indent.setAttribute('aria-hidden', 'true');
+        for (let level = 0; level < depth; level++) indent.append(el('span', 'diag-guide'));
+        row.append(indent, this.twisty(node, open));
+        if (node.action.macro) row.append(el('span', 'diag-action-macro', 'macro'));
+        row.append(el('span', undefined, node.action.description));
+        if (node.children.length > 0 && !open) {
+            row.append(el('span', 'diag-hidden-count', `(${countDescendants(node)} hidden)`));
+        }
+        return row;
+    }
+
+    /** A macro's disclosure control, which opens or closes it; a spacer for a step without steps. */
+    private twisty(node: ActionNode, open: boolean): HTMLElement {
+        if (node.children.length === 0) {
+            const spacer = el('button', 'diag-twisty leaf', '·');
+            spacer.setAttribute('aria-hidden', 'true');
+            return spacer;
+        }
+        const twisty = el('button', 'diag-twisty', open ? '▾' : '▸');
+        twisty.setAttribute('aria-expanded', String(open));
+        twisty.addEventListener('click', () => {
+            if (this.expandedMacros.has(node.action.index)) this.expandedMacros.delete(node.action.index);
+            else this.expandedMacros.add(node.action.index);
+            this.renderPanel();
+            this.host.persist();
+        });
+        return twisty;
     }
 }

@@ -29,6 +29,37 @@ export const REQUIREMENTS = {
     python: [3, 11]
 } as const satisfies Record<string, ReleaseNumbers>;
 
+/**
+ * What this release works best with: the oldest release of each tool that has everything this
+ * release uses. Recommended, not required: a release at or above `REQUIREMENTS` works, without
+ * what the recommended one adds, so nothing is refused for it. Check jPipe Installation says what
+ * upgrading brings (jpipe-vscode ADR-VSC-0032). Raising one is a user-facing change too.
+ */
+export const RECOMMENDED = {
+    /**
+     * jpipe-runner 4.1 writes a run's events as it goes (`--events`), draws the run before its
+     * first step, and says when each source is observed: what the Run panel and Results follow a
+     * run with (ADR-VSC-0033). An older runner's runs are shown when they end.
+     */
+    runner: [4, 1, 0]
+} as const satisfies Record<string, ReleaseNumbers>;
+
+/**
+ * The release numbers a version starts with — `4.1.0.dev0` → `[4, 1, 0]`, `5.0.0rc1` →
+ * `[5, 0, 0]` — or `undefined` when it starts with none, as `installed` does.
+ */
+export function releaseNumbers(version: string | undefined): number[] | undefined {
+    const numbers: number[] = [];
+    for (const part of (version ?? '').split('.')) {
+        const n = Number.parseInt(part, 10);
+        if (Number.isNaN(n)) break;
+        numbers.push(n);
+        // A pre-release written into the part (`0rc1`) ends the numbers.
+        if (String(n) !== part) break;
+    }
+    return numbers.length > 0 ? numbers : undefined;
+}
+
 /** `[3, 0, 0]` → `3.0.0`. */
 export const formatRelease = (numbers: ReleaseNumbers): string => numbers.join('.');
 

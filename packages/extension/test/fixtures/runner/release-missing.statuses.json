@@ -1,0 +1,54 @@
+{
+ "statuses": [
+  {
+   "id": "release:e1",
+   "status": "pass",
+   "reason": null,
+   "blocked_by": [],
+   "produced": [
+    "tests_pass"
+   ],
+   "unreachable": []
+  },
+  {
+   "id": "release:e2",
+   "status": "fail",
+   "reason": "mock/CHANGELOG.md, observed as 'changelog', does not exist",
+   "blocked_by": [],
+   "produced": [],
+   "unreachable": [
+    "mock/CHANGELOG.md"
+   ]
+  },
+  {
+   "id": "release:s",
+   "status": "skip",
+   "reason": "not run: release:e2 did not pass",
+   "blocked_by": [
+    "release:e2"
+   ],
+   "produced": [],
+   "unreachable": []
+  },
+  {
+   "id": "release:c",
+   "status": "skip",
+   "reason": "not run: release:e2 did not pass",
+   "blocked_by": [
+    "release:e2"
+   ],
+   "produced": [],
+   "unreachable": []
+  }
+ ],
+ "observed": [
+  {
+   "source": "mock/junit.xml",
+   "reachable": true
+  },
+  {
+   "source": "mock/CHANGELOG.md",
+   "reachable": false
+  }
+ ]
+}

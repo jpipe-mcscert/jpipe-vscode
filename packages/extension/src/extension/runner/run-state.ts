@@ -6,7 +6,7 @@
  * it, what Results says while it has no report, when it stops saying what a run would, and where an
  * element of the report is written.
  */
-import type { Notice, Progress, RunKind, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
+import type { LiveStatus, Notice, Progress, RunKind, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
 import type { RunProgress } from './run-events.js';
 import { outcomeLinks, progressRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport } from './run-report.js';
 
@@ -27,6 +27,11 @@ export interface ShownRun {
     labels: Labels;
     /** The runner's SVG of the run's dataflow. */
     dataflow: string | null;
+    /**
+     * Whether `dataflow` is the drawing the runner made of this run before its first step, which
+     * the page colours as elements are decided (ADR-VSC-0033), rather than one it drew at the end.
+     */
+    live: boolean;
     drawingMissing: string | null;
     /** The libraries it loaded: their paths, to tell when they change, and how the workspace names them. */
     libraries: { path: string; display: string }[];
@@ -42,23 +47,27 @@ export const kindOf = (check: boolean): RunKind => check ? 'check' : 'execution'
 /** `Executing release…`, `Checking release…`. */
 export const underWay = (name: string, check: boolean): string => `${check ? 'Checking' : 'Executing'} ${name}…`;
 
-/** A run of `name` just started: what is shown until it ends. */
-export function startedRun(
-    name: string,
-    uri: string,
-    check: boolean,
-    libraries: ShownRun['libraries'],
-    previous: ShownRun | undefined
-): ShownRun {
-    // The last drawing of the same justification stays under the busy overlay: a run that is about
-    // to redraw it is no reason to blank it. Another justification's drawing would be misleading.
-    const same = previous?.name === name && previous.uri === uri;
+/**
+ * A run of `name` just started: what is shown until it ends. Nothing of the previous run stays, its
+ * drawing included, even of the same justification: its colours and marks are another run's, and
+ * a reader watching this one would take them for its own. The page keeps the framing.
+ */
+export function startedRun(name: string, uri: string, check: boolean, libraries: ShownRun['libraries']): ShownRun {
     return {
-        name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(),
-        dataflow: same ? previous.dataflow : null,
+        name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(), live: false,
+        dataflow: null,
         drawingMissing: null,
         libraries, endedAt: null, notice: null, outOfDate: null
     };
+}
+
+/**
+ * A run that ended without a report, stopped or unable to go on, saying why. Its own drawing, if
+ * the runner made one before the first step, stays, coloured with what it decided before it ended:
+ * those are this run's results, the only ones it has.
+ */
+export function endedWithout(run: ShownRun, phase: 'blocked' | 'stopped', notice: Notice, at: Date): ShownRun {
+    return { ...run, phase, notice, endedAt: at };
 }
 
 /** `14:02`, in the hours and minutes of the run's own clock. */
@@ -83,11 +92,15 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
             at: run.endedAt ? clockTime(run.endedAt) : null,
             libraries: run.libraries.map(library => library.display)
         },
-        progress: run.phase === 'running' && run.progress ? progressOf(run.progress, run.labels) : null,
+        progress: run.progress && (run.phase === 'running' || (run.live && run.phase !== 'done'))
+            ? progressOf(run.progress, run.labels, run.live, run.phase === 'running')
+            : null,
         notice: run.notice,
         dataflow: run.dataflow,
         drawingMissing: run.drawingMissing,
-        elements: report?.elements.map(e => e.id) ?? [],
+        // The report's, once there is one; before it, the events', so that the drawing of a run
+        // under way, or stopped short of its report, selects and opens its elements too.
+        elements: report?.elements.map(e => e.id) ?? [...(run.progress?.elements ?? [])],
         outOfDate: run.outOfDate
     };
 }
@@ -95,14 +108,28 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
 /** `3 of 12 decided`. */
 const decidedOf = (progress: RunProgress): string => `${progress.decided.size} of ${progress.elements.length} decided`;
 
-/** How far a run under way is, for the panel's verdict bar: the step running is named by its label. */
-export function progressOf(progress: RunProgress, labels: Labels = new Map()): Progress {
-    const running = [...progress.running.keys()];
+/**
+ * How far a run under way is, for the panel: its verdict bar names the step running by its label,
+ * and, when the drawing on show is the run's own (`live`), its elements are coloured as decided,
+ * and those not decided yet marked, running or waiting. A run that ended without its report keeps
+ * its colours, but nothing runs or waits any more (`underWay` false).
+ */
+export function progressOf(progress: RunProgress, labels: Labels = new Map(), live = false, underWay = true): Progress {
+    const running = underWay ? [...progress.running.keys()] : [];
     const one = running.length === 1 ? labels.get(running[0]) ?? running[0] : null;
+    const decided = [...progress.decided.values()].map(d => d.element);
     return {
         decided: decidedOf(progress),
-        counts: outcomeLinks([...progress.decided.values()].map(d => d.element)),
-        running: running.length > 1 ? `${running.length} steps` : one
+        counts: outcomeLinks(decided),
+        running: running.length > 1 ? `${running.length} steps` : one,
+        statuses: live ? decided.flatMap((e): LiveStatus[] => e.status === null ? [] : [{
+            id: e.id, status: e.status, reason: e.reason, rootCause: e.status === 'skip' && e.blockedBy.length === 0,
+            produced: e.produced.map(([name]) => name),
+            unreachable: e.artifacts.filter(a => !a.reachable).map(a => a.declared)
+        }]) : null,
+        observed: live ? [...progress.observed].map(([source, reachable]) => ({ source, reachable })) : [],
+        underway: running,
+        pending: underWay ? progress.elements.filter(id => !progress.decided.has(id) && !progress.running.has(id)) : []
     };
 }
 

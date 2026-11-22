@@ -18,6 +18,8 @@ export type Verdict = 'pass' | 'fail' | 'skip' | 'invalid' | 'valid';
 
 export interface Artifact {
     path: string;
+    /** The path or glob the step declared, which matched `path`: what the drawing names. */
+    declared: string;
     reachable: boolean;
     size: number | null;
 }
@@ -129,6 +131,7 @@ export function parseElement(e: Record<string, unknown>): ReportElement {
             .map(([name, value]) => [name, producedValue(value)]),
         artifacts: objects(e.artifacts).map(a => ({
             path: text(a.path),
+            declared: text(a.declared, text(a.path)),
             reachable: a.reachable === true,
             size: typeof a.size === 'number' ? a.size : null
         }))
@@ -179,7 +182,7 @@ export type RowIcon =
     | 'pass' | 'fail' | 'skip' | 'not-run'
     | 'error' | 'warning' | 'info' | 'fix' | 'frame'
     | 'step' | 'file' | 'missing-file' | 'value' | 'consumes' | 'supports' | 'blocked'
-    | 'running' | 'stopped';
+    | 'running' | 'waiting' | 'stopped';
 
 /** A row of the Results view. */
 export interface ResultRow {
@@ -559,7 +562,7 @@ export function progressRows(progress: RunProgress, name: string, labels: Labels
         });
     };
     pending('Running', ordered.filter(id => progress.running.has(id)), true, 'running', 'running');
-    pending('Waiting', ordered.filter(id => !progress.running.has(id) && !progress.decided.has(id)), false, 'not-run', 'waiting');
+    pending('Waiting', ordered.filter(id => !progress.running.has(id) && !progress.decided.has(id)), false, 'waiting', 'waiting');
     return rows;
 }
 

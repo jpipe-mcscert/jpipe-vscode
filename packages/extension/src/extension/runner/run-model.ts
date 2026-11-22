@@ -205,8 +205,8 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
     const { draw } = asked;
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    // A launch again starts from nothing: what an earlier one's events said is not this one's.
-    deps.session.update(token, { progress: null });
+    // A launch again starts from nothing: what an earlier one's events said, or drew, is not this one's.
+    deps.session.update(token, { progress: null, live: false, dataflow: null });
     const eventsFor = (release: string | undefined): string | undefined =>
         asked.stream && !check && streamsEvents(release) ? files.events.fsPath : undefined;
     const argsFor = (release: string | undefined): string[] => withReport(
@@ -272,13 +272,53 @@ async function forgetEvents(file: vscode.Uri): Promise<void> {
     }
 }
 
-/** Follow the events a run writes to `file`, into what the session shows of run `token`. */
+/**
+ * Follow the events a run writes to `file`, into what the session shows of run `token`; and show
+ * the drawing the runner announces before the first step, as soon as it does.
+ */
 function follow(deps: RunDeps, token: number, taskName: string, file: string): EventFollower {
     deps.logger.debug(`${taskName}: following the run's events in ${file}`);
-    return followEvents(
+    // By path: the runner draws each run in a directory of its own, so a new path is a new drawing,
+    // even in a file a runner emptied and started again.
+    let previewed: string | null = null;
+    // A drawing still being read when this launch ends is not shown: a launch again, of the same
+    // run, has a drawing of its own or none.
+    let following = true;
+    const follower = followEvents(
         file,
-        progress => deps.session.update(token, { progress }),
+        progress => {
+            deps.session.update(token, { progress });
+            if (progress.preview && progress.preview !== previewed) {
+                previewed = progress.preview;
+                void showPreview(deps, token, taskName, progress.preview, () => following);
+            }
+        },
         problem => deps.logger.warn(`${taskName}: ${problem}, so the run is shown when it ends`));
+    return {
+        async stop(): Promise<void> {
+            await follower.stop();
+            following = false;
+        }
+    };
+}
+
+/**
+ * Show the drawing the runner made of run `token` before its first step, which the page colours as
+ * its elements are decided (jpipe-runner ADR-0032, jpipe-vscode ADR-VSC-0033). The runner deletes
+ * it once the run has ended, so it is read at once; one already gone, or a run already over, is
+ * left to the drawing the run ends with.
+ */
+async function showPreview(
+    deps: RunDeps, token: number, taskName: string, file: string, followed: () => boolean
+): Promise<void> {
+    const svg = await readFileText(vscode.Uri.file(file));
+    if (svg === null) {
+        deps.logger.debug(`${taskName}: the drawing made before the first step was gone before it was read`);
+        return;
+    }
+    if (followed() && deps.session.isCurrent(token) && deps.session.running) {
+        deps.session.update(token, { dataflow: svg, live: true, drawingMissing: null });
+    }
 }
 
 /** The option that draws the dataflow, for the runner release that will run (`dataflowFlag`). */
@@ -372,6 +412,7 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
         phase: 'done',
         report,
         dataflow,
+        live: false,
         drawingMissing: dataflow ? null : NO_DRAWING,
         endedAt: new Date(),
         notice: null

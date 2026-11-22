@@ -43,9 +43,21 @@ describe('the release example, as it went', () => {
         expect(after(LINES.slice(0, 2))!.validation).toEqual({ passed: true, diagnostics: [] });
     });
 
+    test('says where the drawing made before the first step is', () => {
+        expect(after(LINES.slice(0, 2))!.preview).toBeNull();
+        expect(after(LINES.slice(0, 3))!.preview).toBe('/tmp/jpipe-runner-i7ba5753/diagram.svg');
+    });
+
+    test('a source is observed, and reached, while its element still runs', () => {
+        const observing = after(LINES.slice(0, 5))!;
+        expect([...observing.observed]).toEqual([['mock/junit.xml', true]]);
+        expect([...observing.running.keys()]).toEqual(['release:e1']);
+        expect(after(LINES)!.observed).toEqual(new Map([['mock/junit.xml', true], ['mock/CHANGELOG.md', true]]));
+    });
+
     test('an element started is running until it is decided', () => {
-        expect([...after(LINES.slice(0, 3))!.running.keys()]).toEqual(['release:e1']);
-        const decided = after(LINES.slice(0, 4))!;
+        expect([...after(LINES.slice(0, 4))!.running.keys()]).toEqual(['release:e1']);
+        const decided = after(LINES.slice(0, 6))!;
         expect(decided.running.size).toBe(0);
         expect(decided.decided.get('release:e1')!.element).toMatchObject({
             id: 'release:e1', label: 'The test suite passes', status: 'fail', reason: 'mock/junit.xml: 2 tests failed', ran: true
@@ -104,6 +116,22 @@ describe('one event at a time', () => {
         expect(nextProgress(progress, '{"event":"step.printed","seq":1,"elapsed_ms":0}')).toBe(progress);
         expect(nextProgress(progress, 'not JSON')).toBe(progress);
         expect(nextProgress(progress, '"a string"')).toBe(progress);
+    });
+
+    test('a source two elements observe is reached only if both reached it', () => {
+        const observed = (source: string, reachable: boolean) => JSON.stringify({ event: 'source.observed', seq: 1, elapsed_ms: 0, id: 'j:e', source, reachable });
+        let progress = nextProgress(null, started(['j:e'])) as RunProgress;
+        progress = nextProgress(progress, observed('build/*.xml', true)) as RunProgress;
+        progress = nextProgress(progress, observed('build/*.xml', false)) as RunProgress;
+        progress = nextProgress(progress, observed('build/*.xml', true)) as RunProgress;
+        expect(progress.observed.get('build/*.xml')).toBe(false);
+        expect(nextProgress(progress, '{"event":"source.observed","seq":4,"elapsed_ms":0,"id":"j:e","source":"x"}')).toBe(progress);
+    });
+
+    test('a drawing announced without a path is none', () => {
+        const progress = nextProgress(null, started(['j:e'])) as RunProgress;
+        expect(nextProgress(progress, '{"event":"diagram.drawn","seq":1,"elapsed_ms":0,"path":""}')).toBe(progress);
+        expect(nextProgress(progress, '{"event":"diagram.drawn","seq":1,"elapsed_ms":0}')).toBe(progress);
     });
 
     test('nothing counts before the run starts', () => {

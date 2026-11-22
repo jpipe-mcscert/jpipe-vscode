@@ -131,5 +131,22 @@
 #svg-wrapper g.node { cursor: pointer; }
 
 /* Where the lit chain starts. */
-#svg-wrapper g.node.jpipe-origin :is(polygon, ellipse, path) { stroke-width: 3; }
+#svg-wrapper g.node.jpipe-origin :is(polygon, ellipse, path):not(g.jpipe-underway *, g.jpipe-pending *) { stroke-width: 3; }
 #container.dragging g.node { cursor: grabbing; }
+
+/*
+ * A step under way is marked as the Results view marks it, with a circle that has a gap, in the
+ * cell its status's symbol will take: the shape says it, whatever the colours. It spins, as the
+ * view's does, unless the reader asks for less motion.
+ */
+#svg-wrapper g.jpipe-underway circle {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: jpipe-underway 1s linear infinite;
+}
+
+@keyframes jpipe-underway { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    #svg-wrapper g.jpipe-underway circle { animation: none; }
+}

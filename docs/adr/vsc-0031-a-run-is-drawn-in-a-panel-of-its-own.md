@@ -57,8 +57,8 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
 - **What stops a run is said in the panel**, with the one thing to do about it on a button: no
   library checked (Show Libraries), a model that does not compile (Show Problems), no environment
   that can run steps (its fix, after which the run goes ahead), a runner that wrote no report (Show
-  Output). These were dialogs. A run that ends this way takes the previous drawing with it: its
-  colours were another run's.
+  Output). These were dialogs. A drawing the run made of itself, coloured as it went (jpipe-vscode
+  ADR-VSC-0033), stays when it ends this way: what it shows is this run's.
 - **A verdict bar** opens with what was done — **Execution**, which called every step, or **Check ·
   no step called** — then the verdict, its counts, when, and which libraries were loaded. Each count
   opens its group in Results. A banner says when the run is **out of date**: a jPipe file or a
@@ -124,10 +124,12 @@ A run is shown in a **run panel**, a webview beside the editor, of its own.
   a usage error and no report, which the panel says, pointing at the terminal.
 - **Two report versions and two options are read and passed** until the minimum runner moves past
   4.0 (jpipe-vscode ADR-VSC-0032). Then the `--dataflow` branch and version 1 go.
-- **The drawing shows nothing while a run is under way** but a busy overlay over the last one: the
-  runner draws it when the run ends. With a runner that streams its events, the verdict bar and
-  Results follow the run as it goes (jpipe-vscode ADR-VSC-0033); colouring the drawing as well waits
-  for the runner to draw it before the first step (jpipe-mcscert/jpipe-runner#185).
+- **A run starts from an empty panel**, under a busy overlay, until the runner draws this run: it
+  draws an execution when it ends. Nothing of the previous run stays, its drawing included, even of
+  the same justification: its colours and marks would be taken for this run's. The framing stays,
+  so the new drawing of the same justification opens as the reader left the last. A runner that
+  streams its events draws the run before the first step, and the panel and Results then follow it
+  as it goes (jpipe-vscode ADR-VSC-0033).
 - **`preview.ts` lost its canvas to `canvas.ts`.** A change to how the preview pans or zooms now
   changes the run panel too, which is the point, and is tested in `test/canvas.test.ts`.
 - **The panel itself needs the editor**, so its round trip through the extension host is checked by
