@@ -137,6 +137,40 @@ export function getLocalElements(node: Justification | Template): JustificationE
     return (node.contents?.body ?? []) as JustificationElement[];
 }
 
+/**
+ * Whether `model`'s elements come, in whole or in part, from a composition: whether it is composed
+ * itself, or a template its `implements` chain names is.
+ *
+ * A composed model — `template T is refine(P, Q) { hook: "a" }` — has no body. Its elements are the
+ * ones the operator builds from its sources, under ids such as `P:b` that no `.jd` file declares,
+ * and `implements` hands them down to every model below it. `getAllElements` and
+ * `expandedElements` read bodies only, so past a composition the list they return is short without
+ * saying so, and anything asking "is there a conclusion / a `@support` / an element with this id?"
+ * hears a confident no about a model the compiler builds (its example 028).
+ *
+ * Until the operators are ported, such a model is left alone by every rule that needs its whole
+ * element list: a missing element there is a fact about what this can read, not about the model.
+ */
+export function buildsOnComposition(model: Justification | Template): boolean {
+    return implementsChain(model).some(link => link.composition !== undefined);
+}
+
+/**
+ * `model`, then each template its `implements` chain names, as far as they resolve.
+ *
+ * Each model is visited once: a template may `implements` its way back to itself — the compiler
+ * reports that as `cyclic-implements` — and the model is in that state while it is being edited.
+ */
+export function implementsChain(model: Justification | Template): Array<Justification | Template> {
+    const chain: Array<Justification | Template> = [];
+    let current: Justification | Template | undefined = model;
+    while (current && !chain.includes(current)) {
+        chain.push(current);
+        current = current.parent?.ref;
+    }
+    return chain;
+}
+
 /** An element of a model, under the id the compiler gives it once `implements` is expanded. */
 export interface ExpandedElement {
     readonly element: JustificationElement;
@@ -191,9 +225,11 @@ export function expandedElements(
  * name `T:a`. The suffix pass skips the conclusion, as the compiler's does, so an inherited
  * conclusion answers only to its full `T:c`.
  *
- * **Its answer is only as good as `base` being a plain model.** A composed one resolves hooks
- * through aliases that no `.jd` file contains and that exist only once the operator has run, so
- * callers must exclude it rather than trust a `undefined` from here.
+ * A base that `buildsOnComposition` has elements this cannot see, and the compiler scans them
+ * first. An exact id stays reliable there — what the base declares itself replaces any inherited
+ * element of that id — but a suffix match does not, since a hidden element may end the same way.
+ * Only the exact pass runs on such a base, so `undefined` means "not found" on a plain base and
+ * "cannot tell" on one that `buildsOnComposition`; callers must not report the latter.
  */
 export function hookTarget(
     base: Justification | Template,
@@ -202,6 +238,7 @@ export function hookTarget(
     const elements = expandedElements(base);
     const exact = elements.find(entry => entry.id === hook);
     if (exact) return exact.element;
+    if (buildsOnComposition(base)) return undefined;
     const suffix = `:${hook}`;
     return elements.find(entry => !isConclusion(entry.element) && entry.id.endsWith(suffix))?.element;
 }

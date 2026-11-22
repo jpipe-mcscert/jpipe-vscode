@@ -769,3 +769,89 @@ describe('Unification method', () => {
         expect(diagnosticMessages(doc).some(m => m.includes('unification method'))).toBe(false);
     });
 });
+
+/**
+ * A composed model has no body: its elements are built by the operator, under ids such as
+ * `pattern:abs2` that no file declares, and `implements` hands them on. Reading bodies alone, the
+ * editor called such models empty — no conclusion, no `@support`, no such hook — about models the
+ * compiler builds. Every case here is the compiler's example 028 or a variant of it, each confirmed
+ * against `jpipe --headless diagnostic`: the clean ones exit 0, and the one error it reports is the
+ * one checked for.
+ */
+describe('A model built on a composition', () => {
+
+    const PATTERN = `template pattern {
+    conclusion c    is "The system is ready"
+    strategy   s    is "Check every part"
+    @support   abs1 is "The first part is ready"
+    @support   abs2 is "The second part is ready"
+    s    supports c
+    abs1 supports s
+    abs2 supports s
+}
+justification first_part {
+    conclusion c is "The first part is ready"
+    strategy   s is "Run its tests"
+    evidence   e is "Test report"
+    s supports c
+    e supports s
+}
+template refined_pattern is refine(pattern, first_part) {
+    hook: "abs1"
+}`;
+
+    const READY = `justification ready implements refined_pattern {
+    evidence pattern:abs2 is "Second part checklist"
+}`;
+
+    async function errors(source: string): Promise<string[]> {
+        const doc = await parse(source);
+        assertNoParseErrors(doc);
+        return (doc.diagnostics ?? [])
+            .filter(d => d.severity === DiagnosticSeverity.Error)
+            .map(d => Diagnostic.getMessageString(d));
+    }
+
+    test('a justification implementing a refined template validates clean (example 028)', async () => {
+        expect(await errors(`${PATTERN}
+${READY}`)).toEqual([]);
+    });
+
+    test('a template implementing a composed one is not called empty', async () => {
+        expect(await errors(`${PATTERN}
+template t implements refined_pattern {
+    evidence extra is "Extra"
+}`)).toEqual([]);
+    });
+
+    const TESTS = `justification tests {
+    conclusion c is "Test report holds"
+    strategy   s is "Read it"
+    evidence   e is "Raw logs"
+    s supports c
+    e supports s
+}`;
+
+    const deeper = (hook: string) =>
+        `${PATTERN}\n${READY}\n${TESTS}\njustification deeper is refine(ready, tests) { hook: "${hook}" }`;
+
+    test.each(['first_part:e', 'pattern:abs2'])(
+        'a hook into a base that implements a composed template is accepted: %s', async (hook) => {
+            expect(await errors(deeper(hook))).toEqual([]);
+        });
+
+    // The compiler reports it, `hook element 'pattern:abz2' not found`; this cannot, since the id
+    // may be one the operator builds. Silence about a real problem, not noise about a false one.
+    test('a hook matching no visible id of such a base is left to the compiler', async () => {
+        expect(await errors(deeper('pattern:abz2'))).toEqual([]);
+    });
+
+    // The rules still hold for a template whose chain is plain, composition or not elsewhere in
+    // the file.
+    test('a plain template with no @support beside them is still reported', async () => {
+        expect(await errors(`${PATTERN}
+template plain {
+    conclusion c is "C"
+}`)).toContain("Template 'plain' declares no abstract supports");
+    });
+});

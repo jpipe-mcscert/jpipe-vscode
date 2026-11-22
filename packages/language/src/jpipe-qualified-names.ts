@@ -222,10 +222,9 @@ export function elementEdits(
  * element declared `T:a`. Identity is also what keeps a same-named element of an unrelated model
  * out of the rename — spelling alone could not tell the two apart.
  *
- * A composed base is passed over, exactly as the validator passes it over: its hooks resolve
- * through aliases that appear only once an operator has run, so nothing here can say whether one
- * names the element being renamed. That is the known cost — rename a hooked element of a composed
- * model and the hook keeps the old spelling — and it is the honest half of a guess.
+ * On a base that `buildsOnComposition`, `hookTarget` answers only for a hook spelling an id
+ * exactly, and nothing here can say what any other hook names. That is the known cost — such a
+ * hook keeps the old spelling — and it is the honest half of a guess.
  *
  * Only the last segment is rewritten, so `"T:a"` becomes `"T:b"` and the qualifier survives.
  */
@@ -242,7 +241,7 @@ export function hookEdits(
         const entry = composition.config?.entries.find(candidate => candidate.key === HOOK_KEY);
         if (!entry?.value) continue;
         const base = composition.params?.refs[0]?.ref;
-        if (!base || base.composition) continue;
+        if (!base) continue;
 
         const target = hookTarget(base, entry.value);
         if (!target || !affected.has(target)) continue;
