@@ -800,6 +800,10 @@ template refined_pattern is refine(pattern, first_part) {
     hook: "abs1"
 }`;
 
+    const READY = `justification ready implements refined_pattern {
+    evidence pattern:abs2 is "Second part checklist"
+}`;
+
     async function errors(source: string): Promise<string[]> {
         const doc = await parse(source);
         assertNoParseErrors(doc);
@@ -810,9 +814,7 @@ template refined_pattern is refine(pattern, first_part) {
 
     test('a justification implementing a refined template validates clean (example 028)', async () => {
         expect(await errors(`${PATTERN}
-justification ready implements refined_pattern {
-    evidence pattern:abs2 is "Second part checklist"
-}`)).toEqual([]);
+${READY}`)).toEqual([]);
     });
 
     test('a template implementing a composed one is not called empty', async () => {
@@ -824,9 +826,7 @@ template t implements refined_pattern {
 
     test('a hook into a base that implements a composed template is not reported', async () => {
         expect(await errors(`${PATTERN}
-justification ready implements refined_pattern {
-    evidence pattern:abs2 is "Second part checklist"
-}
+${READY}
 justification tests {
     conclusion c is "Test report holds"
     strategy   s is "Read it"

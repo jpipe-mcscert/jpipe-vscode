@@ -149,18 +149,26 @@ export function getLocalElements(node: Justification | Template): JustificationE
  * hears a confident no about a model the compiler builds (its example 028).
  *
  * Until the operators are ported, such a model is left alone by every rule that needs its whole
- * element list. The chain is walked with a `seen` set because a cycle is one of the states this
- * can be asked about.
+ * element list: a missing element there is a fact about what this can read, not about the model.
  */
 export function buildsOnComposition(model: Justification | Template): boolean {
-    const seen = new Set<Justification | Template>();
+    return implementsChain(model).some(link => link.composition !== undefined);
+}
+
+/**
+ * `model`, then each template its `implements` chain names, as far as they resolve.
+ *
+ * Each model is visited once: a template may `implements` its way back to itself — the compiler
+ * reports that as `cyclic-implements` — and the model is in that state while it is being edited.
+ */
+export function implementsChain(model: Justification | Template): Array<Justification | Template> {
+    const chain: Array<Justification | Template> = [];
     let current: Justification | Template | undefined = model;
-    while (current && !seen.has(current)) {
-        seen.add(current);
-        if (current.composition) return true;
+    while (current && !chain.includes(current)) {
+        chain.push(current);
         current = current.parent?.ref;
     }
-    return false;
+    return chain;
 }
 
 /** An element of a model, under the id the compiler gives it once `implements` is expanded. */
@@ -217,10 +225,8 @@ export function expandedElements(
  * name `T:a`. The suffix pass skips the conclusion, as the compiler's does, so an inherited
  * conclusion answers only to its full `T:c`.
  *
- * **Its answer is only as good as `base` being a plain model.** One that is composed, or that
- * implements a composed template, resolves hooks through ids that no `.jd` file contains and that
- * exist only once the operator has run, so callers must exclude it (`buildsOnComposition`) rather
- * than trust a `undefined` from here.
+ * **Its answer is only as good as `base` being a plain model**, so callers must exclude one that
+ * `buildsOnComposition` rather than trust a `undefined` from here.
  */
 export function hookTarget(
     base: Justification | Template,

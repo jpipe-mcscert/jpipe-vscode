@@ -34,7 +34,7 @@ import {
     operatorSpec,
     requiredConfigKeys
 } from './jpipe-operators.js';
-import { buildsOnComposition, expandedElements, getAllElements, getLocalElements, hookTarget, qualifiedIdText } from './jpipe-utils.js';
+import { buildsOnComposition, expandedElements, getAllElements, getLocalElements, hookTarget, implementsChain, qualifiedIdText } from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 import { messageOf } from './jpipe-errors.js';
@@ -225,10 +225,8 @@ export class JpipeValidator {
      * `hookTarget` decides what resolves, and matches the compiler: against the ids template
      * expansion gives inherited elements, then by its suffix fallback. Three shapes are passed over instead, each because the editor genuinely cannot answer:
      *
-     * - **A base built on a composition**, composed itself or implementing a composed template.
-     *   Those elements do not exist until the operator has run, and its hooks resolve through ids
-     *   no `.jd` file contains. `checkModelHasConclusion` steps around the same corner for the same
-     *   reason.
+     * - **A base that `buildsOnComposition`**, whose hooks resolve through ids no `.jd` file
+     *   contains.
      * - **An unresolved first source**, which is a linking error already reported where it is.
      * - **A broken `implements` chain**, where the inherited half of the element list is missing.
      *   The hook may name something perfectly real that this cannot see, and the visible problem
@@ -320,15 +318,13 @@ export class JpipeValidator {
      * The grammar requires a non-empty body, so `justification J { }` is a parse error rather than
      * this; what reaches here is a model with contents that simply do not include a conclusion.
      *
-     * A composed model — `justification K is assemble(J, T) { … }` — is skipped, because its
-     * elements do not exist until the operator has run. `assemble` synthesises a conclusion from
-     * `conclusionLabel`, so the compiler checks the *result* and is satisfied; checking the source
-     * text here would report an error on a model that builds. The cost is that a composition whose
-     * result genuinely has no conclusion is caught by the compiler and not by the editor, which is
-     * the right way round: silence about a real problem beats noise about one that is not.
-     *
-     * The same goes for a model that *implements* a composed template, which inherits a conclusion
-     * the operator built (`buildsOnComposition`).
+     * A model that `buildsOnComposition` — `justification K is assemble(J, T) { … }`, or one
+     * implementing a composed template — is skipped, because its elements do not exist until the
+     * operator has run. `assemble` synthesises a conclusion from `conclusionLabel`, so the compiler
+     * checks the *result* and is satisfied; checking the source text here would report an error on
+     * a model that builds. The cost is that a composition whose result genuinely has no conclusion
+     * is caught by the compiler and not by the editor, which is the right way round: silence about
+     * a real problem beats noise about one that is not.
      */
     checkModelHasConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
         if (buildsOnComposition(model)) return;
@@ -369,9 +365,9 @@ export class JpipeValidator {
      * The compiler's own note for this rule says it best: a template with no abstract supports is
      * a justification in disguise. It refuses to build one, and the message here is its wording.
      *
-     * A template built on a composition is left alone: the `@support` elements a `refine` leaves
-     * unrefined are in no body this can read (`buildsOnComposition`). Declaring the wrong kind for
-     * an operator's result is a different error in the compiler, raised once the operator has run.
+     * A template that `buildsOnComposition` is left alone: the `@support` elements a `refine` leaves
+     * unrefined are in no body this can read. Declaring the wrong kind for an operator's result is a
+     * different error in the compiler, raised once the operator has run.
      */
     checkTemplateHasSupport(template: Template, accept: ValidationAcceptor): void {
         if (buildsOnComposition(template)) return;
@@ -552,16 +548,8 @@ export class JpipeValidator {
  *
  * `getAllElements` follows `parent?.ref` and simply stops when it is undefined, so a model with a
  * broken `implements` reports a *shorter* element list rather than an error — which reads, to
- * anything asking "is this id here?", as a confident no. The chain is walked with a `seen` set
- * because a cycle is one of the states this can be asked about.
+ * anything asking "is this id here?", as a confident no.
  */
 function hasUnresolvedParent(model: Justification | Template): boolean {
-    const seen = new Set<Justification | Template>();
-    let current: Justification | Template | undefined = model;
-    while (current && !seen.has(current)) {
-        seen.add(current);
-        if (current.parent && !current.parent.ref) return true;
-        current = current.parent?.ref;
-    }
-    return false;
+    return implementsChain(model).some(link => link.parent !== undefined && !link.parent.ref);
 }
