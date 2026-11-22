@@ -1,4 +1,4 @@
-import { AstUtils, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
+import { AstUtils, type AstNode, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
 import { GlobExpansionError, isGlobPattern } from './jpipe-glob.js';
 import {
     type JpipeAstType,
@@ -313,7 +313,8 @@ export class JpipeValidator {
      *
      * Inherited conclusions count, which is why this reads `getAllElements`: the compiler checks
      * completeness *after* `implements` has inlined the parent's elements, so a justification
-     * whose conclusion comes from its template satisfies the rule there and must here.
+     * whose conclusion comes from its template satisfies the rule there and must here. A conclusion
+     * of its own does not count in a model that `implements` one: the compiler has discarded it.
      *
      * The grammar requires a non-empty body, so `justification J { }` is a parse error rather than
      * this; what reaches here is a model with contents that simply do not include a conclusion.
@@ -330,7 +331,7 @@ export class JpipeValidator {
      */
     checkModelHasConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
         if (cannotSeeAllElements(model)) return;
-        if (getAllElements(model).some(isConclusion)) return;
+        if (getAllElements(model).some(element => isConclusion(element) && !isDiscardedConclusion(element))) return;
 
         report(accept, JpipeIssue.ConclusionPresent, `Model '${model.id}' has no conclusion`,
                { node: model, property: 'id' }, { id: model.id });
@@ -405,6 +406,8 @@ export class JpipeValidator {
             const id = qualifiedIdText(element.id);
             // An element being typed has no id yet; it is not a duplicate of every other one.
             if (!id) continue;
+            // Discarded by the compiler before ids are compared, so it clashes with nothing.
+            if (isDiscardedConclusion(element)) continue;
             if (seen.has(id)) {
                 report(accept, JpipeIssue.NoDuplicateIds, `Duplicate element id '${id}' in model '${model.id}'`,
                        { node: element, property: 'id' }, { id, modelId: model.id });
@@ -417,8 +420,9 @@ export class JpipeValidator {
         const body = strategy.$container;
         if (!body?.rels) return;
 
-        // `to` is absent while `e supports ` is still being typed, which is most of the time.
-        const incoming = body.rels.filter(r => r.to?.ref === strategy);
+        // `to` is absent while `e supports ` is still being typed, which is most of the time. A
+        // relation from a discarded conclusion is discarded with it, so it supports nothing.
+        const incoming = body.rels.filter(r => r.to?.ref === strategy && !isDiscardedConclusion(r.from?.ref));
         if (incoming.length === 0) {
             report(accept, JpipeIssue.StrategySupported, `Strategy '${qualifiedIdText(strategy.id)}' is not supported by any evidence, sub-conclusion, or @support.`,
                    { node: strategy, property: 'id' }, { targetId: qualifiedIdText(strategy.id) });
@@ -446,15 +450,14 @@ export class JpipeValidator {
      * The rule reads the declaration alone, so it holds whether or not the template resolves, and
      * the message names the template as the `implements` line spells it, as the compiler's does.
      *
-     * Discarding is why `checkConclusionIncomingFromStrategy` and `checkSingleConclusion` say
-     * nothing about these conclusions: the compiler never asks whether they are supported or how
-     * many there are, and an answer about an element that will not exist is the wrong problem to
-     * put in front of someone.
+     * Discarding is why no other rule says anything about these conclusions, or counts them: see
+     * `isDiscardedConclusion`. An answer about an element that will not exist is the wrong problem
+     * to put in front of someone.
      */
     checkInheritedConclusion(conclusion: Conclusion, accept: ValidationAcceptor): void {
-        const model = conclusion.$container?.$container;
-        if (!model?.parent) return;
-        const parent = model.parent.$refText ?? model.parent.ref?.id ?? '';
+        if (!isDiscardedConclusion(conclusion)) return;
+        const model = conclusion.$container.$container;
+        const parent = model.parent?.$refText ?? model.parent?.ref?.id ?? '';
         report(accept, JpipeIssue.InheritedConclusion,
                `Model '${model.id}' implements '${parent}' and inherits its conclusion: it cannot declare its own`,
                { node: conclusion, property: 'id' },
@@ -464,8 +467,7 @@ export class JpipeValidator {
     checkConclusionIncomingFromStrategy(conclusion: Conclusion, accept: ValidationAcceptor): void {
         const body = conclusion.$container;
         if (!body?.rels) return;
-        // Refused outright by `checkInheritedConclusion`, and discarded by the compiler.
-        if (body.$container?.parent) return;
+        if (isDiscardedConclusion(conclusion)) return;
 
         // The compiler keeps only the first conclusion and discards the rest, so it never asks
         // whether a later one is supported — and neither should we. Without this, a model with two
@@ -494,7 +496,11 @@ export class JpipeValidator {
         const template = justification.parent.ref;
         const parentRefText = justification.parent.$refText ?? template.id;
         const localElements = getLocalElements(justification);
-        const localById = new Map(localElements.map(e => [qualifiedIdText(e.id), e]));
+        // A conclusion spelled as an override is discarded before overrides are matched, so the
+        // `@support` is still missing, as the compiler says, rather than overridden by the wrong kind.
+        const localById = new Map(localElements
+            .filter(e => !isDiscardedConclusion(e))
+            .map(e => [qualifiedIdText(e.id), e]));
 
         const required = this.getRequiredOverrides(template, parentRefText);
         // Every gap is listed on each diagnostic, so a single action can close them all at once.
@@ -574,4 +580,18 @@ export class JpipeValidator {
     }
 
 
+}
+
+/**
+ * Whether `element` is a conclusion the compiler throws away: one declared by a model that
+ * `implements` a template, and so inherits its conclusion.
+ *
+ * The compiler refuses it while reading the file (`inherited-conclusion`, from the declaration
+ * alone) and drops it together with every relation that uses it, before any other rule runs. Every
+ * check here must therefore read the model as if it were not written: it does not satisfy
+ * `conclusion-present`, support a strategy, override a `@support`, clash with another id, or need
+ * support of its own.
+ */
+function isDiscardedConclusion(element: AstNode | undefined): boolean {
+    return isConclusion(element) && element.$container?.$container?.parent !== undefined;
 }

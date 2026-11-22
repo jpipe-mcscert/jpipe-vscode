@@ -5,6 +5,11 @@
  * refused. What the author wrote is usually a claim on the way to that conclusion, and a
  * sub-conclusion is exactly that: the relations that use it stay valid, and the id and label stay
  * as written. Removing the declaration instead would leave every relation naming it unresolved.
+ *
+ * A conclusion whose id is qualified, `conclusion T:a`, is an override written with the wrong
+ * keyword: only an override carries its template's name. The compiler discards it and reports the
+ * `@support` as not overridden, so the repair is the one `fix-override-type` offers for any other
+ * wrong keyword, `evidence` first since it needs nothing else to be valid, then `sub-conclusion`.
  */
 import type { CodeAction } from 'vscode-languageserver';
 import { isConclusion } from '../generated/ast.js';
@@ -34,14 +39,16 @@ export const fixInheritedConclusion = quickFix<typeof JpipeIssue.InheritedConclu
             end: { line: start.line, character: start.character + KEYWORD.length }
         };
 
-        return [{
-            title: `Change '${KEYWORD}' to 'sub-conclusion'`,
-            isPreferred: true,
+        const isOverride = (conclusion.id?.parts.length ?? 0) > 1;
+        const keywords = isOverride ? ['evidence', 'sub-conclusion'] : ['sub-conclusion'];
+        return keywords.map((keyword, index) => ({
+            title: `Change '${KEYWORD}' to '${keyword}'`,
+            isPreferred: index === 0,
             edit: {
                 changes: {
-                    [context.document.uri.toString()]: [{ range: keywordRange, newText: 'sub-conclusion' }]
+                    [context.document.uri.toString()]: [{ range: keywordRange, newText: keyword }]
                 }
             }
-        }];
+        }));
     }
 });

@@ -217,6 +217,18 @@ describe('a model must have a conclusion', () => {
         expect(await linkingErrorsIn(source)).toHaveLength(1);
     });
 
+    // jpipe-compiler `examples/invalid/010_implements_cycle.jd`: the compiler reports the cycle
+    // and nothing about either model's completeness, since a loop gives them no element list.
+    test('nor is a model whose implements chain loops back on itself', async () => {
+        const source = 'template t1 implements t2 {\n conclusion c is "C"\n strategy s is "S"\n s supports c\n'
+            + ' @support p is "P"\n p supports s\n}\n'
+            + 'template t2 implements t1 {\n sub-conclusion t1:p is "P2"\n strategy s is "S2"\n s supports c\n'
+            + ' @support p is "P"\n p supports s\n}';
+        const codes = await jpipeCodesIn(source);
+        expect(codes).not.toContain(JpipeIssue.ConclusionPresent);
+        expect(codes).not.toContain(JpipeIssue.HasAbstractSupport);
+    });
+
     // The chain is followed to its end: a break two `implements` up hides the conclusion as well.
     test('a break further up the chain counts too', async () => {
         const source = 'template u implements missing { @support h is "H" }\n'
@@ -276,6 +288,37 @@ describe('a model that implements a template inherits its conclusion', () => {
     test('a template is held to the rule as well', async () => {
         const source = `${BASE}\ntemplate U implements T { @support f is "F"  conclusion x is "X" }`;
         expect(await jpipeCodesIn(source)).toContain(JpipeIssue.InheritedConclusion);
+    });
+
+    // The compiler discards the conclusion with its relations before any other rule runs, so the
+    // model is judged as if it were not written. Each expectation is what compiler 4.0.0 printed.
+    describe('the discarded conclusion is not part of the model', () => {
+
+        test('a relation from it supports nothing', async () => {
+            const source = `${BASE}\njustification J implements T { evidence T:e is "E" conclusion x is "X" strategy y is "Y" x supports y }`;
+            expect(await jpipeCodesIn(source))
+                .toEqual([JpipeIssue.InheritedConclusion, JpipeIssue.StrategySupported]);
+        });
+
+        test('it is not the model\'s conclusion when the template has none', async () => {
+            const source = 'template T { @support a is "A" strategy s is "S" a supports s }\n'
+                + 'justification J implements T { evidence T:a is "A" conclusion x is "X" }';
+            expect(await errorsIn(source)).toEqual(expect.arrayContaining([
+                "Model 'J' implements 'T' and inherits its conclusion: it cannot declare its own",
+                "Model 'J' has no conclusion"
+            ]));
+        });
+
+        test('spelled as an override, it leaves the @support missing rather than overridden', async () => {
+            const source = `${BASE}\njustification J implements T { conclusion T:e is "E" }`;
+            expect((await jpipeCodesIn(source)).sort())
+                .toEqual([JpipeIssue.InheritedConclusion, JpipeIssue.NoAbstractSupport].sort());
+        });
+
+        test('its id clashes with nothing', async () => {
+            const source = `${BASE}\njustification J implements T { evidence T:e is "E" conclusion x is "X" evidence x is "Y" }`;
+            expect(await jpipeCodesIn(source)).toEqual([JpipeIssue.InheritedConclusion]);
+        });
     });
 
     test('a model with no implements may declare its conclusion', async () => {

@@ -139,7 +139,7 @@ export function getLocalElements(node: Justification | Template): JustificationE
 
 /**
  * Whether some of `model`'s elements are in no body this can read: whether its `implements` chain
- * reaches a composed model, or a template that does not resolve.
+ * reaches a composed model or a template that does not resolve, or loops back on itself.
  *
  * A composed model — `template T is refine(P, Q) { hook: "a" }` — has no body. Its elements are the
  * ones the operator builds from its sources, under ids such as `P:b` that no `.jd` file declares,
@@ -149,14 +149,19 @@ export function getLocalElements(node: Justification | Template): JustificationE
  * is short without saying so, and anything asking "is there a conclusion / a `@support` / an
  * element with this id?" hears a confident no about a model the compiler builds (its example 028),
  * or one whose only problem is the `implements` line (#129). That line is already reported as an
- * unresolved reference, which points the user at the one thing to fix.
+ * unresolved reference, which points the user at the one thing to fix. A chain that loops has no
+ * element list at all: the compiler reports `cyclic-implements` there and judges nothing else, so
+ * neither may this (the editor does not report the cycle yet, #128).
  *
  * Such a model is left alone by every rule that needs its whole element list: a missing element
  * there is a fact about what this can read, not about the model. The operators are never ported:
  * a composition's elements are to be read from the compiler (jpipe-vscode ADR-VSC-0034).
  */
 export function cannotSeeAllElements(model: Justification | Template): boolean {
-    return implementsChain(model).some(link =>
+    const chain = implementsChain(model);
+    // The walk stops at a link with no parent, or at one whose parent it has already visited.
+    const loops = chain.at(-1)?.parent?.ref !== undefined;
+    return loops || chain.some(link =>
         link.composition !== undefined || (link.parent !== undefined && !link.parent.ref));
 }
 

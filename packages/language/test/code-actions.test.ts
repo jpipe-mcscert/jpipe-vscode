@@ -695,11 +695,19 @@ describe('fix-inherited-conclusion', () => {
         expect(action.isPreferred).toBe(true);
     });
 
-    // A conclusion written as an override is reported twice, and both fixes would make the same
-    // edit under the same title: it is offered once.
-    test('is not offered twice for a conclusion written as an override', async () => {
+    // A conclusion spelled as an override is discarded, so the `@support` is reported missing
+    // rather than overridden by the wrong kind. Either keyword that may refine an `@support` makes
+    // it a valid override, so one fix clears both problems.
+    test.each(['evidence', 'sub-conclusion'])('turns a conclusion spelled as an override into %s', async keyword => {
         const source = `${BASE}\njustification J implements B { conclusion B:e is "E" }`;
-        expect(await titlesMatching(source, /^Change 'conclusion' to 'sub-conclusion'/)).toHaveLength(1);
+        expect(await titlesMatching(source, /^Change 'conclusion'/)).toEqual([
+            "Change 'conclusion' to 'evidence'",
+            "Change 'conclusion' to 'sub-conclusion'"
+        ]);
+        const after = await applyCodeAction(source, { title: `Change 'conclusion' to '${keyword}'` });
+        expect(after).toContain(`${keyword} B:e is "E"`);
+        const reparsed = await parseValidated(after);
+        expect((reparsed.diagnostics ?? []).map(d => issueCodeOf(d))).toEqual([]);
     });
 
     test('is not offered for a conclusion a model may declare', async () => {

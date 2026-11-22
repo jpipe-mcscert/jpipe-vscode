@@ -64,7 +64,7 @@ justification J implements lib:T {
         }
     });
 
-    test('is parsed once, until the caches are invalidated', async () => {
+    test('is parsed once for each version of it on disk', async () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
         try {
             fs.writeFileSync(path.join(tmpDir, 'library.jd'), LIBRARY);
@@ -75,10 +75,20 @@ justification J implements lib:T {
             const first = importService.parseDocumentFromPath('./library.jd', document);
             expect(importService.parseDocumentFromPath('./library.jd', document)).toBe(first);
 
-            importService.invalidateCaches();
+            // An edit elsewhere in the workspace leaves the parse alone: documents that are not
+            // relinked still hold references into it.
+            importService.invalidateGlobCache();
+            expect(importService.parseDocumentFromPath('./library.jd', document)).toBe(first);
+
+            // A change on disk, made outside the editor, is read.
+            const libraryPath = path.join(tmpDir, 'library.jd');
+            fs.writeFileSync(libraryPath, LIBRARY.replace('"S"', '"Changed"'));
+            const later = new Date(Date.now() + 10_000);
+            fs.utimesSync(libraryPath, later, later);
             const reread = importService.parseDocumentFromPath('./library.jd', document);
             expect(reread).toBeDefined();
             expect(reread).not.toBe(first);
+            expect(reread!.textDocument.getText()).toContain('"Changed"');
         } finally {
             fs.rmSync(tmpDir, { recursive: true });
         }
