@@ -6,12 +6,14 @@
 # post-release verb here: npm has no -SNAPSHOT, so nothing needs bumping after a
 # release.
 #
-# A release is prepared on a work branch cut from dev, reaches main through the
-# dev -> main release pull request, and is tagged on main (jpipe-vscode ADR-VSC-0030).
+# A release is prepared on a release branch, release/X.Y.Z, cut from dev, reaches main
+# through its release pull request, and is tagged on main; main is then merged back into
+# dev (jpipe-vscode ADR-VSC-0030).
 # A hotfix is the exception: prepared on a fix branch cut from main, it reaches main
 # through its own pull request, without the unreleased work dev holds.
 #
-#   prepare   X.Y.Z    on a work branch cut from dev (from main with --hotfix): set
+#   prepare   X.Y.Z    on release/X.Y.Z, cut from dev (a fix branch cut from main with
+#                      --hotfix): set
 #                      all four versions, close out the CHANGELOG, reconcile the
 #                      lockfile, verify and commit
 #   preflight X.Y.Z    on main, once the release or hotfix pull request has merged:
@@ -56,10 +58,10 @@ usage() {
 Usage: scripts/release.sh <verb> [options]
 
 Verbs:
-  prepare X.Y.Z              On a work branch cut from dev: set the version in all
+  prepare X.Y.Z              On release/X.Y.Z, cut from dev: set the version in all
                              four places, close out the CHANGELOG section, reconcile
                              package-lock.json, build, test and commit.
-  preflight X.Y.Z            On main, once the dev -> main release pull request
+  preflight X.Y.Z            On main, once the release pull request
                              (or the hotfix pull request) has merged: check that
                              everything release.yml validates would pass, plus
                              the SonarCloud gate on main, before the tag exists.
@@ -155,31 +157,38 @@ check_clean_tree() {
   fi
 }
 
-# The release commit reaches main like any other change: from a work branch, through a pull
-# request into dev, then the dev -> main release pull request. Committing it on main or dev
-# directly is what this refuses. Cut from the current dev, so the release carries everything
-# that has been merged and the pull request into dev applies cleanly.
+# The release commit reaches main on its release branch, release/X.Y.Z, through the release
+# pull request; main is merged back into dev after the tag, which brings it to dev. Committing
+# it on main or dev directly, or on another branch, is what this refuses. Cut from the current
+# dev, so the release carries everything that has been merged.
 #
 # A hotfix patches what is released, so it is measured against main instead, and comes back
 # into main by its own pull request. Requiring dev there would be wrong twice over: dev's
 # unreleased work would ship in the patch.
 check_work_branch() {
-  local version=$1 branch base=dev suggestion
+  local version=$1 branch base=dev suggestion wanted
   branch=$(current_branch)
-  suggestion="chore/release-$version"
+  suggestion="release/$version"
+  wanted="release/$version, cut from dev"
   if [ "$HOTFIX" -eq 1 ]; then
     base=main
     suggestion="fix/release-$version"
+    wanted="a fix branch cut from main"
   fi
   case $branch in
     main|dev|HEAD)
       [ "$branch" = HEAD ] && branch="a detached HEAD"
-      fail "on $branch — prepare runs on a work branch cut from $base"
+      fail "on $branch — prepare runs on $wanted"
       note "git switch -c $suggestion $RELEASE_REMOTE/$base"
       return
       ;;
   esac
-  pass "on work branch $branch"
+  if [ "$HOTFIX" -eq 0 ] && [ "$branch" != "release/$version" ]; then
+    fail "on $branch — prepare runs on $wanted"
+    note "git switch -c $suggestion $RELEASE_REMOTE/$base"
+    return
+  fi
+  pass "on branch $branch"
   fetch_remote "$RELEASE_REMOTE" main dev || return 0
   if git merge-base --is-ancestor "$RELEASE_REMOTE/$base" HEAD; then
     pass "$branch contains $RELEASE_REMOTE/$base"
@@ -548,9 +557,9 @@ cmd_prepare() {
     printf '  once a maintainer has merged it, on main: scripts/release.sh preflight %s\n' "$version"
     printf '  after the tag, merge main back into dev\n'
   else
-    printf '  git push -u %s HEAD, and open a pull request into dev\n' "$RELEASE_REMOTE"
-    printf '  once merged, open the dev -> main release pull request\n'
-    printf '  once that has merged, on main: scripts/release.sh preflight %s\n' "$version"
+    printf '  git push -u %s HEAD, and open the release pull request into main\n' "$RELEASE_REMOTE"
+    printf '  once a maintainer has merged it, on main: scripts/release.sh preflight %s\n' "$version"
+    printf '  after the tag, merge main back into dev\n'
   fi
 }
 

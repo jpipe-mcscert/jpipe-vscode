@@ -63,3 +63,19 @@ every pull request and on pushes to `main`.
   silently leave out something already merged. With `--hotfix` the same check is made against
   `main`, so a patch cannot ship what `dev` holds, and the script stays the only way to move the
   version (jpipe-vscode ADR-VSC-0008).
+
+## Amendment (2026-11-21): a release is a release branch into `main`
+
+The organisation changed its release rule for every jPipe repository. A release took two pull
+requests, the release commit into `dev`, then `dev` into `main`, and the second re-ran every check
+on what `dev` had already reviewed. A release is now one pull request, from a release branch into
+`main` ([contributing guide](https://github.com/jpipe-mcscert/.github/blob/main/CONTRIBUTING.md#releases)).
+
+- `scripts/release.sh prepare X.Y.Z` runs on `release/X.Y.Z`, cut from `dev`, and refuses any other
+  branch; the branch must still contain the remote's `dev`. Hotfixes are unchanged.
+- The release branch goes into `main` through the release pull request, whose diff is the whole
+  release. The release commit reaches `dev` when `main` is merged back after the tag, not before.
+- `release.yml`, `preflight` and the SonarCloud gate on `main` are unchanged.
+
+This replaces the consequence "A release takes two pull requests": a release takes one. Work merged
+into `dev` while the release pull request is open waits for the next release.
