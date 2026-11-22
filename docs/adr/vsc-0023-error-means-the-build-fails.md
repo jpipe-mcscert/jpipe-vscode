@@ -58,13 +58,12 @@ verdict; `jpipe-compiler-codes.ts` files such a rule with the `FATAL` family.
 strategy"; the compiler rejects both, so both are errors, and message text is the only thing
 telling them apart. The two messages must stay distinct, and `diagnostic-codes.test.ts` pins them.
 
-**The warning set is exactly three codes**, each confirmed by running `jpipe diagnostic` on a model
+**The warning set is exactly two codes**, each confirmed by running `jpipe diagnostic` on a model
 that triggers it and seeing it exit 0:
 
 | Code | Why it is not an error |
 |---|---|
 | `no-empty-label` | editor-only style rule; nothing in the compiler checks a label's contents |
-| `unknown-config-key` | the compiler ignores keys it does not recognise |
 | `unknown-unification-method` | the exception: the method registry is populated at the compiler's startup, which the editor cannot see |
 
 Every other code is an error, each confirmed against the compiler's own `examples/invalid/`

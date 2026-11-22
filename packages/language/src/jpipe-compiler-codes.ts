@@ -39,8 +39,9 @@ export const COMPILER_CODES = [
     'incompatible-unification',
     'execution-error',
     'unresolved-symbol',
-    // From 4.0.0. The editor checks only the first, under the same code; the others it leaves to
-    // the compiler (jpipe-vscode ADR-VSC-0022).
+    // From 4.0.0. The editor checks `duplicate-model` under the same code, and what
+    // `invalid-operator-call` covers under finer codes of its own, listed below; it leaves the
+    // other two to the compiler (jpipe-vscode ADR-VSC-0022).
     'duplicate-model',
     'inherited-conclusion',
     'invalid-operator-call',
@@ -67,11 +68,11 @@ export const COMPILER_CODES = [
  *
  * Three reasons appear here, and the distinction matters when the compiler next gains a rule:
  *
- * - **It does not check this at all.** `no-empty-label`, `unknown-config-key` (the compiler
- *   ignores keys it does not recognise), `support-override-type`.
- * - **It checks it, but reports it as the `execution-error` catch-all**, so there is no name to
- *   adopt: `unknown-operator`, `operator-arity`, `missing-config-key`, `unknown-unification-method`,
- *   `unknown-hook`.
+ * - **It does not check this at all.** `no-empty-label`, `support-override-type`.
+ * - **It reports it under one code for several problems**: `invalid-operator-call` from 4.0.0, the
+ *   `execution-error` catch-all before. The editor keeps a code per problem, because each has a
+ *   quick fix of its own, chosen by its code: `unknown-operator`, `operator-arity`,
+ *   `missing-config-key`, `unknown-config-key`, `unknown-unification-method`, `unknown-hook`.
  * - **It reports it as `FATAL`, and a fatal carries no code by policy** (jpipe-compiler ADR-0016):
  *   the whole `load-*` family, `cyclic-load`, and `no-empty-unit` — an empty file is a syntax
  *   error there, `Compilation aborted due to syntax errors`, which no rule name reaches.

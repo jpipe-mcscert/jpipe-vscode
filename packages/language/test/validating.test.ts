@@ -59,7 +59,22 @@ describe('Validation tests', () => {
         `);
         assertNoParseErrors(doc);
         const messages = diagnosticMessages(doc);
-        expect(messages.some(m => m.includes("Duplicate justification name 'J'"))).toBe(true);
+        // The compiler's words, on the later declaration only, pointing at the first one, which is kept.
+        expect(messages.filter(m => m.startsWith("Model 'J' is already declared"))).toEqual(["Model 'J' is already declared at line 2"]);
+    });
+
+    test('a template and a justification of one name collide too, as the compiler has it', async () => {
+        const doc = await parse(`template X {
+                conclusion c is "Claim"
+                @support abs is "Abstract"
+                abs supports c
+            }
+            justification X {
+                conclusion c is "Claim"
+            }
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).filter(m => m.startsWith("Model 'X'"))).toEqual(["Model 'X' is already declared at line 1"]);
     });
 
     test('duplicate template name triggers error', async () => {
@@ -77,7 +92,7 @@ describe('Validation tests', () => {
         `);
         assertNoParseErrors(doc);
         const messages = diagnosticMessages(doc);
-        expect(messages.some(m => m.includes("Duplicate template name 'T'"))).toBe(true);
+        expect(messages.filter(m => m.startsWith("Model 'T' is already declared"))).toHaveLength(1);
     });
 
     // An error, not a warning: the compiler refuses to build it (jpipe-vscode ADR-VSC-0023), and
@@ -254,9 +269,9 @@ describe('Validation tests', () => {
         expect(messages.some(m => m.includes("Unknown operator 'unknown'"))).toBe(true);
     });
 
-    // Only a warning: the compiler ignores config keys it does not recognise, so an error here
-    // would announce a build failure that never comes.
-    test('unknown config key triggers a warning, not an error', async () => {
+    // An error: compiler 4.0.0 refuses a config key it does not know (`invalid-operator-call`), so
+    // the build fails (jpipe-vscode ADR-VSC-0023).
+    test('unknown config key triggers an error, as the compiler refuses it', async () => {
         const doc = await parse(`
             justification A { conclusion c is "C" }
             justification Composed is assemble(A) {
@@ -270,7 +285,7 @@ describe('Validation tests', () => {
             (d: Diagnostic) => Diagnostic.getMessageString(d).includes("Unknown config key 'wrongKey'")
         );
         expect(unknownKey).toHaveLength(1);
-        expect(unknownKey[0].severity).toBe(DiagnosticSeverity.Warning);
+        expect(unknownKey[0].severity).toBe(DiagnosticSeverity.Error);
     });
 
     // `unifyBy` and `unifyExclude` are read by the compiler's post-composition Unifier, which

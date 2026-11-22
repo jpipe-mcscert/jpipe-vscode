@@ -78,20 +78,21 @@ export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     [JpipeIssue.ConclusionSupported]:   'error',   // rejected under this same code
     [JpipeIssue.InvalidSupport]:        'error',   // rejected under this same code
     [JpipeIssue.SupportOverrideType]:   'error',   // surfaces upstream as `no-abstract-support`
-    [JpipeIssue.UnknownOperator]:       'error',   // `execution-error` from `ApplyOperator`
-    [JpipeIssue.OperatorArity]:         'error',   // `execution-error`: "requires exactly 2 sources"
-    [JpipeIssue.MissingConfigKey]:      'error',   // `execution-error`: "were not provided"
+    // The operator family: `invalid-operator-call` from compiler 4.0.0, `execution-error` before.
+    [JpipeIssue.UnknownOperator]:       'error',   // from `ApplyOperator`
+    [JpipeIssue.OperatorArity]:         'error',   // "requires exactly 2 sources"
+    [JpipeIssue.MissingConfigKey]:      'error',   // "were not provided"
+    [JpipeIssue.UnknownConfigKey]:      'error',   // "unknown argument(s)": 4.0.0 refuses it, 3.x ignored it
     [JpipeIssue.LoadUnresolved]:        'error',   // FATAL from `LoadResolver`; aborts the pipeline
     [JpipeIssue.LoadNoMatch]:           'error',   // FATAL from `LoadResolver`
     [JpipeIssue.LoadMalformedPattern]:  'error',   // FATAL from `LoadResolver`
     [JpipeIssue.CyclicLoad]:            'error',   // FATAL from `LoadResolver`
     [JpipeIssue.NoEmptyUnit]:           'error',   // FATAL: "Compilation aborted due to syntax errors"
-    [JpipeIssue.UnknownHook]:           'error',   // `execution-error`: "hook element 'x' not found"
+    [JpipeIssue.UnknownHook]:           'error',   // operator family: "hook element 'x' not found"
 
     // Warnings — the compiler builds these files. Each was run through `jpipe diagnostic`, and each
     // exited 0.
     [JpipeIssue.NoEmptyLabel]:          'warning', // accepted: nothing checks a label's contents
-    [JpipeIssue.UnknownConfigKey]:      'warning', // accepted: unrecognised keys are ignored
     // The exception. The compiler *would* reject this, but its relation registry is populated at
     // startup and a project may register its own, so the editor cannot know. The message says what
     // the editor does not recognise rather than predicting a failure, and settings can widen it.

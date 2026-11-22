@@ -46,8 +46,8 @@ export function registerValidationChecks(services: JpipeServices) {
         Unit:           validator.checkUnitNotEmpty,
         Load:           validator.checkLoadResolves,
         Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys, validator.checkUnificationMethod, validator.checkRefineHook],
-        Template:       [validator.checkDuplicateTemplateName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
-        Justification:  [validator.checkDuplicateJustificationName, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
+        Template:       [validator.checkDuplicateModelName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
+        Justification:  [validator.checkDuplicateModelName, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
         Evidence:       validator.checkLabelNotEmpty,
         Strategy:       [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
         Conclusion:     [validator.checkLabelNotEmpty, validator.checkConclusionIncomingFromStrategy],
@@ -162,9 +162,10 @@ export class JpipeValidator {
     /**
      * Checks a composition's config block against the operator's key table.
      *
-     * The two halves land at different severities, and deliberately: the compiler refuses to run
-     * without a required key, but silently ignores one it does not recognise. `JpipeIssueSeverity`
-     * records that, along with the rule it follows from (jpipe-vscode ADR-VSC-0023).
+     * Both halves are errors: the compiler refuses to run without a required key, and from 4.0.0
+     * refuses one it does not know too, as `invalid-operator-call`. 3.x ignored an unknown key, but
+     * a misspelt key does nothing there either. `JpipeIssueSeverity` records the severities, along
+     * with the rule they follow from (jpipe-vscode ADR-VSC-0023).
      */
     checkConfigKeys(composition: Composition, accept: ValidationAcceptor): void {
         const op = composition.operator;
@@ -286,19 +287,22 @@ export class JpipeValidator {
         }
     }
 
-    checkDuplicateTemplateName(template: Template, accept: ValidationAcceptor): void {
-        this.logger.debug(`Validating template '${template.id}'`);
-        const unit = template.$container;
+    /**
+     * Flags a model declared under a name another model of the file already has, whatever their
+     * kinds: the compiler rejects it under the same code and in the same words, and drops the later
+     * one with its whole body (jpipe-vscode ADR-VSC-0022). So, as there, the first declaration is
+     * the one kept and every later one is flagged, pointing at it. The compiler also compares the
+     * files a model loads; this checks one file (#122).
+     */
+    checkDuplicateModelName(model: Justification | Template, accept: ValidationAcceptor): void {
+        const unit = model.$container;
         if (!unit) return;
-
-        const duplicates = unit.body.filter(
-            (item): item is Template => isTemplate(item) && item.id === template.id
-        );
-
-        if (duplicates.length > 1) {
-            report(accept, JpipeIssue.DuplicateModel, `Duplicate template name '${template.id}'`,
-                   { node: template, property: 'id' }, { id: template.id });
-        }
+        const named = unit.body.filter(item => (isJustification(item) || isTemplate(item)) && item.id === model.id);
+        if (named.indexOf(model) < 1) return;
+        const first = named[0].$cstNode?.range.start.line;
+        const where = first === undefined ? '' : ` at line ${first + 1}`;
+        report(accept, JpipeIssue.DuplicateModel, `Model '${model.id}' is already declared${where}`,
+               { node: model, property: 'id' }, { id: model.id });
     }
 
     /**
@@ -371,20 +375,6 @@ export class JpipeValidator {
         }
     }
 
-    checkDuplicateJustificationName(justification: Justification, accept: ValidationAcceptor): void {
-        this.logger.debug(`Validating justification '${justification.id}'`);
-        const unit = justification.$container;
-        if (!unit) return;
-
-        const duplicates = unit.body.filter(
-            (item): item is Justification => isJustification(item) && item.id === justification.id
-        );
-
-        if (duplicates.length > 1) {
-            report(accept, JpipeIssue.DuplicateModel, `Duplicate justification name '${justification.id}'`,
-                   { node: justification, property: 'id' }, { id: justification.id });
-        }
-    }
 
     /**
      * Flags two elements in one model sharing an id.

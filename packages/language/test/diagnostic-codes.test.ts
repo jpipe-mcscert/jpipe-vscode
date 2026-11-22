@@ -294,7 +294,6 @@ describe('severity follows the compiler', () => {
     /** Every code deliberately reported as a warning, with the reason it is not an error. */
     const EXPECTED_WARNINGS: readonly JpipeIssueCode[] = [
         JpipeIssue.NoEmptyLabel,             // compiler builds it: nothing checks a label's contents
-        JpipeIssue.UnknownConfigKey,         // compiler builds it: unrecognised keys are ignored
         JpipeIssue.UnknownUnificationMethod  // the exception: the editor cannot see its registry
     ];
 
