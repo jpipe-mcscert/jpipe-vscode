@@ -696,7 +696,19 @@ body:not(.diag-raw) #diag-output { display: none; }
 .diag-twisty.leaf { cursor: default; opacity: 0; }
 .diag-action-macro { color: var(--vscode-charts-purple, var(--vscode-textLink-foreground)); }
 .diag-hidden-count { color: var(--vscode-descriptionForeground); font-size: 11px; }
-.diag-children { border-left: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25)); }
+/*
+ * What a macro expanded to is indented under it, one level per macro: a level is a twisty and the
+ * row's gap wide, so a step's twisty sits one level right of its macro's. Each level draws a guide
+ * down from the centre of the twisty above it, across the row's padding so that the guides of
+ * consecutive rows join. The numbers stay in their column.
+ */
+.diag-indent { display: flex; align-self: stretch; flex-shrink: 0; }
+
+.diag-guide {
+    margin: -1px 0 -1px calc(0.6em + 6px);
+    width: 0.6em;
+    border-left: 1px solid var(--vscode-tree-indentGuidesStroke, rgba(128, 128, 128, 0.4));
+}
 
 /* -------------------------------------------------------------- the raw text */
 

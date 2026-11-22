@@ -10,9 +10,19 @@ import type { ExclusionManager } from './exclusions.js';
 import { ImageGenerator, ImageFormat } from './compiler/image-generator.js';
 import type { ReleaseManager } from './compiler/release-manager.js';
 import type { PreviewProvider } from './preview/preview-provider.js';
+import { sameFile, type ModelsView } from './models-view/models-view.js';
+import type { Model, ModelNode, TreeNode } from './models-view/models-tree.js';
+import { newModel } from './models-view/new-model-flow.js';
+import type { LibrariesView } from './runner/libraries-view.js';
+import { runModel, runSelectedModel, runShownAgain, type RunDeps } from './runner/run-model.js';
+import { newLibrary, scaffoldLibrary } from './runner/new-library-flow.js';
+import type { RunnerEnvironment } from './runner/environment.js';
+import type { ResultsView } from './runner/results-view.js';
+import type { RunSession } from './runner/run-session.js';
+import type { RunPanel } from './runner/run-panel.js';
 import { installFromRelease } from './compiler/managed-install.js';
 import { selectJarFile } from './compiler/jar-selection.js';
-import { accessMethodHeader } from './compiler/release-presentation.js';
+import { checkInstallation } from './installation-check.js';
 import {
     addExcludedDirectory,
     excludeResource,
@@ -40,6 +50,12 @@ export interface CommandDeps {
     imageGenerator: ImageGenerator;
     previewProvider: PreviewProvider;
     releaseManager: ReleaseManager;
+    modelsView: ModelsView;
+    librariesView: LibrariesView;
+    runnerEnvironment: RunnerEnvironment;
+    resultsView: ResultsView;
+    runSession: RunSession;
+    runPanel: RunPanel;
 }
 
 /**
@@ -77,7 +93,20 @@ const CODE_ACTION_COMMANDS: ReadonlyArray<readonly [command: string, kind: strin
 ];
 
 export function registerCommands(deps: CommandDeps): void {
-    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager } = deps;
+    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView, runSession, runPanel } = deps;
+    const runDeps: RunDeps = {
+        context, logger, imageGenerator, libraries: librariesView, models: modelsView, environment: runnerEnvironment,
+        results: resultsView, session: runSession, panel: runPanel
+    };
+    // The run panel's own ▶ and ✓: the justification it shows, again.
+    context.subscriptions.push(runPanel.onDidRequestRun(check => runShownAgain(runDeps, check)));
+
+    /**
+     * Where a new model goes is decided beside "the model in question": the row the command was
+     * invoked on, or failing that the row selected in the view. A group row names no file.
+     */
+    const contextOf = (node?: TreeNode): string | undefined =>
+        node?.type === 'model' ? node.model.uri : modelsView.selectedModel?.uri;
 
     /**
      * Run an export, and stay pending until it has finished.
@@ -91,9 +120,56 @@ export function registerCommands(deps: CommandDeps): void {
         await imageGenerator.generateAndSave(format, doc, diagramName);
     };
 
+    /** The Models row a command was invoked on, if it was. */
+    const modelOf = (arg: unknown): ModelNode | undefined =>
+        typeof arg === 'object' && arg !== null && (arg as TreeNode).type === 'model' ? arg as ModelNode : undefined;
+
+    /**
+     * The model a right-click command acts on, or `'editor'` for the one at the editor's cursor.
+     *
+     * Preview and Export as… are offered in the editor, on a `.jd` file in the Explorer and on a
+     * Models row (jpipe-vscode ADR-VSC-0027), so their commands receive a tree node, or a file's URI. A row
+     * names its model. A URI from the editor means the model at the cursor, as it always has. A
+     * URI from the Explorer names a file: its one model, or the one picked when it has several.
+     * `undefined` when there is none, or the pick was dismissed.
+     */
+    const targetOf = async (arg: unknown): Promise<Model | 'editor' | undefined> => {
+        const node = modelOf(arg);
+        if (node) return node.model;
+        if (!(arg instanceof vscode.Uri)) return 'editor';
+        if (vscode.window.activeTextEditor?.document.uri.toString() === arg.toString()) return 'editor';
+        // Asked afresh: the Models view only keeps its list current while it is showing.
+        const inFile = (await modelsView.freshModels()).filter(m => sameFile(m.uri, arg));
+        if (inFile.length === 0) {
+            void vscode.window.showWarningMessage(`${vscode.workspace.asRelativePath(arg)} declares no model.`);
+            return undefined;
+        }
+        if (inFile.length === 1) return inFile[0];
+        const picked = await vscode.window.showQuickPick(
+            inFile.map(model => ({ label: model.name, description: model.kind, model })),
+            { title: `Which model of ${vscode.workspace.asRelativePath(arg)}?` });
+        return picked?.model;
+    };
+
+    /** The file a command should act on: a row's model's file, or the URI the editor or Explorer passed. */
+    const resourceOf = (arg: unknown): vscode.Uri | undefined => {
+        const node = modelOf(arg);
+        if (node) return vscode.Uri.parse(node.model.uri);
+        return arg instanceof vscode.Uri ? arg : undefined;
+    };
+
+    /** Export the model the command targets: a row's, an Explorer file's, or the editor's. */
+    const exportFrom = async (arg: unknown, format: ImageFormat): Promise<void> => {
+        const target = await targetOf(arg);
+        if (target === 'editor') return exportIn(format);
+        if (!target) return;
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(target.uri));
+        await imageGenerator.generateAndSave(format, document, target.name);
+    };
+
     context.subscriptions.push(
         ...EXPORT_COMMANDS.map(([command, format]) =>
-            vscode.commands.registerCommand(command, () => exportIn(format))),
+            vscode.commands.registerCommand(command, (arg?: unknown) => exportFrom(arg, format))),
 
         vscode.commands.registerCommand('jpipe.export', async () => {
             const configured = vscode.workspace.getConfiguration('jpipe')
@@ -101,7 +177,40 @@ export function registerCommands(deps: CommandDeps): void {
             await exportIn((ImageFormat as Record<string, ImageFormat>)[configured] ?? ImageFormat.SVG);
         }),
 
-        vscode.commands.registerCommand('jpipe.vis.preview', () => previewProvider.openPreview()),
+        // The preview draws the model under the cursor, so from a row, putting the cursor on the
+        // row's model is the whole of choosing which one.
+        vscode.commands.registerCommand('jpipe.vis.preview', async (arg?: unknown) => {
+            const target = await targetOf(arg);
+            if (!target) return;
+            if (target !== 'editor') await modelsView.openModel(target);
+            await previewProvider.openPreview();
+        }),
+
+        vscode.commands.registerCommand('jpipe.models.refresh', () => modelsView.refresh()),
+
+        // ▶: the model of the Models row it was clicked on, or the one the cursor is in.
+        vscode.commands.registerCommand('jpipe.run', (arg?: unknown) => runModel(runDeps, modelOf(arg)?.model)),
+        // ✓: the same, validating the libraries against the model without calling any step.
+        vscode.commands.registerCommand('jpipe.check', (arg?: unknown) => runModel(runDeps, modelOf(arg)?.model, true)),
+        // On a checked library's own ▶ menu: the model selected in Models, with every checked library.
+        vscode.commands.registerCommand('jpipe.runLibrary', () => runSelectedModel(runDeps, false)),
+        vscode.commands.registerCommand('jpipe.checkLibrary', () => runSelectedModel(runDeps, true)),
+        vscode.commands.registerCommand('jpipe.results.showOutput', () => resultsView.showOutput()),
+        vscode.commands.registerCommand('jpipe.libraries.checkAll', () => librariesView.checkAll()),
+        vscode.commands.registerCommand('jpipe.libraries.uncheckAll', () => librariesView.uncheckAll()),
+        vscode.commands.registerCommand('jpipe.libraries.refresh', () => librariesView.rescanAll()),
+        vscode.commands.registerCommand('jpipe.libraries.new', () => newLibrary(librariesView, modelsView)),
+        vscode.commands.registerCommand('jpipe.runner.fixEnvironment', () => runnerEnvironment.setUp()),
+        vscode.commands.registerCommand('jpipe.runner.checkEnvironment', () => runnerEnvironment.report()),
+        vscode.commands.registerCommand('jpipe.models.newJustification', (node?: TreeNode) =>
+            newModel(modelsView.knownModels, { kind: 'justification', contextUri: contextOf(node) })),
+        vscode.commands.registerCommand('jpipe.models.newTemplate', (node?: TreeNode) =>
+            newModel(modelsView.knownModels, { kind: 'template', contextUri: contextOf(node) })),
+        vscode.commands.registerCommand('jpipe.models.newImplementation', (node: ModelNode) =>
+            newModel(modelsView.knownModels, { kind: 'justification', template: node.model, contextUri: node.model.uri })),
+        vscode.commands.registerCommand('jpipe.models.scaffoldLibrary', (node: ModelNode) =>
+            scaffoldLibrary(librariesView, node.model,
+                (document, file) => imageGenerator.generate(false, ImageFormat.PYTHON, document, node.model.name, file))),
 
         ...CODE_ACTION_COMMANDS.map(([command, kind, action]) =>
             vscode.commands.registerCommand(command, async () => {
@@ -115,8 +224,8 @@ export function registerCommands(deps: CommandDeps): void {
             vscode.commands.executeCommand('editor.action.formatDocument')),
 
         vscode.commands.registerCommand('jpipe.addExcludedDirectory', () => addExcludedDirectory(exclusions)),
-        vscode.commands.registerCommand('jpipe.excludeResource', (uri?: vscode.Uri) => excludeResource(exclusions, uri)),
-        vscode.commands.registerCommand('jpipe.includeResource', (uri?: vscode.Uri) => includeResource(exclusions, uri)),
+        vscode.commands.registerCommand('jpipe.excludeResource', (arg?: unknown) => excludeResource(exclusions, resourceOf(arg))),
+        vscode.commands.registerCommand('jpipe.includeResource', (arg?: unknown) => includeResource(exclusions, resourceOf(arg))),
         vscode.commands.registerCommand('jpipe.removeExcludedPath', () => removeExcludedPath(exclusions)),
 
         vscode.commands.registerCommand('jpipe.installFromRelease', () =>
@@ -124,15 +233,7 @@ export function registerCommands(deps: CommandDeps): void {
 
         vscode.commands.registerCommand('jpipe.selectJarFile', () => selectJarFile(logger)),
 
-        vscode.commands.registerCommand('jpipe.checkInstallation', async () => {
-            const { ok, message } = await imageGenerator.check();
-            const mode = vscode.workspace.getConfiguration('jpipe').get<string>('executionMode', 'cli');
-            const detail = `${accessMethodHeader(mode, releaseManager.getInstalled())}\n\n${message}`;
-            if (ok) {
-                vscode.window.showInformationMessage('jPipe is accessible.', { modal: true, detail });
-            } else {
-                vscode.window.showErrorMessage('Cannot access jPipe.', { modal: true, detail });
-            }
-        })
+        vscode.commands.registerCommand('jpipe.checkInstallation', () =>
+            checkInstallation({ logger, imageGenerator, releaseManager, runnerEnvironment, librariesView }))
     );
 }

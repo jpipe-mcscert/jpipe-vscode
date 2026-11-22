@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node';
 import { ImageGenerator, ImageFormat, type DiagnosticRun } from '../compiler/image-generator.js';
+import { CompilerTooOldError } from '../requirements.js';
 import { getShellHtml } from './preview-shell.js';
 import { responseToCursorMove } from './preview-refresh.js';
 import { panelExportTarget } from './export-target.js';
 import { symbolAtPosition, type DocumentSymbol } from './document-symbols.js';
 import { dispositionOf, type ResultDisposition } from './staleness.js';
-import { chooseRevealColumn } from './reveal-column.js';
+import { revealColumnAmong } from './reveal-column.js';
+import { ZOOM_SENSITIVITY_SETTING, clampZoomSensitivity } from './zoom-sensitivity.js';
 import type {
     DiagnosticMessage,
     HostToWebview,
@@ -21,6 +23,12 @@ export class PreviewProvider {
     private static webviewDisposed: boolean = true;
     private unsaved: boolean = false;
     private viewMode: 'diagram' | 'diagnostic' = 'diagram';
+    /**
+     * Whether the diagnostic view is on show because the compiler is too old to draw, rather than
+     * because the user chose it: the diagram is then tried again at the next update, so that it
+     * comes back by itself once the compiler is updated.
+     */
+    private diagnosticForced = false;
     private readonly subscriptions: vscode.Disposable[] = [];
     private lastRenderedDocumentUri: string | undefined;
     private lastRenderedDiagramName: string | undefined;
@@ -232,7 +240,7 @@ export class PreviewProvider {
         // The page is built once, so it cannot read settings itself — it has to be told when
         // they change.
         const configListener = vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('jpipe.previewZoomSensitivity')) this.postConfig();
+            if (e.affectsConfiguration(`jpipe.${ZOOM_SENSITIVITY_SETTING}`)) this.postConfig();
         });
 
         this.subscriptions.push(saveListener, changeListener, cursorListener, openListener, configListener);
@@ -300,11 +308,7 @@ export class PreviewProvider {
 
     /** Where to put a revealed source, read off what is currently on screen. */
     private revealColumn(document: vscode.TextDocument): vscode.ViewColumn {
-        return chooseRevealColumn(vscode.window.visibleTextEditors.map(editor => ({
-            column: editor.viewColumn,
-            showsTarget: editor.document === document,
-            isModel: editor.document.languageId === 'jpipe'
-        })));
+        return revealColumnAmong(vscode.window.visibleTextEditors, document);
     }
 
     /** Extract the SVG document from CLI output (drops any path or log text before/after the <svg>). */
@@ -323,11 +327,8 @@ export class PreviewProvider {
 
     /** Hand the page the settings it needs. Sent on `ready` and whenever they change. */
     private postConfig(): void {
-        const sensitivity = vscode.workspace.getConfiguration('jpipe').get<number>('previewZoomSensitivity', 1);
-        // Guard the range here as well as in the schema: a hand-edited settings.json can hold
-        // anything, and a zero or negative multiplier would break zooming outright.
-        const clamped = Number.isFinite(sensitivity) ? Math.min(4, Math.max(0.25, sensitivity)) : 1;
-        this.post({ type: 'config', zoomSensitivity: clamped });
+        const sensitivity = vscode.workspace.getConfiguration('jpipe').get<unknown>(ZOOM_SENSITIVITY_SETTING, 1);
+        this.post({ type: 'config', zoomSensitivity: clampZoomSensitivity(sensitivity) });
     }
 
     /**
@@ -362,6 +363,7 @@ export class PreviewProvider {
             return;
         }
         this.viewMode = this.viewMode === 'diagram' ? 'diagnostic' : 'diagram';
+        this.diagnosticForced = false;
         await this.updatePreview(resolved.document, resolved.editor);
     }
 
@@ -374,6 +376,12 @@ export class PreviewProvider {
      */
     private async updatePreview(document: vscode.TextDocument, editor: vscode.TextEditor | undefined): Promise<void> {
         if (!PreviewProvider.webviewPanel) return;
+        if (this.diagnosticForced) {
+            // The compiler may have been updated since: draw again, which goes back to the
+            // diagnostic view at once if it is still too old (`explainNoDiagram`).
+            this.diagnosticForced = false;
+            this.viewMode = 'diagram';
+        }
         if (this.viewMode === 'diagnostic') {
             await this.updateDiagnostic(document);
             return;
@@ -382,18 +390,22 @@ export class PreviewProvider {
     }
 
     /** Run the compiler's diagnostic and hand the report to the page. */
-    private async updateDiagnostic(document: vscode.TextDocument): Promise<void> {
+    private async updateDiagnostic(document: vscode.TextDocument, refused?: CompilerTooOldError): Promise<void> {
         const revision = ++this.revision;
         this.post({ type: 'busy', busy: true });
         let run: DiagnosticRun;
-        try {
-            run = await this.imageGenerator.generateDiagnostic(document);
-        } catch (error) {
-            // A failure to *run* the diagnostic is itself the report: the panel shows the reason
-            // rather than going blank, so this is not an early return.
-            const msg = messageOf(error);
-            this.logger.error(`Diagnostic failed in ${document.fileName}: ${msg}`);
-            run = { raw: `Failed to run diagnostic:\n\n${msg}`, report: null, exitCode: undefined };
+        if (refused) {
+            // The compiler was just refused, and asking it again would only be refused again.
+            run = notRun(refused);
+        } else {
+            try {
+                run = await this.imageGenerator.generateDiagnostic(document);
+            } catch (error) {
+                // A failure to *run* the diagnostic is itself the report: the panel shows the reason
+                // rather than going blank, so this is not an early return.
+                this.logger.error(`Diagnostic failed in ${document.fileName}: ${messageOf(error)}`);
+                run = notRun(error);
+            }
         }
 
         const disposition = dispositionOf({
@@ -474,24 +486,52 @@ export class PreviewProvider {
             if (this.diagramDisposition(revision) !== 'deliver') return;
             await this.sendRender(revision, this.extractSvgFromOutput(stdout), document, editor, diagramName, null);
         } catch (error: unknown) {
-            const { stdout = '', exitCode } = asProcessFailure(error);
-            this.logRenderError(document.fileName, exitCode, error);
-            this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
-
-            if (this.diagramDisposition(revision) !== 'deliver') return;
-            const svgFromError = this.extractSvgFromOutput(stdout);
-            if (svgFromError.includes('<svg')) {
-                await this.sendRender(revision, svgFromError, document, editor, diagramName, { exitCode });
-            } else {
-                // Leave the last good diagram up rather than replacing it with an error screen.
-                // With a persistent document that costs nothing: not sending is already the
-                // right behaviour. lastRender is intentionally retained too, since it describes
-                // what the panel is still showing, so the diagnostic toggle keeps a document to
-                // work from.
-                this.post({ type: 'busy', busy: false });
-                if (!this.lastRender) this.post({ type: 'view', mode: 'empty' });
-            }
+            await this.showRenderFailure(error, revision, document, editor, diagramName);
         }
+    }
+
+    /** What the panel shows when the diagram could not be compiled. */
+    private async showRenderFailure(
+        error: unknown,
+        revision: number,
+        document: vscode.TextDocument,
+        editor: vscode.TextEditor | undefined,
+        diagramName: string
+    ): Promise<void> {
+        if (error instanceof CompilerTooOldError) {
+            await this.explainNoDiagram(document, revision, error);
+            return;
+        }
+        const { stdout = '', exitCode } = asProcessFailure(error);
+        this.logRenderError(document.fileName, exitCode, error);
+        this.logger.revealIfLogged(exitCode === 1 ? 'warn' : 'error');
+
+        if (this.diagramDisposition(revision) !== 'deliver') return;
+        const svgFromError = this.extractSvgFromOutput(stdout);
+        if (svgFromError.includes('<svg')) {
+            await this.sendRender(revision, svgFromError, document, editor, diagramName, { exitCode });
+        } else {
+            // Leave the last good diagram up rather than replacing it with an error screen.
+            // With a persistent document that costs nothing: not sending is already the
+            // right behaviour. lastRender is intentionally retained too, since it describes
+            // what the panel is still showing, so the diagnostic toggle keeps a document to
+            // work from.
+            this.post({ type: 'busy', busy: false });
+            if (!this.lastRender) this.post({ type: 'view', mode: 'empty' });
+        }
+    }
+
+    /**
+     * The preview of a compiler too old to be run. Nothing was run, so this is no render failure,
+     * and the output channel is not brought forward on every save. The panel says why instead:
+     * the diagnostic view shows the reason as its text (jpipe-vscode ADR-VSC-0032).
+     */
+    private async explainNoDiagram(document: vscode.TextDocument, revision: number, error: CompilerTooOldError): Promise<void> {
+        this.logger.debug(`Preview of ${document.fileName} not rendered: ${error.message}`);
+        if (this.diagramDisposition(revision) !== 'deliver') return;
+        this.viewMode = 'diagnostic';
+        this.diagnosticForced = true;
+        await this.updateDiagnostic(document, error);
     }
 
     /** Build and send a render message, and remember it for the `ready` replay. */
@@ -651,4 +691,9 @@ export class PreviewProvider {
         return panel;
     }
     
+}
+
+/** The report of a diagnostic that could not be run: the reason, as its text. */
+function notRun(error: unknown): DiagnosticRun {
+    return { raw: `Failed to run diagnostic:\n\n${messageOf(error)}`, report: null, exitCode: undefined };
 }

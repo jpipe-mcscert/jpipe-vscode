@@ -1,7 +1,7 @@
 # ADR-VSC-0012: A single `main` branch, protected but bypassable by admins
 
 **Date:** 2026-08-11
-**Status:** Accepted
+**Status:** Superseded by ADR-VSC-0030
 
 ## Context
 

@@ -1,6 +1,7 @@
 [Content_Types].xml
 extension.vsixmanifest
 extension/LICENSE.txt
+extension/images/activity.svg
 extension/images/icon_dark.svg
 extension/images/icon_light.svg
 extension/images/logo.png
@@ -10,6 +11,8 @@ extension/out/extension/main.cjs
 extension/out/language/main.cjs
 extension/out/webview/preview.css
 extension/out/webview/preview.js
+extension/out/webview/run.css
+extension/out/webview/run.js
 extension/package.json
 extension/readme.md
 extension/schema/diagnostic-report.v1.schema.json

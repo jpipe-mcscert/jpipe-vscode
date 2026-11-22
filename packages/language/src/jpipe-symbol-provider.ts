@@ -49,6 +49,25 @@ function namedSymbol(name: string | undefined, kind: SymbolKind, range: Range): 
     return name ? syntheticSymbol(name, kind, range) : undefined;
 }
 
+/**
+ * An element's symbol: named by its id, with its label as `detail`.
+ *
+ * The label is what the argument says ("Tests pass"); the id is how the file refers to it (`e1`).
+ * The Outline shows `detail` in grey beside the name, and the Models view's Elements list shows
+ * both. The selection range is the id when the element has one in this file, so revealing the
+ * symbol puts the cursor on the name rather than on the keyword in front of it.
+ */
+function elementSymbol(element: JustificationElement, name: string, range: Range, local: boolean): DocumentSymbol | undefined {
+    const symbol = namedSymbol(name, elementKind(element), range);
+    if (!symbol) return undefined;
+    const idRange = local ? element.id?.$cstNode?.range : undefined;
+    return {
+        ...symbol,
+        ...(element.name ? { detail: element.name } : {}),
+        ...(idRange ? { selectionRange: idRange } : {})
+    };
+}
+
 export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
     private readonly importService: JpipeImportService;
 
@@ -117,7 +136,7 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
             const model = namedSymbol(body.id, kind, loadRange);
             if (!model) continue;
             const elementChildren = getLocalElements(body)
-                .map(e => namedSymbol(qualifiedIdText(e.id), elementKind(e), loadRange))
+                .map(e => elementSymbol(e, qualifiedIdText(e.id), loadRange, false))
                 .filter((symbol): symbol is DocumentSymbol => symbol !== undefined);
             results.push({
                 ...model,
@@ -150,7 +169,7 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
 
         // Local elements.
         const local = getLocalElements(owner)
-            .map(e => namedSymbol(qualifiedIdText(e.id), elementKind(e), e.$cstNode?.range ?? ownerRange))
+            .map(e => elementSymbol(e, qualifiedIdText(e.id), e.$cstNode?.range ?? ownerRange, true))
             .filter((symbol): symbol is DocumentSymbol => symbol !== undefined);
 
         // Inherited elements from parent templates (transitively).
@@ -160,7 +179,8 @@ export class JpipeDocumentSymbolProvider extends DefaultDocumentSymbolProvider {
             ? this.importService.getInheritedElementsWithKeys(owner, unit, doc)
                 .filter(({ localKey }) => localKey.length > 0)
                 .map(({ element, localKey }) =>
-                    syntheticSymbol(`(inherited) ${localKey}`, elementKind(element), ownerRange))
+                    elementSymbol(element, `(inherited) ${localKey}`, ownerRange, false))
+                .filter((symbol): symbol is DocumentSymbol => symbol !== undefined)
             : [];
 
         const children = [...local, ...inherited];

@@ -17,8 +17,11 @@
 
 #### Required software
 
-The plugin requires the `jpipe` compiler to be available on your computer:
+The plugin requires the `jpipe` compiler, **version 3.0.0 or newer**, to be available on your
+computer:
   - [https://www.jpipe.org/tutorials/install/](https://www.jpipe.org/tutorials/install/)
+
+An older compiler is not used: the plugin says which version it found and offers to update it.
 
 You can provide the compiler in three ways, selected via the `jpipe.executionMode` setting:
 
@@ -31,6 +34,15 @@ You can provide the compiler in three ways, selected via the `jpipe.executionMod
     downloaded JAR is an executable; the extension only fetches it after you explicitly pick a
     release, and periodically offers to update it. (Requires a Java runtime.)
 
+Running models (the ▶ button) also needs, in the workspace's Python environment,
+[jpipe-runner](https://github.com/jpipe-mcscert/jpipe-runner) 4.0.0 or newer on Python 3.11 or
+newer; the plugin offers to set that environment up. With jpipe-runner 4.1.0 or newer, the recommended release, a run's
+drawing and results fill in as each step finishes rather than when the run ends. [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance)
+is recommended for writing step libraries, and offered, but not required.
+
+**jPipe: Check jPipe Installation** reports all of it at once, with a button for the first
+thing to fix.
+
 #### How to use the plugin?
 
 Simply open a file using the `.jd` extension.
@@ -38,8 +50,13 @@ Simply open a file using the `.jd` extension.
 You get syntax highlighting, live validation, completion, hover and go-to-definition across the
 files a model `load`s, quick fixes on the lightbulb (`⌘.` / `Ctrl+.`), refactorings under
 **Refactor…**, **Format Document** (`⇧⌥F` / `Shift+Alt+F`) to lay a model out, and a diagram
-preview you can export. Everything is also in the command palette under *jPipe*. The tutorials
-below walk through them.
+preview you can export. The jPipe shield in the activity bar opens a **Models** view listing every
+template and justification in the workspace, so you can find a model without remembering which
+file it lives in, and the ▶ button runs a justification with
+[jpipe-runner](https://github.com/jpipe-mcscert/jpipe-runner) against the step libraries you check in
+its **Libraries** view, and draws the run, its dataflow and its verdict, in a **Run** panel beside
+the editor. Everything is also in the command palette under *jPipe*. The tutorials below
+walk through them.
 
 #### Tutorials
 

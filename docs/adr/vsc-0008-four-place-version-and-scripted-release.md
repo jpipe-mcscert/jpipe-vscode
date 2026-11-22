@@ -30,20 +30,26 @@ awkward thing to undo.
 `scripts/release.sh` is the only supported way to move the version. It has two verbs and
 **neither one tags, pushes, or publishes** — those stay deliberate human actions.
 
-`prepare X.Y.Z` runs on `main`: it refuses to start on a dirty tree, off `main`, out of sync with
-the remote, on an unpinned Node, if the tag already exists, or if the changelog has no entries
-under the named version. It then sets all four versions, reconciles the lockfile, flips the
-changelog's `### vX.Y.Z (Unreleased)` heading to today's date, runs `clean → langium:generate →
-build → test`, and commits `chore(release): X.Y.Z`.
+`prepare X.Y.Z` runs on a release branch, `release/X.Y.Z`, cut from `dev` (jpipe-vscode
+ADR-VSC-0030): it refuses to start on a dirty tree, on any other branch, on a branch that does not
+contain the remote's `dev`,
+out of sync with the branch's upstream, on an unpinned Node, if the tag already exists, or if the
+changelog has no entries under the named version. It then sets all four versions, reconciles the
+lockfile, flips the changelog's `### vX.Y.Z (Unreleased)` heading to today's date, runs
+`clean → langium:generate → build → test`, and commits `chore(release): X.Y.Z`. With `--hotfix`
+it runs on a fix branch cut from `main` instead, which must contain the remote's `main` and not
+the unreleased work of `dev`.
 
-`preflight X.Y.Z` is read-only. It re-runs what `.github/workflows/release.yml` validates — the
-four-way version comparison and the tag being an ancestor of `main` — plus a full clean build,
-both test suites, and a real `vsce package`. It ends by printing a manual checklist for the
+`preflight X.Y.Z` is read-only, and is run on `main` once the release has merged there. It
+re-runs what `.github/workflows/release.yml` validates — the four-way version comparison and the
+tag being an ancestor of `main` — plus a full clean build, both test suites, and a real
+`vsce package`. It ends by printing a manual checklist for the
 things CI structurally cannot check.
 
 The remote it validates against is `RELEASE_REMOTE`, defaulting to `origin` and deliberately
-**not** derived from `@{upstream}`: "is this commit on main" and "does this tag exist" are
-questions about the canonical repository, and a local branch may track a fork.
+**not** derived from `@{upstream}`: "is this commit on main", "does this branch contain dev" and
+"does this tag exist" are questions about the canonical repository, and a local branch may track
+a fork.
 
 ## Rationale
 
@@ -57,8 +63,8 @@ questions about the canonical repository, and a local branch may track a fork.
 - A single command that also tagged and published was considered and rejected: it collapses
   "prepare a release" and "release" into one keystroke, and the second is not undoable.
 - The script mirrors the compiler's `scripts/release.sh`, so the release procedure reads the same
-  in both repositories. There is no `post-release` verb here, because npm has no `-SNAPSHOT` and
-  this repository has no `dev` branch — a release is prepared on `main` and tagged there.
+  in both repositories. There is no `post-release` verb here, because npm has no `-SNAPSHOT`:
+  nothing needs bumping once a release is out.
 
 ## Consequences
 
@@ -68,8 +74,9 @@ questions about the canonical repository, and a local branch may track a fork.
 - `check_clean_tree` uses `git status --porcelain`, which reports *untracked* files. Any new build
   output — coverage reports, generated artefacts — must be added to `.gitignore` in the same
   change that produces it, or `prepare` and `preflight` both refuse to run.
-- `prepare` commits directly on `main`. Branch protection on `main` must therefore either allow
-  admin bypass or this flow has to change; that is decided separately.
+- `prepare` commits on a release branch, so the release commit reaches `main` through the release
+  pull request, and `dev` when `main` is merged back; for a hotfix, by its own pull request into
+  `main` (jpipe-vscode ADR-VSC-0030).
 - The changelog gates the release: `prepare` refuses if there are no entries under
   `### vX.Y.Z (Unreleased)`. Closing that heading out is the script's job, not a manual edit.
 - Node is pinned by Volta and checked by `prepare`. A contributor without Volta gets whatever

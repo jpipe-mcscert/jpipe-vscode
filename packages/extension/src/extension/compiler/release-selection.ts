@@ -6,9 +6,7 @@
  * offers and where a download is allowed to come from — worth pinning with tests.
  */
 
-/** Only 2.x+ releases expose the `process` / `diagnostic` / `--headless doctor` subcommands
- *  the extension drives; older `jpipe.jar` releases predate them and are hidden. */
-export const MIN_MAJOR = 2;
+import { meetsMinimum, type ReleaseNumbers } from '../requirements.js';
 
 /** Asset name of the CLI jar in a 2.x release, e.g. `jpipe-cli-2.1.0.jar`. */
 export const CLI_JAR_RE = /^jpipe-cli-.*\.jar$/;
@@ -106,13 +104,19 @@ export function isStrictlyNewer(candidate: string, baseline: string): boolean {
 /**
  * Reduces the GitHub releases payload to the installable ones, newest first.
  *
- * Dropped: drafts, prereleases (unless asked for), anything below {@link MIN_MAJOR}, anything
- * whose tag is not semver at all (which is how the rolling `unstable` tag is excluded), and
- * anything without a downloadable `jpipe-cli-*.jar` asset.
+ * Dropped: drafts, prereleases (unless asked for), anything older than `minimum` — the
+ * compiler this extension requires, so the picker never offers one it would refuse to run —
+ * anything whose tag is not semver at all (which is how the rolling `unstable` tag is excluded),
+ * and anything without a downloadable `jpipe-cli-*.jar` asset. A prerelease of the minimum
+ * itself counts as the minimum (`meetsMinimum`).
  *
  * @throws when the payload is not an array, i.e. the API answered with something unexpected.
  */
-export function selectInstallableReleases(raw: unknown, includePrereleases: boolean): JpipeRelease[] {
+export function selectInstallableReleases(
+    raw: unknown,
+    includePrereleases: boolean,
+    minimum: ReleaseNumbers
+): JpipeRelease[] {
     if (!Array.isArray(raw)) {
         throw new TypeError('Unexpected response from the GitHub releases API.');
     }
@@ -123,7 +127,7 @@ export function selectInstallableReleases(raw: unknown, includePrereleases: bool
         if (rel?.prerelease && !includePrereleases) continue;
         const tag: string = rel?.tag_name ?? '';
         const semver = parseSemver(tag);
-        if (!semver || semver.nums[0] < MIN_MAJOR) continue;
+        if (!semver || !meetsMinimum(semver.nums, minimum)) continue;
 
         const assets: any[] = Array.isArray(rel?.assets) ? rel.assets : [];
         const jar = assets.find(a => CLI_JAR_RE.test(a?.name ?? ''));

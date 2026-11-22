@@ -36,6 +36,9 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
         jpipe-import.ts         ← `load` statement resolution (BFS transitive imports)
         jpipe-completion.ts     ← smart completion provider
         jpipe-formatter.ts      ← Format Document / Selection (ADR-VSC-0024)
+        jpipe-type-hierarchy.ts ← `implements` as LSP type hierarchy; model kinds in workspace symbols
+        jpipe-call-hierarchy.ts ← compositions as LSP call hierarchy (operands = outgoing calls)
+        jpipe-document-builder.ts ← announces build phases even for an empty workspace (else requests hang)
         jpipe-layout.ts         ← the house layout, pure over a document (what the formatter runs)
         jpipe-utils.ts          ← getAllElements / getLocalElements (AST helpers)
         jpipe-glob.ts           ← Java-NIO glob matcher for `load` patterns (ADR-VSC-0007)
@@ -51,26 +54,61 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
       src/
         extension/              ← extension host. The only place `vscode` may be imported.
           main.ts               ← activate/deactivate: constructs and wires, nothing else
-          commands.ts           ← the 20 contributed commands, as a table (ADR-VSC-0017)
+          commands.ts           ← the 37 contributed commands, as a table (ADR-VSC-0017)
           exclusion-commands.ts ← the exclusion flows and their failure messages
           exclusions.ts         ← excluded-path manager, decorations, code lenses
           process-launcher.ts   ← Windows command resolution, cmd.exe escaping, running a program (tested)
+          requirements.ts       ← the oldest compiler/runner/Python this release works with; Pylance; the install report's verdict (tested; ADR-VSC-0032)
+          installation-check.ts ← Check jPipe Installation: compiler, runs, Pylance, in one dialog
           compiler/             ← obtaining and running the jPipe compiler (ADR-VSC-0016)
             image-generator.ts  ← calls the external jpipe CLI/JAR for SVG/PNG/JSON
             compiler-invocation.ts ← argv construction, vscode-free (tested)
             release-manager.ts  ← settings/globalState adapter for managed installs
             release-download.ts ← HTTPS, allowlist, download and placement, vscode-free (tested)
             release-selection.ts ← semver precedence + host allowlist, vscode-free (tested)
+          workspace-paths.ts    ← `[root:]relative/path` setting entries ↔ URIs (exclusions, libraries)
+          runner/               ← running justifications with jpipe-runner (ADR-VSC-0025)
+            library-scan.ts     ← finds step libraries by reading Python, never importing it (tested)
+            step-binding.ts     ← the runner's id → element binding rules, for the Outline (tested)
+            runner-invocation.ts ← which runner program, which arguments (tested)
+            libraries-view.ts   ← the Libraries view; checkboxes = `jpipe.runner.libraries`
+            run-model.ts        ← ▶ and ✓: compile to JSON, launch the runner as a VS Code task, hand its report and drawings to the session
+            run-report.ts       ← the runner's JSON report → the rows of the Results view (tested; ADR-VSC-0029)
+            run-events.ts       ← the runner's events (`--events`, 4.1+), polled while it runs → its progress (tested; ADR-VSC-0033)
+            run-session.ts      ← the last run: the one the Run panel draws and Results lists (ADR-VSC-0031)
+            run-state.ts        ← what the Run panel shows, when a run is out of date (tested)
+            run-panel.ts        ← the Run panel beside the editor: lifecycle, messages, open element, save drawing
+            run-shell.ts        ← the Run panel's HTML shell
+            results-view.ts     ← the Results view, in the bottom panel; opened from the Run panel
+            python-environment.ts ← which environment is the workspace's own? can it run steps? which fix? (tested; ADR-VSC-0026)
+            pylance.ts          ← is Pylance installed? install it. Wanted, never declared (ADR-VSC-0032)
+            environment.ts      ← finds that environment, points the Python extension at it, asks consent, runs fixes
+            step-terminal.ts    ← runs a fix step itself, shown in a task's terminal: a task cannot unset an inherited variable
+            new-library.ts      ← New Library… decisions: module name, folder, skeleton (tested)
+            new-library-flow.ts ← its input box, file creation and checking
           preview/              ← the diagram panel (ADR-VSC-0016)
             preview-provider.ts ← webview panel lifecycle, compile orchestration
             preview-shell.ts    ← the panel's HTML shell
             preview-refresh.ts  ← cursor-move response, vscode-free (tested)
+          models-view/          ← the Models view in the jPipe activity
+            models-view.ts      ← TreeDataProvider, refresh triggers, follow-the-editor
+            models-tree.ts      ← requests + tree shape, vscode-free (tested)
+            new-model.ts        ← New Justification/Template decisions, vscode-free (tested)
+            new-model-flow.ts   ← the name input box and the edits it makes
+            elements-view.ts    ← the activity's Outline: elements of the model selected in Models
+            elements-tree.ts    ← that model's own and inherited elements, vscode-free (tested)
+            tree-loader.ts      ← when Models and the Outline ask the server again: now, when shown, after a pause (tested)
         webview/                ← browser code. DOM only — no `vscode`, no node: (ADR-VSC-0003)
-          preview.ts            ← preview controller (pan/zoom, message dispatch)
+          preview.ts            ← preview page: modes, banners, highlight, message dispatch
+          canvas.ts             ← the diagram canvas both pages share: pan/zoom, minimap, theme (tested)
+          run.ts / run-view.ts  ← the Run panel's page: entry point / its logic (run-view tested)
+          run-colours.ts        ← a run's drawing coloured as it goes, by the runner's rules (tested against its drawings; ADR-VSC-0033)
           diagnostic-view.ts    ← the diagnostics tables
           viewbox.ts            ← pure viewbox maths (tested)
         shared/                 ← the ONLY code both bundles may import (ADR-VSC-0005)
           preview-protocol.ts   ← typed host↔webview message contract
+          run-protocol.ts       ← the same, for the Run panel
+          run-kind.ts           ← how a run is named (execution or check), for host and page alike
           diagnostic-model.ts   ← report → view model (tested)
         language/main.ts        ← language-server process entry point
       test/                     ← Vitest tests; cannot load anything importing `vscode`
@@ -136,6 +174,9 @@ The `JpipeCompletionProvider` deliberately never falls through to Langium's glob
 
 Exit codes: `1` = model has errors, `42` = compiler crashed.
 
+### Required versions
+`src/extension/requirements.ts` names the **oldest** compiler, jpipe-runner and Python this release works with, and no newest (jpipe-vscode ADR-VSC-0032). A compiler below the minimum is refused before any run, with an update offered; the managed install lists only releases at or above it. Raising a minimum is a user-facing change: changelog entry, and the Marketplace README's "Required software" (held by `test/requirements.test.ts`). `RECOMMENDED` names releases that are better but not required (jpipe-runner 4.1.0, which follows a run as it goes): code asks for what they add only of a release that has it, Check jPipe Installation says what upgrading brings, and the extension is not released before they are published. Pylance is a soft dependency — never add it to `extensionDependencies` or `extensionPack`.
+
 ---
 
 ## Build & Dev Workflow
@@ -175,15 +216,24 @@ vsce publish
 
 ---
 
+## Branches and pull requests
+
+This repository follows the jPipe workflow in the organisation's [contributing guide](https://github.com/jpipe-mcscert/.github/blob/main/CONTRIBUTING.md), including its rules for AI assistants: `main` holds releases, `dev` is the integration and default branch, work branches are cut from `dev` and return to it by pull request (jpipe-vscode ADR-VSC-0030). What is specific here:
+
+- **CI:** `build.yml` (job `build`) runs on pushes to `main` and `dev` and on every pull request; `sonar.yml` (job `Build and analyze`, SonarQube Cloud with the gate waited on) runs on every pull request and on pushes to `main`. Both jobs are required checks on `main`; the README's "What has to be green before a pull request merges?" has the details, including why pull requests from forks cannot be analysed.
+- **Releases:** `scripts/release.sh prepare X.Y.Z` runs on a release branch, `release/X.Y.Z`, cut from `dev` (it refuses any other branch); that branch goes into `main` by the release pull request, with no pull request into `dev` first, and `main` is merged back into `dev` after the tag. A maintainer runs `scripts/release.sh preflight X.Y.Z` on `main` and pushes the `vX.Y.Z` tag, which `release.yml` turns into a GitHub Release and a Marketplace publish — it refuses a tag that is not on `main`. A hotfix is prepared with `prepare --hotfix X.Y.Z` on a fix branch cut from `main`, and goes into `main` by its own pull request. See "How to cut a release?" in the README and jpipe-vscode ADR-VSC-0008.
+
+---
+
 ## Changelog Maintenance
 
-`CHANGELOG.md` is the source of truth for what shipped in each version. **Keep it current whenever a feature or fix is merged to `main`.**
+`CHANGELOG.md` is the source of truth for what shipped in each version. **Keep it current: write the entry in the change that makes it, not at release time.**
 
-- Every user-facing change (feature, bug fix, or documentation) merged to `main` must have a corresponding entry.
+- Every user-facing change (feature, bug fix, or documentation) must have a corresponding entry by the time it is merged into `dev`.
 - Accumulate changes under a top `### vX.Y.Z (Unreleased)` heading while work is in flight. Closing the section out is `scripts/release.sh prepare X.Y.Z`'s job — don't date the heading by hand.
 - Follow the existing structure: `Leader:` line, then `Features:` / `Bug Fixes:` / `Documentation:` sub-lists. Prefix each item with the affected area in bold (e.g. **Language Server:**, **Extension:**, **Grammar:**, **CI/CD:**). Reference the closed issue/PR where relevant.
 - The version lives in **four** places that must agree — the three `package.json` files (root, `packages/extension`, `packages/language`) *and* the `jpipe-language` dependency inside `packages/extension/package.json`. `scripts/release.sh prepare` sets all four and reconciles the lockfile; see "How to cut a release?" in the README for why doing it by hand is fiddly.
-- SemVer: new capability → minor bump; fixes/docs only → patch bump.
+- SemVer: a breaking change → major bump, and raising a minimum version is one (a compiler or runner that worked is refused); new capability → minor bump; fixes/docs only → patch bump. A major release's section opens with an `Upgrading from N.x:` sub-list saying what users must do.
 
 **Editorial style — write for users, not developers.** The changelog is read by people using the extension, not by contributors. Each entry should describe *what changed for the user* and *why it helps*, in plain language:
 
@@ -204,7 +254,7 @@ packaging, so a red suite blocks the VSIX.
 
 ### `packages/language/test/`
 
-25 files, integration-style: they import `'jpipe-language'`, which resolves through the package's
+28 files, integration-style: they import `'jpipe-language'`, which resolves through the package's
 `exports` map to the **built** `out/index.js`, and drive the LSP through Langium's test helpers.
 `parsing.test.ts`, `linking.test.ts` and `validating.test.ts` are the core three; the rest cover
 completion, code actions, renaming, globs, layout, hovering, symbols and semantic tokens.
@@ -235,14 +285,14 @@ ADR-VSC-0004.
 
 ## VS Code Commands
 
-`packages/extension/package.json` is the source of truth — it declares **21** commands, with
+`packages/extension/package.json` is the source of truth — it declares **37** commands, with
 their menu placement and `when`-clauses. The ones worth knowing:
 
 | Command ID | Title |
 |---|---|
 | `jpipe.vis.preview` | Open Diagram Preview |
 | `jpipe.export` | Export Diagram (default format) |
-| `jpipe.downloadSVG` / `PNG` / `JPEG` / `JSON` / `DOT` / `Python` / `JPIPE` | Download as … |
+| `jpipe.downloadSVG` / `PNG` / `JPEG` / `JSON` / `DOT` / `Python` / `JPIPE` | Export as … (the `jpipe.exportAs` submenu) |
 | `jpipe.checkInstallation` | Check jPipe Installation |
 | `jpipe.installFromRelease` | Install Compiler from GitHub Release |
 | `jpipe.selectJarFile` | Select Compiler JAR File… (also linked from the `jpipe.jarFile` setting) |
@@ -251,8 +301,47 @@ their menu placement and `when`-clauses. The ones worth knowing:
 | `jpipe.organizeLoads`, `jpipe.sortElements` | Document refactorings (code actions) |
 | `jpipe.autoIndent` | Auto-indent and Align — delegates to `editor.action.formatDocument`, *not* a code action (ADR-VSC-0024) |
 | `jpipe.convertModelKind`, `jpipe.extractTemplate` | Model refactorings |
+| `jpipe.models.refresh` / `newJustification` / `newTemplate` / `newImplementation` / `scaffoldLibrary` | Models view toolbar, inline and context actions |
+| `jpipe.run` / `jpipe.check` | ▶ Run Model with jpipe-runner (editor title, Models inline) / ✓ Check Model (Models context menu); both open the Run panel (ADR-VSC-0031) |
+| `jpipe.libraries.new` / `checkAll` / `uncheckAll` / `refresh` | Libraries view toolbar |
+| `jpipe.runLibrary` / `checkLibrary` | Run as jPipe / Check as jPipe Library: the ▶ menu (`editor/title/run`) of a Python file that is a checked library; act on the model selected in Models, with every checked library (ADR-VSC-0029) |
+| `jpipe.results.showOutput` | Results view toolbar: the terminal the last run printed in (ADR-VSC-0029) |
+| `jpipe.runner.fixEnvironment` / `checkEnvironment` | Set up / check the workspace's Python environment for runs (linked from the `jpipe.runner.environment` setting; ADR-VSC-0026) |
+
+Settings groups are titled `jPipe › <Tool> › <Group>` (`Compiler` or `Runner`, each starting with `General`), because VS Code has one level of groups; a new group follows it (ADR-VSC-0028, held by `test/settings.test.ts`). Setting identifiers never change with a group's title.
+
+The **Models view** (`jpipe.models`, in the `jpipe` activity-bar container) is built from
+*standard* LSP requests only — `workspace/symbol` (templates are `Interface`, justifications
+`Class`), `typeHierarchy/subtypes` per template, and `textDocument/prepareCallHierarchy` per model
+(a composition's item has its operator as `detail`) then `callHierarchy/outgoingCalls` per
+composition (its operands) — so it needs no custom protocol. Its Errors
+group (an overlay) comes from the client's own diagnostics, and its Excluded group (a partition)
+from `ExclusionManager`; changes to either regroup without a server round trip. The activity
+is always shown, even in a workspace with no `.jd` file, because it is where a first model is
+created; opening it activates the extension. With no model, the Models view shows its welcome
+text (`viewsWelcome`) and the Outline and Libraries views are hidden (`jpipe.noModels`). The `jpipe.activated` context key only hides the
+palette commands that need a model or a library to act on.
+
+Right-clicking a model offers the same three entries, directly in the menu, in the editor, on a
+`.jd` file in the Explorer, and on a Models row: Open Diagram Preview, the `jpipe.exportAs` submenu
+(the only place export formats are listed), and Exclude/Include (ADR-VSC-0027, held by
+`test/menus.test.ts`). Their commands therefore take a tree node, an Explorer URI or nothing, and
+resolve it to a model (`targetOf` in `commands.ts`).
 
 The preview panel auto-refreshes on file save, highlights the node under the cursor (via LSP `textDocument/documentSymbol`), and has zoom controls (+/−/0 keys or toolbar buttons).
+
+The **Run panel** is a second webview, opened by every ▶ and ✓ and never by opening a file (a check
+imports the libraries). It shows the last run only — the runner's dataflow SVG (`--dataflow` on
+jpipe-runner 4.0.x, `--diagram` on every later or unknown release, chosen by `dataflowFlag`; the
+report's `dataflow` in schema 1, `diagram` in schema 2; the argument-only view is left to the preview), under a bar that says *Execution* or *Check · no step
+called* first. It shares that run with the Results view through `RunSession`, and the two come
+forward together; until a report arrives Results lists one status row, and, with jpipe-runner 4.1 or
+later, the elements as their events decide them, while the verdict bar counts them and the drawing
+the runner made before the first step (`diagram.drawn`) is coloured as they are (ADR-VSC-0033). A node click lights it and
+everything downstream (walked from the SVG's edge titles, `webview/flow.ts`) and selects an
+element's row in Results; a second click, the background or Escape clears; a double-click opens
+the element. A runner that cannot draw (Graphviz
+missing, exit 4, no report) is launched once more without the drawing (ADR-VSC-0031).
 
 ---
 

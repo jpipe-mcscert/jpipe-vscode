@@ -15,7 +15,7 @@ import manifest from '../package.json' with { type: 'json' };
  *
  * It is not hypothetical. Registering the export commands as `jpipe.download${format}` looks
  * obviously right and is wrong: `ImageFormat.PYTHON` is `'PYTHON'`, while the contributed
- * command is `jpipe.downloadPython`. That would have left "Download as Python" in the menu with
+ * command is `jpipe.downloadPython`. That would have left "Export as Python" in the menu with
  * no handler behind it.
  *
  * The registrations are read as text, since `commands.ts` imports `vscode` and cannot be loaded

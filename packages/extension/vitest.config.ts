@@ -43,13 +43,31 @@ export default defineConfig({
                 'src/extension/preview/preview-provider.ts',
                 'src/extension/compiler/release-manager.ts',
                 'src/extension/preview/preview-shell.ts',
+                'src/extension/models-view/models-view.ts',
+                'src/extension/models-view/new-model-flow.ts',
+                'src/extension/models-view/elements-view.ts',
+                'src/extension/runner/libraries-view.ts',
+                'src/extension/runner/run-model.ts',
+                'src/extension/runner/results-view.ts',
+                'src/extension/runner/run-session.ts',
+                'src/extension/runner/run-panel.ts',
+                'src/extension/runner/run-shell.ts',
+                'src/extension/runner/step-terminal.ts',
+                'src/extension/runner/new-library-flow.ts',
+                'src/extension/runner/environment.ts',
+                'src/extension/runner/pylance.ts',
+                'src/extension/installation-check.ts',
+                'src/extension/workspace-paths.ts',
                 'src/language/main.ts',
                 'src/webview/preview.ts',
+                'src/webview/run.ts',
                 // Types only — every export is a `type` or `interface`, so it compiles to
                 // nothing and a coverage figure for it would be meaningless. Note that its
                 // neighbour `diagnostic-report.ts` is *not* in this position: it exports a
                 // runtime `SUPPORTED_SCHEMA_VERSION`, so it stays in the report.
-                'src/shared/preview-protocol.ts'
+                'src/shared/preview-protocol.ts',
+                // Types only, like the preview's.
+                'src/shared/run-protocol.ts'
             ]
         }
     }
