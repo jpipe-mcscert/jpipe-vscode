@@ -769,3 +769,80 @@ describe('Unification method', () => {
         expect(diagnosticMessages(doc).some(m => m.includes('unification method'))).toBe(false);
     });
 });
+
+/**
+ * A composed model has no body: its elements are built by the operator, under ids such as
+ * `pattern:abs2` that no file declares, and `implements` hands them on. Reading bodies alone, the
+ * editor called such models empty — no conclusion, no `@support`, no such hook — about models the
+ * compiler builds. Every case here is the compiler's example 028 or a variant of it, each confirmed
+ * against `jpipe --headless diagnostic`: the clean ones exit 0, and the one error it reports is the
+ * one checked for.
+ */
+describe('A model built on a composition', () => {
+
+    const PATTERN = `template pattern {
+    conclusion c    is "The system is ready"
+    strategy   s    is "Check every part"
+    @support   abs1 is "The first part is ready"
+    @support   abs2 is "The second part is ready"
+    s    supports c
+    abs1 supports s
+    abs2 supports s
+}
+justification first_part {
+    conclusion c is "The first part is ready"
+    strategy   s is "Run its tests"
+    evidence   e is "Test report"
+    s supports c
+    e supports s
+}
+template refined_pattern is refine(pattern, first_part) {
+    hook: "abs1"
+}`;
+
+    async function errors(source: string): Promise<string[]> {
+        const doc = await parse(source);
+        assertNoParseErrors(doc);
+        return (doc.diagnostics ?? [])
+            .filter(d => d.severity === DiagnosticSeverity.Error)
+            .map(d => Diagnostic.getMessageString(d));
+    }
+
+    test('a justification implementing a refined template validates clean (example 028)', async () => {
+        expect(await errors(`${PATTERN}
+justification ready implements refined_pattern {
+    evidence pattern:abs2 is "Second part checklist"
+}`)).toEqual([]);
+    });
+
+    test('a template implementing a composed one is not called empty', async () => {
+        expect(await errors(`${PATTERN}
+template t implements refined_pattern {
+    evidence extra is "Extra"
+}`)).toEqual([]);
+    });
+
+    test('a hook into a base that implements a composed template is not reported', async () => {
+        expect(await errors(`${PATTERN}
+justification ready implements refined_pattern {
+    evidence pattern:abs2 is "Second part checklist"
+}
+justification tests {
+    conclusion c is "Test report holds"
+    strategy   s is "Read it"
+    evidence   e is "Raw logs"
+    s supports c
+    e supports s
+}
+justification deeper is refine(ready, tests) { hook: "first_part:e" }`)).toEqual([]);
+    });
+
+    // The rules still hold for a template whose chain is plain, composition or not elsewhere in
+    // the file.
+    test('a plain template with no @support beside them is still reported', async () => {
+        expect(await errors(`${PATTERN}
+template plain {
+    conclusion c is "C"
+}`)).toContain("Template 'plain' declares no abstract supports");
+    });
+});

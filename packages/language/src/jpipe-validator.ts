@@ -34,7 +34,7 @@ import {
     operatorSpec,
     requiredConfigKeys
 } from './jpipe-operators.js';
-import { expandedElements, getAllElements, getLocalElements, hookTarget, qualifiedIdText } from './jpipe-utils.js';
+import { buildsOnComposition, expandedElements, getAllElements, getLocalElements, hookTarget, qualifiedIdText } from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 import { messageOf } from './jpipe-errors.js';
@@ -225,9 +225,10 @@ export class JpipeValidator {
      * `hookTarget` decides what resolves, and matches the compiler: against the ids template
      * expansion gives inherited elements, then by its suffix fallback. Three shapes are passed over instead, each because the editor genuinely cannot answer:
      *
-     * - **A composed base.** Its elements do not exist until the operator has run, and its hooks
-     *   resolve through aliases no `.jd` file contains. `checkModelHasConclusion` steps around the
-     *   same corner for the same reason.
+     * - **A base built on a composition**, composed itself or implementing a composed template.
+     *   Those elements do not exist until the operator has run, and its hooks resolve through ids
+     *   no `.jd` file contains. `checkModelHasConclusion` steps around the same corner for the same
+     *   reason.
      * - **An unresolved first source**, which is a linking error already reported where it is.
      * - **A broken `implements` chain**, where the inherited half of the element list is missing.
      *   The hook may name something perfectly real that this cannot see, and the visible problem
@@ -244,7 +245,7 @@ export class JpipeValidator {
         if (!entry || actual === undefined) return;
 
         const base = composition.params?.refs[0]?.ref;
-        if (!base || base.composition || hasUnresolvedParent(base)) return;
+        if (!base || buildsOnComposition(base) || hasUnresolvedParent(base)) return;
         if (hookTarget(base, actual)) return;
 
         const candidates = expandedElements(base)
@@ -325,9 +326,12 @@ export class JpipeValidator {
      * text here would report an error on a model that builds. The cost is that a composition whose
      * result genuinely has no conclusion is caught by the compiler and not by the editor, which is
      * the right way round: silence about a real problem beats noise about one that is not.
+     *
+     * The same goes for a model that *implements* a composed template, which inherits a conclusion
+     * the operator built (`buildsOnComposition`).
      */
     checkModelHasConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
-        if (model.composition) return;
+        if (buildsOnComposition(model)) return;
         if (getAllElements(model).some(isConclusion)) return;
 
         report(accept, JpipeIssue.ConclusionPresent, `Model '${model.id}' has no conclusion`,
@@ -364,8 +368,13 @@ export class JpipeValidator {
      *
      * The compiler's own note for this rule says it best: a template with no abstract supports is
      * a justification in disguise. It refuses to build one, and the message here is its wording.
+     *
+     * A template built on a composition is left alone: the `@support` elements a `refine` leaves
+     * unrefined are in no body this can read (`buildsOnComposition`). Declaring the wrong kind for
+     * an operator's result is a different error in the compiler, raised once the operator has run.
      */
     checkTemplateHasSupport(template: Template, accept: ValidationAcceptor): void {
+        if (buildsOnComposition(template)) return;
         const allElements = getAllElements(template);
         const hasSupport = allElements.some(elem => isAbstractSupport(elem));
 
