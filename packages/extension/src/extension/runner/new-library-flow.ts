@@ -3,10 +3,11 @@ import { messageOf } from '../../shared/errors.js';
 import { CompilerTooOldError } from '../requirements.js';
 import { joinUri } from '../models-view/new-model.js';
 import type { Model } from '../models-view/models-tree.js';
-import { fileExists } from '../models-view/new-model-flow.js';
+import { CHANGE_FOLDER, askValidated, fileExists, pickFolder, type Validation } from '../models-view/new-model-flow.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
 import { defaultLibraryName, libraryFileName, libraryFolder, librarySkeleton, moduleNameError } from './new-library.js';
+import { saveInputs } from './run-model.js';
 
 /**
  * New Library…, from the Libraries view: a blank library, named after the model in question.
@@ -42,13 +43,10 @@ export async function scaffoldLibrary(
     // The compiler reads files, not editors: stubs from what was saved last would miss the
     // elements added since, in the justification or in a template it loads. So every jPipe file
     // with unsaved changes is saved first, as a run does.
-    const unsaved = [document, ...vscode.workspace.textDocuments.filter(open => open.languageId === 'jpipe' && open !== document)]
-        .filter(input => input.isDirty);
-    const saved = await Promise.all(unsaved.map(input => input.save()));
-    const failed = unsaved.find((_, i) => !saved[i]);
+    const failed = await saveInputs(document);
     if (failed) {
         void vscode.window.showErrorMessage(
-            `No library was generated: ${vscode.workspace.asRelativePath(failed.uri)} could not be saved, and the compiler reads the files as they are saved.`);
+            `No library was generated: ${vscode.workspace.asRelativePath(failed)} could not be saved, and the compiler reads the files as they are saved.`);
         return;
     }
     await createLibrary(libraries, model, `Scaffold Step Library for ${model.name}`, async uri => {
@@ -82,20 +80,16 @@ async function createLibrary(
         return;
     }
 
-    const changeFolder: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('folder-opened'), tooltip: 'Change Folder…' };
     const input = vscode.window.createInputBox();
     input.title = title;
     input.placeholder = 'Python module name, e.g. release_steps';
     input.value = defaultLibraryName(model?.name);
     input.valueSelection = [0, input.value.length];
-    input.buttons = [changeFolder];
+    input.buttons = [CHANGE_FOLDER];
     input.ignoreFocusOut = true;
 
     const target = () => joinUri(folder!, libraryFileName(input.value || 'name'));
-    let generation = 0;
-    let blocked = true;
-    const refresh = async () => {
-        const mine = ++generation;
+    const validate = async (): Promise<Validation> => {
         const file = target();
         const relative = vscode.workspace.asRelativePath(vscode.Uri.parse(file));
         input.prompt = `Creates ${relative}`;
@@ -108,42 +102,22 @@ async function createLibrary(
         if (!error && await fileExists(file)) {
             error = `${relative} already exists. Choose another name.`;
         }
-        if (mine !== generation) return;
-        blocked = error !== undefined;
-        input.validationMessage = error && input.value.trim()
-            ? { message: error, severity: vscode.InputBoxValidationSeverity.Error }
-            : undefined;
+        return {
+            blocked: error !== undefined,
+            message: error && input.value.trim()
+                ? { message: error, severity: vscode.InputBoxValidationSeverity.Error }
+                : undefined
+        };
     };
 
-    const file = await new Promise<string | undefined>(resolve => {
-        let switching = false;
-        const done = (value: string | undefined) => {
-            subscriptions.forEach(s => s.dispose());
-            input.dispose();
-            resolve(value);
-        };
-        const subscriptions = [
-            input.onDidChangeValue(() => void refresh()),
-            input.onDidAccept(async () => {
-                await refresh();
-                if (!blocked) done(target());
-            }),
-            input.onDidHide(() => { if (!switching) done(undefined); }),
-            input.onDidTriggerButton(async () => {
-                switching = true;
-                const picked = await vscode.window.showOpenDialog({
-                    canSelectFolders: true, canSelectFiles: false, canSelectMany: false,
-                    defaultUri: vscode.Uri.parse(folder!), openLabel: 'Create Here'
-                });
-                switching = false;
-                if (picked?.[0]) folder = picked[0].toString();
-                input.show();
-                await refresh();
-            })
-        ];
-        input.show();
-        void refresh();
-    });
+    const file = await askValidated(
+        input,
+        validate,
+        async () => {
+            const picked = await pickFolder(folder);
+            if (picked) folder = picked;
+        },
+        target);
     if (!file) return;
 
     const uri = vscode.Uri.parse(file);

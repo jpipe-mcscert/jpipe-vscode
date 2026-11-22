@@ -43,8 +43,11 @@ export interface RunDeps {
  * the libraries the run loads, and every other jPipe file with unsaved changes, since the model
  * may load any of them and the run must be of the model as the editor shows it. The file that
  * could not be saved, if one could not.
+ *
+ * Scaffold Step Library… saves the same way, with no library: the compiler writes its stubs from
+ * the files as they are saved.
  */
-async function saveInputs(document: vscode.TextDocument, libraries: readonly vscode.Uri[]): Promise<vscode.Uri | undefined> {
+export async function saveInputs(document: vscode.TextDocument, libraries: readonly vscode.Uri[] = []): Promise<vscode.Uri | undefined> {
     const loaded = new Set(libraries.map(uri => uri.toString()));
     const inputs = new Set([document, ...vscode.workspace.textDocuments
         .filter(open => open.languageId === 'jpipe' || loaded.has(open.uri.toString()))]);
@@ -408,7 +411,8 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
         deps.logger.info(`${ended.taskName}: not shown, a newer run has taken its place`);
         return;
     }
-    const dataflow = await readText(files.dataflow, report.dataflow);
+    // The SVG the runner drew, when its report says it drew one.
+    const dataflow = report.dataflow === null ? null : await readFileText(files.dataflow);
     // The events, if the runner wrote them, are kept: only they say how long each step took.
     const progress = deps.session.run?.progress;
     const shown = deps.session.update(token, {
@@ -431,11 +435,6 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
 /** Why a run has no drawing: the runner could not draw, which is most often Graphviz missing. */
 const NO_DRAWING = 'jpipe-runner could not draw this run. Drawing needs Graphviz\'s dot command, as the preview does: run Check jPipe Installation to see whether it is installed.';
 
-/** The SVG the runner drew in `file`, when its report says it drew one. */
-async function readText(file: vscode.Uri, recorded: string | null): Promise<string | null> {
-    return recorded === null ? null : readFileText(file);
-}
-
 /** The text of `file`, or null if it cannot be read. */
 async function readFileText(file: vscode.Uri): Promise<string | null> {
     try {
@@ -453,8 +452,7 @@ async function readFileText(file: vscode.Uri): Promise<string | null> {
 export async function runShownAgain(deps: RunDeps, check: boolean): Promise<void> {
     const shown = deps.session.run;
     if (!shown) return;
-    const model = (await deps.models.freshModels())
-        .find(m => m.name === shown.name && vscode.Uri.parse(m.uri).toString() === shown.uri);
+    const model = await modelNamed(deps, shown.name, shown.uri);
     if (!model) {
         deps.session.say({
             text: `${shown.name} is no longer in ${vscode.workspace.asRelativePath(vscode.Uri.parse(shown.uri))}: run a justification from its editor or the Models view.`,
@@ -528,11 +526,8 @@ function terminalOf(task: vscode.Task): vscode.Terminal | undefined {
 }
 
 async function readReport(file: vscode.Uri): Promise<ReturnType<typeof parseReport>> {
-    try {
-        return parseReport(new TextDecoder('utf-8').decode(await vscode.workspace.fs.readFile(file)));
-    } catch {
-        return { problem: 'jpipe-runner wrote no report' };
-    }
+    const content = await readFileText(file);
+    return content === null ? { problem: 'jpipe-runner wrote no report' } : parseReport(content);
 }
 
 /**
@@ -599,10 +594,13 @@ async function resolveSubject(
         void vscode.window.showWarningMessage('Put the cursor in the justification to run.');
         return undefined;
     }
-    const uri = editor.document.uri.toString();
-    const kind = (await deps.models.freshModels())
-        .find(m => m.name === name && vscode.Uri.parse(m.uri).toString() === uri)?.kind;
+    const kind = (await modelNamed(deps, name, editor.document.uri.toString()))?.kind;
     return { document: editor.document, name, kind };
+}
+
+/** The workspace's model named `name` in the document at `uri`, as the server has it now. */
+async function modelNamed(deps: RunDeps, name: string, uri: string): Promise<Model | undefined> {
+    return (await deps.models.freshModels()).find(m => m.name === name && vscode.Uri.parse(m.uri).toString() === uri);
 }
 
 /** How many runs this window has started: what tells one run's folder from another's. */

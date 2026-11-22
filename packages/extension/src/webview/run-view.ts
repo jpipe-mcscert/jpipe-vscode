@@ -1,4 +1,5 @@
 import type { HostToRunPanel, Progress, RunKind, RunPanelState, RunPanelToHost, Tone, VerdictCount } from '../shared/run-protocol.js';
+import { kindOf, underWay } from '../shared/run-kind.js';
 import { DiagramCanvas } from './canvas.js';
 import { applyFocus, downstream, elementOf, nameOf, nodeNamed } from './flow.js';
 import { colourRun, markProgress } from './run-colours.js';
@@ -143,7 +144,7 @@ export class RunPage {
         bar.classList.toggle('visible', running || verdict !== null);
         // Read aloud when the run ends, not at every step it takes.
         bar.setAttribute('aria-live', running ? 'off' : 'polite');
-        const kind = KINDS[verdict?.kind ?? (state.check ? 'check' : 'execution')];
+        const kind = KINDS[verdict?.kind ?? kindOf(state.check)];
         const kindLabel = byId(this.doc, 'verdict-kind');
         kindLabel.textContent = kind.says;
         kindLabel.title = kind.explains;
@@ -264,9 +265,9 @@ export class RunPage {
     }
 
     private emptyMessage(state: RunPanelState): string {
-        if (state.phase === 'running') return `${state.check ? 'Checking' : 'Executing'} ${state.name}…`;
+        if (state.phase === 'running') return underWay(state.name, state.check);
         if (state.drawingMissing) return state.drawingMissing;
-        if (state.phase === 'done') return `jpipe-runner drew nothing for this ${state.check ? 'check' : 'execution'}.`;
+        if (state.phase === 'done') return `jpipe-runner drew nothing for this ${kindOf(state.check)}.`;
         return 'Nothing to draw yet: ▶ executes the justification, and ✓ checks it against its libraries without calling any step.';
     }
 

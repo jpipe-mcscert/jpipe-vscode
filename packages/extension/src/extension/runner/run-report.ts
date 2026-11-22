@@ -83,11 +83,15 @@ const MAJORS: readonly string[] = ['1', '2'];
 /** How much of a produced value a row shows. */
 const VALUE_WIDTH = 80;
 
-const text = (value: unknown, otherwise = ''): string => typeof value === 'string' ? value : otherwise;
+/*
+ * Reading fields of JSON the runner wrote, whatever is there: the report's here, and the events'
+ * in `run-events.ts`, which shares these.
+ */
+export const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+export const text = (value: unknown, otherwise = ''): string => typeof value === 'string' ? value : otherwise;
 const textOrNull = (value: unknown): string | null => typeof value === 'string' ? value : null;
-const texts = (value: unknown): string[] => Array.isArray(value) ? value.filter(v => typeof v === 'string') : [];
-const objects = (value: unknown): Record<string, unknown>[] =>
-    Array.isArray(value) ? value.filter(v => typeof v === 'object' && v !== null) : [];
+export const texts = (value: unknown): string[] => Array.isArray(value) ? value.filter(v => typeof v === 'string') : [];
+const objects = (value: unknown): Record<string, unknown>[] => Array.isArray(value) ? value.filter(isObject) : [];
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[]): T | undefined =>
     allowed.find(a => a === value);
 
@@ -97,9 +101,8 @@ function producedValue(raw: unknown): string {
     return shown.length > VALUE_WIDTH ? `${shown.slice(0, VALUE_WIDTH - 1)}…` : shown;
 }
 
-function traceback(raw: unknown): Traceback | null {
-    if (typeof raw !== 'object' || raw === null) return null;
-    const t = raw as Record<string, unknown>;
+function traceback(t: unknown): Traceback | null {
+    if (!isObject(t)) return null;
     return {
         exception: text(t.exception),
         message: text(t.message),
@@ -158,7 +161,7 @@ export function parseReport(content: string): { report: RunReport } | { problem:
     } catch {
         return { problem: 'the runner\'s report is not JSON' };
     }
-    if (typeof raw !== 'object' || raw === null) return { problem: 'the runner\'s report is not a JSON object' };
+    if (!isObject(raw)) return { problem: 'the runner\'s report is not a JSON object' };
     const version = text(raw.schema_version);
     const major = version.split('.')[0];
     if (!MAJORS.includes(major)) {
@@ -265,8 +268,7 @@ export function compiledLabels(content: string): Map<string, string> {
     } catch {
         return labels;
     }
-    const elements = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>).elements : undefined;
-    for (const e of objects(elements)) {
+    for (const e of objects(isObject(raw) ? raw.elements : undefined)) {
         if (typeof e.id === 'string' && typeof e.label === 'string' && e.label) labels.set(e.id, e.label);
     }
     return labels;

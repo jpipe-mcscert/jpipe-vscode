@@ -18,21 +18,9 @@ import * as vscode from 'vscode';
  * `diagnostic -f json` does, and it stays reachable behind the Raw toggle otherwise.
  */
 export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-    const nonce = randomBytes(16).toString('base64');
-    const asset = (...parts: string[]) =>
-        webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...parts));
+    const { nonce, csp, asset } = pageSecurity(webview, extensionUri);
     const script = asset('out', 'webview', 'preview.js');
     const style = asset('out', 'webview', 'preview.css');
-
-    // `blob:` is for the minimap, which renders the diagram into an isolated <img> so its copy
-    // of the SVG cannot collide with the live one's element ids.
-    const csp = [
-        `default-src 'none'`,
-        `img-src ${webview.cspSource} blob: data:`,
-        `style-src ${webview.cspSource}`,
-        `font-src ${webview.cspSource}`,
-        `script-src 'nonce-${nonce}'`
-    ].join('; ');
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -146,4 +134,27 @@ export function getShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri):
     <script nonce="${nonce}" src="${script}"></script>
 </body>
 </html>`;
+}
+
+/**
+ * What a diagram panel's page is built with, the preview's and the run panel's alike: the nonce its
+ * one script carries, the Content-Security-Policy that allows nothing else, and the URI of a file
+ * the extension ships, as the page may load it.
+ *
+ * `blob:` is for the minimap, which renders the diagram into an isolated <img> so its copy of the
+ * SVG cannot collide with the live one's element ids.
+ */
+export function pageSecurity(
+    webview: vscode.Webview,
+    extensionUri: vscode.Uri
+): { nonce: string; csp: string; asset: (...parts: string[]) => vscode.Uri } {
+    const nonce = randomBytes(16).toString('base64');
+    const csp = [
+        `default-src 'none'`,
+        `img-src ${webview.cspSource} blob: data:`,
+        `style-src ${webview.cspSource}`,
+        `font-src ${webview.cspSource}`,
+        `script-src 'nonce-${nonce}'`
+    ].join('; ');
+    return { nonce, csp, asset: (...parts) => webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...parts)) };
 }

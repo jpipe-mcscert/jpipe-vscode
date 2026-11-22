@@ -97,6 +97,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             new-model-flow.ts   ← the name input box and the edits it makes
             elements-view.ts    ← the activity's Outline: elements of the model selected in Models
             elements-tree.ts    ← that model's own and inherited elements, vscode-free (tested)
+            tree-loader.ts      ← when Models and the Outline ask the server again: now, when shown, after a pause (tested)
         webview/                ← browser code. DOM only — no `vscode`, no node: (ADR-VSC-0003)
           preview.ts            ← preview page: modes, banners, highlight, message dispatch
           canvas.ts             ← the diagram canvas both pages share: pan/zoom, minimap, theme (tested)
@@ -107,6 +108,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
         shared/                 ← the ONLY code both bundles may import (ADR-VSC-0005)
           preview-protocol.ts   ← typed host↔webview message contract
           run-protocol.ts       ← the same, for the Run panel
+          run-kind.ts           ← how a run is named (execution or check), for host and page alike
           diagnostic-model.ts   ← report → view model (tested)
         language/main.ts        ← language-server process entry point
       test/                     ← Vitest tests; cannot load anything importing `vscode`

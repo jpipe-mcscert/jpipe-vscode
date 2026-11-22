@@ -13,7 +13,7 @@
  * read at all.
  */
 import { open } from 'node:fs/promises';
-import { parseDiagnostics, parseElement, type ReportDiagnostic, type ReportElement } from './run-report.js';
+import { isObject, parseDiagnostics, parseElement, text, texts, type ReportDiagnostic, type ReportElement } from './run-report.js';
 
 /** The events' major version this reads. Within it, events and fields are only ever added. */
 const MAJOR = '1';
@@ -61,12 +61,9 @@ export interface StreamProblem {
     problem: string;
 }
 
-const texts = (value: unknown): string[] => Array.isArray(value) ? value.filter(v => typeof v === 'string') : [];
-const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
-
 /** A stream that starts: every element, and nothing decided; or why it is not read. */
 function startedRun(event: Record<string, unknown>): RunProgress | StreamProblem {
-    const version = typeof event.schema_version === 'string' ? event.schema_version : '';
+    const version = text(event.schema_version);
     if (version.split('.')[0] !== MAJOR) {
         return { problem: `jpipe-runner wrote its events in version ${version || '(none)'}, and this extension reads version ${MAJOR}` };
     }

@@ -38,7 +38,8 @@ type Target = { mode: 'new'; folder: string } | { mode: 'existing'; file: string
 /** How long to wait for the server to say which `@support`s an implementation must override. */
 const OVERRIDES_TIMEOUT_MS = 5000;
 
-const CHANGE_FOLDER: vscode.QuickInputButton = {
+/** The box button that changes the folder a new file goes in. Shared with New Library…. */
+export const CHANGE_FOLDER: vscode.QuickInputButton = {
     iconPath: new vscode.ThemeIcon('folder-opened'),
     tooltip: 'Change Folder…'
 };
@@ -90,16 +91,10 @@ function askName(
     input.ignoreFocusOut = true;
 
     let target = initial;
-    /** Set while a button's own picker has the screen, so the box hiding is not a cancel. */
-    let switching = false;
-    /** Ignores answers to a validation that has since been overtaken by typing. */
-    let generation = 0;
-    let blocked = true;
 
     const relative = (uri: string) => vscode.workspace.asRelativePath(vscode.Uri.parse(uri));
 
-    const refresh = async (): Promise<void> => {
-        const mine = ++generation;
+    const validate = async (): Promise<Validation> => {
         const name = input.value.trim();
         input.buttons = target.mode === 'new' ? [CHANGE_FOLDER, EXISTING_FILE] : [NEW_FILE, EXISTING_FILE];
         const file = target.mode === 'new' ? joinUri(target.folder, fileNameFor(name || 'name')) : target.file;
@@ -113,13 +108,55 @@ function askName(
         if (!error && target.mode === 'new' && await fileExists(file)) {
             error = `${relative(file)} already exists. Choose another name, or add to it with the file button.`;
         }
+        return { blocked: error !== undefined, message: validationOf(name, error, elsewhere) };
+    };
+
+    return askValidated(
+        input,
+        validate,
+        async button => {
+            const next = await pickTarget(button, target);
+            if (next) target = next;
+        },
+        () => ({ name: input.value.trim(), target }));
+}
+
+/** What a box's value was found to be: whether it can be accepted, and what is said under it. */
+export interface Validation {
+    blocked: boolean;
+    message: vscode.InputBoxValidationMessage | undefined;
+}
+
+/**
+ * Show `input` until a value `validate` lets through is accepted, and give what `accepted` makes
+ * of it; `undefined` if the box is dismissed. Shared with New Library…, which asks the same way.
+ *
+ * `validate` runs on every keystroke and may take a moment, looking for a file: an answer
+ * overtaken by typing is ignored. A button runs `onButton`, whose picker hides the box without
+ * that being a cancel; the box is then shown again and validated afresh.
+ */
+export function askValidated<T>(
+    input: vscode.InputBox,
+    validate: () => Promise<Validation>,
+    onButton: (button: vscode.QuickInputButton) => Promise<void>,
+    accepted: () => T
+): Promise<T | undefined> {
+    /** Set while a button's own picker has the screen, so the box hiding is not a cancel. */
+    let switching = false;
+    /** Ignores answers to a validation that has since been overtaken by typing. */
+    let generation = 0;
+    let blocked = true;
+
+    const refresh = async (): Promise<void> => {
+        const mine = ++generation;
+        const validation = await validate();
         if (mine !== generation) return;
-        blocked = error !== undefined;
-        input.validationMessage = validationOf(name, error, elsewhere);
+        blocked = validation.blocked;
+        input.validationMessage = validation.message;
     };
 
     return new Promise(resolve => {
-        const done = (result: { name: string; target: Target } | undefined) => {
+        const done = (result: T | undefined) => {
             disposables.forEach(d => d.dispose());
             input.dispose();
             resolve(result);
@@ -128,14 +165,13 @@ function askName(
             input.onDidChangeValue(() => void refresh()),
             input.onDidAccept(async () => {
                 await refresh();
-                if (!blocked) done({ name: input.value.trim(), target });
+                if (!blocked) done(accepted());
             }),
             input.onDidHide(() => { if (!switching) done(undefined); }),
             input.onDidTriggerButton(async button => {
                 switching = true;
-                const next = await pickTarget(button, target);
+                await onButton(button);
                 switching = false;
-                if (next) target = next;
                 input.show();
                 await refresh();
             })
@@ -164,14 +200,8 @@ async function pickTarget(button: vscode.QuickInputButton, current: Target): Pro
         return { mode: 'new', folder: current.mode === 'existing' ? dirnameOf(current.file) : current.folder };
     }
     if (button === CHANGE_FOLDER) {
-        const picked = await vscode.window.showOpenDialog({
-            canSelectFolders: true,
-            canSelectFiles: false,
-            canSelectMany: false,
-            defaultUri: current.mode === 'new' ? vscode.Uri.parse(current.folder) : undefined,
-            openLabel: 'Create Here'
-        });
-        return picked?.[0] ? { mode: 'new', folder: picked[0].toString() } : undefined;
+        const folder = await pickFolder(current.mode === 'new' ? current.folder : undefined);
+        return folder ? { mode: 'new', folder } : undefined;
     }
     const files = await vscode.workspace.findFiles('**/*.jd', '**/{node_modules,out,.git}/**');
     const items = files
@@ -182,6 +212,21 @@ async function pickTarget(button: vscode.QuickInputButton, current: Target): Pro
         placeHolder: 'Choose a .jd file'
     });
     return picked ? { mode: 'existing', file: picked.uri.toString() } : undefined;
+}
+
+/**
+ * The folder picked to create a file in, starting from `current`; `undefined` if the dialog was
+ * dismissed. What `CHANGE_FOLDER` opens, here and in New Library….
+ */
+export async function pickFolder(current: string | undefined): Promise<string | undefined> {
+    const picked = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        defaultUri: current === undefined ? undefined : vscode.Uri.parse(current),
+        openLabel: 'Create Here'
+    });
+    return picked?.[0]?.toString();
 }
 
 /** Whether something is at `uri`. Shared with New Library…, which asks the same question. */

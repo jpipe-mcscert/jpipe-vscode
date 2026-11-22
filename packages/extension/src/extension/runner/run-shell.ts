@@ -1,5 +1,5 @@
-import { randomBytes } from 'node:crypto';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
+import { pageSecurity } from '../preview/preview-shell.js';
 
 /**
  * The run panel's HTML document, built once per panel: everything after it is a `state` message.
@@ -14,15 +14,7 @@ import * as vscode from 'vscode';
  * It draws one thing, the run's dataflow: the argument alone is what the preview shows.
  */
 export function getRunShellHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-    const nonce = randomBytes(16).toString('base64');
-    const asset = (...parts: string[]) => webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...parts));
-    const csp = [
-        `default-src 'none'`,
-        `img-src ${webview.cspSource} blob: data:`,
-        `style-src ${webview.cspSource}`,
-        `font-src ${webview.cspSource}`,
-        `script-src 'nonce-${nonce}'`
-    ].join('; ');
+    const { nonce, csp, asset } = pageSecurity(webview, extensionUri);
 
     return `<!DOCTYPE html>
 <html lang="en">

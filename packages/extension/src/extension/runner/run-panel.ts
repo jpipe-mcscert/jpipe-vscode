@@ -2,9 +2,9 @@ import * as vscode from 'vscode';
 import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import type { HostToRunPanel, NoticeAction, RunPanelToHost } from '../../shared/run-protocol.js';
-import type { ModelsView } from '../models-view/models-view.js';
+import { editorRange, type ModelsView } from '../models-view/models-view.js';
 import { fetchElements } from '../models-view/elements-tree.js';
-import type { Model, RequestFn } from '../models-view/models-tree.js';
+import type { Model, Range, RequestFn } from '../models-view/models-tree.js';
 import { revealColumnAmong } from '../preview/reveal-column.js';
 import { ZOOM_SENSITIVITY_SETTING, clampZoomSensitivity } from '../preview/zoom-sensitivity.js';
 import { LIBRARIES_VIEW_ID } from './libraries-view.js';
@@ -213,11 +213,11 @@ export class RunPanel implements vscode.Disposable {
     }
 
     /** Open `uri` with `range` selected, in a column that holds text rather than over the panel. */
-    private async openAt(uri: vscode.Uri, range: { start: { line: number; character: number }; end: { line: number; character: number } }): Promise<void> {
+    private async openAt(uri: vscode.Uri, range: Range): Promise<void> {
         const document = await vscode.workspace.openTextDocument(uri);
         await vscode.window.showTextDocument(document, {
             viewColumn: revealColumnAmong(vscode.window.visibleTextEditors, document),
-            selection: new vscode.Range(range.start.line, range.start.character, range.end.line, range.end.character)
+            selection: editorRange(range)
         });
     }
 

@@ -220,8 +220,7 @@ export class RunnerEnvironment implements vscode.Disposable {
     private async answerEditor(uri: vscode.Uri): Promise<void> {
         if (this.answeredEditor || !this.setting(OFFER_SETUP_SETTING, true) || this.mode === 'command') return;
         this.answeredEditor = true;
-        this.recheck();
-        const status = await this.settled();
+        const status = await this.lookAgain();
         const where = vscode.workspace.asRelativePath(uri);
         this.logger.info(`The editor flags a jpipe_runner import in ${where}; the runner environment is ${status.kind}.`);
         if (status.kind === 'ready') {
@@ -249,8 +248,7 @@ export class RunnerEnvironment implements vscode.Disposable {
      * something left to do; otherwise it is a few seconds in the status bar.
      */
     async setUp(): Promise<boolean> {
-        this.recheck();
-        const status = await this.settled();
+        const status = await this.lookAgain();
         if (status.kind === 'external') {
             const open = 'Open Settings';
             const answer = await vscode.window.showInformationMessage(
@@ -306,6 +304,12 @@ export class RunnerEnvironment implements vscode.Disposable {
         return awaited === this.checking ? this.current : this.settled();
     }
 
+    /** Look at the workspace again, and give the status that check settles on. */
+    private async lookAgain(): Promise<EnvironmentStatus> {
+        this.recheck();
+        return this.settled();
+    }
+
     private get folder(): vscode.WorkspaceFolder | undefined {
         return vscode.workspace.workspaceFolders?.[0];
     }
@@ -334,8 +338,7 @@ export class RunnerEnvironment implements vscode.Disposable {
      * sentence, the facts behind it line by line, and the fix when there is one.
      */
     async report(): Promise<void> {
-        this.recheck();
-        const status = await this.settled();
+        const status = await this.lookAgain();
         if (status.kind === 'external') {
             await this.setUp();
             return;
@@ -365,8 +368,7 @@ export class RunnerEnvironment implements vscode.Disposable {
      * the facts behind it. Looks again first, like the environment's own check.
      */
     async describe(): Promise<{ runner: 'ready' | 'needs-setup' | 'external'; detail: string }> {
-        this.recheck();
-        const status = await this.settled();
+        const status = await this.lookAgain();
         if (status.kind === 'external') {
             return { runner: 'external', detail: `Runs use the runner command named in the settings.\n${pylanceLine(pylanceInstalled())}` };
         }
@@ -542,7 +544,6 @@ export class RunnerEnvironment implements vscode.Disposable {
         return { selected: now, editor: this.selection(python, now) };
     }
 
-    /** The release of the jpipe-runner installed on the machine, outside any environment, if there is one. */
     /**
      * The release a runner says it is (`command` is its `--version`), or `undefined` when it does
      * not say. Asked with the environment and folder given, which are the run's, so that the
@@ -572,6 +573,7 @@ export class RunnerEnvironment implements vscode.Disposable {
         return declared ?? this.releaseOf(moduleInvocation(python, ['--version']), where);
     }
 
+    /** The release of the jpipe-runner installed on the machine, outside any environment, if there is one. */
     private async machineRunnerRelease(folder: vscode.WorkspaceFolder | undefined): Promise<string | undefined> {
         try {
             const { stdout } = await this.execute(GLOBAL_RUNNER_VERSION, folder);
@@ -730,8 +732,7 @@ export class RunnerEnvironment implements vscode.Disposable {
             if (answer !== label) return false;
         }
         await this.apply(status, folder, requirement);
-        this.recheck();
-        return runnablePython(await this.settled()) !== undefined;
+        return runnablePython(await this.lookAgain()) !== undefined;
     }
 
     private async apply(status: EnvironmentStatus, folder: vscode.WorkspaceFolder | undefined, requirement: RequirementEdit | undefined): Promise<void> {

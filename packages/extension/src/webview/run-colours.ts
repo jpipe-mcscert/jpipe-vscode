@@ -213,14 +213,23 @@ interface Mark {
     fill: string | null;
 }
 
-function symbolFor(doc: Document, labels: readonly Element[], mark: Mark): Element {
+/**
+ * What a mark before the labels is placed from: where the leftmost of their lines starts, and the
+ * middle of their baselines.
+ */
+function labelsOrigin(labels: readonly Element[]): { x: number; y: number } {
     const xs = labels.map(label => Number.parseFloat(label.getAttribute('x') ?? '0'));
     const ys = labels.map(label => Number.parseFloat(label.getAttribute('y') ?? '0'));
+    return { x: Math.min(...xs), y: ys.reduce((sum, y) => sum + y, 0) / ys.length };
+}
+
+function symbolFor(doc: Document, labels: readonly Element[], mark: Mark): Element {
+    const origin = labelsOrigin(labels);
     const symbol = doc.createElementNS(SVG, 'text');
     symbol.setAttributeNS(XML, 'xml:space', 'preserve');
     symbol.setAttribute('text-anchor', 'start');
-    symbol.setAttribute('x', points(Math.min(...xs) + mark.x));
-    symbol.setAttribute('y', points(ys.reduce((sum, y) => sum + y, 0) / ys.length + mark.y));
+    symbol.setAttribute('x', points(origin.x + mark.x));
+    symbol.setAttribute('y', points(origin.y + mark.y));
     const family = labels[0].getAttribute('font-family');
     if (family) symbol.setAttribute('font-family', family);
     symbol.setAttribute('font-size', mark.size);
@@ -293,10 +302,9 @@ export function markProgress(svg: SVGSVGElement, marks: RunMarks): void {
 
 /** A mark, drawn in the middle of the status's cell, in the label's colour (black, SVG's default). */
 function markFor(doc: Document, labels: readonly Element[], kind: keyof typeof MARKS): Element {
-    const xs = labels.map(label => Number.parseFloat(label.getAttribute('x') ?? '0'));
-    const ys = labels.map(label => Number.parseFloat(label.getAttribute('y') ?? '0'));
-    const cx = Math.min(...xs) + CELL_CENTRE.x;
-    const cy = ys.reduce((sum, y) => sum + y, 0) / ys.length + CELL_CENTRE.y;
+    const origin = labelsOrigin(labels);
+    const cx = origin.x + CELL_CENTRE.x;
+    const cy = origin.y + CELL_CENTRE.y;
     const colour = labels[0].getAttribute('fill') ?? 'black';
     const shape = (tag: string, attributes: Readonly<Record<string, string>>): Element => {
         const el = doc.createElementNS(SVG, tag);

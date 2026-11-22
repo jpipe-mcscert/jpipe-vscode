@@ -6,9 +6,13 @@
  * it, what Results says while it has no report, when it stops saying what a run would, and where an
  * element of the report is written.
  */
-import type { LiveStatus, Notice, Progress, RunKind, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
+import type { LiveStatus, Notice, Progress, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
+import { kindOf, underWay } from '../../shared/run-kind.js';
 import type { RunProgress } from './run-events.js';
 import { outcomeLinks, progressRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport } from './run-report.js';
+
+// The page names a run the same way, so the wording is shared with it.
+export { kindOf, underWay };
 
 /** The run the panel and the Results view show. */
 export interface ShownRun {
@@ -40,12 +44,6 @@ export interface ShownRun {
     notice: Notice | null;
     outOfDate: string | null;
 }
-
-/** What a run is called wherever it is shown: an execution calls the steps, a check does not. */
-export const kindOf = (check: boolean): RunKind => check ? 'check' : 'execution';
-
-/** `Executing release…`, `Checking release…`. */
-export const underWay = (name: string, check: boolean): string => `${check ? 'Checking' : 'Executing'} ${name}…`;
 
 /**
  * A run of `name` just started: what is shown until it ends. Nothing of the previous run stays, its

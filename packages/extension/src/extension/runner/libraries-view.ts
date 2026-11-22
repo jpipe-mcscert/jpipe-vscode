@@ -13,8 +13,12 @@ export const LIBRARIES_VIEW_ID = 'jpipe.libraries';
 /**
  * Where step libraries are not: virtual environments — the runner's own package defines the
  * decorators, and would otherwise be listed — and the caches and tool directories beside them.
+ * One list, for the scan's glob and for a saved file alike.
  */
-const IGNORED = '**/{node_modules,.venv,venv,site-packages,__pycache__,.tox,.git,.mypy_cache,.pytest_cache}/**';
+const IGNORED_FOLDERS = ['node_modules', '.venv', 'venv', 'site-packages', '__pycache__', '.tox', '.git', '.mypy_cache', '.pytest_cache'];
+const IGNORED = `**/{${IGNORED_FOLDERS.join(',')}}/**`;
+/** A path inside one of them, as a saved file's: the same folders the scan leaves out. */
+const IN_IGNORED = new RegExp(`/(${IGNORED_FOLDERS.map(name => name.replaceAll('.', String.raw`\.`)).join('|')})/`);
 
 /** A Python file declaring steps, or importing the decorators to declare them. */
 export interface Library {
@@ -106,7 +110,7 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
 
     private rescanSoon(uri: vscode.Uri): void {
         if (vscode.workspace.getWorkspaceFolder(uri) === undefined) return;
-        if (/\/(node_modules|\.venv|venv|site-packages|__pycache__|\.tox|\.git)\//.test(uri.path)) return;
+        if (IN_IGNORED.test(uri.path)) return;
         const key = uri.toString();
         clearTimeout(this.pending.get(key));
         this.pending.set(key, setTimeout(async () => {

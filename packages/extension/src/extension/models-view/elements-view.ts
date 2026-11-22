@@ -3,7 +3,7 @@ import type { LanguageClient } from 'vscode-languageclient/node';
 import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import { cursorAt, type Model } from './models-tree.js';
-import type { ModelsView } from './models-view.js';
+import { editorRange, type ModelsView } from './models-view.js';
 import type { LibrariesView } from '../runner/libraries-view.js';
 import { bindSteps, stepLabel, stepNote, type LibraryStep } from '../runner/step-binding.js';
 import {
@@ -15,11 +15,9 @@ import {
     fetchElements,
     type Element
 } from './elements-tree.js';
+import { TreeLoader } from './tree-loader.js';
 
 export const ELEMENTS_VIEW_ID = 'jpipe.elements';
-
-/** As in the Models view: long enough to let a name be typed, short enough to look live. */
-const REFRESH_DELAY_MS = 500;
 
 /** A step of a checked library, under the element it implements. */
 interface StepRow {
@@ -51,9 +49,11 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
     private readonly disposables: vscode.Disposable[] = [];
     private model: Model | undefined;
     private elements: Element[] | undefined;
-    private loading: Promise<void> | undefined;
-    private stale = true;
-    private timer: ReturnType<typeof setTimeout> | undefined;
+    /** Loaded as the Models view is: long enough to let a name be typed, short enough to look live. */
+    private readonly loader = new TreeLoader(
+        () => this.load(),
+        () => this.view.visible,
+        () => this.changeEmitter.fire(undefined));
     /** The id of the row last selected; see `ModelsView.selectedKey` for why it is kept here. */
     private selectedId: string | undefined;
     /** The steps of the checked libraries implementing each element, by element id. */
@@ -82,10 +82,10 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
                 this.refresh();
             }),
             vscode.workspace.onDidChangeTextDocument(e => {
-                if (this.isShown(e.document.uri) && e.contentChanges.length > 0) this.scheduleRefresh();
+                if (this.isShown(e.document.uri) && e.contentChanges.length > 0) this.loader.scheduleRefresh();
             }),
             vscode.workspace.onDidSaveTextDocument(doc => {
-                if (this.isShown(doc.uri)) this.scheduleRefresh();
+                if (this.isShown(doc.uri)) this.loader.scheduleRefresh();
             }),
             this.view.onDidChangeSelection(e => {
                 // A step counts as its element, so moving the cursor within that element leaves it selected.
@@ -93,7 +93,7 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
                 if (row) this.selectedId = isStep(row) ? row.element.id : row.id;
             }),
             this.view.onDidChangeVisibility(e => {
-                if (e.visible && this.stale) this.refresh();
+                if (e.visible && this.loader.isStale) this.refresh();
             }),
             vscode.window.onDidChangeTextEditorSelection(e => {
                 if (e.textEditor === vscode.window.activeTextEditor) void this.revealElementAtCursor();
@@ -112,23 +112,7 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
     }
 
     refresh(): void {
-        this.stale = true;
-        if (!this.view.visible) return;
-        this.startLoad();
-        this.changeEmitter.fire(undefined);
-    }
-
-    private startLoad(): void {
-        this.stale = false;
-        this.loading = this.load();
-    }
-
-    private scheduleRefresh(): void {
-        if (this.timer) clearTimeout(this.timer);
-        this.timer = setTimeout(() => {
-            this.timer = undefined;
-            this.refresh();
-        }, REFRESH_DELAY_MS);
+        this.loader.refresh();
     }
 
     private async load(): Promise<void> {
@@ -165,8 +149,7 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
 
     async getChildren(row?: Row): Promise<Row[]> {
         if (row) return isStep(row) ? [] : (this.bindings.get(row.id) ?? []).map(step => ({ element: row, step }));
-        if (this.stale) this.startLoad();
-        await this.loading;
+        await this.loader.loaded();
         setTimeout(() => void this.revealElementAtCursor(), 0);
         return this.elements ?? [];
     }
@@ -211,14 +194,13 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
             (element.label ? `\n${element.label}` : '') +
             (element.inheritedFrom ? `\nInherited from ${element.inheritedFrom.template}` : '');
         if (this.model) {
-            const { start, end } = cursorAt(element.selection);
             item.command = {
                 command: 'vscode.open',
                 title: 'Open',
                 arguments: [
                     // An inherited element opens where it is declared, in its template.
                     vscode.Uri.parse(element.inheritedFrom?.uri ?? this.model.uri),
-                    { selection: new vscode.Range(start.line, start.character, end.line, end.character) }
+                    { selection: editorRange(cursorAt(element.selection)) }
                 ]
             };
         }
@@ -240,7 +222,7 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
     }
 
     dispose(): void {
-        if (this.timer) clearTimeout(this.timer);
+        this.loader.dispose();
         for (const d of this.disposables) d.dispose();
     }
 }

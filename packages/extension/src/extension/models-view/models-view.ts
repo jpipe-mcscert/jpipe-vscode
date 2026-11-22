@@ -17,16 +17,17 @@ import {
     type Model,
     type ModelNode,
     type ModelStatus,
+    type Range,
     type TreeNode
 } from './models-tree.js';
+import { TreeLoader } from './tree-loader.js';
 
 export const MODELS_VIEW_ID = 'jpipe.models';
 
-/**
- * How long to wait after the last edit before asking the server again. Long enough that typing
- * a name does not send a request per keystroke, short enough that a renamed model looks renamed.
- */
-const REFRESH_DELAY_MS = 500;
+/** A range as the language server gives it, as the editor takes it. */
+export function editorRange({ start, end }: Range): vscode.Range {
+    return new vscode.Range(start.line, start.character, end.line, end.character);
+}
 
 /**
  * The Models view: every template and justification in the workspace, in the jPipe activity.
@@ -71,10 +72,10 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
      * window would move the selection off the row just clicked.
      */
     private selectedKey: string | undefined;
-    /** The load in progress, which `getChildren` waits on so the view shows progress, not emptiness. */
-    private loading: Promise<void> | undefined;
-    private stale = true;
-    private timer: ReturnType<typeof setTimeout> | undefined;
+    private readonly loader = new TreeLoader(
+        () => this.load(),
+        () => this.view.visible,
+        () => this.changeEmitter.fire(undefined));
 
     constructor(
         private readonly client: LanguageClient,
@@ -92,11 +93,11 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
             this.changeEmitter,
             this.currentModelEmitter,
             watcher,
-            watcher.onDidCreate(() => this.scheduleRefresh()),
-            watcher.onDidDelete(() => this.scheduleRefresh()),
-            watcher.onDidChange(() => this.scheduleRefresh()),
+            watcher.onDidCreate(() => this.loader.scheduleRefresh()),
+            watcher.onDidDelete(() => this.loader.scheduleRefresh()),
+            watcher.onDidChange(() => this.loader.scheduleRefresh()),
             vscode.workspace.onDidChangeTextDocument(e => {
-                if (e.document.languageId === 'jpipe' && e.contentChanges.length > 0) this.scheduleRefresh();
+                if (e.document.languageId === 'jpipe' && e.contentChanges.length > 0) this.loader.scheduleRefresh();
             }),
             this.view.onDidChangeSelection(e => {
                 // An empty selection is what a refresh in progress looks like; keep the last answer.
@@ -108,7 +109,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
                 }
             }),
             this.view.onDidChangeVisibility(e => {
-                if (e.visible && this.stale) this.refresh();
+                if (e.visible && this.loader.isStale) this.refresh();
                 else if (e.visible) void this.revealActiveModel();
             }),
             vscode.languages.onDidChangeDiagnostics(e => {
@@ -124,23 +125,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
 
     /** Ask the server again, now if the view is showing, otherwise the next time it is. */
     refresh(): void {
-        this.stale = true;
-        if (!this.view.visible) return;
-        this.startLoad();
-        this.changeEmitter.fire(undefined);
-    }
-
-    private startLoad(): void {
-        this.stale = false;
-        this.loading = this.load();
-    }
-
-    private scheduleRefresh(): void {
-        if (this.timer) clearTimeout(this.timer);
-        this.timer = setTimeout(() => {
-            this.timer = undefined;
-            this.refresh();
-        }, REFRESH_DELAY_MS);
+        this.loader.refresh();
     }
 
     private async load(): Promise<void> {
@@ -189,8 +174,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     async getChildren(node?: TreeNode): Promise<TreeNode[]> {
         if (node) return node.children;
         // Being asked means someone is looking; no need to fire a change for the answer.
-        if (this.stale) this.startLoad();
-        await this.loading;
+        await this.loader.loaded();
         // The first paint is the moment the view becomes visible, so it is also the first moment
         // there is anything to reveal.
         setTimeout(() => void this.revealActiveModel(), 0);
@@ -272,8 +256,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     }
 
     private selectionOf(model: Model): vscode.Range {
-        const { start, end } = cursorAt(model.selection);
-        return new vscode.Range(start.line, start.character, end.line, end.character);
+        return editorRange(cursorAt(model.selection));
     }
 
     /**
@@ -284,13 +267,8 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     async freshModels(): Promise<readonly Model[]> {
         // A change still waiting out its debounce counts as one: a command that runs right after
         // an edit or a new file must see it, not the list from before it.
-        if (this.timer) {
-            clearTimeout(this.timer);
-            this.timer = undefined;
-            this.stale = true;
-        }
-        if (this.stale) this.startLoad();
-        await this.loading;
+        this.loader.flush();
+        await this.loader.loaded();
         return this.models;
     }
 
@@ -342,7 +320,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     }
 
     dispose(): void {
-        if (this.timer) clearTimeout(this.timer);
+        this.loader.dispose();
         for (const d of this.disposables) d.dispose();
     }
 }
