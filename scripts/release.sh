@@ -454,7 +454,7 @@ print_manual_checklist() {
   cat <<'EOF'
   [ ] The CHANGELOG describes what a *user* gets, not what was committed
   [ ] The version number matches what the section actually contains
-      (new capability -> minor, fixes/docs only -> patch)
+      (breaking, or a raised minimum -> major, new capability -> minor, fixes/docs only -> patch)
   [ ] Compiler compatibility: any feature needing a newer jpipe compiler says so
   [ ] Any SonarCloud issue accepted rather than fixed was accepted deliberately
   [ ] Smoke-test the VSIX in a real editor — CI never launches VS Code

@@ -13,18 +13,22 @@ routing the release through a pull request as the cleaner design, and deferred i
 The `jpipe-mcscert` organisation has since adopted one workflow for its repositories, described
 in its [contributing guide](https://github.com/jpipe-mcscert/.github/blob/main/CONTRIBUTING.md):
 `main` holds released code, `dev` is the integration branch and the default branch on GitHub,
-work branches are cut from `dev` and come back to it by pull request, and a release is a pull
-request from `dev` into `main`, merged and tagged by a maintainer. The guide exempts only
-repositories that users install straight from their default branch.
+work branches are cut from `dev` and come back to it by pull request, and a release is one pull
+request into `main`, from a release branch cut from `dev`, merged and tagged by a maintainer
+([contributing guide](https://github.com/jpipe-mcscert/.github/blob/main/CONTRIBUTING.md#releases)).
+The guide exempts only repositories that users install straight from their default branch.
 
 ## Decision
 
 This repository follows the organisation's workflow, and states here only what is specific to it.
 
-`scripts/release.sh prepare X.Y.Z` runs on a work branch cut from `dev` and refuses `main` and
-`dev`. The release commit reaches `dev` by pull request, then `main` through the `dev` → `main`
-release pull request. Once that has merged, a maintainer runs `scripts/release.sh preflight X.Y.Z`
-on `main` and pushes the `vX.Y.Z` tag. `release.yml` still refuses a tag that is not on `main`.
+`scripts/release.sh prepare X.Y.Z` runs on a release branch, `release/X.Y.Z`, cut from `dev`, and
+refuses any other branch; the branch must contain the remote's `dev`. The release branch goes into
+`main` through the release pull request, whose diff is the whole release: what `dev` merged since
+the last one, and the release commit. Once that has merged, a maintainer runs
+`scripts/release.sh preflight X.Y.Z` on `main` and pushes the `vX.Y.Z` tag, then merges `main`
+back into `dev`, which is how the release commit reaches `dev`. `release.yml` still refuses a tag
+that is not on `main`.
 
 A hotfix, in the organisation's sense, is prepared with `scripts/release.sh prepare --hotfix X.Y.Z`
 on a fix branch cut from `main`. The branch must contain `main`, must not carry the unreleased
@@ -41,7 +45,9 @@ every pull request and on pushes to `main`.
   because, for this repository alone, it added a merge step without a question it answers; the
   question is now consistency, and it is answered at the organisation level.
 - The release commit now goes through a pull request like every other change, which is the design
-  ADR-VSC-0012 preferred and deferred. Its cost — a change to `release.sh`, to the README's
+  ADR-VSC-0012 preferred and deferred. One pull request, from a release branch, rather than the
+  release commit into `dev` then `dev` into `main`: the second of those re-ran every check on what
+  `dev` had already reviewed, for no question it answered. Its cost — a change to `release.sh`, to the README's
   release section, and to the habits of the person who cuts releases — is paid here.
 - The main-only exemption does not apply. This extension reaches users from the Marketplace, and
   only on a tag; nobody installs it from the default branch, so `dev` cannot ship unreleased work.
@@ -52,30 +58,15 @@ every pull request and on pushes to `main`.
 
 ## Consequences
 
-- A release takes two pull requests: the release commit into `dev`, then `dev` into `main`.
+- A release takes one pull request, into `main`, and a merge of `main` back into `dev` after the
+  tag. Work merged into `dev` while the release pull request is open waits for the next release.
 - The release no longer needs to bypass protection on `main`. Whether admins keep that bypass is a
   repository setting, which this record does not change.
 - `dev`'s own quality is known only through the pull requests into it. A change pushed to `dev`
   without one is built but not analysed, and the gap shows up at the release pull request.
 - Dependabot opens its pull requests against the default branch, so dependency updates now land
   on `dev` and ship with the next release, not on their own.
-- `prepare` fails on a work branch that does not contain the current `dev`, so a release cannot
+- `prepare` fails on a release branch that does not contain the current `dev`, so a release cannot
   silently leave out something already merged. With `--hotfix` the same check is made against
   `main`, so a patch cannot ship what `dev` holds, and the script stays the only way to move the
   version (jpipe-vscode ADR-VSC-0008).
-
-## Amendment (2026-11-21): a release is a release branch into `main`
-
-The organisation changed its release rule for every jPipe repository. A release took two pull
-requests, the release commit into `dev`, then `dev` into `main`, and the second re-ran every check
-on what `dev` had already reviewed. A release is now one pull request, from a release branch into
-`main` ([contributing guide](https://github.com/jpipe-mcscert/.github/blob/main/CONTRIBUTING.md#releases)).
-
-- `scripts/release.sh prepare X.Y.Z` runs on `release/X.Y.Z`, cut from `dev`, and refuses any other
-  branch; the branch must still contain the remote's `dev`. Hotfixes are unchanged.
-- The release branch goes into `main` through the release pull request, whose diff is the whole
-  release. The release commit reaches `dev` when `main` is merged back after the tag, not before.
-- `release.yml`, `preflight` and the SonarCloud gate on `main` are unchanged.
-
-This replaces the consequence "A release takes two pull requests": a release takes one. Work merged
-into `dev` while the release pull request is open waits for the next release.

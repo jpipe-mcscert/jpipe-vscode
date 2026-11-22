@@ -13,8 +13,8 @@
 
 name: SonarQube
 
-# Every pull request, whatever its target: work comes into `dev` and releases go from `dev` into
-# `main` by pull request (jpipe-vscode ADR-VSC-0030), and both are gated. Of the long-lived
+# Every pull request, whatever its target: work comes into `dev`, and a release goes into `main`
+# from its release branch, `release/X.Y.Z` (jpipe-vscode ADR-VSC-0030), and both are gated. Of the long-lived
 # branches, only `main` is analysed on push — the SonarQube Cloud plan analyses the main branch
 # and pull requests, not `dev` itself, which is covered by the pull requests into it.
 on:
