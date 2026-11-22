@@ -138,22 +138,26 @@ export function getLocalElements(node: Justification | Template): JustificationE
 }
 
 /**
- * Whether `model`'s elements come, in whole or in part, from a composition: whether it is composed
- * itself, or a template its `implements` chain names is.
+ * Whether some of `model`'s elements are in no body this can read: whether its `implements` chain
+ * reaches a composed model, or a template that does not resolve.
  *
  * A composed model — `template T is refine(P, Q) { hook: "a" }` — has no body. Its elements are the
  * ones the operator builds from its sources, under ids such as `P:b` that no `.jd` file declares,
- * and `implements` hands them down to every model below it. `getAllElements` and
- * `expandedElements` read bodies only, so past a composition the list they return is short without
- * saying so, and anything asking "is there a conclusion / a `@support` / an element with this id?"
- * hears a confident no about a model the compiler builds (its example 028).
+ * and `implements` hands them down to every model below it. An `implements` that does not resolve
+ * hides elements the same way: the chain stops there, and the inherited half of the list with it.
+ * `getAllElements` and `expandedElements` read bodies only, so in both cases the list they return
+ * is short without saying so, and anything asking "is there a conclusion / a `@support` / an
+ * element with this id?" hears a confident no about a model the compiler builds (its example 028),
+ * or one whose only problem is the `implements` line (#129). That line is already reported as an
+ * unresolved reference, which points the user at the one thing to fix.
  *
  * Such a model is left alone by every rule that needs its whole element list: a missing element
  * there is a fact about what this can read, not about the model. The operators are never ported:
  * a composition's elements are to be read from the compiler (jpipe-vscode ADR-VSC-0034).
  */
-export function buildsOnComposition(model: Justification | Template): boolean {
-    return implementsChain(model).some(link => link.composition !== undefined);
+export function cannotSeeAllElements(model: Justification | Template): boolean {
+    return implementsChain(model).some(link =>
+        link.composition !== undefined || (link.parent !== undefined && !link.parent.ref));
 }
 
 /**
@@ -226,11 +230,11 @@ export function expandedElements(
  * name `T:a`. The suffix pass skips the conclusion, as the compiler's does, so an inherited
  * conclusion answers only to its full `T:c`.
  *
- * A base that `buildsOnComposition` has elements this cannot see, and the compiler scans them
- * first. An exact id stays reliable there — what the base declares itself replaces any inherited
- * element of that id — but a suffix match does not, since a hidden element may end the same way.
- * Only the exact pass runs on such a base, so `undefined` means "not found" on a plain base and
- * "cannot tell" on one that `buildsOnComposition`; callers must not report the latter.
+ * On a base for which `cannotSeeAllElements` holds, some elements are hidden from this, and the
+ * compiler scans them first. An exact id stays reliable there — what the base declares itself
+ * replaces any inherited element of that id — but a suffix match does not, since a hidden element
+ * may end the same way. Only the exact pass runs on such a base, so `undefined` means "not found"
+ * on a fully visible base and "cannot tell" on the other kind; callers must not report the latter.
  */
 export function hookTarget(
     base: Justification | Template,
@@ -239,7 +243,7 @@ export function hookTarget(
     const elements = expandedElements(base);
     const exact = elements.find(entry => entry.id === hook);
     if (exact) return exact.element;
-    if (buildsOnComposition(base)) return undefined;
+    if (cannotSeeAllElements(base)) return undefined;
     const suffix = `:${hook}`;
     return elements.find(entry => !isConclusion(entry.element) && entry.id.endsWith(suffix))?.element;
 }

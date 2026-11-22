@@ -667,6 +667,46 @@ justification J implements T {
     });
 });
 
+describe('fix-inherited-conclusion', () => {
+
+    const BASE = 'template B { conclusion c is "C"  strategy s is "S"  @support e is "E"  s supports c  e supports s }';
+    const ownConclusion = `${BASE}\njustification J implements B {\n    evidence B:e is "E1"\n    conclusion x is "X"\n    strategy y is "Y"\n    B:e supports y\n    y supports x\n}`;
+
+    test('offers to turn the conclusion into a sub-conclusion', async () => {
+        expect(await titlesMatching(ownConclusion, /^Change 'conclusion'/))
+            .toEqual(["Change 'conclusion' to 'sub-conclusion'"]);
+    });
+
+    test('replaces only the keyword, so the relations using it still resolve', async () => {
+        const after = await expectFixResolves(
+            ownConclusion,
+            { title: "Change 'conclusion' to 'sub-conclusion'" },
+            JpipeIssue.InheritedConclusion
+        );
+        expect(after).toContain('sub-conclusion x is "X"');
+        expect(after).toContain('y supports x');
+        const reparsed = await parseValidated(after);
+        expect((reparsed.diagnostics ?? []).map(d => issueCodeOf(d))).toEqual([]);
+    });
+
+    test('is preferred', async () => {
+        const [action] = (await listCodeActions(ownConclusion))
+            .filter(candidate => candidate.title === "Change 'conclusion' to 'sub-conclusion'");
+        expect(action.isPreferred).toBe(true);
+    });
+
+    // A conclusion written as an override is reported twice, and both fixes would make the same
+    // edit under the same title: it is offered once.
+    test('is not offered twice for a conclusion written as an override', async () => {
+        const source = `${BASE}\njustification J implements B { conclusion B:e is "E" }`;
+        expect(await titlesMatching(source, /^Change 'conclusion' to 'sub-conclusion'/)).toHaveLength(1);
+    });
+
+    test('is not offered for a conclusion a model may declare', async () => {
+        expect(await titlesMatching(BASE, /^Change 'conclusion'/)).toEqual([]);
+    });
+});
+
 describe('fix-unification-method', () => {
 
     const composed = (unifyBy: string) =>
