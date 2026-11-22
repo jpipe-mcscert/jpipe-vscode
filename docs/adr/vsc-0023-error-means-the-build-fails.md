@@ -34,6 +34,13 @@ The editor was calling three build failures warnings.
 **A diagnostic is an error if and only if the compiler will reject the model. Otherwise it is a
 warning.** Only two severities are used; there is no `info` and no `hint`.
 
+**The compiler is the newest release this version of the extension is built for**, the one whose
+vocabulary `jpipe-compiler-codes.ts` copies: jpipe-compiler 4.0.0 today. The language server cannot
+know which compiler a user has, and the oldest one the extension accepts (jpipe-vscode
+ADR-VSC-0032) may accept what the newest refuses. So a rule the newest compiler enforces is an
+error, even on a model an older supported compiler would build: `unknown-config-key`, which 3.x
+ignored and 4.0.0 refuses, is one. Raising the minimum compiler is a separate decision.
+
 One narrow exception: **when the editor cannot know what the compiler will do, it warns, and its
 message claims only what the editor knows** rather than predicting a failure. Today the sole
 instance is `unknown-unification-method`.
@@ -58,13 +65,12 @@ verdict; `jpipe-compiler-codes.ts` files such a rule with the `FATAL` family.
 strategy"; the compiler rejects both, so both are errors, and message text is the only thing
 telling them apart. The two messages must stay distinct, and `diagnostic-codes.test.ts` pins them.
 
-**The warning set is exactly three codes**, each confirmed by running `jpipe diagnostic` on a model
+**The warning set is exactly two codes**, each confirmed by running `jpipe diagnostic` on a model
 that triggers it and seeing it exit 0:
 
 | Code | Why it is not an error |
 |---|---|
 | `no-empty-label` | editor-only style rule; nothing in the compiler checks a label's contents |
-| `unknown-config-key` | the compiler ignores keys it does not recognise |
 | `unknown-unification-method` | the exception: the method registry is populated at the compiler's startup, which the editor cannot see |
 
 Every other code is an error, each confirmed against the compiler's own `examples/invalid/`

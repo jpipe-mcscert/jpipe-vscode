@@ -48,6 +48,7 @@ jpipe-compiler checkout, and `scripts/release.sh preflight` runs it.
 | Code | How the editor's check relates to the compiler's |
 |---|---|
 | `no-duplicate-ids` | exact |
+| `duplicate-model` | **a subset**: the same words, on every model declared after another of its name, whatever their kinds; the compiler also compares the files a model loads, the editor only its own file (#122) |
 | `has-abstract-support` | exact, inherited `@support` included on both sides |
 | `no-abstract-support` | same rule from the opposite vantage — the compiler checks it after the override commands run, the editor before expansion |
 | `strategy-supported` | exact |
@@ -59,11 +60,13 @@ jpipe-compiler checkout, and `scripts/release.sh preflight` runs it.
 **Coined by the extension**, for one of three reasons. The distinction matters when the compiler
 next gains a rule, and `jpipe-compiler-codes.ts` keeps each code under its reason:
 
-- *The compiler does not check it at all:* `no-empty-label`, `unknown-config-key`,
-  `support-override-type`.
-- *The compiler checks it, but reports it as the `execution-error` catch-all,* so there is no name
-  to adopt: `no-duplicate-model-names`, `unknown-operator`, `operator-arity`,
-  `missing-config-key`, `unknown-unification-method`, `unknown-hook`.
+- *The compiler does not check it at all:* `no-empty-label`, `support-override-type`.
+- *The compiler reports it under one code for several problems:* `invalid-operator-call` from
+  compiler 4.0.0, the `execution-error` catch-all before. Each of these has a quick fix of its own,
+  and a quick fix finds its diagnostic by code (the modules of `code-actions/`), so the editor
+  keeps a code per problem rather than adopting the compiler's one:
+  `unknown-operator`, `operator-arity`, `missing-config-key`, `unknown-config-key`,
+  `unknown-unification-method`, `unknown-hook`.
 - *The compiler reports it as `FATAL`, and a fatal carries no code by policy*
   (jpipe-compiler ADR-0016): the whole `load-*` family, `cyclic-load`, and `no-empty-unit`. There
   is nothing upstream to adopt for these, by policy rather than by omission.
@@ -74,7 +77,9 @@ name that failed to resolve joins the `unknown-*` family; a constrained property
 positive phrasing is named for the property (`operator-arity`, after `single-conclusion`).
 `cyclic-load` rhymes with the compiler's `cyclic-implements`.
 
-A coined name that the compiler later gains a rule for is renamed to the compiler's name.
+A coined name that the compiler later gains a rule for is renamed to the compiler's name, unless
+the compiler's code covers several problems the editor tells apart, each with a quick fix of its
+own: the editor then keeps its finer codes, as it does for `invalid-operator-call`.
 
 **`conclusion-supported` covers two checks** — nothing supports the conclusion, or something does
 but no strategy does — because they are one rule to the compiler: for `evidence e; e supports c`
@@ -104,7 +109,7 @@ editor therefore does not report `conclusion-supported` on a later conclusion ei
 **Rules the editor does not check.** The compiler reports, and the editor is silent on:
 `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`, `unresolved-override`,
 `cyclic-implements`, `implements-error`, `reference-into-template`, `incompatible-unification`,
-and `invalid-support` beyond strategies. `unknown-model` and `unknown-element` *are* covered, but
+`inherited-conclusion`, `ambiguous-id`, and `invalid-support` beyond strategies. `unknown-model` and `unknown-element` *are* covered, but
 under Langium's own `linking-error`, a vocabulary this repository does not own — the seam
 `add-missing-load.ts` keys on.
 

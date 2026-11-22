@@ -8,7 +8,7 @@
  * which id an override must carry — and recomputing that inside the fix means maintaining the
  * same reasoning twice, in two places that are free to disagree.
  *
- * **These identities are shared with the compiler.** Six are the compiler's own rule names,
+ * **These identities are shared with the compiler.** Some are the compiler's own rule names,
  * adopted verbatim so one defect reads the same in the Problems panel and in a compiler report;
  * the rest are coined in its naming style. `jpipe-compiler-codes.ts` records which is which, and
  * a test holds the partition. See jpipe-vscode ADR-VSC-0022 and jpipe-compiler ADR-0016.
@@ -20,7 +20,7 @@ import type { DiagnosticInfo, ValidationAcceptor } from 'langium';
 export const JpipeIssue = {
     NoEmptyLabel:           'no-empty-label',
     NoEmptyUnit:            'no-empty-unit',
-    NoDuplicateModelNames:  'no-duplicate-model-names',
+    DuplicateModel:         'duplicate-model',
     NoDuplicateIds:         'no-duplicate-ids',
     HasAbstractSupport:     'has-abstract-support',
     ConclusionPresent:      'conclusion-present',
@@ -68,7 +68,7 @@ export type JpipeSeverity = 'error' | 'warning';
  */
 export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     // Errors — verified against the compiler, mostly against its own `examples/invalid/` fixtures.
-    [JpipeIssue.NoDuplicateModelNames]: 'error',   // `execution-error`: "Duplicate model name"
+    [JpipeIssue.DuplicateModel]:        'error',   // rejected under this same code (from 4.0.0)
     [JpipeIssue.NoDuplicateIds]:        'error',   // rejected under this same code
     [JpipeIssue.HasAbstractSupport]:    'error',   // rejected under this same code
     [JpipeIssue.ConclusionPresent]:     'error',   // rejected under this same code
@@ -78,20 +78,21 @@ export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     [JpipeIssue.ConclusionSupported]:   'error',   // rejected under this same code
     [JpipeIssue.InvalidSupport]:        'error',   // rejected under this same code
     [JpipeIssue.SupportOverrideType]:   'error',   // surfaces upstream as `no-abstract-support`
-    [JpipeIssue.UnknownOperator]:       'error',   // `execution-error` from `ApplyOperator`
-    [JpipeIssue.OperatorArity]:         'error',   // `execution-error`: "requires exactly 2 sources"
-    [JpipeIssue.MissingConfigKey]:      'error',   // `execution-error`: "were not provided"
+    // The operator family: `invalid-operator-call` from compiler 4.0.0, `execution-error` before.
+    [JpipeIssue.UnknownOperator]:       'error',   // from `ApplyOperator`
+    [JpipeIssue.OperatorArity]:         'error',   // "requires exactly 2 sources"
+    [JpipeIssue.MissingConfigKey]:      'error',   // "were not provided"
+    [JpipeIssue.UnknownConfigKey]:      'error',   // "unknown argument(s)": 4.0.0 refuses it, 3.x ignored it
     [JpipeIssue.LoadUnresolved]:        'error',   // FATAL from `LoadResolver`; aborts the pipeline
     [JpipeIssue.LoadNoMatch]:           'error',   // FATAL from `LoadResolver`
     [JpipeIssue.LoadMalformedPattern]:  'error',   // FATAL from `LoadResolver`
     [JpipeIssue.CyclicLoad]:            'error',   // FATAL from `LoadResolver`
     [JpipeIssue.NoEmptyUnit]:           'error',   // FATAL: "Compilation aborted due to syntax errors"
-    [JpipeIssue.UnknownHook]:           'error',   // `execution-error`: "hook element 'x' not found"
+    [JpipeIssue.UnknownHook]:           'error',   // operator family: "hook element 'x' not found"
 
     // Warnings — the compiler builds these files. Each was run through `jpipe diagnostic`, and each
     // exited 0.
     [JpipeIssue.NoEmptyLabel]:          'warning', // accepted: nothing checks a label's contents
-    [JpipeIssue.UnknownConfigKey]:      'warning', // accepted: unrecognised keys are ignored
     // The exception. The compiler *would* reject this, but its relation registry is populated at
     // startup and a project may register its own, so the editor cannot know. The message says what
     // the editor does not recognise rather than predicting a failure, and settings can widen it.
@@ -172,7 +173,7 @@ export interface JpipeIssuePayloads {
     [JpipeIssue.LoadNoMatch]:           { path: string };
     [JpipeIssue.LoadMalformedPattern]:  { path: string };
     [JpipeIssue.CyclicLoad]:            { path: string; resolved: string };
-    [JpipeIssue.NoDuplicateModelNames]: { id: string };
+    [JpipeIssue.DuplicateModel]:        { id: string };
     [JpipeIssue.NoDuplicateIds]:        { id: string; modelId: string };
     [JpipeIssue.HasAbstractSupport]:    { id: string };
     [JpipeIssue.ConclusionPresent]:     { id: string };
