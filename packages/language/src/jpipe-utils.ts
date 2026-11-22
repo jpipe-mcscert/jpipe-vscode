@@ -148,8 +148,9 @@ export function getLocalElements(node: Justification | Template): JustificationE
  * saying so, and anything asking "is there a conclusion / a `@support` / an element with this id?"
  * hears a confident no about a model the compiler builds (its example 028).
  *
- * Until the operators are ported, such a model is left alone by every rule that needs its whole
- * element list: a missing element there is a fact about what this can read, not about the model.
+ * Such a model is left alone by every rule that needs its whole element list: a missing element
+ * there is a fact about what this can read, not about the model. The operators are never ported:
+ * a composition's elements are to be read from the compiler (jpipe-vscode ADR-VSC-0034).
  */
 export function buildsOnComposition(model: Justification | Template): boolean {
     return implementsChain(model).some(link => link.composition !== undefined);

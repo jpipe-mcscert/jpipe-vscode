@@ -120,8 +120,8 @@ behind, since every id unified into an element keeps addressing it. A key landin
 gives a consumer no way to choose, and `jpipe-runner` discards the whole model rather than guess.
 Aliases are created only by `CompositionOperator` and `Unifier`, as `RegisterAlias` commands, so
 no `.jd` file names one and none exists until an operator has run. Checking the rule would mean
-executing unification in the language server — the boundary `conclusion-present` declines to
-cross for composed models. It is vendored to be filed, and its entry in `COMPILER_CODES` says so.
+executing unification in the language server, which jpipe-vscode ADR-VSC-0034 rules out. It is
+vendored to be filed, and its entry in `COMPILER_CODES` says so.
 
 ## Rationale
 
