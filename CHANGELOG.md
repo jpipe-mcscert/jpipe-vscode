@@ -3,7 +3,7 @@
 ### v2.0.1 (Unreleased)
 - Leader: Sébastien Mosser
   - Bug Fixes:
-    - **Models built on a `refine` or an `assemble` are no longer reported as broken.** A template made by an operator, such as `template refined is refine(pattern, part) { hook: "a" }`, has no body of its own: its elements are the ones the operator builds. The editor looked only at what you wrote, so it called that template one with no `@support`, said a justification implementing it had no conclusion, and refused a `refine` hook naming one of the elements it inherited, even though the compiler builds all of them. These models are no longer underlined or listed under Errors. Until the editor can work out what an operator builds, it no longer checks those elements at all: a `@support` left without an override in such a model is reported by the compiler only
+    - **Models built on a `refine` or an `assemble` are no longer reported as broken.** A template made by an operator, such as `template refined is refine(pattern, part) { hook: "a" }`, has no body of its own: its elements are the ones the operator builds. The editor looked only at what you wrote, so it called that template one with no `@support`, said a justification implementing it had no conclusion, and refused a `refine` hook naming one of the elements it inherited, even though the compiler builds all of them. These models are no longer underlined or listed under Errors. Until the editor can work out what an operator builds, it no longer checks those elements at all: a `@support` left without an override in such a model, or a `refine` hook naming an element it does not have, is reported by the compiler only
 
 ### v2.0.0 (2026-11-21)
 - Leader: Sébastien Mosser

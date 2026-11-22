@@ -824,17 +824,26 @@ template t implements refined_pattern {
 }`)).toEqual([]);
     });
 
-    test('a hook into a base that implements a composed template is not reported', async () => {
-        expect(await errors(`${PATTERN}
-${READY}
-justification tests {
+    const TESTS = `justification tests {
     conclusion c is "Test report holds"
     strategy   s is "Read it"
     evidence   e is "Raw logs"
     s supports c
     e supports s
-}
-justification deeper is refine(ready, tests) { hook: "first_part:e" }`)).toEqual([]);
+}`;
+
+    const deeper = (hook: string) =>
+        `${PATTERN}\n${READY}\n${TESTS}\njustification deeper is refine(ready, tests) { hook: "${hook}" }`;
+
+    test.each(['first_part:e', 'pattern:abs2'])(
+        'a hook into a base that implements a composed template is accepted: %s', async (hook) => {
+            expect(await errors(deeper(hook))).toEqual([]);
+        });
+
+    // The compiler reports it, `hook element 'pattern:abz2' not found`; this cannot, since the id
+    // may be one the operator builds. Silence about a real problem, not noise about a false one.
+    test('a hook matching no visible id of such a base is left to the compiler', async () => {
+        expect(await errors(deeper('pattern:abz2'))).toEqual([]);
     });
 
     // The rules still hold for a template whose chain is plain, composition or not elsewhere in

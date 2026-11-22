@@ -225,8 +225,8 @@ export class JpipeValidator {
      * `hookTarget` decides what resolves, and matches the compiler: against the ids template
      * expansion gives inherited elements, then by its suffix fallback. Three shapes are passed over instead, each because the editor genuinely cannot answer:
      *
-     * - **A base that `buildsOnComposition`**, whose hooks resolve through ids no `.jd` file
-     *   contains.
+     * - **A base that `buildsOnComposition`**, when the hook matches none of the ids this can see:
+     *   it may name one the operator builds.
      * - **An unresolved first source**, which is a linking error already reported where it is.
      * - **A broken `implements` chain**, where the inherited half of the element list is missing.
      *   The hook may name something perfectly real that this cannot see, and the visible problem
@@ -243,8 +243,8 @@ export class JpipeValidator {
         if (!entry || actual === undefined) return;
 
         const base = composition.params?.refs[0]?.ref;
-        if (!base || buildsOnComposition(base) || hasUnresolvedParent(base)) return;
-        if (hookTarget(base, actual)) return;
+        if (!base || hasUnresolvedParent(base)) return;
+        if (hookTarget(base, actual) || buildsOnComposition(base)) return;
 
         const candidates = expandedElements(base)
             .map(entry => entry.id)

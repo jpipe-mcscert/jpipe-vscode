@@ -225,8 +225,11 @@ export function expandedElements(
  * name `T:a`. The suffix pass skips the conclusion, as the compiler's does, so an inherited
  * conclusion answers only to its full `T:c`.
  *
- * **Its answer is only as good as `base` being a plain model**, so callers must exclude one that
- * `buildsOnComposition` rather than trust a `undefined` from here.
+ * A base that `buildsOnComposition` has elements this cannot see, and the compiler scans them
+ * first. An exact id stays reliable there — what the base declares itself replaces any inherited
+ * element of that id — but a suffix match does not, since a hidden element may end the same way.
+ * Only the exact pass runs on such a base, so `undefined` means "not found" on a plain base and
+ * "cannot tell" on one that `buildsOnComposition`; callers must not report the latter.
  */
 export function hookTarget(
     base: Justification | Template,
@@ -235,6 +238,7 @@ export function hookTarget(
     const elements = expandedElements(base);
     const exact = elements.find(entry => entry.id === hook);
     if (exact) return exact.element;
+    if (buildsOnComposition(base)) return undefined;
     const suffix = `:${hook}`;
     return elements.find(entry => !isConclusion(entry.element) && entry.id.endsWith(suffix))?.element;
 }
