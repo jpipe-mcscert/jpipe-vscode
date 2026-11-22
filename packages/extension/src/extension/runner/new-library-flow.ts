@@ -39,11 +39,16 @@ export async function scaffoldLibrary(
     compileTo: (document: vscode.TextDocument, file: vscode.Uri) => Promise<unknown>
 ): Promise<void> {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(model.uri));
-    // The compiler reads the file, not the editor: stubs from what was saved last would miss
-    // the elements added since.
-    if (document.isDirty && !await document.save()) {
+    // The compiler reads files, not editors: stubs from what was saved last would miss the
+    // elements added since, in the justification or in a template it loads. So every jPipe file
+    // with unsaved changes is saved first, as a run does.
+    const unsaved = [document, ...vscode.workspace.textDocuments.filter(open => open.languageId === 'jpipe' && open !== document)]
+        .filter(input => input.isDirty);
+    const saved = await Promise.all(unsaved.map(input => input.save()));
+    const failed = unsaved.find((_, i) => !saved[i]);
+    if (failed) {
         void vscode.window.showErrorMessage(
-            `No library was generated: ${vscode.workspace.asRelativePath(document.uri)} could not be saved, and the compiler reads the file as it is saved.`);
+            `No library was generated: ${vscode.workspace.asRelativePath(failed.uri)} could not be saved, and the compiler reads the files as they are saved.`);
         return;
     }
     await createLibrary(libraries, model, `Scaffold Step Library for ${model.name}`, async uri => {
@@ -95,6 +100,11 @@ async function createLibrary(
         const relative = vscode.workspace.asRelativePath(vscode.Uri.parse(file));
         input.prompt = `Creates ${relative}`;
         let error = moduleNameError(input.value);
+        // A library is checked for runs by its place in the workspace: outside every folder of
+        // it, it could be created but never checked, and runs would leave it out.
+        if (!error && !vscode.workspace.getWorkspaceFolder(vscode.Uri.parse(folder!))) {
+            error = `${vscode.Uri.parse(folder!).fsPath} is outside the workspace, where a library cannot be checked for runs. Choose a folder inside it.`;
+        }
         if (!error && await fileExists(file)) {
             error = `${relative} already exists. Choose another name.`;
         }

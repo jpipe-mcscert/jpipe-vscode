@@ -196,11 +196,16 @@ check_work_branch() {
     fail "$branch does not contain $RELEASE_REMOTE/$base — merge or rebase onto it first"
   fi
   [ "$HOTFIX" -eq 1 ] || return 0
-  # A branch that holds all of dev while dev is ahead of main is a release branch, not a
-  # hotfix: the patch would carry everything the next release was meant to.
-  if git merge-base --is-ancestor "$RELEASE_REMOTE/dev" HEAD &&
-     ! git merge-base --is-ancestor "$RELEASE_REMOTE/dev" "$RELEASE_REMOTE/main"; then
-    fail "$branch contains $RELEASE_REMOTE/dev, which holds unreleased work — a hotfix is cut from main"
+  # A hotfix carries none of dev's unreleased work: no commit both it and dev have that main
+  # does not. Every commit the two share is reachable from their merge base, so it is enough
+  # that main holds the merge base. Checking only dev's tip would let through a branch cut from
+  # an earlier commit of dev, which holds some of that work.
+  local shared unreleased
+  shared=$(git merge-base --all HEAD "$RELEASE_REMOTE/dev")
+  # shellcheck disable=SC2086 # one revision per merge base
+  unreleased=$(git rev-list --count $shared "^$RELEASE_REMOTE/main")
+  if [ "$unreleased" -gt 0 ]; then
+    fail "$branch carries $unreleased unreleased commit(s) from $RELEASE_REMOTE/dev — a hotfix is cut from main"
     note "git switch -c $suggestion $RELEASE_REMOTE/main"
   else
     pass "$branch does not carry the unreleased work on $RELEASE_REMOTE/dev"
