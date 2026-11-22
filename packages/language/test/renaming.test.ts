@@ -423,6 +423,27 @@ justification R is refine(Base, Ref) { hook: "T:e" }`;
                 .toContain('hook: "T:signed"');
         });
 
+        // `ready` overrides `pattern:abs2` itself, and an id a model declares replaces any it
+        // inherits, so the hook names the override even though the rest of `ready` comes from a
+        // composition this cannot see.
+        test('a hook naming an exact id of a base built on a composition follows it', async () => {
+            const source = `template pattern {
+ conclusion c is "C"
+ strategy s is "S"
+ @support abs1 is "A1"
+ @support abs2 is "A2"
+ s supports c
+ abs1 supports s
+ abs2 supports s
+}
+${REF}
+template refined_pattern is refine(pattern, Ref) { hook: "abs1" }
+justification ready implements refined_pattern { evidence pattern:abs2 is "Checklist" }
+justification deeper is refine(ready, Ref) { hook: "pattern:abs2" }`;
+            expect(await renamed(source, '@support abs2', 9, 'signed'))
+                .toContain('hook: "pattern:signed"');
+        });
+
         // Spelling alone could not tell these apart: both hooks say "e", and only one of them
         // resolves to the element being renamed.
         test('a same-named element of another model is not dragged along', async () => {
