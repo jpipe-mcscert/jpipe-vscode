@@ -8,7 +8,7 @@
  * which id an override must carry — and recomputing that inside the fix means maintaining the
  * same reasoning twice, in two places that are free to disagree.
  *
- * **These identities are shared with the compiler.** Six are the compiler's own rule names,
+ * **These identities are shared with the compiler.** Some are the compiler's own rule names,
  * adopted verbatim so one defect reads the same in the Problems panel and in a compiler report;
  * the rest are coined in its naming style. `jpipe-compiler-codes.ts` records which is which, and
  * a test holds the partition. See jpipe-vscode ADR-VSC-0022 and jpipe-compiler ADR-0016.
@@ -20,7 +20,7 @@ import type { DiagnosticInfo, ValidationAcceptor } from 'langium';
 export const JpipeIssue = {
     NoEmptyLabel:           'no-empty-label',
     NoEmptyUnit:            'no-empty-unit',
-    NoDuplicateModelNames:  'no-duplicate-model-names',
+    DuplicateModel:         'duplicate-model',
     NoDuplicateIds:         'no-duplicate-ids',
     HasAbstractSupport:     'has-abstract-support',
     ConclusionPresent:      'conclusion-present',
@@ -68,7 +68,7 @@ export type JpipeSeverity = 'error' | 'warning';
  */
 export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     // Errors — verified against the compiler, mostly against its own `examples/invalid/` fixtures.
-    [JpipeIssue.NoDuplicateModelNames]: 'error',   // `execution-error`: "Duplicate model name"
+    [JpipeIssue.DuplicateModel]:        'error',   // rejected under this same code (from 4.0.0)
     [JpipeIssue.NoDuplicateIds]:        'error',   // rejected under this same code
     [JpipeIssue.HasAbstractSupport]:    'error',   // rejected under this same code
     [JpipeIssue.ConclusionPresent]:     'error',   // rejected under this same code
@@ -172,7 +172,7 @@ export interface JpipeIssuePayloads {
     [JpipeIssue.LoadNoMatch]:           { path: string };
     [JpipeIssue.LoadMalformedPattern]:  { path: string };
     [JpipeIssue.CyclicLoad]:            { path: string; resolved: string };
-    [JpipeIssue.NoDuplicateModelNames]: { id: string };
+    [JpipeIssue.DuplicateModel]:        { id: string };
     [JpipeIssue.NoDuplicateIds]:        { id: string; modelId: string };
     [JpipeIssue.HasAbstractSupport]:    { id: string };
     [JpipeIssue.ConclusionPresent]:     { id: string };

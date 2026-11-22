@@ -64,7 +64,7 @@ describe('diagnostic codes', () => {
     test.each([
         [JpipeIssue.NoEmptyLabel, 'justification J { conclusion c is "" }'],
         [JpipeIssue.NoEmptyUnit, '// nothing but a comment\n'],
-        [JpipeIssue.NoDuplicateModelNames, 'justification J { conclusion c is "C" }\njustification J { conclusion c is "C" }'],
+        [JpipeIssue.DuplicateModel, 'justification J { conclusion c is "C" }\njustification J { conclusion c is "C" }'],
         [JpipeIssue.HasAbstractSupport, 'template T { conclusion c is "C" }'],
         [JpipeIssue.ConclusionPresent, 'justification J { evidence e is "E" }'],
         [JpipeIssue.SingleConclusion, 'justification J { conclusion c1 is "A" conclusion c2 is "B" }'],

@@ -48,6 +48,7 @@ jpipe-compiler checkout, and `scripts/release.sh preflight` runs it.
 | Code | How the editor's check relates to the compiler's |
 |---|---|
 | `no-duplicate-ids` | exact |
+| `duplicate-model` | **a subset**: the compiler flags a model named like one declared before it, in any loaded file and whatever their kinds; the editor flags each of two templates, or two justifications, of one name in one file, in its own words |
 | `has-abstract-support` | exact, inherited `@support` included on both sides |
 | `no-abstract-support` | same rule from the opposite vantage — the compiler checks it after the override commands run, the editor before expansion |
 | `strategy-supported` | exact |
@@ -62,8 +63,8 @@ next gains a rule, and `jpipe-compiler-codes.ts` keeps each code under its reaso
 - *The compiler does not check it at all:* `no-empty-label`, `unknown-config-key`,
   `support-override-type`.
 - *The compiler checks it, but reports it as the `execution-error` catch-all,* so there is no name
-  to adopt: `no-duplicate-model-names`, `unknown-operator`, `operator-arity`,
-  `missing-config-key`, `unknown-unification-method`, `unknown-hook`.
+  to adopt: `unknown-operator`, `operator-arity`, `missing-config-key`,
+  `unknown-unification-method`, `unknown-hook`.
 - *The compiler reports it as `FATAL`, and a fatal carries no code by policy*
   (jpipe-compiler ADR-0016): the whole `load-*` family, `cyclic-load`, and `no-empty-unit`. There
   is nothing upstream to adopt for these, by policy rather than by omission.

@@ -296,7 +296,7 @@ export class JpipeValidator {
         );
 
         if (duplicates.length > 1) {
-            report(accept, JpipeIssue.NoDuplicateModelNames, `Duplicate template name '${template.id}'`,
+            report(accept, JpipeIssue.DuplicateModel, `Duplicate template name '${template.id}'`,
                    { node: template, property: 'id' }, { id: template.id });
         }
     }
@@ -381,7 +381,7 @@ export class JpipeValidator {
         );
 
         if (duplicates.length > 1) {
-            report(accept, JpipeIssue.NoDuplicateModelNames, `Duplicate justification name '${justification.id}'`,
+            report(accept, JpipeIssue.DuplicateModel, `Duplicate justification name '${justification.id}'`,
                    { node: justification, property: 'id' }, { id: justification.id });
         }
     }

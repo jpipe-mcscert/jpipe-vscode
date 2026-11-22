@@ -10,7 +10,7 @@
  * whoever adds the next code to *decide* whether the compiler already names that rule, at the
  * moment they add it, rather than discovering the answer after both names have shipped.
  *
- * SOURCE: jpipe-compiler v2.5.0 (0bb9332), copied 2026-08-15 from
+ * SOURCE: jpipe-compiler v4.0.0 (8d76be4a), copied 2026-11-21 from
  *   jpipe-compiler/src/main/java/ca/mcscert/jpipe/compiler/model/DiagnosticCodes.java
  *   jpipe-model/src/main/java/ca/mcscert/jpipe/model/validation/ConsistencyValidator.java
  *   jpipe-model/src/main/java/ca/mcscert/jpipe/model/validation/CompletenessValidator.java
@@ -39,6 +39,12 @@ export const COMPILER_CODES = [
     'incompatible-unification',
     'execution-error',
     'unresolved-symbol',
+    // From 4.0.0. The editor checks only the first, under the same code; the others it leaves to
+    // the compiler (jpipe-vscode ADR-VSC-0022).
+    'duplicate-model',
+    'inherited-conclusion',
+    'invalid-operator-call',
+    'ambiguous-id',
     // ConsistencyValidator.java
     'no-duplicate-ids',
     // Merge aliases only; the element ids it shares a namespace with are `no-duplicate-ids`. The
@@ -64,8 +70,8 @@ export const COMPILER_CODES = [
  * - **It does not check this at all.** `no-empty-label`, `unknown-config-key` (the compiler
  *   ignores keys it does not recognise), `support-override-type`.
  * - **It checks it, but reports it as the `execution-error` catch-all**, so there is no name to
- *   adopt: `no-duplicate-model-names`, `unknown-operator`, `operator-arity`, `missing-config-key`,
- *   `unknown-unification-method`, `unknown-hook`.
+ *   adopt: `unknown-operator`, `operator-arity`, `missing-config-key`, `unknown-unification-method`,
+ *   `unknown-hook`.
  * - **It reports it as `FATAL`, and a fatal carries no code by policy** (jpipe-compiler ADR-0016):
  *   the whole `load-*` family, `cyclic-load`, and `no-empty-unit` — an empty file is a syntax
  *   error there, `Compilation aborted due to syntax errors`, which no rule name reaches.
@@ -76,7 +82,6 @@ export const COMPILER_CODES = [
 export const EXTENSION_ONLY_CODES = [
     'no-empty-label',
     'no-empty-unit',
-    'no-duplicate-model-names',
     'unknown-operator',
     'operator-arity',
     'unknown-config-key',
