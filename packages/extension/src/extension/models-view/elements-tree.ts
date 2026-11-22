@@ -9,6 +9,7 @@
  * still visible, how a row reads — is here, away from `vscode`, where it can be tested
  * (jpipe-vscode ADR-VSC-0004).
  */
+import { rangeContains } from '../preview/document-symbols.js';
 import {
     SYMBOL_KIND_CLASS,
     SYMBOL_KIND_INTERFACE,
@@ -66,11 +67,6 @@ export interface Element {
     inheritedFrom?: { template: string; uri: string };
 }
 
-function contains(range: Range, position: Position): boolean {
-    const after = (a: Position, b: Position) => a.line > b.line || (a.line === b.line && a.character >= b.character);
-    return after(position, range.start) && after(range.end, position);
-}
-
 /**
  * The elements `model` itself declares, in the order written, or `undefined` if the file's
  * symbols do not include the model — it was renamed or deleted since it was selected.
@@ -83,7 +79,7 @@ function contains(range: Range, position: Position): boolean {
 export function elementsOf(symbols: readonly WireDocumentSymbol[], model: Model): Element[] | undefined {
     const namespace = symbols.find(s => s.name === DEFAULT_NAMESPACE);
     const symbol = namespace?.children?.find(s =>
-        s.name === model.name && contains(s.range, model.selection.start));
+        s.name === model.name && rangeContains(s.range, model.selection.start.line, model.selection.start.character));
     if (!symbol) return undefined;
     const elements: Element[] = [];
     for (const child of symbol.children ?? []) {
@@ -216,7 +212,7 @@ export const ELEMENT_COLORS: Readonly<Record<ElementKind, string>> = {
  * inherited element is in another file, or elsewhere in this one, and is never the answer.
  */
 export function elementAt(elements: readonly Element[], position: Position): Element | undefined {
-    return elements.find(e => !e.inheritedFrom && contains(e.range, position));
+    return elements.find(e => !e.inheritedFrom && rangeContains(e.range, position.line, position.character));
 }
 
 /** Why the view is empty, or `undefined` when it has rows to show. */

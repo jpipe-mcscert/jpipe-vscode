@@ -10,6 +10,7 @@
  */
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pathKeyOf } from '../process-launcher.js';
 import { formatRelease, meetsMinimum, pylanceLine, RECOMMENDED, releaseNumbers, REQUIREMENTS } from '../requirements.js';
 import { streamsEvents } from './runner-invocation.js';
 
@@ -411,9 +412,6 @@ export function isRunnerRecentEnough(release: string): boolean {
     return numbers.every(n => !Number.isNaN(n)) ? meetsMinimum(numbers, MIN_RUNNER) : true;
 }
 
-/** A program to try as the Python an environment is created with, and the arguments that select it. */
-export type PythonCommand = Command;
-
 /**
  * Where to look for a Python to create an environment with, best first, after the one the editor
  * has selected:
@@ -421,9 +419,9 @@ export type PythonCommand = Command;
  * python.org installer and most Linux distributions install them that way — and, on Windows, the
  * `py` launcher, which knows every Python installed.
  */
-export function basePythonCandidates(selected: string | undefined, platform: NodeJS.Platform): PythonCommand[] {
+export function basePythonCandidates(selected: string | undefined, platform: NodeJS.Platform): Command[] {
     const minors = [14, 13, 12, 11];
-    const candidates: PythonCommand[] = selected ? [{ program: selected, args: [] }] : [];
+    const candidates: Command[] = selected ? [{ program: selected, args: [] }] : [];
     if (platform === 'win32') {
         candidates.push({ program: 'py', args: ['-3'] }, ...minors.map(m => ({ program: 'py', args: [`-3.${m}`] })), { program: 'python', args: [] });
     } else {
@@ -437,7 +435,7 @@ export function basePythonCandidates(selected: string | undefined, platform: Nod
  * that is another project's virtual environment is passed over: the new environment is the
  * workspace's, and should not hang off somebody else's.
  */
-export function chooseBasePython(candidates: ReadonlyArray<{ command: PythonCommand; version?: readonly number[]; isVirtualEnv?: boolean }>): PythonCommand | undefined {
+export function chooseBasePython(candidates: ReadonlyArray<{ command: Command; version?: readonly number[]; isVirtualEnv?: boolean }>): Command | undefined {
     return candidates.find(c => c.version !== undefined && isRecentEnough(c.version) && !c.isVirtualEnv)?.command;
 }
 
@@ -590,7 +588,7 @@ export function environmentNickname(folderName: string): string {
  * `.venv` is its nickname (`environmentNickname`), given with venv's `--prompt`. It is what an
  * activated terminal shows, and what VS Code lists the environment under.
  */
-export function createEnvironmentCommands(base: PythonCommand, folder: string, platform: NodeJS.Platform, runner: RunnerSource = RUNNER_REQUIREMENT, nickname: string = environmentNickname(path.basename(folder))): FixStep[] {
+export function createEnvironmentCommands(base: Command, folder: string, platform: NodeJS.Platform, runner: RunnerSource = RUNNER_REQUIREMENT, nickname: string = environmentNickname(path.basename(folder))): FixStep[] {
     const python = venvPython(path.join(folder, '.venv'), platform);
     return [
         { name: 'Create .venv', program: base.program, args: [...base.args, '-m', 'venv', ...(nickname ? ['--prompt', nickname] : []), '.venv'] },
@@ -695,8 +693,7 @@ export function requirementChangeKind(exists: boolean, before: string): Requirem
     return RUNNER_LINE.test(before) ? 'replace' : 'add';
 }
 
-const pathKey = (env: NodeJS.ProcessEnv): string => Object.keys(env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH';
-const pathSeparator = (platform: NodeJS.Platform): string => platform === 'win32' ? ';' : ':';
+const pathSeparator = (platform: NodeJS.Platform): string => platform === 'win32' ? path.win32.delimiter : path.posix.delimiter;
 
 /**
  * `env` without the virtual environment activated in it, if any.
@@ -709,7 +706,7 @@ const pathSeparator = (platform: NodeJS.Platform): string => platform === 'win32
 export function withoutActiveEnvironment(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): NodeJS.ProcessEnv {
     const { VIRTUAL_ENV: active, VIRTUAL_ENV_PROMPT: _prompt, PIPENV_ACTIVE: _pipenv, POETRY_ACTIVE: _poetry, PYTHONHOME: _home, ...rest } = env;
     if (!active) return rest;
-    const key = pathKey(rest);
+    const key = pathKeyOf(rest);
     const separator = pathSeparator(platform);
     const bin = path.normalize(venvBin(active, platform));
     const entries = (rest[key] ?? '').split(separator).filter(entry => entry && path.normalize(entry) !== bin);
@@ -719,7 +716,7 @@ export function withoutActiveEnvironment(env: NodeJS.ProcessEnv, platform: NodeJ
 /** `env` with the environment `python` belongs to activated, as a run in a terminal would have it. */
 export function activatedEnvironment(env: NodeJS.ProcessEnv, python: string, platform: NodeJS.Platform): NodeJS.ProcessEnv {
     const clean = withoutActiveEnvironment(env, platform);
-    const key = pathKey(clean);
+    const key = pathKeyOf(clean);
     const bin = path.dirname(python);
     return { ...clean, VIRTUAL_ENV: path.dirname(bin), [key]: [bin, clean[key]].filter(Boolean).join(pathSeparator(platform)) };
 }

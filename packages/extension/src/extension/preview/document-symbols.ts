@@ -28,8 +28,8 @@ export interface SymbolRange {
     end: { line: number; character: number };
 }
 
-/** Whether `range` covers the given zero-based position, inclusive at both ends. */
-function rangeContains(range: SymbolRange, line: number, character: number): boolean {
+/** Whether `range` covers the given zero-based position, inclusive at both ends. Shared with the Outline. */
+export function rangeContains(range: SymbolRange, line: number, character: number): boolean {
     const { start, end } = range;
     if (line < start.line || line > end.line) return false;
     if (line === start.line && character < start.character) return false;

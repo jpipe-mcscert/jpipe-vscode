@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { messageOf } from '../../shared/errors.js';
 import { planLaunchHere } from '../process-launcher.js';
 import type { FixStep } from './python-environment.js';
+import { RUN_TASK_TYPE } from './runner-invocation.js';
 
 /**
  * Run one step of an environment fix where the user can watch it, with exactly `env`; resolves to
@@ -63,7 +64,7 @@ export function runInTerminal(
         };
 
         const task = new vscode.Task(
-            { type: 'jpipe', model: name },
+            { type: RUN_TASK_TYPE, model: name },
             options.folder ?? vscode.TaskScope.Workspace,
             name,
             'jPipe',

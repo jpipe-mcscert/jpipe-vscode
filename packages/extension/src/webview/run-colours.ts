@@ -26,7 +26,7 @@
  * runner made.
  */
 import type { LiveStatus, ObservedSource } from '../shared/run-protocol.js';
-import { elementOf, nameOf } from './flow.js';
+import { edgeEnds, elementOf, nameOf } from './flow.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const XLINK = 'http://www.w3.org/1999/xlink';
@@ -140,9 +140,9 @@ function sourcesReached(statuses: readonly LiveStatus[], observed: readonly Obse
  */
 function colourSupports(doc: Document, byId: ReadonlyMap<string, LiveStatus>, elements: ReadonlySet<string>): void {
     for (const edge of groups(doc, 'edge')) {
-        const [tail, head] = nameOf(edge).split('->');
-        const status = head === undefined ? undefined : byId.get(elementOf(tail));
-        if (status && elements.has(head)) colourEdge(edge, status);
+        const ends = edgeEnds(edge);
+        const status = ends && byId.get(elementOf(ends.tail));
+        if (status && elements.has(ends.head)) colourEdge(edge, status);
     }
 }
 
@@ -195,9 +195,10 @@ function colourVariable(doc: Document, node: Element, byId: ReadonlyMap<string, 
     const name = nameOf(node);
     const variable = name.slice('variable '.length).split(' from ')[0];
     const producers = groups(doc, 'edge')
-        .map(edge => nameOf(edge).split('->'))
-        .filter(([tail, head]) => head === name && elements.has(tail))
-        .map(([tail]) => byId.get(tail));
+        .flatMap(edge => {
+            const ends = edgeEnds(edge);
+            return ends?.head === name && elements.has(ends.tail) ? [byId.get(ends.tail)] : [];
+        });
     const unproduced = producers.some(status => status && !status.produced.includes(variable));
     const shapes = Array.from(node.querySelectorAll(SHAPES));
     if (!unproduced || shapes.some(shape => shape.getAttribute('stroke') === VERMILLION)) return;

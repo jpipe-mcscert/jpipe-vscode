@@ -11,9 +11,6 @@ import { kindOf, underWay } from '../../shared/run-kind.js';
 import type { RunProgress } from './run-events.js';
 import { outcomeLinks, progressRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport } from './run-report.js';
 
-// The page names a run the same way, so the wording is shared with it.
-export { kindOf, underWay };
-
 /** The run the panel and the Results view show. */
 export interface ShownRun {
     /** The justification, and the document it is declared in. */

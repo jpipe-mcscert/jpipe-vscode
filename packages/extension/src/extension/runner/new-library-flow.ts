@@ -71,6 +71,8 @@ async function createLibrary(
     title: string,
     write: (file: vscode.Uri) => Promise<boolean>
 ): Promise<void> {
+    // The default folder is the one the other libraries are in: wait for them to be found.
+    await libraries.ready();
     let folder = libraryFolder(
         libraries.allLibraries().map(l => l.uri.toString()),
         model?.uri,

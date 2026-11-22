@@ -3,15 +3,16 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
+import { underWay } from '../../shared/run-kind.js';
 import { findDiagramName } from '../compiler/compiler-invocation.js';
 import { ImageFormat, type ImageGenerator } from '../compiler/image-generator.js';
 import { CompilerTooOldError } from '../requirements.js';
 import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
-import { MODELS_VIEW_ID } from '../models-view/models-view.js';
+import { MODELS_VIEW_ID, sameFile } from '../models-view/models-view.js';
 import {
-    RUNNER_COMMAND_SETTING, cannotRun, dataflowFlag, relaunchWithout, resolveRunner, runnerArguments, streamsEvents, type DataflowFlag
+    RUNNER_COMMAND_SETTING, RUN_TASK_TYPE, cannotRun, dataflowFlag, relaunchWithout, resolveRunner, runnerArguments, streamsEvents, type DataflowFlag
 } from './runner-invocation.js';
 import type { RunnerEnvironment } from './environment.js';
 import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
@@ -22,9 +23,6 @@ import { followEvents, type EventFollower } from './run-events.js';
 import type { RunSession } from './run-session.js';
 import type { RunPanel } from './run-panel.js';
 import type { Notice } from '../../shared/run-protocol.js';
-
-/** The task type a run is launched as, contributed in `package.json`'s `taskDefinitions`. */
-export const RUN_TASK_TYPE = 'jpipe';
 
 export interface RunDeps {
     context: vscode.ExtensionContext;
@@ -225,7 +223,8 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
     if (events) {
         // What names an element still running or waiting, before its event carries its label.
         deps.session.update(token, { labels: compiledLabels(await readFileText(files.compiled) ?? '') });
-        await forgetEvents(files.events);
+        // A launch again writes the file anew, and the first launch's lines must not be read as its own.
+        await quietlyDelete(files.events);
     }
     // Compiling, finding the environment and preparing to follow take time, in which another run
     // may have started, or this one been stopped: a run no longer on show is never launched, where
@@ -238,7 +237,7 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
         deps.session.endWith(token, 'stopped', { text: `${name} was stopped before it started.`, action: null });
         return;
     }
-    deps.logger.info(`${check ? 'Checking' : 'Running'} ${name}: ${invocation.program} ${invocation.args.join(' ')} (in ${cwd})`);
+    deps.logger.info(`${underWay(name, check)} with ${invocation.program} ${invocation.args.join(' ')} (in ${cwd})`);
 
     const task = runTask(run, folder, cwd, invocation);
     const showOutput = (): void => terminalOf(task)?.show();
@@ -247,7 +246,7 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
     let exitCode: number | undefined;
     try {
         exitCode = await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Window, title: `${check ? 'Checking' : 'Running'} ${name}…` },
+            { location: vscode.ProgressLocation.Window, title: underWay(name, check) },
             () => executed(task, execution => deps.session.attach(token, execution, showOutput)));
     } catch (err: unknown) {
         deps.session.endWith(token, 'blocked', { text: `Could not start jpipe-runner: ${messageOf(err)}`, action: null });
@@ -263,18 +262,6 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
         await endedWithoutReport(deps, token, run, files, { draw, stream: events !== undefined }, ended, read.problem);
     } else {
         await showReport(deps, token, run, files, ended, read.report);
-    }
-}
-
-/**
- * Remove an earlier launch's events: a run launched again without its drawing writes the file
- * anew, and the first launch's lines must not be read as the second's.
- */
-async function forgetEvents(file: vscode.Uri): Promise<void> {
-    try {
-        await vscode.workspace.fs.delete(file);
-    } catch {
-        // There was none.
     }
 }
 
@@ -600,7 +587,7 @@ async function resolveSubject(
 
 /** The workspace's model named `name` in the document at `uri`, as the server has it now. */
 async function modelNamed(deps: RunDeps, name: string, uri: string): Promise<Model | undefined> {
-    return (await deps.models.freshModels()).find(m => m.name === name && vscode.Uri.parse(m.uri).toString() === uri);
+    return (await deps.models.freshModels()).find(m => m.name === name && sameFile(m.uri, uri));
 }
 
 /** How many runs this window has started: what tells one run's folder from another's. */
@@ -621,9 +608,14 @@ async function runFolder(context: vscode.ExtensionContext): Promise<vscode.Uri> 
 
 /** Remove a run's folder. What is left behind if it cannot be is a few small files in the extension's storage. */
 async function discard(folder: vscode.Uri): Promise<void> {
+    await quietlyDelete(folder);
+}
+
+/** Remove a file or a folder, if it is there: nothing depends on its going. */
+async function quietlyDelete(uri: vscode.Uri): Promise<void> {
     try {
-        await vscode.workspace.fs.delete(folder, { recursive: true });
+        await vscode.workspace.fs.delete(uri, { recursive: true });
     } catch {
-        // Nothing to do about it, and nothing depends on it.
+        // There was none, or it cannot go: nothing to do about either.
     }
 }

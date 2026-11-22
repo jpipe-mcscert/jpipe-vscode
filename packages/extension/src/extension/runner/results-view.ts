@@ -3,7 +3,8 @@ import * as path from 'node:path';
 import type { LibraryStep } from './step-binding.js';
 import { resultRows, stepLocation, type Durations, type ResultRow, type RowIcon, type RunReport } from './run-report.js';
 import type { RunSession } from './run-session.js';
-import { kindOf, rowsWithoutReport } from './run-state.js';
+import { kindOf } from '../../shared/run-kind.js';
+import { rowsWithoutReport } from './run-state.js';
 
 export const RESULTS_VIEW_ID = 'jpipe.results';
 /** Set once a run has a report, which is when the panel has something to show. */

@@ -3,7 +3,7 @@ import type { LanguageClient } from 'vscode-languageclient/node';
 import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import { cursorAt, type Model } from './models-tree.js';
-import { editorRange, type ModelsView } from './models-view.js';
+import { editorRange, sameFile, type ModelsView } from './models-view.js';
 import type { LibrariesView } from '../runner/libraries-view.js';
 import { bindSteps, stepLabel, stepNote, type LibraryStep } from '../runner/step-binding.js';
 import {
@@ -58,6 +58,8 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
     private selectedId: string | undefined;
     /** The steps of the checked libraries implementing each element, by element id. */
     private bindings = new Map<string, LibraryStep[]>();
+    /** Whether any library was checked when the steps were bound: what "no step" is said against. */
+    private anyChecked = false;
 
     constructor(
         private readonly client: LanguageClient,
@@ -84,9 +86,6 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
             vscode.workspace.onDidChangeTextDocument(e => {
                 if (this.isShown(e.document.uri) && e.contentChanges.length > 0) this.loader.scheduleRefresh();
             }),
-            vscode.workspace.onDidSaveTextDocument(doc => {
-                if (this.isShown(doc.uri)) this.loader.scheduleRefresh();
-            }),
             this.view.onDidChangeSelection(e => {
                 // A step counts as its element, so moving the cursor within that element leaves it selected.
                 const row = e.selection[0];
@@ -102,13 +101,13 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
     }
 
     private isModelFile(uri: vscode.Uri): boolean {
-        return this.model !== undefined && vscode.Uri.parse(this.model.uri).toString() === uri.toString();
+        return this.model !== undefined && sameFile(this.model.uri, uri);
     }
 
     /** Whether `uri` holds something on show: the model, or a template it inherits elements from. */
     private isShown(uri: vscode.Uri): boolean {
         return this.isModelFile(uri) || (this.elements ?? []).some(e =>
-            e.inheritedFrom !== undefined && vscode.Uri.parse(e.inheritedFrom.uri).toString() === uri.toString());
+            e.inheritedFrom !== undefined && sameFile(e.inheritedFrom.uri, uri));
     }
 
     refresh(): void {
@@ -142,6 +141,7 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
     }
 
     private bind(): void {
+        this.anyChecked = this.libraries.checkedLibraries().length > 0;
         this.bindings = this.model && this.elements
             ? bindSteps(this.model.name, this.elements.map(e => e.id), this.libraries.checkedSteps())
             : new Map();
@@ -189,7 +189,7 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
         item.id = element.id;
         item.iconPath = new vscode.ThemeIcon(ELEMENT_ICONS[element.kind], new vscode.ThemeColor(ELEMENT_COLORS[element.kind]));
         // In grey, only what is wrong: a required element no step implements, or one with several.
-        item.description = stepNote(element.kind, steps, this.libraries.checkedLibraries().length > 0);
+        item.description = stepNote(element.kind, steps, this.anyChecked);
         item.tooltip = `${element.kind === 'support' ? '@support' : element.kind} ${element.id}` +
             (element.label ? `\n${element.label}` : '') +
             (element.inheritedFrom ? `\nInherited from ${element.inheritedFrom.template}` : '');

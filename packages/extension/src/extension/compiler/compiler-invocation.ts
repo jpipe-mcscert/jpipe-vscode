@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import { readEnv } from '../process-launcher.js';
+import { pathKeyOf, readEnv } from '../process-launcher.js';
 import { parseSemver } from './release-selection.js';
 
 /**
@@ -98,11 +98,11 @@ export function buildPathEnv(
     // child with two entries differing only in case — and no say in which one wins. Replace
     // whichever casing is already there instead of adding a second.
     const env: NodeJS.ProcessEnv = { ...baseEnv };
-    const existingKey = Object.keys(env).find(key => key.toLowerCase() === 'path');
-    for (const key of Object.keys(env)) {
-        if (key.toLowerCase() === 'path') delete env[key];
+    const key = pathKeyOf(env);
+    for (const other of Object.keys(env)) {
+        if (other.toUpperCase() === 'PATH') delete env[other];
     }
-    env[existingKey ?? 'PATH'] = value;
+    env[key] = value;
     return env;
 }
 

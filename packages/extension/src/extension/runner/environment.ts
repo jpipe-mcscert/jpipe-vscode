@@ -7,7 +7,7 @@ import { messageOf } from '../../shared/errors.js';
 import { runInTerminal } from './step-terminal.js';
 import { installPylance, pylanceInstalled } from './pylance.js';
 import { PYLANCE_OFFER, pylanceLine } from '../requirements.js';
-import { execFileText } from '../process-launcher.js';
+import { runProgram } from '../process-launcher.js';
 import { envWithPath } from '../compiler/image-generator.js';
 import { expandTilde } from '../compiler/compiler-invocation.js';
 import {
@@ -52,7 +52,6 @@ import {
     type EnvironmentStatus,
     type FixStep,
     type Manager,
-    type PythonCommand,
     type Probe,
     type RequirementChange,
     type WorkspaceEnvironment
@@ -182,6 +181,9 @@ export class RunnerEnvironment implements vscode.Disposable {
                 if (e.affectsConfiguration('jpipe.runner') && !e.affectsConfiguration('jpipe.runner.libraries')) this.recheck();
             }),
             vscode.languages.onDidChangeDiagnostics(e => {
+                // Fired for every language at every keystroke: once the underline was answered,
+                // there is nothing left to look for.
+                if (this.answeredEditor) return;
                 const flagged = e.uris.find(uri => this.flagsRunnerImport(uri));
                 if (flagged) void this.answerEditor(flagged);
             }),
@@ -452,7 +454,7 @@ export class RunnerEnvironment implements vscode.Disposable {
 
     /** Run a program that looks at the workspace, in its folder, and give what it printed. */
     private execute(command: Command, folder: vscode.WorkspaceFolder | undefined, timeout = 15_000): Promise<{ stdout: string }> {
-        return execFileText(command.program, command.args, {
+        return runProgram(command.program, command.args, {
             cwd: folder?.uri.fsPath, timeout, windowsHide: true, env: this.processEnv()
         });
     }
@@ -501,8 +503,12 @@ export class RunnerEnvironment implements vscode.Disposable {
                 `Runner environment: the local jpipe-runner named in the settings, ${localSource}, is not a Python project.`);
             return;
         }
-        const environment = folder ? await this.workspaceEnvironment(folder) : {};
-        const machineRelease = await this.machineRunnerRelease(folder);
+        // Two programs to start, neither waiting on the other: the workspace's environment, which
+        // may ask Pipenv or Poetry, and the jpipe-runner installed on the machine.
+        const [environment, machineRelease] = await Promise.all([
+            folder ? this.workspaceEnvironment(folder) : Promise.resolve<WorkspaceEnvironment>({}),
+            this.machineRunnerRelease(folder)
+        ]);
         this.requirement = runnerRequirement(machineRelease);
         const probe = environment.python ? await this.probe({ program: environment.python, args: [] }, folder) : undefined;
         // The editor follows an environment that answers; one that does not is left alone.
@@ -551,7 +557,7 @@ export class RunnerEnvironment implements vscode.Disposable {
      */
     async releaseOf(command: Command, where: { cwd: string; env?: NodeJS.ProcessEnv }): Promise<string | undefined> {
         try {
-            const { stdout } = await execFileText(command.program, command.args, {
+            const { stdout } = await runProgram(command.program, command.args, {
                 cwd: where.cwd, timeout: 15_000, windowsHide: true, env: where.env ?? process.env
             });
             return parseRunnerVersion(stdout);
@@ -589,7 +595,7 @@ export class RunnerEnvironment implements vscode.Disposable {
     }
 
     /** Ask an interpreter what it is; `undefined` if it is not there or does not answer. */
-    private async probe(python: PythonCommand, folder: vscode.WorkspaceFolder | undefined): Promise<Probe | undefined> {
+    private async probe(python: Command, folder: vscode.WorkspaceFolder | undefined): Promise<Probe | undefined> {
         try {
             const { stdout } = await this.execute({ program: python.program, args: [...python.args, '-c', PROBE_SCRIPT] }, folder);
             return parseProbe(stdout);
@@ -603,7 +609,7 @@ export class RunnerEnvironment implements vscode.Disposable {
      * The Python a new environment is made with: the first install recent enough, starting with
      * the one the editor has selected. A virtual environment is never built on.
      */
-    private async basePython(folder: vscode.WorkspaceFolder): Promise<PythonCommand | undefined> {
+    private async basePython(folder: vscode.WorkspaceFolder): Promise<Command | undefined> {
         const answers = [];
         for (const command of basePythonCandidates(await this.selectedPython(folder), process.platform)) {
             const probe = await this.probe(command, folder);
@@ -687,24 +693,21 @@ export class RunnerEnvironment implements vscode.Disposable {
     }
 
     /**
-     * Offer the fix, once per workspace unless `insist` — a run asked for, rather than a workspace
-     * opened. Resolves to whether a run can go ahead afterwards.
+     * Offer the fix when a workspace with step libraries opens without an environment that can run
+     * them: once per workspace, and not at all with set-up suggestions turned off. A run that meets
+     * the same says so in the Run panel instead, with the fix on its button.
      */
-    async offer(insist: boolean): Promise<boolean> {
+    async offerSetUp(): Promise<void> {
         const status = await this.settled();
-        if (status.kind === 'ready') return true;
+        if (status.kind === 'ready') return;
         const label = fixLabel(status);
         const message = statusMessage(status);
-        if (!label || !message) {
-            if (insist && message) void vscode.window.showWarningMessage(message);
-            return false;
-        }
-        if (!insist && (!this.setting(OFFER_SETUP_SETTING, true) || this.context.workspaceState.get<boolean>(DECLINED_KEY))) return false;
+        if (!label || !message) return;
+        if (!this.setting(OFFER_SETUP_SETTING, true) || this.context.workspaceState.get<boolean>(DECLINED_KEY)) return;
         const notNow = 'Not Now';
         const answer = await vscode.window.showInformationMessage(message, label, notNow);
-        if (answer === label) return this.fix();
-        if (answer === notNow) await this.context.workspaceState.update(DECLINED_KEY, true);
-        return false;
+        if (answer === label) await this.fix();
+        else if (answer === notNow) await this.context.workspaceState.update(DECLINED_KEY, true);
     }
 
     /**

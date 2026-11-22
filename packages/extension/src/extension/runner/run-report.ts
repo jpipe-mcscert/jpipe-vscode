@@ -306,10 +306,7 @@ function verdictCounts(report: RunReport): string[] {
             if (n > 0) counts.push(plural(n, severity));
         }
     } else {
-        for (const [status, says] of OUTCOMES) {
-            const n = report.elements.filter(e => e.status === status).length;
-            if (n > 0) counts.push(`${n} ${says}`);
-        }
+        counts.push(...outcomeLinks(report.elements).map(link => link.text));
     }
     return counts;
 }

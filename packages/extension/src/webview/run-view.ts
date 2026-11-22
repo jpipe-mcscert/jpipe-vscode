@@ -56,7 +56,13 @@ export class RunPage {
      */
     private countsShown: string | null = null;
     /** What is on the canvas, so a state that changes something else does not redraw it. */
-    private drawn: { name: string; svg: string } | null = null;
+    private drawn: string | null = null;
+    /**
+     * The last drawing coloured: what it was coloured from and with, and the result. A run under
+     * way sends its state at every step started, which changes no colour, and colouring parses and
+     * writes the whole SVG.
+     */
+    private coloured: { source: string; key: string; svg: string } | null = null;
     /**
      * The justification whose drawing the canvas was last framed on: kept when a new run clears
      * the canvas, so that the drawing it makes of the same justification opens as the reader left
@@ -229,8 +235,7 @@ export class RunPage {
      * when it ends, and its steps under way marked.
      */
     private showDrawing(state: RunPanelState): void {
-        const statuses = state.progress?.statuses;
-        const svg = state.dataflow !== null && statuses ? colourRun(state.dataflow, statuses, state.progress?.observed) : state.dataflow;
+        const svg = this.colouredDrawing(state);
         if (svg === null) {
             this.drawn = null;
             this.canvas.clear();
@@ -239,7 +244,7 @@ export class RunPage {
             return;
         }
         this.body.dataset.mode = 'diagram';
-        if (this.drawn?.svg === svg) {
+        if (this.drawn === svg) {
             this.canvas.refreshMinimap();
             this.applyMarks();
             return;
@@ -248,9 +253,21 @@ export class RunPage {
         // a run is coloured on to the one it ends with, which puts every node in the same place.
         const keep = this.framed === state.name;
         this.canvas.show(svg, { documentPath: null, diagramName: `${state.name} (dataflow)` }, keep);
-        this.drawn = { name: state.name, svg };
+        this.drawn = svg;
         this.framed = state.name;
         this.applyMarks();
+    }
+
+    /** The drawing to show: the run's own, coloured with what it decided so far, or as it was given. */
+    private colouredDrawing(state: RunPanelState): string | null {
+        const statuses = state.progress?.statuses;
+        if (state.dataflow === null || !statuses) return state.dataflow;
+        const observed = state.progress?.observed ?? [];
+        const key = JSON.stringify([statuses, observed]);
+        if (this.coloured?.source !== state.dataflow || this.coloured.key !== key) {
+            this.coloured = { source: state.dataflow, key, svg: colourRun(state.dataflow, statuses, observed) };
+        }
+        return this.coloured.svg;
     }
 
     /**
@@ -329,7 +346,7 @@ export class RunPage {
         click('results-button', () => this.post({ type: 'results', row: null }));
         click('output-button', () => this.post({ type: 'output' }));
         // What is on show, colours included: a run that ended without its report has no other.
-        click('download-button', () => this.post({ type: 'download', svg: this.drawn?.svg ?? null }));
+        click('download-button', () => this.post({ type: 'download', svg: this.drawn }));
         click('notice-action', () => {
             const id = this.state?.notice?.action?.id;
             if (id) this.post({ type: 'action', id });

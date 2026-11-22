@@ -14,6 +14,13 @@ export function nameOf(group: Element): string {
     return title?.textContent?.trim() ?? '';
 }
 
+/** The two ends of an edge, by the names Graphviz gave them: its `<title>` is `tail->head`. */
+export function edgeEnds(edge: Element): { tail: string; head: string } | undefined {
+    const name = nameOf(edge);
+    const cut = name.indexOf('->');
+    return cut < 0 ? undefined : { tail: name.slice(0, cut), head: name.slice(cut + 2) };
+}
+
 /**
  * The suffix jpipe-runner gives the node of a template's `@support` slot, drawn in the template's
  * cluster beside the element that fills it, and named after it (from jpipe-runner 4.1).
@@ -38,13 +45,11 @@ export function downstream(svg: SVGSVGElement, start: SVGGElement): Set<SVGGElem
     const nodes = new Map(Array.from(svg.querySelectorAll<SVGGElement>('g.node')).map(node => [nameOf(node), node]));
     const out = new Map<string, { head: string; edge: SVGGElement }[]>();
     for (const edge of Array.from(svg.querySelectorAll<SVGGElement>('g.edge'))) {
-        const name = nameOf(edge);
-        const cut = name.indexOf('->');
-        if (cut < 0) continue;
-        const tail = name.slice(0, cut);
-        const edges = out.get(tail) ?? [];
-        edges.push({ head: name.slice(cut + 2), edge });
-        out.set(tail, edges);
+        const ends = edgeEnds(edge);
+        if (!ends) continue;
+        const edges = out.get(ends.tail) ?? [];
+        edges.push({ head: ends.head, edge });
+        out.set(ends.tail, edges);
     }
     const reached = new Set<SVGGElement>([start]);
     const seen = new Set<string>([nameOf(start)]);

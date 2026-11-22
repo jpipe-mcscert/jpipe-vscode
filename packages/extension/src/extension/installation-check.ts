@@ -27,10 +27,11 @@ export interface InstallationCheckDeps {
 export async function checkInstallation(deps: InstallationCheckDeps): Promise<void> {
     const { imageGenerator, releaseManager, runnerEnvironment, librariesView, logger } = deps;
     const mode = vscode.workspace.getConfiguration('jpipe').get<string>('executionMode', 'cli');
-    const compiler = await imageGenerator.check();
-    await librariesView.ready();
-    const hasLibraries = librariesView.allLibraries().length > 0;
-    const runs = hasLibraries ? await runnerEnvironment.describe() : undefined;
+    // The compiler and the runner are asked at once: each starts programs of its own, and the
+    // dialog waits for both.
+    const runsQuery = librariesView.ready().then(() =>
+        librariesView.allLibraries().length > 0 ? runnerEnvironment.describe() : undefined);
+    const [compiler, runs] = await Promise.all([imageGenerator.check(), runsQuery]);
     const pylance = pylanceInstalled();
 
     const facts: InstallationFacts = { compiler: compiler.status, runner: runs?.runner ?? 'none', pylance };

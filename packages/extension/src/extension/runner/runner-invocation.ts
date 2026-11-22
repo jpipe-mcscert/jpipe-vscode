@@ -8,6 +8,12 @@
 import { expandTilde } from '../compiler/compiler-invocation.js';
 import { RECOMMENDED, meetsMinimum, releaseNumbers } from '../requirements.js';
 
+/**
+ * The task type runs and environment fixes are launched as, contributed in `package.json`'s
+ * `taskDefinitions`.
+ */
+export const RUN_TASK_TYPE = 'jpipe';
+
 /** The library-selection setting: workspace paths of the checked step libraries. */
 export const LIBRARIES_SETTING = 'runner.libraries';
 /** Where models are run: the workspace's own environment, or a program the user names. */

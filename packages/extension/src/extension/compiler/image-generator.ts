@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import { JpipeLogger } from '../logger.js';
 import { asProcessFailure, detailOf, messageOf } from '../../shared/errors.js';
 import { ReleaseManager } from './release-manager.js';
-import { execFileText, planLaunchHere } from '../process-launcher.js';
+import { runProgram } from '../process-launcher.js';
 import {
     buildPathEnv,
     findDiagramName as findDiagramNameIn,
@@ -37,21 +37,6 @@ export interface DiagnosticRun {
     report: DiagnosticReport | null;
     /** 0 clean, 1 the model has errors, 42 the compiler crashed; undefined if it never ran. */
     exitCode: number | undefined;
-}
-
-/**
- * Runs the compiler, still without a shell.
- *
- * `planLaunchHere` only alters anything on Windows, where a command may be a batch shim that
- * `CreateProcessW` cannot start (see `process-launcher.ts`).
- */
-function runCompiler(
-    file: string,
-    args: string[],
-    options: { env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number }
-): Promise<{ stdout: string; stderr: string }> {
-    const plan = planLaunchHere(file, args, options.env);
-    return execFileText(plan.file, plan.args, { ...options, windowsVerbatimArguments: plan.windowsVerbatimArguments });
 }
 
 /** What identifies a compiler build: the command it is started with. */
@@ -160,12 +145,12 @@ export class ImageGenerator {
 
         let resolved: { file: string; args: string[] };
         try {
-            resolved = this.resolveExecCommand(config);
+            resolved = await this.usableCommand(config);
         } catch (e: unknown) {
-            vscode.window.showErrorMessage(messageOf(e));
+            // A compiler too old has said so already, with its update button.
+            if (!(e instanceof CompilerTooOldError)) void vscode.window.showErrorMessage(messageOf(e));
             throw e;
         }
-        await this.requireSupported(resolved, config);
 
         const argv = [
             ...resolved.args,
@@ -192,7 +177,7 @@ export class ImageGenerator {
         this.logger.info(`Executing: ${resolved.file} ${argv.join(' ')}`);
 
         try {
-            const { stdout } = await runCompiler(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
+            const { stdout } = await runProgram(resolved.file, argv, { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
             this.logger.info(`Generated ${format} for '${diagramName}' (${path.basename(document.uri.fsPath)})`);
             return stdout;
         } catch (error: unknown) {
@@ -228,20 +213,20 @@ export class ImageGenerator {
         const execKey = execKeyOf(resolved);
         // A compiler that rejected `-f json` stays refused while it answers `--version` the same.
         this.verdicts.delete(execKey);
-        const verdict = await this.verdictFor(resolved, config);
+        // Two starts of the compiler, neither waiting on the other's answer.
+        const [verdict, doctor] = await Promise.all([
+            this.verdictFor(resolved, config),
+            runProgram(resolved.file, [...resolved.args, '--headless', 'doctor'], { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES })
+                .then(({ stdout, stderr }) => ({ output: (stdout + stderr).trim() || 'jPipe is accessible.' }), (error: unknown) => ({ error }))
+        ]);
         const version = compilerLine(verdict);
-
-        let output: string;
-        try {
-            const { stdout, stderr } = await runCompiler(resolved.file, [...resolved.args, '--headless', 'doctor'], { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES });
-            output = (stdout + stderr).trim() || 'jPipe is accessible.';
-        } catch (error: unknown) {
+        if ('error' in doctor) {
             // A compiler older than `doctor` fails here, and its version is the reason worth
             // giving: it has an update to offer, where "cannot access" has none.
-            const message = `Cannot access jPipe: ${detailOf(error)}`;
+            const message = `Cannot access jPipe: ${detailOf(doctor.error)}`;
             return verdict.kind === 'too-old' ? { status: 'too-old', message, version } : { status: 'unreachable', message };
         }
-        return { status: verdict.kind === 'too-old' ? 'too-old' : 'ready', message: output, version };
+        return { status: verdict.kind === 'too-old' ? 'too-old' : 'ready', message: doctor.output, version };
     }
 
     /**
@@ -269,16 +254,10 @@ export class ImageGenerator {
 
         let resolved: { file: string; args: string[] };
         try {
-            resolved = this.resolveExecCommand(config);
+            resolved = await this.usableCommand(config);
         } catch (e: unknown) {
-            // A misconfigured executable is the one case with nothing to render at all, so it
+            // A misconfigured executable, or one too old, has nothing to render at all, so it
             // stays a message in the raw pane rather than a silent empty panel.
-            return { raw: messageOf(e), report: null, exitCode: undefined };
-        }
-
-        try {
-            await this.requireSupported(resolved, config);
-        } catch (e: unknown) {
             return { raw: messageOf(e), report: null, exitCode: undefined };
         }
         const run = await this.runDiagnostic(resolved, inputFile, config, true);
@@ -306,12 +285,7 @@ export class ImageGenerator {
         const config = vscode.workspace.getConfiguration('jpipe');
         let resolved: { file: string; args: string[] };
         try {
-            resolved = this.resolveExecCommand(config);
-        } catch (e: unknown) {
-            return messageOf(e);
-        }
-        try {
-            await this.requireSupported(resolved, config);
+            resolved = await this.usableCommand(config);
         } catch (e: unknown) {
             return messageOf(e);
         }
@@ -386,7 +360,7 @@ export class ImageGenerator {
         execKey: string
     ): Promise<string | undefined> {
         try {
-            const { stdout, stderr } = await runCompiler(
+            const { stdout, stderr } = await runProgram(
                 resolved.file,
                 [...resolved.args, '--headless', '--version'],
                 { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES }
@@ -405,6 +379,17 @@ export class ImageGenerator {
      *
      * @throws CompilerTooOldError, after offering the update.
      */
+    /**
+     * The compiler to run, as configured, once it is known to be recent enough: throws what
+     * `resolveExecCommand` throws for one misconfigured, and a `CompilerTooOldError` for one too
+     * old, which has then told the user so.
+     */
+    private async usableCommand(config: vscode.WorkspaceConfiguration): Promise<{ file: string; args: string[] }> {
+        const resolved = this.resolveExecCommand(config);
+        await this.requireSupported(resolved, config);
+        return resolved;
+    }
+
     private async requireSupported(
         resolved: { file: string; args: string[] },
         config: vscode.WorkspaceConfiguration
@@ -455,7 +440,7 @@ export class ImageGenerator {
             [stdout, stderr].map(s => s.trim()).filter(Boolean).join('\n') || '(no output)';
 
         try {
-            const { stdout, stderr } = await runCompiler(resolved.file, argv, {
+            const { stdout, stderr } = await runProgram(resolved.file, argv, {
                 env: envWithPath(),
                 timeout: timeoutMs(config),
                 maxBuffer: MAX_OUTPUT_BYTES

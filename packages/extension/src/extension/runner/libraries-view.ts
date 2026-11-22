@@ -18,7 +18,16 @@ export const LIBRARIES_VIEW_ID = 'jpipe.libraries';
 const IGNORED_FOLDERS = ['node_modules', '.venv', 'venv', 'site-packages', '__pycache__', '.tox', '.git', '.mypy_cache', '.pytest_cache'];
 const IGNORED = `**/{${IGNORED_FOLDERS.join(',')}}/**`;
 /** A path inside one of them, as a saved file's: the same folders the scan leaves out. */
-const IN_IGNORED = new RegExp(`/(${IGNORED_FOLDERS.map(name => name.replaceAll('.', String.raw`\.`)).join('|')})/`);
+const IN_IGNORED = new RegExp('/(' + IGNORED_FOLDERS.map(name => name.replaceAll('.', '\\.')).join('|') + ')/');
+
+/** How many Python files the scan reads at once. */
+const SCAN_READERS = 16;
+
+/** Whether a file is the same library as before, or still none: the same steps, at the same lines. */
+function sameLibrary(before: Library | undefined, after: Library | undefined): boolean {
+    if (!before || !after) return before === after;
+    return JSON.stringify(before.steps) === JSON.stringify(after.steps);
+}
 
 /** A Python file declaring steps, or importing the decorators to declare them. */
 export interface Library {
@@ -104,7 +113,12 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
 
     private async scanAll(): Promise<void> {
         const files = await vscode.workspace.findFiles('**/*.py', IGNORED);
-        await Promise.all(files.map(uri => this.scan(uri)));
+        // A few files at a time: a Python project holds thousands, read as the window opens.
+        const queue = [...files];
+        const reader = async (): Promise<void> => {
+            for (let uri = queue.shift(); uri; uri = queue.shift()) await this.scan(uri);
+        };
+        await Promise.all(Array.from({ length: Math.min(SCAN_READERS, queue.length) }, reader));
         this.changed();
     }
 
@@ -115,8 +129,10 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
         clearTimeout(this.pending.get(key));
         this.pending.set(key, setTimeout(async () => {
             this.pending.delete(key);
+            const before = this.libraries.get(key);
             await this.scan(uri);
-            this.changed();
+            // Most saves in a Python project touch no step: they change nothing any view shows.
+            if (!sameLibrary(before, this.libraries.get(key))) this.changed();
         }, 300));
     }
 
@@ -145,7 +161,7 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
         if (this.libraries.size > 0 && !this.offered) {
             this.offered = true;
             // Pylance after the environment, so the two offers never stack.
-            void this.environment.offer(false).then(() => this.environment.offerPylance());
+            void this.environment.offerSetUp().then(() => this.environment.offerPylance());
         }
     }
 

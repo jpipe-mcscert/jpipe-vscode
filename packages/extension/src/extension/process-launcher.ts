@@ -56,6 +56,14 @@ export interface LaunchEnvironment {
 }
 
 /** Reads an environment variable case-insensitively, as Windows itself treats them. */
+/**
+ * The name `env` holds its search path under: `PATH`, spelled as `env` spells it (`Path` on
+ * Windows), or `PATH` when it holds none.
+ */
+export function pathKeyOf(env: NodeJS.ProcessEnv): string {
+    return Object.keys(env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH';
+}
+
 export function readEnv(env: NodeJS.ProcessEnv, name: string): string | undefined {
     const wanted = name.toLowerCase();
     for (const [key, value] of Object.entries(env)) {
@@ -223,4 +231,19 @@ export async function execFileText(
         }
         throw error;
     }
+}
+
+/**
+ * Run `file` with `args` and wait for it, still without a shell, as this platform can start it:
+ * `planLaunchHere` only alters anything on Windows, where a command may be a batch shim that
+ * `CreateProcessW` cannot start. What every program the extension waits on goes through, the
+ * compiler and jpipe-runner alike.
+ */
+export function runProgram(
+    file: string,
+    args: string[],
+    options: Omit<ExecFileOptions, 'encoding' | 'env'> & { env: NodeJS.ProcessEnv }
+): Promise<{ stdout: string; stderr: string }> {
+    const plan = planLaunchHere(file, args, options.env);
+    return execFileText(plan.file, plan.args, { ...options, windowsVerbatimArguments: plan.windowsVerbatimArguments });
 }

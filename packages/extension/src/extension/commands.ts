@@ -10,7 +10,7 @@ import type { ExclusionManager } from './exclusions.js';
 import { ImageGenerator, ImageFormat } from './compiler/image-generator.js';
 import type { ReleaseManager } from './compiler/release-manager.js';
 import type { PreviewProvider } from './preview/preview-provider.js';
-import type { ModelsView } from './models-view/models-view.js';
+import { sameFile, type ModelsView } from './models-view/models-view.js';
 import type { Model, ModelNode, TreeNode } from './models-view/models-tree.js';
 import { newModel } from './models-view/new-model-flow.js';
 import type { LibrariesView } from './runner/libraries-view.js';
@@ -139,7 +139,7 @@ export function registerCommands(deps: CommandDeps): void {
         if (!(arg instanceof vscode.Uri)) return 'editor';
         if (vscode.window.activeTextEditor?.document.uri.toString() === arg.toString()) return 'editor';
         // Asked afresh: the Models view only keeps its list current while it is showing.
-        const inFile = (await modelsView.freshModels()).filter(m => vscode.Uri.parse(m.uri).toString() === arg.toString());
+        const inFile = (await modelsView.freshModels()).filter(m => sameFile(m.uri, arg));
         if (inFile.length === 0) {
             void vscode.window.showWarningMessage(`${vscode.workspace.asRelativePath(arg)} declares no model.`);
             return undefined;

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { JpipeLogger } from '../logger.js';
 import { messageOf } from '../../shared/errors.js';
 import type { HostToRunPanel, NoticeAction, RunPanelToHost } from '../../shared/run-protocol.js';
-import { editorRange, type ModelsView } from '../models-view/models-view.js';
+import { editorRange, sameFile, type ModelsView } from '../models-view/models-view.js';
 import { fetchElements } from '../models-view/elements-tree.js';
 import type { Model, Range, RequestFn } from '../models-view/models-tree.js';
 import { revealColumnAmong } from '../preview/reveal-column.js';
@@ -192,7 +192,7 @@ export class RunPanel implements vscode.Disposable {
         const models = await this.models.freshModels();
         const modelNamed = (name: string): Model | undefined => {
             const named = models.filter(m => m.name === name);
-            return named.find(m => vscode.Uri.parse(m.uri).toString() === run.uri) ?? named[0];
+            return named.find(m => sameFile(m.uri, run.uri)) ?? named[0];
         };
         let fallback: Model | undefined;
         for (const candidate of elementCandidates(id, run.name)) {

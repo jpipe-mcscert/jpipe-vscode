@@ -24,6 +24,15 @@ import { TreeLoader } from './tree-loader.js';
 
 export const MODELS_VIEW_ID = 'jpipe.models';
 
+/**
+ * Whether `uri`, as the language server writes it, names the same file as `file`: both are
+ * compared as the editor normalises them, since the server and the editor may spell one
+ * differently (an encoded drive letter, say).
+ */
+export function sameFile(uri: string, file: string | vscode.Uri): boolean {
+    return vscode.Uri.parse(uri).toString() === file.toString();
+}
+
 /** A range as the language server gives it, as the editor takes it. */
 export function editorRange({ start, end }: Range): vscode.Range {
     return new vscode.Range(start.line, start.character, end.line, end.character);
@@ -95,7 +104,11 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
             watcher,
             watcher.onDidCreate(() => this.loader.scheduleRefresh()),
             watcher.onDidDelete(() => this.loader.scheduleRefresh()),
-            watcher.onDidChange(() => this.loader.scheduleRefresh()),
+            // A file open in an editor has had its edits counted as they were made: saving it
+            // changes nothing the server does not have. One changed on disk, closed, has not.
+            watcher.onDidChange(uri => {
+                if (!vscode.workspace.textDocuments.some(open => open.uri.toString() === uri.toString())) this.loader.scheduleRefresh();
+            }),
             vscode.workspace.onDidChangeTextDocument(e => {
                 if (e.document.languageId === 'jpipe' && e.contentChanges.length > 0) this.loader.scheduleRefresh();
             }),
@@ -306,8 +319,7 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
     private async revealActiveModel(): Promise<void> {
         const editor = vscode.window.activeTextEditor;
         if (!this.view.visible || editor?.document.languageId !== 'jpipe') return;
-        const uri = editor.document.uri.toString();
-        const inFile = this.models.filter(m => vscode.Uri.parse(m.uri).toString() === uri);
+        const inFile = this.models.filter(m => sameFile(m.uri, editor.document.uri));
         const model = modelAtLine(inFile, editor.selection.active.line);
         if (!model || this.selectedKey === model.key || showsModel(this.view.selection[0], model.key)) return;
         const node = nodeForModel(this.tree, model.key);

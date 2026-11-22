@@ -390,18 +390,22 @@ export class PreviewProvider {
     }
 
     /** Run the compiler's diagnostic and hand the report to the page. */
-    private async updateDiagnostic(document: vscode.TextDocument): Promise<void> {
+    private async updateDiagnostic(document: vscode.TextDocument, refused?: CompilerTooOldError): Promise<void> {
         const revision = ++this.revision;
         this.post({ type: 'busy', busy: true });
         let run: DiagnosticRun;
-        try {
-            run = await this.imageGenerator.generateDiagnostic(document);
-        } catch (error) {
-            // A failure to *run* the diagnostic is itself the report: the panel shows the reason
-            // rather than going blank, so this is not an early return.
-            const msg = messageOf(error);
-            this.logger.error(`Diagnostic failed in ${document.fileName}: ${msg}`);
-            run = { raw: `Failed to run diagnostic:\n\n${msg}`, report: null, exitCode: undefined };
+        if (refused) {
+            // The compiler was just refused, and asking it again would only be refused again.
+            run = notRun(refused);
+        } else {
+            try {
+                run = await this.imageGenerator.generateDiagnostic(document);
+            } catch (error) {
+                // A failure to *run* the diagnostic is itself the report: the panel shows the reason
+                // rather than going blank, so this is not an early return.
+                this.logger.error(`Diagnostic failed in ${document.fileName}: ${messageOf(error)}`);
+                run = notRun(error);
+            }
         }
 
         const disposition = dispositionOf({
@@ -527,7 +531,7 @@ export class PreviewProvider {
         if (this.diagramDisposition(revision) !== 'deliver') return;
         this.viewMode = 'diagnostic';
         this.diagnosticForced = true;
-        await this.updateDiagnostic(document);
+        await this.updateDiagnostic(document, error);
     }
 
     /** Build and send a render message, and remember it for the `ready` replay. */
@@ -687,4 +691,9 @@ export class PreviewProvider {
         return panel;
     }
     
+}
+
+/** The report of a diagnostic that could not be run: the reason, as its text. */
+function notRun(error: unknown): DiagnosticRun {
+    return { raw: `Failed to run diagnostic:\n\n${messageOf(error)}`, report: null, exitCode: undefined };
 }

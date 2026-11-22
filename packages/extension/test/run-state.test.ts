@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import { parseReport, type RunReport } from '../src/extension/runner/run-report.js';
 import {
-    clockTime, elementCandidates, endedWithout, kindOf, outOfDateReason, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
-    underWay, type ShownRun
+    clockTime, elementCandidates, endedWithout, outOfDateReason, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
+    type ShownRun
 } from '../src/extension/runner/run-state.js';
+import { kindOf, underWay } from '../src/shared/run-kind.js';
 import { RunEventReader, type RunProgress } from '../src/extension/runner/run-events.js';
 
 /**

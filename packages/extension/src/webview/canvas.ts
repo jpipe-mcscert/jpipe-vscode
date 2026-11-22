@@ -104,7 +104,10 @@ export class DiagramCanvas {
     /** What is on screen. Always the same aspect ratio as the panel. */
     private vb: Box | null = null;
     /** Set when the SVG carries no usable geometry: navigation is disabled rather than guessed at. */
-    private navigable = false;
+    /** Whether the diagram can be panned and zoomed: it has a frame to move within. */
+    private get navigable(): boolean {
+        return this.content !== null;
+    }
     /**
      * How the current view came about, which is what a panel resize needs to know.
      *
@@ -192,7 +195,6 @@ export class DiagramCanvas {
         this.source = null;
         this.svgEl = null;
         this.content = null;
-        this.navigable = false;
         this.els.wrapper.replaceChildren();
         this.minimap.release();
         this.minimap.hide();
@@ -346,7 +348,6 @@ export class DiagramCanvas {
             if (isDarkTheme()) adaptToDarkTheme(this.svgEl);
             this.content = resolveContent(this.svgEl);
             this.baseScale = naturalScale(this.content ?? { x: 0, y: 0, w: 1, h: 1 }, parseLength(this.svgEl.getAttribute('width')));
-            this.navigable = this.content !== null;
             // Serialised now, while the viewBox still spans the whole diagram: panning rewrites it,
             // so a copy taken later would show the current view as though it were the whole thing.
             // Taken from the live element rather than the raw text so the overview matches what the
@@ -354,8 +355,7 @@ export class DiagramCanvas {
             if (this.content) this.minimap.setSource(new XMLSerializer().serializeToString(this.svgEl));
         } else {
             this.content = null;
-            this.navigable = false;
-        }
+            }
     }
 
     /* ------------------------------------------------------------------ input */
