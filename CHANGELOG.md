@@ -1,6 +1,6 @@
 ## Changelog
 
-### v2.0.2 (Unreleased)
+### v2.0.2 (2026-11-22)
 - Leader: Sébastien Mosser
   - Bug Fixes:
     - **References into a loaded template resolve whether or not its file is open.** In a model that loads a file under a name (`load "library.jd" as lib`), a relation reaching one of the template's own elements, such as `lib:T:s`, was underlined as unresolved until you opened `library.jd`, and completion and go-to-definition went wrong in the same way. Nothing about the model had changed, only which tabs were open, so the error seemed to come and go. It now resolves either way (#37)
