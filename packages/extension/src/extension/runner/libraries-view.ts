@@ -17,8 +17,9 @@ export const LIBRARIES_VIEW_ID = 'jpipe.libraries';
  */
 const IGNORED_FOLDERS = ['node_modules', '.venv', 'venv', 'site-packages', '__pycache__', '.tox', '.git', '.mypy_cache', '.pytest_cache'];
 const IGNORED = `**/{${IGNORED_FOLDERS.join(',')}}/**`;
+const ESCAPED_DOT = String.raw`\.`;
 /** A path inside one of them, as a saved file's: the same folders the scan leaves out. */
-const IN_IGNORED = new RegExp('/(' + IGNORED_FOLDERS.map(name => name.replaceAll('.', '\\.')).join('|') + ')/');
+const IN_IGNORED = new RegExp('/(' + IGNORED_FOLDERS.map(name => name.replaceAll('.', ESCAPED_DOT)).join('|') + ')/');
 
 /** How many Python files the scan reads at once. */
 const SCAN_READERS = 16;
@@ -115,8 +116,9 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
         const files = await vscode.workspace.findFiles('**/*.py', IGNORED);
         // A few files at a time: a Python project holds thousands, read as the window opens.
         const queue = [...files];
-        const reader = async (): Promise<void> => {
-            for (let uri = queue.shift(); uri; uri = queue.shift()) await this.scan(uri);
+        const reader = (): Promise<void> => {
+            const uri = queue.shift();
+            return uri ? this.scan(uri).then(reader) : Promise.resolve();
         };
         await Promise.all(Array.from({ length: Math.min(SCAN_READERS, queue.length) }, reader));
         this.changed();
