@@ -234,23 +234,21 @@ export async function hookEdits(
     newName: string,
     contents: ModelContents
 ): Promise<TextEdit[]> {
-    const edits: TextEdit[] = [];
-    for (const model of modelsOf(unit)) {
+    const hooks = modelsOf(unit).flatMap(model => {
         const composition = model.composition;
-        if (composition?.operator !== 'refine') continue;
-
+        if (composition?.operator !== 'refine') return [];
         const entry = composition.config?.entries.find(candidate => candidate.key === HOOK_KEY);
-        if (!entry?.value) continue;
         const base = composition.params?.refs[0]?.ref;
-        if (!base) continue;
-
-        const target = hookTarget(await contents.contentsOf(base), entry.value);
-        if (!target || !affected.has(target)) continue;
-
+        return entry?.value && base ? [{ entry, hook: entry.value, base }] : [];
+    });
+    // Each base's contents are asked at once, not one hook after another.
+    const targets = await Promise.all(hooks.map(async ({ hook, base }) => hookTarget(await contents.contentsOf(base), hook)));
+    return hooks.flatMap(({ entry }, i) => {
+        const target = targets[i];
+        if (!target || !affected.has(target)) return [];
         const edit = stringTailEdit(GrammarUtils.findNodeForProperty(entry.$cstNode, 'value'), newName);
-        if (edit) edits.push(edit);
-    }
-    return edits;
+        return edit ? [edit] : [];
+    });
 }
 
 /**
