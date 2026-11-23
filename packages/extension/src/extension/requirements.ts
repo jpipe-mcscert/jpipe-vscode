@@ -72,14 +72,22 @@ export function runnerHas(version: string | undefined, feature: RunnerFeature): 
 }
 
 /**
+ * A pre-release, as PEP 440 writes one after the release numbers: alpha, beta, release candidate,
+ * development (`a1`, `b2`, `rc1`, `.dev0`, with their long spellings). A post-release (`.post1`)
+ * comes after its release, and is not one.
+ */
+const PRE_RELEASE = /^[-_.]?(?:a|alpha|b|beta|c|rc|pre|preview|dev)\d*(?:$|[-_.+])/i;
+
+/**
  * Whether the jpipe-runner release `version` may lack `feature` though it reports a release that
  * has it: a pre-release of the very release that brought it (`4.4.0.dev0`, `4.4.0rc1`), which may
- * predate the change. A release, or any later version, has it.
+ * predate the change. A release, a post-release of it (`4.4.0.post1`), or any later version has it.
  */
 export function runnerMayLack(version: string | undefined, feature: RunnerFeature): boolean {
     const numbers = releaseNumbers(version);
-    if (numbers === undefined || !runnerHas(version, feature)) return false;
-    return meetsMinimum(RUNNER_FEATURES[feature].since, numbers) && version !== formatRelease(numbers);
+    if (version === undefined || numbers === undefined || !runnerHas(version, feature)) return false;
+    const rest = version.slice(formatRelease(numbers).length);
+    return meetsMinimum(RUNNER_FEATURES[feature].since, numbers) && PRE_RELEASE.test(rest);
 }
 
 /**

@@ -196,11 +196,14 @@ describe('the release numbers a version starts with', () => {
     // What tells a refused option from the user's own usage error, which is not launched again.
     test('only a pre-release of the release that brought a feature may lack it', () => {
         for (const version of ['4.4.0.dev0', '4.4.0rc1', '4.4.dev3']) expect(runnerMayLack(version, 'jobs'), version).toBe(true);
-        for (const version of ['4.4.0', '4.4', '4.4.1.dev0', '4.5.0', '4.3.0.dev0', 'installed', undefined]) {
+        for (const version of ['4.4.0', '4.4', '4.4.0.post1', '4.4.0.post1.dev0', '4.4.0+local', '4.4.1.dev0', '4.5.0', '4.3.0.dev0', 'installed', undefined]) {
             expect(runnerMayLack(version, 'jobs'), String(version)).toBe(false);
         }
         expect(runnerMayLack('4.1.0.dev0', 'events')).toBe(true);
         expect(runnerMayLack('4.4.0.dev0', 'events')).toBe(false);
+        expect(runnerMayLack('4.1.0.post1', 'events')).toBe(false);
+        expect(runnerMayLack('4.4.0a1', 'jobs')).toBe(true);
+        expect(runnerMayLack('4.4.0b2', 'jobs')).toBe(true);
     });
 });
 

@@ -22,8 +22,9 @@ nothing.
 
 ## Decision
 
-- **A setting, `jpipe.runner.jobs`, in a group of its own, jPipe › Runner › Execution**
-  (ADR-VSC-0028): how a run runs, where General says which runner runs it. `auto`, or a whole
+- **A setting, `jpipe.runner.jobs`, in jPipe › Runner › Execution** (ADR-VSC-0028), beside the
+  execution environment and the runner command, which moved there from General: the group says
+  what runs a model and how, where General keeps the step libraries and the editor. `auto`, or a whole
   number of at least 1. It is a string with a pattern, so that the Settings editor shows a text box
   and refuses anything else, rather than sending the user to `settings.json`. A number written in
   `settings.json` is read as well. Anything else runs as `auto`, and the log says so, once.
