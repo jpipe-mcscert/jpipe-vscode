@@ -605,11 +605,19 @@ function qualify(prefix: string | undefined, name: string): string {
  * another case on a case-insensitive disk is the same file, as in the compiler's
  * `LoadResolver.identity`.
  */
-function identity(filePath: string): string {
+function identity(filePath: string, links = 0): string {
     const absolute = path.resolve(filePath);
     try {
         return fs.realpathSync.native(absolute);
     } catch {
+        // A link whose target was just deleted is still the file it named: the deletion is
+        // reported as the target's, and the link has to compare equal to it.
+        try {
+            const target = fs.readlinkSync(absolute);
+            if (links < 8) return identity(path.resolve(path.dirname(absolute), target), links + 1);
+        } catch {
+            // not a link
+        }
         // A file that does not exist, deleted or not yet created, is known by the real path of
         // its directory, so that it compares equal to itself before and after.
         try {

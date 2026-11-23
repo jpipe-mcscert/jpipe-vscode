@@ -35,7 +35,7 @@ import {
     requiredConfigKeys
 } from './jpipe-operators.js';
 import {
-    cannotSeeAllElements, expandedElements, fsPathOf, getAllElements, getLocalElements, hookTarget, implementsChain,
+    cannotSeeAllElements, expandedElements, fsPathOf, getAllElements, getLocalElements, buildsOnCycle, hookTarget,
     implementsCycle, isDiscardedConclusion, qualifiedIdText, requiredOverrides
 } from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
@@ -555,8 +555,8 @@ export class JpipeValidator {
 
     checkJustificationOverride(justification: Justification, accept: ValidationAcceptor): void {
         this.logger.debug(`Checking overrides for justification '${justification.id}'`);
-        // On a chain through a cycle, the compiler reports the cycle and builds nothing below it.
-        if (!justification.parent?.ref || implementsChain(justification).some(link => implementsCycle(link))) return;
+        // Below a cycle, the compiler reports the cycle and builds nothing.
+        if (!justification.parent?.ref || buildsOnCycle(justification)) return;
 
         const template = justification.parent.ref;
         const parentRefText = justification.parent.$refText ?? template.id;

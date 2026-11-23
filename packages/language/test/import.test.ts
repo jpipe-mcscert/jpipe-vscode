@@ -455,6 +455,20 @@ describe('A model named like one in a loaded file', () => {
             expect(builder.shouldRelink(document!, new Set([URI.file(path.join(tmpDir, 'lib.jd')).toString()]))).toBe(true);
         });
 
+    test('the loading file is checked again when the target of a link it loads is deleted', async () => {
+        await build({ 'target.jd': `\n${T}` }, `load "alias.jd"\n${J('K')}`);
+        try {
+            fs.symlinkSync(path.join(tmpDir, 'target.jd'), path.join(tmpDir, 'alias.jd'));
+        } catch {
+            return; // a platform that refuses links without privileges, such as Windows
+        }
+        const builder = services.shared.workspace.DocumentBuilder as unknown as {
+            shouldRelink(document: LangiumDocument, changed: Set<string>): boolean
+        };
+        fs.rmSync(path.join(tmpDir, 'target.jd'));
+        expect(builder.shouldRelink(document!, new Set([URI.file(path.join(tmpDir, 'target.jd')).toString()]))).toBe(true);
+    });
+
     test('in a file two others load, it is read once', async () => {
         const files = { 'lib.jd': `\n${T}`, 'a.jd': `load "lib.jd"\n${J('A')}`, 'b.jd': `load "lib.jd"\n${J('B')}` };
         expect(await build(files, `load "a.jd"\nload "b.jd"\n${J('K')}`)).toEqual([]);

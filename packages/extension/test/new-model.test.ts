@@ -131,6 +131,8 @@ describe('the load an implementation takes', () => {
         ['load "./lib/50%.jd"\n', 'file:///w/a.jd', 'file:///w/lib/50%25.jd'],
         ['load "./lib/a#1.jd"\n', 'file:///w/a.jd', 'file:///w/lib/a%231.jd'],
         ['load "./lib/why?.jd"\n', 'file:///w/a.jd', 'file:///w/lib/why%3F.jd'],
+        // A Windows path is one path whatever its case.
+        ['load "../lib/t.jd"\n', 'file:///c%3A/Work/app/a.jd', 'file:///c%3A/work/lib/t.jd'],
         // A UNC file keeps its server.
         ['load "../lib/t.jd"\n', 'file://server-a/share/app/a.jd', 'file://server-a/share/lib/t.jd'],
         ['load "//server-b/share/lib/t.jd"\n', 'file://server-a/share/app/a.jd', 'file://server-b/share/lib/t.jd']

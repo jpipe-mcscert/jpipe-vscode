@@ -175,7 +175,15 @@ export function loadsFile(newText: string, fileUri: string, targetUri: string): 
         resolved = { host: from.host, path: posix.join(posix.dirname(from.path), written) };
     }
     const target = placeOf(targetUri);
-    return resolved.host === target.host && posix.normalize(resolved.path) === target.path;
+    // A UNC share is a Windows path too, as case-insensitive as a drive.
+    if (target.host !== '') return resolved.host === target.host && posix.normalize(resolved.path).toLowerCase() === target.path.toLowerCase();
+    return resolved.host === target.host && samePath(posix.normalize(resolved.path), target.path);
+}
+
+/** Whether two paths are one: on a Windows drive or a UNC share, whatever their case. */
+function samePath(a: string, b: string): boolean {
+    const windows = (p: string) => /^\/[a-z]:\//.test(p);
+    return windows(a) || windows(b) ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
 /** Where a file is: its UNC server, `''` for a local file, and its path. */

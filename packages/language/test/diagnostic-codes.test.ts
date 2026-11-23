@@ -657,6 +657,17 @@ describe('a cycle of implements is reported once, as the compiler reports it', (
         expect((await diagnosticsIn(source)).filter(d => d.range.start.line === 3).map(d => issueCodeOf(d))).toEqual([]);
     });
 
+    // compiler 4.0.0 reports the cycle only: nothing below it is built, even where no model of
+    // J's own chain is on the cycle.
+    test('and a model whose ancestor is built from a cycle is not judged', async () => {
+        const source = 'justification b { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }\n'
+            + 'template X implements built { @support x is "X" }\n'
+            + 'template built is assemble(X, b) { conclusionLabel: "Built"  strategyLabel: "SB" }\n'
+            + 'template Top implements built { @support h is "H" }\n'
+            + 'justification J implements Top { evidence e2 is "E2" }';
+        expect((await diagnosticsIn(source)).filter(d => d.range.start.line === 4).map(d => issueCodeOf(d))).toEqual([]);
+    });
+
     test('not on a chain that ends', async () => {
         expect(await cyclic(`${TEMPLATE}\njustification J implements T { evidence T:a is "A" evidence T:b is "B" }`)).toEqual([]);
     });

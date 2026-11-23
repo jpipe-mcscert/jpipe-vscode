@@ -198,6 +198,28 @@ export function implementsCycle(model: Justification | Template): Array<Justific
 }
 
 /**
+ * Whether building `model` waits on a cycle anywhere below it: through the templates it implements
+ * and the sources of the operators that build them, as `waitsOn` follows them. The compiler builds
+ * nothing that waits on a cycle, and reports only the cycle (`cyclic-implements`), even where no
+ * model of `model`'s own chain is on it: `J implements Top`, `Top implements built`, and `built`
+ * assembled from a model that implements `built`.
+ */
+export function buildsOnCycle(model: Justification | Template): boolean {
+    const done = new Set<Justification | Template>();
+    const onPath = new Set<Justification | Template>();
+    const visit = (current: Justification | Template): boolean => {
+        if (onPath.has(current)) return true;
+        if (done.has(current)) return false;
+        onPath.add(current);
+        const found = waitsOn(current).some(visit);
+        onPath.delete(current);
+        done.add(current);
+        return found;
+    };
+    return visit(model);
+}
+
+/**
  * The models `model` is built from: its operator's sources, or else the template it implements.
  * The compiler builds a composed model from its sources alone, and refuses an `implements` written
  * beside them (`invalid-operator-call`), so that edge is not part of its graph.
