@@ -108,8 +108,9 @@ describe('a refine hook, read on contents', () => {
     const element = (id: string) => ({ $type: 'Evidence', id: { parts: id.split(':') } }) as never;
     const whole = (...list: string[]): Contents =>
         ({ kind: 'elements', elements: list.map(id => ({ id, element: element(id) })) });
-    const partial = (...list: string[]): Contents =>
-        ({ kind: 'cannot-tell', visible: list.map(id => ({ id, element: element(id) })) });
+    const entries = (list: string[]) => list.map(id => ({ id, element: element(id) }));
+    const partial = (declared: string[], inherited: string[] = []): Contents =>
+        ({ kind: 'cannot-tell', visible: [...entries(inherited), ...entries(declared)], declared: entries(declared) });
 
     test('names an element by its exact id, or by its last segments when the contents are whole', () => {
         expect(hookTarget(whole('T:a', 'e'), 'T:a')).toBeDefined();
@@ -119,8 +120,22 @@ describe('a refine hook, read on contents', () => {
 
     // A hidden element may end the same way, and the compiler scans those first.
     test('names one only by its exact id when the contents cannot tell', () => {
-        expect(hookTarget(partial('T:a'), 'T:a')).toBeDefined();
-        expect(hookTarget(partial('T:a'), 'a')).toBeUndefined();
+        expect(hookTarget(partial(['T:a']), 'T:a')).toBeDefined();
+        expect(hookTarget(partial(['T:a']), 'a')).toBeUndefined();
+    });
+
+    // An inherited element may share its id with a hidden one, which the compiler finds first.
+    test('names only an element the base declares when the contents cannot tell', () => {
+        expect(hookTarget(partial([], ['T:e']), 'T:e')).toBeUndefined();
+    });
+
+    test('on a base whose chain does not resolve, names what the base declares and nothing it inherits', async () => {
+        const unit = await parse(`template T implements Missing { evidence e is "E" }
+justification B implements T { evidence own is "O" }`);
+        const contents = await new ModelContents().contentsOf(modelNamed(unit, 'B'));
+        expect(ids(contents)).toEqual(['T:e', 'own']);
+        expect(hookTarget(contents, 'own')).toBeDefined();
+        expect(hookTarget(contents, 'T:e')).toBeUndefined();
     });
 });
 
@@ -132,29 +147,35 @@ describe('a refine hook, read on contents', () => {
  */
 describe('the element helpers', () => {
 
-    const HELPERS = /\b(getAllElements|expandedElements|cannotSeeAllElements)\b/;
+    // Any mention, so that a namespace import (`utils.getAllElements`) counts as much as a named one.
+    const HELPERS = /\b(?:getAllElements|expandedElements)\b/;
     const ALLOWED: Record<string, string> = {
         'jpipe-utils.ts': 'defines them',
         'jpipe-model-contents.ts': 'is the declared implementation',
         'jpipe-scope.ts': 'links references, synchronously',
         'jpipe-import.ts': 'gives the scope its inherited elements, synchronously'
     };
+    const src = path.join(here, '..', 'src');
 
     function sources(dir: string): string[] {
         return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) return entry.name === 'generated' ? [] : sources(full);
-            return entry.name.endsWith('.ts') ? [full] : [];
+            return entry.name.endsWith('.ts') ? [path.relative(src, full).split(path.sep).join('/')] : [];
         });
     }
 
-    test('are imported by no rule or provider', () => {
-        const src = path.join(here, '..', 'src');
-        const importing = sources(src)
-            .filter(file => !(path.basename(file) in ALLOWED))
-            .filter(file => [...fs.readFileSync(file, 'utf8').matchAll(/^import\s*\{([^}]*)\}\s*from\s+['"][^'"]*jpipe-utils\.js['"]/gm)]
-                .some(match => HELPERS.test(match[1])))
-            .map(file => path.relative(src, file));
-        expect(importing, 'read the model through ModelContents instead').toEqual([]);
+    /** The source of `file` without its comments, which may name the helpers to explain them. */
+    const code = (file: string): string => fs.readFileSync(path.join(src, file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+
+    test('are used by no rule or provider', () => {
+        const using = sources(src).filter(file => !(file in ALLOWED) && HELPERS.test(code(file)));
+        expect(using, 'read the model through ModelContents instead').toEqual([]);
+    });
+
+    test('are allowed only in files that exist, by their path', () => {
+        for (const file of Object.keys(ALLOWED)) expect(fs.existsSync(path.join(src, file)), file).toBe(true);
     });
 });

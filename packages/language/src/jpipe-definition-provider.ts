@@ -120,11 +120,12 @@ export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
         const template = this.resolveTemplate(templatePath, unit, ownerDoc);
         if (!template) return undefined;
 
-        // What the template declares first, then what it inherits: its contents list them the other
-        // way round. Whole or not, since a declaration it can see is the one to go to.
-        const targetElement = [...listedIn(await this.contents.contentsOf(template))].reverse()
-            .map(entry => entry.element)
-            .find(e => localName(e.id) === elementName);
+        // `T:a` names the element whose id is `a` in T: one T declares, or one it inherits under a
+        // qualifier of its own (`U:a`, which `a` names by suffix). Whole contents or not, since a
+        // declaration it can see is the one to go to. Its own come last in the contents.
+        const listed = listedIn(await this.contents.contentsOf(template));
+        const targetElement = (listed.find(entry => entry.id === elementName)
+            ?? [...listed].reverse().find(entry => localName(entry.element.id) === elementName))?.element;
         if (!targetElement?.$cstNode) return undefined;
 
         const targetDoc = this.getDocument(targetElement);

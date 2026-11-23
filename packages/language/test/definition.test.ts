@@ -115,6 +115,49 @@ justification J implements T {
 `, 'T:absent is', 4);
         expect(links).toHaveLength(0);
     });
+
+    // In T, `a` is its own @support and `U:a` the evidence overriding U's: `T:a` names the first,
+    // whichever is declared last.
+    test('navigates to the element whose id in the template is the one named, not another that ends the same', async () => {
+        const source = `
+template U {
+    conclusion c is "C"
+    strategy s is "S"
+    @support a is "UA"
+    a supports s
+    s supports c
+}
+template T implements U {
+    @support a is "TA"
+    evidence U:a is "Done"
+}
+justification J implements T {
+    evidence T:a is "X"
+}
+`;
+        const links = await definitionsAt(source, 'T:a is "X"', 2);
+        expect(links).toHaveLength(1);
+        expect(links[0].targetRange.start.line).toBe(lineOf(source, '@support a is "TA"'));
+    });
+
+    test('still navigates to an element the template inherits, named by its last segment', async () => {
+        const source = `
+template U {
+    conclusion c is "C"
+    strategy s is "S"
+    @support a is "UA"
+    a supports s
+    s supports c
+}
+template T implements U { @support b is "B" }
+justification J implements T {
+    evidence T:a is "X"
+}
+`;
+        const links = await definitionsAt(source, 'T:a is "X"', 2);
+        expect(links).toHaveLength(1);
+        expect(links[0].targetRange.start.line).toBe(lineOf(source, '@support a is "UA"'));
+    });
 });
 
 /**

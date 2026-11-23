@@ -17,19 +17,32 @@
  * Linking is the one reader left outside: Langium resolves references synchronously, during the
  * build, so the scope provider and the import service read the declarations themselves.
  */
+import type { AstNode } from 'langium';
 import type { JustificationElement, Justification, Template } from './generated/ast.js';
 import { isConclusion } from './generated/ast.js';
-import { expandedElements, implementsChain, implementsLoops, type ExpandedElement } from './jpipe-utils.js';
+import { expandedElements, getLocalElements, implementsChain, implementsLoops, type ExpandedElement } from './jpipe-utils.js';
 
 /**
  * What `contentsOf` answers. `elements` is the whole list. `cannot-tell` says some elements are in
- * no body this can read; `visible` lists those it can, which is enough to find an element by its
- * exact id, since what a model declares replaces any element of that id it inherits, and never to
- * conclude that an element is missing.
+ * no body this can read; `visible` lists those it can, never enough to conclude that an element is
+ * missing. Of those, `declared` are the model's own: an element found among them by its exact id is
+ * the one the compiler finds, since what a model declares replaces any element of that id it
+ * inherits. An inherited one may share its id with a hidden element, which the compiler finds first.
  */
 export type Contents =
     | { readonly kind: 'elements'; readonly elements: readonly ExpandedElement[] }
-    | { readonly kind: 'cannot-tell'; readonly visible: readonly ExpandedElement[] };
+    | {
+        readonly kind: 'cannot-tell';
+        readonly visible: readonly ExpandedElement[];
+        readonly declared: readonly ExpandedElement[];
+    };
+
+/** *Cannot tell*, for `model`, with what its bodies show. */
+function cannotTell(model: Justification | Template): Contents {
+    const visible = expandedElements(model);
+    const own = new Set<AstNode>(getLocalElements(model));
+    return { kind: 'cannot-tell', visible, declared: visible.filter(entry => own.has(entry.element)) };
+}
 
 /** The elements `contents` lists, whole or not. */
 export function listedIn(contents: Contents): readonly ExpandedElement[] {
@@ -57,7 +70,7 @@ export class DeclaredContents implements ContentsSource {
  */
 export class CompiledContents implements ContentsSource {
     async contentsOf(model: Justification | Template): Promise<Contents> {
-        return { kind: 'cannot-tell', visible: expandedElements(model) };
+        return cannotTell(model);
     }
 }
 
@@ -84,7 +97,7 @@ export class ModelContents {
     async contentsOf(model: Justification | Template): Promise<Contents> {
         const chain = implementsChain(model);
         if (implementsLoops(model) || chain.some(link => link.parent !== undefined && !link.parent.ref)) {
-            return { kind: 'cannot-tell', visible: expandedElements(model) };
+            return cannotTell(model);
         }
         if (chain.some(link => link.composition !== undefined)) return this.compiled.contentsOf(model);
         return this.declared.contentsOf(model);
@@ -106,16 +119,16 @@ export class ModelContents {
  * to its full `T:c`.
  *
  * When the contents *cannot tell*, some elements are hidden from this, and the compiler scans them
- * first. An exact id stays reliable — what the base declares itself replaces any inherited element
- * of that id — but a suffix match does not, since a hidden element may end the same way. Only the
- * exact pass runs then, so `undefined` means "not found" for whole contents and "cannot tell"
- * otherwise; callers must not report the latter.
+ * first. An exact id stays reliable among what the base declares itself, which replaces any
+ * inherited element of that id, and nowhere else: an inherited element may share its id with a
+ * hidden one, and a suffix may match a hidden one too. Only that exact pass runs then, so
+ * `undefined` means "not found" for whole contents and "cannot tell" otherwise; callers must not
+ * report the latter.
  */
 export function hookTarget(contents: Contents, hook: string): JustificationElement | undefined {
-    const elements = listedIn(contents);
-    const exact = elements.find(entry => entry.id === hook);
+    if (contents.kind === 'cannot-tell') return contents.declared.find(entry => entry.id === hook)?.element;
+    const exact = contents.elements.find(entry => entry.id === hook);
     if (exact) return exact.element;
-    if (contents.kind === 'cannot-tell') return undefined;
     const suffix = `:${hook}`;
-    return elements.find(entry => !isConclusion(entry.element) && entry.id.endsWith(suffix))?.element;
+    return contents.elements.find(entry => !isConclusion(entry.element) && entry.id.endsWith(suffix))?.element;
 }

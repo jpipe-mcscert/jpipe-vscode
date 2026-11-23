@@ -38,12 +38,14 @@ holds:
 - **One question, one answer type.** A consumer asks for a model's contents
   (`ModelContents.contentsOf`, in `jpipe-model-contents.ts`) and receives either its effective
   elements, under the ids the compiler gives them, or *cannot tell*. Validation rules,
-  completion, hover, rename and definition all ask this question. None of them reads an element
+  completion, rename and definition all ask this question, as will hover once it shows a model's
+  elements. None of them reads an element
   list around it: `getAllElements` and `expandedElements` are imported only by the declared
   implementation and by linking (below), which `test/model-contents.test.ts` holds.
-- ***Cannot tell* lists what it can see.** It carries the elements the bodies show. A consumer may
-  find an element there by its exact id, since what a model declares replaces any element of that
-  id it inherits; it may never conclude from them that an element is missing. That is what keeps
+- ***Cannot tell* lists what it can see.** It carries the elements the bodies show, and which of
+  them the model declares itself. A consumer may find one of those by its exact id, since what a
+  model declares replaces any element of that id it inherits; an inherited element may share its
+  id with a hidden one. It may never conclude from them that an element is missing. That is what keeps
   a `refine` hook spelling an exact id renamed on a base built on a composition.
 - **Two implementations behind it, chosen by the service.**
   - *Declared* contents serve a model whose `implements` chain is plain. They are read from the

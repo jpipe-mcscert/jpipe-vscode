@@ -874,6 +874,35 @@ describe('Hook value completion', () => {
         });
     });
 
+    // A hook is looked up by the id the compiler gives the element in the base: an inherited `e`
+    // is `T:e` there, which names it exactly, even in a base whose other elements are hidden.
+    test('offers an inherited evidence under the id it has in the base', async () => {
+        await checkCompletion({
+            text: `
+                template T {
+                    conclusion c is "C"
+                    strategy s is "S"
+                    evidence e is "Inherited"
+                    @support a is "A"
+                    e supports s
+                    a supports s
+                    s supports c
+                }
+                justification Base implements T { evidence T:a is "Own" }
+                justification Ref { conclusion rc is "RC" }
+                justification Composed is refine(Base, Ref) { hook: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                const item = completions.items.find(i => i.label === 'T:e');
+                expect(item, completions.items.map(i => i.label).join(', ')).toBeDefined();
+                expect((item?.textEdit as { newText?: string })?.newText).toBe('T:e');
+                expect(completions.items.map(i => i.label)).toContain('T:a');
+                expect(completions.items.map(i => i.label)).not.toContain('e');
+            }
+        });
+    });
+
     // An id like `e` says nothing on its own; the label is what tells them apart.
     test('shows each candidate label beside its id', async () => {
         await checkCompletion({

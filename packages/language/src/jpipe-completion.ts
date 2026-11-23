@@ -548,26 +548,24 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             document.textDocument.offsetAt(position) - partial.length
         );
 
+        // Under the id the compiler gives each element in the base, which is what a hook is looked
+        // up by: `T:e` for an `e` the base inherits from T, which names it whether or not every
+        // element of the base can be seen.
         const contents = await this.services.references.ModelContents.contentsOf(base);
         return listedIn(contents)
-            .map(entry => entry.element)
-            .filter(element => isEvidence(element))
-            .filter(element => qualifiedIdText(element.id).length > 0)
-            .filter(element => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, qualifiedIdText(element.id)))
-            .map(element => {
-                const id = qualifiedIdText(element.id);
-                return {
-                    label: id,
-                    kind: CompletionItemKind.Value,
-                    // The id is what gets inserted; the label is what makes it recognisable.
-                    labelDetails: { detail: `  "${element.name}"` },
-                    detail: `evidence in ${firstParam}`,
-                    documentation: element.name,
-                    sortText: `0_hook_${id}`,
-                    // Replaces what has been typed so far inside the quotes, and nothing else.
-                    textEdit: { range: { start, end: position }, newText: id }
-                };
-            });
+            .filter(({ element, id }) => isEvidence(element) && id.length > 0)
+            .filter(({ id }) => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, id))
+            .map(({ element, id }) => ({
+                label: id,
+                kind: CompletionItemKind.Value,
+                // The id is what gets inserted; the label is what makes it recognisable.
+                labelDetails: { detail: `  "${element.name}"` },
+                detail: `evidence in ${firstParam}`,
+                documentation: element.name,
+                sortText: `0_hook_${id}`,
+                // Replaces what has been typed so far inside the quotes, and nothing else.
+                textEdit: { range: { start, end: position }, newText: id }
+            }));
     }
 
     /**
