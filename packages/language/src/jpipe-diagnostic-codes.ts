@@ -26,8 +26,10 @@ export const JpipeIssue = {
     ConclusionPresent:      'conclusion-present',
     SingleConclusion:       'single-conclusion',
     InheritedConclusion:    'inherited-conclusion',
+    CyclicImplements:       'cyclic-implements',
     UnknownOperator:        'unknown-operator',
     OperatorArity:          'operator-arity',
+    DuplicateSource:        'duplicate-source',
     UnknownConfigKey:       'unknown-config-key',
     UnknownHook:            'unknown-hook',
     UnknownUnificationMethod: 'unknown-unification-method',
@@ -76,6 +78,7 @@ export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     [JpipeIssue.SingleConclusion]:      'error',   // rejected under this same code
     [JpipeIssue.InheritedConclusion]:   'error',   // rejected under this same code (from 4.0.0)
     [JpipeIssue.NoAbstractSupport]:     'error',   // rejected under this same code
+    [JpipeIssue.CyclicImplements]:      'error',   // rejected under this same code
     [JpipeIssue.StrategySupported]:     'error',   // rejected under this same code
     [JpipeIssue.ConclusionSupported]:   'error',   // rejected under this same code
     [JpipeIssue.InvalidSupport]:        'error',   // rejected under this same code
@@ -83,6 +86,7 @@ export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     // The operator family: `invalid-operator-call` from compiler 4.0.0, `execution-error` before.
     [JpipeIssue.UnknownOperator]:       'error',   // from `ApplyOperator`
     [JpipeIssue.OperatorArity]:         'error',   // "requires exactly 2 sources"
+    [JpipeIssue.DuplicateSource]:       'error',   // "the model 'b' is given more than once"
     [JpipeIssue.MissingConfigKey]:      'error',   // "were not provided"
     [JpipeIssue.UnknownConfigKey]:      'error',   // "unknown argument(s)": 4.0.0 refuses it, 3.x ignored it
     [JpipeIssue.LoadUnresolved]:        'error',   // FATAL from `LoadResolver`; aborts the pipeline
@@ -147,6 +151,11 @@ export interface JpipeIssuePayloads {
         /** Absent when the operator takes any number above `min`. */
         max?: number;
     };
+    [JpipeIssue.DuplicateSource]: {
+        operator: string;
+        /** The source as written, e.g. `lib:b`. */
+        source: string;
+    };
     [JpipeIssue.UnknownConfigKey]: {
         actual: string;
         operator: string;
@@ -182,6 +191,8 @@ export interface JpipeIssuePayloads {
     [JpipeIssue.SingleConclusion]:      { modelId: string; id: string };
     /** `parentId` is the template as the `implements` line spells it, e.g. `lib:T`. */
     [JpipeIssue.InheritedConclusion]:   { modelId: string; parentId: string; id: string };
+    /** `cycle` is the models in the order the message names them, starting with `modelId`. */
+    [JpipeIssue.CyclicImplements]:      { modelId: string; cycle: string[] };
     /** `candidates` are the ids a hook could name here, for a fix that offers the near misses. */
     [JpipeIssue.UnknownHook]:           { actual: string; modelId: string; candidates: string[] };
     // `Record<never, never>` rather than `Record<string, never>`: only the former has `keyof`

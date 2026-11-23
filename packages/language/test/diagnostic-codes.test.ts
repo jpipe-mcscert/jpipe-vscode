@@ -53,6 +53,9 @@ async function payloadFor<C extends JpipeIssueCode>(source: string, code: C): Pr
 
 const TEMPLATE = 'template T { @support a is "A" @support b is "B" conclusion c is "C" strategy s is "S"\n a supports s\n b supports s\n s supports c }';
 /** A justification of `T` that overrides neither `@support`, and has nothing else wrong with it. */
+// compiler 4.0.0: `cyclic-implements`, "cycle detected: A implements B implements A", on `B`.
+const CYCLE = 'template A implements B { conclusion c is "C"  strategy s is "S"  @support h is "H"  s supports c  h supports s }\n'
+    + 'template B implements A { @support g is "G" }';
 const MISSING_OVERRIDES = `${TEMPLATE}\njustification J implements T { evidence e is "E" }`;
 
 describe('diagnostic codes', () => {
@@ -75,6 +78,8 @@ describe('diagnostic codes', () => {
         [JpipeIssue.UnknownConfigKey, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" strategyLabel: "S" nope: "X" }'],
         [JpipeIssue.MissingConfigKey, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" }'],
         [JpipeIssue.OperatorArity, 'justification A { conclusion c is "C" }\njustification B is refine(A)'],
+        [JpipeIssue.DuplicateSource, 'justification A { conclusion c is "C" }\njustification B is assemble(A, A) { conclusionLabel: "C" strategyLabel: "S" }'],
+        [JpipeIssue.CyclicImplements, CYCLE],
         [JpipeIssue.UnknownUnificationMethod, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" strategyLabel: "S" unifyBy: "nope" }'],
         [JpipeIssue.UnknownHook, 'justification A { conclusion c is "C" }\njustification B { conclusion d is "D" }\njustification R is refine(A, B) { hook: "nope" }'],
         [JpipeIssue.NoDuplicateIds, 'justification J { conclusion c is "C" evidence c is "E" }'],
@@ -100,7 +105,9 @@ describe('diagnostic codes', () => {
             MISSING_OVERRIDES,
             `${TEMPLATE}\njustification J implements T { strategy T:a is "A" evidence T:b is "B" }`,
             `${TEMPLATE}\njustification J implements T { conclusion x is "X" strategy y is "Y"\n y supports x }`,
-            'justification J { conclusion c is "C" }\njustification J { conclusion c is "C" }'
+            'justification J { conclusion c is "C" }\njustification J { conclusion c is "C" }',
+            CYCLE,
+            'justification A { conclusion c is "C" }\ntemplate R is refine(A, A) { hook: "c" }'
         ];
         const uncoded: string[] = [];
         for (const source of corpus) {
@@ -587,5 +594,104 @@ describe('payloads carry what a fix needs', () => {
     test('payloads survive a JSON round trip unchanged', async () => {
         const payload = await payloadFor(MISSING_OVERRIDES, JpipeIssue.NoAbstractSupport);
         expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
+    });
+});
+
+// #128. Each expectation is what jpipe-compiler 4.0.0 printed for the same file.
+describe('a cycle of implements is reported once, as the compiler reports it', () => {
+
+    const cyclic = async (source: string) => (await diagnosticsIn(source))
+        .filter(d => issueCodeOf(d) === JpipeIssue.CyclicImplements);
+
+    test('in its words, on the template the closing implements names', async () => {
+        const [diagnostic, ...others] = await cyclic(CYCLE);
+        expect(others).toEqual([]);
+        expect(Diagnostic.getMessageString(diagnostic)).toBe('cycle detected: A implements B implements A');
+        expect(diagnostic.range.start).toEqual({ line: 0, character: 22 });
+        expect(diagnostic.severity).toBe(DiagnosticSeverity.Error);
+        expect(diagnostic.data).toMatchObject({ modelId: 'A', cycle: ['A', 'B'] });
+    });
+
+    test('by the first model of the cycle in alphabetical order, starting from it', async () => {
+        const source = 'template Z implements Y { @support h is "H" }\n'
+            + 'template Y implements X { @support g is "G" }\n'
+            + 'template X implements Z { @support f is "F" }';
+        const diagnostics = await cyclic(source);
+        expect(diagnostics.map(d => Diagnostic.getMessageString(d)))
+            .toEqual(['cycle detected: X implements Z implements Y implements X']);
+        expect(diagnostics[0].range.start.line).toBe(2);
+    });
+
+    test('through the sources of an operator', async () => {
+        const source = 'justification b { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }\n'
+            + 'justification cyc implements built { evidence e is "An evidence" }\n'
+            + 'template built is assemble(cyc, b) { conclusionLabel: "Built"  strategyLabel: "SB" }';
+        expect((await cyclic(source)).map(d => Diagnostic.getMessageString(d)))
+            .toEqual(["cycle detected: cyc implements built, which 'assemble' builds from cyc"]);
+    });
+
+    // The compiler builds nothing below a cycle, and judges it no further.
+    test('not on a model that only implements a template on it, which is not judged either', async () => {
+        const source = `${CYCLE}\njustification J implements A { evidence A:h is "H" }`;
+        const reported = (await diagnosticsIn(source))
+            .filter(d => d.range.start.line === 2)
+            .map(d => issueCodeOf(d));
+        expect(reported).toEqual([]);
+    });
+
+    // compiler 4.0.0 refuses the `implements` of a composed model (invalid-operator-call) rather
+    // than follow it, so no cycle runs through it.
+    test('not through the implements of a composed model, which the compiler does not follow', async () => {
+        const source = 'justification A { conclusion c is "C" strategy s is "S" evidence a is "E" s supports c a supports s }\n'
+            + 'justification B { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }\n'
+            + 'template Q implements R is refine(A, B) { hook: "a" }\n'
+            + 'template R implements Q { @support g is "G" }';
+        expect(await cyclic(source)).toEqual([]);
+    });
+
+    test('and a model below a cycle through an operator is not judged', async () => {
+        const source = 'justification b { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }\n'
+            + 'template cyc implements built { @support h is "H" }\n'
+            + 'template built is assemble(cyc, b) { conclusionLabel: "Built"  strategyLabel: "SB" }\n'
+            + 'justification J implements cyc { evidence e2 is "E2" }';
+        expect((await diagnosticsIn(source)).filter(d => d.range.start.line === 3).map(d => issueCodeOf(d))).toEqual([]);
+    });
+
+    test('not on a chain that ends', async () => {
+        expect(await cyclic(`${TEMPLATE}\njustification J implements T { evidence T:a is "A" evidence T:b is "B" }`)).toEqual([]);
+    });
+});
+
+describe('a model given twice to one operator', () => {
+
+    const repeats = async (source: string) => (await diagnosticsIn(source))
+        .filter(d => issueCodeOf(d) === JpipeIssue.DuplicateSource);
+    const B = 'justification b { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }';
+
+    test.each([
+        ['refine', 'template refined is refine(b, b) { hook: "e" }', "'refine' for 'refined': the model 'b' is given more than once"],
+        ['assemble', 'justification asm is assemble(b, b) { conclusionLabel: "X" strategyLabel: "Y" }', "'assemble' for 'asm': the model 'b' is given more than once"]
+    ])('is reported for %s in the compiler\'s words, on the repeat', async (_operator, call, message) => {
+        const [diagnostic, ...others] = await repeats(`${B}\n${call}`);
+        expect(others).toEqual([]);
+        expect(Diagnostic.getMessageString(diagnostic)).toBe(message);
+        expect(diagnostic.range.start).toEqual({ line: 1, character: call.lastIndexOf('b,') + 3 });
+        expect(diagnostic.severity).toBe(DiagnosticSeverity.Error);
+    });
+
+    test('once for each repeat', async () => {
+        const source = `${B}\njustification asm is assemble(b, b, b) { conclusionLabel: "X" strategyLabel: "Y" }`;
+        expect(await repeats(source)).toHaveLength(2);
+    });
+
+    test('not for distinct models, nor for an operator the editor does not know', async () => {
+        const other = 'justification d { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }';
+        expect(await repeats(`${B}\n${other}\ntemplate r is refine(b, d) { hook: "e" }`)).toEqual([]);
+        expect(await repeats(`${B}\njustification n is nope(b, b)`)).toEqual([]);
+    });
+
+    // compiler 4.0.0: unknown-model, twice, and nothing about the repeat.
+    test('not for a source that does not resolve', async () => {
+        expect(await repeats(`${B}\njustification j is assemble(nope, nope) { conclusionLabel: "X" strategyLabel: "Y" }`)).toEqual([]);
     });
 });

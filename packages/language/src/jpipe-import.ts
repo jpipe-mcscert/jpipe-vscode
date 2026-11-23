@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import {
     isJustification,
+    isLoad,
     isTemplate,
     type Justification,
     type Load,
@@ -34,6 +35,16 @@ const PRUNED_DIRECTORIES = new Set(['node_modules', 'out', '.git']);
 
 /** Upper bound on entries visited per expansion, so a pattern near a huge tree fails loudly. */
 const MAX_WALK_ENTRIES = 20_000;
+
+/** A model the compiler reads when it builds a file, under the name it gives it there. */
+export interface ModelDeclaration {
+    /** `T`, or `lib:T` for a model of a file loaded `as lib`. */
+    readonly name: string;
+    readonly model: Justification | Template;
+    readonly document: LangiumDocument;
+    /** The `load` of the built file that brought the model in; `undefined` for the file's own. */
+    readonly via?: Load;
+}
 
 /**
  * Import service for handling imports and resolving imported documents, templates, and elements.
@@ -387,6 +398,82 @@ export class JpipeImportService {
     }
 
     /**
+     * Every model the compiler reads when it builds `currentDoc`, in the order it reads them.
+     *
+     * The compiler's `LoadResolver` splices a loaded file's commands in where its `load` is, so a
+     * file's models and loads count in the order they are written, and a loaded file's models
+     * where it is loaded. A file is read once under each namespace, the first time it is met
+     * there (`LoadResolver.expandOne`): one that two files load is not read twice, while one also
+     * loaded `as lib` is read again, its models named `lib:T`, as are those of the files it loads
+     * in turn. A file is known by its real path, so a link or another spelling of its name is
+     * the same file, as the compiler's `identity` has it. This is the order in which
+     * `DuplicateModelFilter` decides which declaration is first.
+     */
+    modelDeclarations(unit: Unit, currentDoc: LangiumDocument): ModelDeclaration[] {
+        const declarations: ModelDeclaration[] = [];
+        const root = identity(fsPathOf(currentDoc.uri));
+        // A file is read again under another namespace, whose names its models then carry.
+        const read = new Set<string>();
+        // The files being read, root first. One loaded again below itself is a cyclic load, which
+        // the compiler refuses outright and the validator reports; under a new namespace at each
+        // turn it would otherwise never end.
+        const reading = new Set<string>([root]);
+        const walk = (current: Unit, document: LangiumDocument, prefix: string | undefined, via: Load | undefined): void => {
+            const items = [...current.body, ...current.imports]
+                .sort((a, b) => (a.$cstNode?.offset ?? 0) - (b.$cstNode?.offset ?? 0));
+            for (const item of items) {
+                if (!isLoad(item)) {
+                    declarations.push({ name: qualify(prefix, item.id), model: item, document, via });
+                    continue;
+                }
+                const namespace = item.namespace ? qualify(prefix, item.namespace) : prefix;
+                for (const loaded of this.resolveImportedDocuments(item, document)) {
+                    const file = identity(fsPathOf(loaded.uri));
+                    const key = `${file}|${namespace ?? ''}`;
+                    const loadedUnit = loaded.parseResult.value as Unit | undefined;
+                    if (reading.has(file) || read.has(key) || !loadedUnit) continue;
+                    read.add(key);
+                    reading.add(file);
+                    walk(loadedUnit, loaded, namespace, via ?? item);
+                    reading.delete(file);
+                }
+            }
+        };
+        walk(unit, currentDoc, undefined, undefined);
+        return declarations;
+    }
+
+    /**
+     * Whether a change to one of `uris` can change what `unit` loads, directly or through
+     * another file: whether one is a file a literal `load` names, existing or not, so that
+     * deleting or creating it counts, or lies under the directory a pattern is matched in, so
+     * that a file added to or removed from its matches counts too.
+     */
+    loadsAnyOf(unit: Unit, currentDoc: LangiumDocument, uris: ReadonlySet<string>): boolean {
+        const changed = [...uris].map(uri => identity(fsPathOf(URI.parse(uri))));
+        const reaches = (load: Load, document: LangiumDocument): boolean => {
+            const base = path.dirname(fsPathOf(document.uri));
+            if (!isGlobPattern(load.path)) {
+                return changed.includes(identity(path.resolve(base, load.path)));
+            }
+            let anchor: string;
+            try {
+                anchor = identity(path.resolve(base, anchorGlob(load.path).prefix));
+            } catch {
+                return false; // a malformed pattern matches nothing, whatever changes
+            }
+            return changed.some(file => file.startsWith(anchor + path.sep));
+        };
+        const units: Array<[Unit, LangiumDocument]> = [
+            [unit, currentDoc],
+            ...this.getTransitiveImportedDocuments(unit, currentDoc)
+                .map(document => [document.parseResult.value as Unit, document] as [Unit, LangiumDocument])
+        ];
+        return units.some(([current, document]) =>
+            (current?.imports ?? []).some(load => reaches(load, document)));
+    }
+
+    /**
      * Traverse `load` edges starting from the current unit:
      * - Start from direct loads of `currentDoc` (must be explicitly loaded by the root doc)
      * - Then follow loads found inside imported docs (transitively), resolving relative to each doc
@@ -495,5 +582,30 @@ export class JpipeImportService {
 
     private getLocalTemplates(unit: Unit): Template[] {
         return unit.body.filter((b): b is Template => isTemplate(b));
+    }
+}
+
+/** `name` under `prefix`, the namespace a file was loaded under: `lib:T`. */
+function qualify(prefix: string | undefined, name: string): string {
+    return prefix ? `${prefix}:${name}` : name;
+}
+
+/**
+ * The file `filePath` names, whatever the spelling: its real path, so that a link or a name in
+ * another case on a case-insensitive disk is the same file, as in the compiler's
+ * `LoadResolver.identity`.
+ */
+function identity(filePath: string): string {
+    const absolute = path.resolve(filePath);
+    try {
+        return fs.realpathSync.native(absolute);
+    } catch {
+        // A file that does not exist, deleted or not yet created, is known by the real path of
+        // its directory, so that it compares equal to itself before and after.
+        try {
+            return path.join(fs.realpathSync.native(path.dirname(absolute)), path.basename(absolute));
+        } catch {
+            return absolute;
+        }
     }
 }

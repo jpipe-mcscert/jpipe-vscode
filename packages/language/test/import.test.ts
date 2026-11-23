@@ -311,3 +311,136 @@ describe('Go-to-definition on load path', () => {
         }
     });
 });
+
+// ---------------------------------------------------------------------------
+// #122. The compiler compares the models of every file it reads to build one, in the order it
+// reads them: a loaded file's models count where its `load` is. Each expectation is what
+// jpipe-compiler 4.0.0 printed for the same files.
+// ---------------------------------------------------------------------------
+
+describe('A model named like one in a loaded file', () => {
+
+    const J = (name: string) => `justification ${name} { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }`;
+    const T = 'template T { conclusion c is "C" strategy s is "S" @support e is "E" s supports c e supports s }';
+
+    let tmpDir: string;
+
+    const build = async (files: Record<string, string>, main: string) => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-duplicates-'));
+        for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(tmpDir, name), text);
+        document = await parse(main, { documentUri: pathToFileURL(path.join(tmpDir, 'main.jd')).toString(), validation: true });
+        return (document.diagnostics ?? [])
+            .filter(d => (d.data as { code?: string } | undefined)?.code === 'duplicate-model')
+            .map(d => ({ line: d.range.start.line, message: Diagnostic.getMessageString(d) }));
+    };
+
+    afterEach(() => {
+        if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    test('is flagged after the load, pointing at the loaded one', async () => {
+        expect(await build({ 'lib.jd': `\n${T}` }, `load "lib.jd"\n${J('T')}`))
+            .toEqual([{ line: 1, message: "Model 'T' is already declared at lib.jd:2" }]);
+    });
+
+    test('is flagged through a file the loaded one loads', async () => {
+        const files = { 'lib.jd': `\n${T}`, 'mid.jd': `load "lib.jd"\n${J('M')}` };
+        expect(await build(files, `load "mid.jd"\n${J('T')}`))
+            .toEqual([{ line: 1, message: "Model 'T' is already declared at lib.jd:2" }]);
+    });
+
+    // The compiler underlines the loaded file; this file's build fails because of it.
+    test('declared before the load, it is the loaded one that is flagged, on the load', async () => {
+        expect(await build({ 'lib.jd': `\n${T}` }, `${J('T')}\nload "lib.jd"`))
+            .toEqual([{ line: 1, message: "Model 'T' in lib.jd:2 is already declared at main.jd:1" }]);
+    });
+
+    test('in two loaded files, the later one is flagged on its load', async () => {
+        expect(await build({ 'lib.jd': `\n${T}`, 'lib2.jd': T }, `load "lib.jd"\nload "lib2.jd"\n${J('K')}`))
+            .toEqual([{ line: 1, message: "Model 'T' in lib2.jd:1 is already declared at lib.jd:2" }]);
+    });
+
+    test('loaded under a namespace, it has another name', async () => {
+        expect(await build({ 'lib.jd': `\n${T}` }, `load "lib.jd" as x\n${J('T')}`)).toEqual([]);
+    });
+
+    test('under one namespace twice, including through a file loaded under it, it clashes', async () => {
+        const files = { 'lib.jd': `\n${T}`, 'lib2.jd': T, 'mid.jd': `load "lib.jd"\n${J('Q')}` };
+        expect(await build(files, `load "mid.jd" as m\nload "lib2.jd" as m\n${J('K')}`))
+            .toEqual([{ line: 1, message: "Model 'm:T' in lib2.jd:1 is already declared at lib.jd:2" }]);
+    });
+
+    // compiler 4.0.0 reads a file again under another namespace: lib.jd, flat here, is read once
+    // more inside `m` through mid.jd, and its `m:T` clashes with lib2.jd's.
+    test('in a file read again under another namespace, it clashes there', async () => {
+        const files = { 'lib.jd': `\n${T}`, 'lib2.jd': T, 'mid.jd': `load "lib.jd"\n${J('Q')}` };
+        expect(await build(files, `load "lib.jd"\nload "mid.jd" as m\nload "lib2.jd" as m\n${J('K')}`))
+            .toEqual([{ line: 2, message: "Model 'm:T' in lib2.jd:1 is already declared at lib.jd:2" }]);
+    });
+
+    test('a file reached through a link is the same file', async () => {
+        const files = { 'lib.jd': `\n${T}` };
+        const main = `load "lib.jd"\nload "link/lib.jd"\n${J('K')}`;
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-duplicates-'));
+        for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(tmpDir, name), text);
+        try {
+            fs.symlinkSync(tmpDir, path.join(tmpDir, 'link'), 'dir');
+        } catch {
+            return; // a platform that refuses links without privileges, such as Windows
+        }
+        document = await parse(main, { documentUri: pathToFileURL(path.join(tmpDir, 'main.jd')).toString(), validation: true });
+        expect((document.diagnostics ?? []).filter(d => (d.data as { code?: string } | undefined)?.code === 'duplicate-model')).toEqual([]);
+    });
+
+    // Two models from one declaration, through two namespaces: not one model given twice.
+    test('two namespaces over one file give an operator two distinct sources', async () => {
+        await build({ 'lib.jd': J('b') }, 'load "lib.jd" as x\nload "lib.jd" as y\ntemplate j is assemble(x:b, y:b) { conclusionLabel: "X" strategyLabel: "Y" }');
+        expect((document?.diagnostics ?? []).filter(d => (d.data as { code?: string } | undefined)?.code === 'duplicate-source')).toEqual([]);
+    });
+
+    // Langium checks an unchanged document again only when a reference reaches into a changed
+    // one, and a `load` is a path: what the loaded files declare would otherwise go stale.
+    test('the loading file is checked again when a file it loads changes', async () => {
+        const files = { 'lib.jd': `\n${T}`, 'mid.jd': `load "lib.jd"\n${J('M')}`, 'other.jd': J('O') };
+        await build(files, `load "mid.jd"\n${J('K')}`);
+        const builder = services.shared.workspace.DocumentBuilder as unknown as {
+            shouldRelink(document: LangiumDocument, changed: Set<string>): boolean
+        };
+        const uriOf = (name: string) => URI.file(path.join(tmpDir, name)).toString();
+        expect(builder.shouldRelink(document!, new Set([uriOf('lib.jd')]))).toBe(true);
+        expect(builder.shouldRelink(document!, new Set([uriOf('other.jd')]))).toBe(false);
+    });
+
+    // a.jd loads b.jd as x, which loads a.jd as y: a new namespace at each turn.
+    test('a cyclic load under namespaces ends', async () => {
+        const files = { 'a.jd': `load "b.jd" as x\n${J('A')}`, 'b.jd': `load "a.jd" as y\n${J('B')}` };
+        expect(await build(files, `load "a.jd"\n${J('K')}`)).toEqual([]);
+        // Without a stop, the walk read a.jd and b.jd again under x:y, x:y:x, … until the stack
+        // overflowed inside load resolution, which swallows it.
+        const names = services.Jpipe.references.JpipeImportService
+            .modelDeclarations(document!.parseResult.value, document!).map(declaration => declaration.name);
+        expect(names).toEqual(['x:B', 'A', 'K']);
+    });
+
+    test('the loading file is checked again when a file it loads is deleted, or one its pattern matches is added', async () => {
+        const files = { 'lib.jd': `\n${T}`, 'mid.jd': `load "lib.jd"\n${J('M')}`, 'models/a.jd': J('A') };
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-duplicates-'));
+        fs.mkdirSync(path.join(tmpDir, 'models'));
+        for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(tmpDir, name), text);
+        document = await parse(`load "mid.jd"\nload "models/*.jd"\n${J('K')}`,
+            { documentUri: pathToFileURL(path.join(tmpDir, 'main.jd')).toString() });
+        const builder = services.shared.workspace.DocumentBuilder as unknown as {
+            shouldRelink(document: LangiumDocument, changed: Set<string>): boolean
+        };
+        const uriOf = (name: string) => URI.file(path.join(tmpDir, name)).toString();
+        fs.rmSync(path.join(tmpDir, 'lib.jd'));
+        expect(builder.shouldRelink(document, new Set([uriOf('lib.jd')]))).toBe(true);
+        expect(builder.shouldRelink(document, new Set([uriOf('models/new.jd')]))).toBe(true);
+        expect(builder.shouldRelink(document, new Set([uriOf('elsewhere/new.jd')]))).toBe(false);
+    });
+
+    test('in a file two others load, it is read once', async () => {
+        const files = { 'lib.jd': `\n${T}`, 'a.jd': `load "lib.jd"\n${J('A')}`, 'b.jd': `load "lib.jd"\n${J('B')}` };
+        expect(await build(files, `load "a.jd"\nload "b.jd"\n${J('K')}`)).toEqual([]);
+    });
+});

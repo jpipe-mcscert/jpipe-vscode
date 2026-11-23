@@ -1,5 +1,12 @@
 ## Changelog
 
+### v2.0.3 (Unreleased)
+- Leader: Sébastien Mosser
+  - Bug Fixes:
+    - **A loop of `implements` is reported.** When templates implement one another in a circle, directly or through the models an operator such as `assemble` is built from, the jPipe compiler refuses the file, but the editor said nothing about the loop. It is now underlined once, on the `implements` the compiler points at, with the compiler's message, which names every step of the loop. A model that merely implements a template caught in the loop is no longer told that it misses overrides, since the compiler builds nothing there (#128)
+    - **A model given twice to one operator is reported.** The compiler refuses `refine(b, b)` and `assemble(b, b)`, because a model cannot be composed with itself. The editor now underlines the repeated model with the compiler's message (#128)
+    - **Two models with one name are caught across files.** The compiler refuses a model named like one in a file it loads, even through another file, and keeps the one it reads first. The editor only compared the models of one file, so the build failed with nothing underlined. It now compares them as the compiler does, and points at the first one with the compiler's message, file name included (`already declared at library.jd:2`). When the second one is in a loaded file, the `load` line that brings it in is underlined (#122)
+
 ### v2.0.2 (2026-11-22)
 - Leader: Sébastien Mosser
   - Bug Fixes:

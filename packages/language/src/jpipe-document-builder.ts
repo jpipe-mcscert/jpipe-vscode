@@ -1,4 +1,6 @@
 import { DefaultDocumentBuilder, interruptAndCheck, type DocumentState, type LangiumDocument } from 'langium';
+import type { JpipeServices } from './jpipe-module.js';
+import { isUnit } from './generated/ast.js';
 import type { CancellationToken } from 'vscode-languageserver-protocol';
 
 /**
@@ -15,6 +17,21 @@ import type { CancellationToken } from 'vscode-languageserver-protocol';
  * are handed the documents that went through it, here none, which every one of them iterates.
  */
 export class JpipeDocumentBuilder extends DefaultDocumentBuilder {
+    /**
+     * Langium checks an unchanged document again only when one of its references reaches into a
+     * changed one. A `load` is a path, not a reference, yet `duplicate-model` and `load` checks
+     * read what the loaded files declare. So a document that loads a changed file, directly or
+     * through another, is checked again too.
+     */
+    protected override shouldRelink(document: LangiumDocument, changedUris: Set<string>): boolean {
+        if (super.shouldRelink(document, changedUris)) return true;
+        const unit = document.parseResult?.value;
+        if (!isUnit(unit) || unit.imports.length === 0) return false;
+        const services = this.serviceRegistry.getServices(document.uri) as JpipeServices;
+        return services.references.JpipeImportService.loadsAnyOf(unit, document, changedUris);
+    }
+
+
     protected override async notifyBuildPhase(
         documents: LangiumDocument[],
         state: DocumentState,
