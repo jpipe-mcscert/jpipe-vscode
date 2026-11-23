@@ -39,6 +39,7 @@ import {
     implementsCycle, isDiscardedConclusion, qualifiedIdText, requiredOverrides
 } from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
+import { byCodeUnit } from './jpipe-text.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 import { messageOf } from './jpipe-errors.js';
 
@@ -177,7 +178,7 @@ export class JpipeValidator {
     checkCyclicImplements(model: Justification | Template, accept: ValidationAcceptor): void {
         const cycle = implementsCycle(model);
         if (!cycle) return;
-        const [reporter] = cycle.filter(link => link.parent !== undefined && !link.composition).map(link => link.id).sort();
+        const [reporter] = cycle.filter(link => link.parent !== undefined && !link.composition).map(link => link.id).sort(byCodeUnit);
         if (reporter !== model.id) return;
         report(accept, JpipeIssue.CyclicImplements, `cycle detected: ${describeCycle(cycle)}`,
                { node: model, property: 'parent' }, { modelId: model.id, cycle: cycle.map(link => link.id) });
