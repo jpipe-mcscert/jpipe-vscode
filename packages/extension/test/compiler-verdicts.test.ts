@@ -71,7 +71,8 @@ describe('a compiler refused as too old', () => {
         const { judge, calls } = judging({ 'jPipe 2.0.0': TOO_OLD, 'jPipe 4.0.0': SUPPORTED });
         verdicts.answer(COMMAND, 'jPipe 2.0.0', judge);
         expect(verdicts.answer(COMMAND, 'jPipe 2.0.0', judge)).toEqual(TOO_OLD);
-        expect(calls).toEqual(['jPipe 2.0.0']);
+        // Judged at each ask, as it always was: the same answer gives the same verdict.
+        expect(calls).toEqual(['jPipe 2.0.0', 'jPipe 2.0.0']);
         expect(verdicts.answer(COMMAND, 'jPipe 4.0.0', judge)).toEqual(SUPPORTED);
         expect(verdicts.cached(COMMAND)).toEqual(SUPPORTED);
     });
@@ -122,5 +123,22 @@ describe('a compiler that rejected diagnostic -f json', () => {
         verdicts.rejectJson(COMMAND);
         verdicts.forget(COMMAND);
         expect(verdicts.answer(COMMAND, 'jPipe 4.0.0', judging({}).judge)).toEqual({ kind: 'too-old', version: undefined });
+    });
+
+    // Check jPipe Installation forgets the verdict while a diagnostic that started before it
+    // fails: the refusal must still be held against what the compiler last printed.
+    test('is refused against what it last printed, after a forget or a failed ask', () => {
+        const verdicts = new CompilerVerdicts();
+        const { judge } = judging({ 'jPipe 4.0.0': SUPPORTED });
+        verdicts.answer(COMMAND, 'jPipe 4.0.0', judge);
+        verdicts.forget(COMMAND);
+        verdicts.rejectJson(COMMAND);
+        expect(verdicts.answer(COMMAND, 'jPipe 4.0.0', judge)).toEqual({ kind: 'too-old', version: undefined });
+
+        const other = new CompilerVerdicts();
+        other.answer(COMMAND, 'jPipe 4.0.0', judge);
+        other.answer(COMMAND, undefined, judge);
+        other.rejectJson(COMMAND);
+        expect(other.answer(COMMAND, 'jPipe 4.0.0', judge)).toEqual({ kind: 'too-old', version: undefined });
     });
 });

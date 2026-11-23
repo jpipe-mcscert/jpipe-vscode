@@ -3,8 +3,8 @@
  * ADR-VSC-0032). vscode-free, so its rules are tested; `ImageGenerator` asks the compiler and
  * hands the answer here.
  *
- * One fact per compiler, what it printed for `--version` and the verdict drawn from it, where
- * there used to be three maps that had to agree (#119):
+ * One record per compiler, what it last printed for `--version` and what that means, where there
+ * used to be three maps that had to agree (#119):
  *
  * - **A usable verdict is kept.** The version is a property of the build, and asking it before
  *   every save would be a second process for a fact that cannot change. Keyed by the resolved
@@ -22,10 +22,17 @@
  */
 import type { CompilerVerdict } from '../requirements.js';
 
+/** All that is known of one compiler. */
 interface Entry {
-    /** What `--version` printed at the last ask; `null` when it could not be asked. */
-    readonly output: string | null;
-    readonly verdict: CompilerVerdict;
+    /** What `--version` last printed, kept across an ask that failed and across `forget`. */
+    lastOutput?: string;
+    /** The verdict to use without asking, when one is usable. */
+    usable?: CompilerVerdict;
+    /**
+     * Set once the compiler rejected `diagnostic -f json`: what it had printed then, `null` if it
+     * never could be asked. It is refused while it answers the same.
+     */
+    refusedWhile?: string | null;
 }
 
 const REJECTED_JSON: CompilerVerdict = { kind: 'too-old', version: undefined };
@@ -36,30 +43,46 @@ export class CompilerVerdicts {
     /** The verdict to use without asking the compiler, or `undefined` when it must be asked. */
     cached(command: string): CompilerVerdict | undefined {
         const entry = this.entries.get(command);
-        return entry && entry.output !== null && entry.verdict.kind !== 'too-old' ? entry.verdict : undefined;
+        return entry?.refusedWhile === undefined ? entry?.usable : undefined;
     }
 
     /**
      * Record what the compiler printed for `--version`, `undefined` when it could not be asked,
      * and return what it means: a refusal held while the answer is unchanged, otherwise `judge`'s
-     * verdict on the output.
+     * verdict on the output, kept when it is usable.
      */
     answer(command: string, output: string | undefined, judge: (output: string) => CompilerVerdict): CompilerVerdict {
-        const printed = output ?? null;
-        const previous = this.entries.get(command);
-        if (previous?.verdict.kind === 'too-old' && previous.output === printed) return previous.verdict;
-        const verdict: CompilerVerdict = printed === null ? { kind: 'unknown' } : judge(printed);
-        this.entries.set(command, { output: printed, verdict });
+        const entry = this.entryOf(command);
+        if (output !== undefined) entry.lastOutput = output;
+        if (entry.refusedWhile !== undefined) {
+            if ((output ?? null) === entry.refusedWhile) return REJECTED_JSON;
+            entry.refusedWhile = undefined;
+        }
+        if (output === undefined) return { kind: 'unknown' };
+        const verdict = judge(output);
+        entry.usable = verdict.kind === 'too-old' ? undefined : verdict;
         return verdict;
     }
 
     /** The compiler rejected `diagnostic -f json`: refuse it while it answers as it last did. */
     rejectJson(command: string): void {
-        this.entries.set(command, { output: this.entries.get(command)?.output ?? null, verdict: REJECTED_JSON });
+        const entry = this.entryOf(command);
+        entry.refusedWhile = entry.lastOutput ?? null;
+        entry.usable = undefined;
     }
 
     /** Ask the compiler again at its next use, as Check jPipe Installation wants; a refusal stays. */
     forget(command: string): void {
-        if (this.entries.get(command)?.verdict.kind !== 'too-old') this.entries.delete(command);
+        const entry = this.entries.get(command);
+        if (entry) entry.usable = undefined;
+    }
+
+    private entryOf(command: string): Entry {
+        let entry = this.entries.get(command);
+        if (!entry) {
+            entry = {};
+            this.entries.set(command, entry);
+        }
+        return entry;
     }
 }

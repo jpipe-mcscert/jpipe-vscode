@@ -123,7 +123,14 @@ describe('the load an implementation takes', () => {
         ['load "../lib/signoff.jd"\n\n', 'file:///w/app/a.jd', 'file:///w/lib/signoff.jd'],
         ['load "./my lib/t.jd"\n', 'file:///w/a.jd', 'file:///w/my%20lib/t.jd'],
         ['load "../lib/t.jd"\n', 'file:///c%3A/w/app/a.jd', 'file:///C%3A/w/lib/t.jd'],
-        ['load "d:/lib/t.jd"\n', 'file:///c%3A/w/a.jd', 'file:///d%3A/lib/t.jd']
+        // Another Windows drive, as the server writes it: in full, whatever the drive's case.
+        ['load "d:/lib/t.jd"\n', 'file:///c%3A/w/a.jd', 'file:///d%3A/lib/t.jd'],
+        ['load "D:/lib/t.jd"\n', 'file:///c%3A/w/a.jd', 'file:///d%3A/lib/t.jd'],
+        ['load "/srv/lib/t.jd"\n', 'file:///w/a.jd', 'file:///srv/lib/t.jd'],
+        // A path is not a URI: these are characters of the file's name.
+        ['load "./lib/50%.jd"\n', 'file:///w/a.jd', 'file:///w/lib/50%25.jd'],
+        ['load "./lib/a#1.jd"\n', 'file:///w/a.jd', 'file:///w/lib/a%231.jd'],
+        ['load "./lib/why?.jd"\n', 'file:///w/a.jd', 'file:///w/lib/why%3F.jd']
     ])('%s, written in %s, loads %s', (newText, file, target) => {
         expect(loadsFile(newText, file, target)).toBe(true);
     });

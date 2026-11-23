@@ -12,6 +12,8 @@
  * `file:///c%3A/models/a.jd` on Windows — so POSIX path arithmetic on it is correct everywhere,
  * where `fsPath` arithmetic would not be.
  */
+import { posix } from 'node:path';
+
 export type NewModelKind = 'justification' | 'template';
 
 /**
@@ -154,22 +156,20 @@ export function modelSnippet(kind: NewModelKind, name: string, template?: Implem
  * template of that name. The path is the server's, so its spelling is the server's too.
  */
 export function loadsFile(newText: string, fileUri: string, targetUri: string): boolean {
-    const path = /^\s*load\s+"([^"]+)"/.exec(newText)?.[1];
-    return path !== undefined && sameUri(resolveLoad(path, dirnameOf(fileUri)), targetUri);
+    const written = /^\s*load\s+"([^"]+)"/.exec(newText)?.[1];
+    if (written === undefined) return false;
+    // The server writes a path, not a URI: `%`, `#` and `?` in it are characters of a file name,
+    // so it is resolved with path arithmetic, against the decoded path of the file.
+    let resolved: string;
+    if (/^[a-zA-Z]:\//.test(written)) resolved = `/${written[0].toLowerCase()}${written.slice(1)}`;
+    else if (written.startsWith('/')) resolved = written;
+    else resolved = posix.join(posix.dirname(pathOf(fileUri)), written);
+    return posix.normalize(resolved) === pathOf(targetUri);
 }
 
-/** The URI a literal `load` path names, from a file in `folder`. */
-function resolveLoad(path: string, folder: string): string {
-    if (path.startsWith('/')) return `file://${path}`;
-    // `d:/lib/a.jd` is a path on a Windows drive, not a URI whose scheme is `d`.
-    if (/^[a-zA-Z]:[\\/]/.test(path)) return `file:///${path.replace(/\\/g, '/')}`;
-    return new URL(path, `${folder}/`).toString();
-}
-
-/** Whether two file URIs name one file, whatever their encoding; a Windows drive in either case. */
-function sameUri(a: string, b: string): boolean {
-    const norm = (u: string) => decodeURIComponent(new URL(u).pathname).replace(/^\/[A-Z]:/, drive => drive.toLowerCase());
-    return norm(a) === norm(b);
+/** A file URI's path, decoded, with a Windows drive in lower case: `/c:/w/a.jd`. */
+function pathOf(uri: string): string {
+    return decodeURIComponent(new URL(uri).pathname).replace(/^\/[A-Z]:/, drive => drive.toLowerCase());
 }
 
 /**

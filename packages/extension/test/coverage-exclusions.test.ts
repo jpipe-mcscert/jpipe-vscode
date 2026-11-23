@@ -56,10 +56,10 @@ function sources(dir = join(extensionRoot, 'src')): string[] {
 function runtimeImports(file: string): string[] {
     const text = readFileSync(join(extensionRoot, file), 'utf8');
     const specifiers = [
-        ...text.matchAll(/^(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+'([^']+)'/gm),
-        ...text.matchAll(/^import\s+'([^']+)'/gm),
-        ...text.matchAll(/\bimport\(\s*'([^']+)'\s*\)/g)
-    ].map(match => match[1]);
+        ...text.matchAll(/^(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+(['"])([^'"]+)\1/gm),
+        ...text.matchAll(/^import\s+(['"])([^'"]+)\1/gm),
+        ...text.matchAll(/\bimport\(\s*(['"])([^'"]+)\1\s*\)/g)
+    ].map(match => match[2]);
     return specifiers.flatMap(specifier => {
         if (specifier === 'vscode') return ['vscode'];
         if (!specifier.startsWith('.')) return [];
@@ -68,22 +68,30 @@ function runtimeImports(file: string): string[] {
     });
 }
 
-/** The modules under `src/` that load `vscode` when they are loaded. */
+/**
+ * The modules under `src/` that load `vscode` when they are loaded: those importing it, then,
+ * walking the imports backwards, every module importing one of those, cycles included.
+ */
 function reachingVscode(): string[] {
     const all = sources();
-    const memo = new Map<string, boolean>();
-    const reaches = (file: string, path: Set<string>): boolean => {
-        const known = memo.get(file);
-        if (known !== undefined) return known;
-        if (path.has(file)) return false; // an import cycle: decided where it started
-        path.add(file);
-        const result = runtimeImports(file).some(target =>
-            target === 'vscode' || (all.includes(target) && reaches(target, path)));
-        path.delete(file);
-        memo.set(file, result);
-        return result;
-    };
-    return all.filter(file => reaches(file, new Set()));
+    const importers = new Map<string, string[]>();
+    const reached = new Set<string>();
+    for (const file of all) {
+        for (const target of runtimeImports(file)) {
+            if (target === 'vscode') reached.add(file);
+            else importers.set(target, [...(importers.get(target) ?? []), file]);
+        }
+    }
+    const pending = [...reached];
+    while (pending.length > 0) {
+        for (const importer of importers.get(pending.pop()!) ?? []) {
+            if (!reached.has(importer)) {
+                reached.add(importer);
+                pending.push(importer);
+            }
+        }
+    }
+    return all.filter(file => reached.has(file));
 }
 
 describe('the modules left out of coverage', () => {

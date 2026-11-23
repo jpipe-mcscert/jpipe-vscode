@@ -68,13 +68,11 @@ export async function newModel(models: readonly Model[], request: NewModelReques
     const { name, target } = answer;
     const template = request.template;
 
-    const written = target.mode === 'new'
-        ? { editor: await writeNewFile(joinUri(target.folder, fileNameFor(name)), request.kind, name, template), reached: false }
+    const editor = target.mode === 'new'
+        ? await writeNewFile(joinUri(target.folder, fileNameFor(name)), request.kind, name, template)
         : await appendToFile(target.file, request.kind, name, template);
-    if (!written.editor || !template) return;
-    // A file that reaches the template already has no error to wait for.
-    if (!written.reached) await loadTemplate(written.editor, name, template);
-    await overrideSupports(written.editor, name);
+    if (!editor || !template) return;
+    if (await connectTemplate(editor, name, template)) await overrideSupports(editor, name);
 }
 
 /** Ask for the name, with the target shown and changeable. `undefined` if dismissed. */
@@ -273,48 +271,69 @@ async function appendToFile(
     kind: NewModelKind,
     name: string,
     template: Model | undefined
-): Promise<{ editor: vscode.TextEditor; reached: boolean }> {
+): Promise<vscode.TextEditor> {
     const editor = await vscode.window.showTextDocument(vscode.Uri.parse(uri), { preview: false });
     const document = editor.document;
+    const symbols = template
+        ? await vscode.commands.executeCommand<vscode.DocumentSymbol[] | undefined>('vscode.executeDocumentSymbolProvider', document.uri)
+        : undefined;
+    // Read after the request: the file may have changed while it was answered.
     const end = document.lineAt(document.lineCount - 1).range.end;
     const separator = appendSeparator(document.getText());
-    if (!template) {
+    if (template) {
+        const alias = templateReach(symbols ?? [], template.name)?.alias;
+        await editor.edit(builder => builder.insert(end, separator + modelSnippet(kind, name, template, alias)));
+    } else {
         await editor.insertSnippet(new vscode.SnippetString(separator + modelSnippet(kind, name)), end);
-        return { editor, reached: false };
     }
-    const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[] | undefined>(
-        'vscode.executeDocumentSymbolProvider', document.uri);
-    const reach = templateReach(symbols ?? [], template.name);
-    await editor.edit(builder => builder.insert(end, separator + modelSnippet(kind, name, template, reach?.alias)));
-    return { editor, reached: reach !== undefined };
+    return editor;
 }
 
 /**
- * Load the template a new implementation names, if its file does not yet, with the server's own
- * "add missing load" fix (#121): the one the author would pick from the lightbulb, so the `load`
- * is written as every other is, `load "./lib/signoff.jd"`, where the server puts loads.
+ * Make the template a new implementation names resolve to `template`, and say whether it does.
  *
- * The model was written naming its template; if the file does not reach it, the server answers
- * with an unresolved reference there, and offers a `load` for each file declaring a template of
- * that name. The one whose path names the template's file is applied. If no diagnostic arrives,
- * the template resolved, and there is nothing to load.
+ * The server is asked where the name resolves, rather than trusting it: names are all the symbols
+ * go by, and another template of that name may be the one the file reaches.
+ * - **It resolves to `template`:** nothing to do.
+ * - **It resolves to another file:** that template is the one implemented, and the user is told.
+ * - **It resolves nowhere:** the server's own "add missing load" fix is applied (#121), the one the
+ *   author would pick from the lightbulb, so the `load` is written as every other is. The server
+ *   offers it on the unresolved reference, one per file declaring a template of that name, and the
+ *   one whose path names the template's file is taken. When none comes, for a file excluded from
+ *   validation or a server too slow to answer, the user is told where to add it.
  */
-async function loadTemplate(editor: vscode.TextEditor, name: string, template: Model): Promise<void> {
+async function connectTemplate(editor: vscode.TextEditor, name: string, template: Model): Promise<boolean> {
     const document = editor.document;
     const header = new RegExp(`justification\\s+${name}\\s+implements\\s+`).exec(document.getText());
-    if (!header) return;
+    if (!header) return false;
     const start = document.positionAt(header.index + header[0].length);
     const reference = document.getWordRangeAtPosition(start, /[\w:]+/) ?? new vscode.Range(start, start);
+    const written = document.getText(reference);
+
+    const targets = await vscode.commands.executeCommand<Array<vscode.Location | vscode.LocationLink> | undefined>(
+        'vscode.executeDefinitionProvider', document.uri, start) ?? [];
+    const files = targets.map(target => 'targetUri' in target ? target.targetUri : target.uri);
+    const wanted = vscode.Uri.parse(template.uri);
+    if (files.some(file => file.fsPath === wanted.fsPath)) return true;
+    if (files.length > 0) {
+        void vscode.window.showWarningMessage(
+            `'${written}' in ${vscode.workspace.asRelativePath(document.uri)} is the template of ${vscode.workspace.asRelativePath(files[0])}, `
+            + `not of ${vscode.workspace.asRelativePath(wanted)}. Load ${vscode.workspace.asRelativePath(wanted)} under a name to implement it.`);
+        return false;
+    }
 
     const unresolved = await waitFor(() => vscode.languages.getDiagnostics(document.uri)
         .find(d => d.severity === vscode.DiagnosticSeverity.Error && d.range.intersection(reference) !== undefined));
-    if (!unresolved) return;
-
-    const actions = await vscode.commands.executeCommand<vscode.CodeAction[]>(
-        'vscode.executeCodeActionProvider', document.uri, reference, vscode.CodeActionKind.QuickFix.value);
+    const actions = unresolved
+        ? await vscode.commands.executeCommand<vscode.CodeAction[]>(
+            'vscode.executeCodeActionProvider', document.uri, reference, vscode.CodeActionKind.QuickFix.value)
+        : undefined;
     const load = actions?.find(action => action.edit?.get(document.uri)
         .some(edit => loadsFile(edit.newText, document.uri.toString(), template.uri)));
-    if (load?.edit) await vscode.workspace.applyEdit(load.edit);
+    if (load?.edit && await vscode.workspace.applyEdit(load.edit)) return true;
+    void vscode.window.showWarningMessage(
+        `Could not add the load of ${vscode.workspace.asRelativePath(wanted)}: add it from the lightbulb on '${written}'.`);
+    return false;
 }
 
 /**
