@@ -17,6 +17,8 @@ import {
     RECOMMENDED,
     releaseNumbers,
     REQUIREMENTS,
+    RUNNER_FEATURES,
+    runnerHas,
     type InstallationFacts
 } from '../src/extension/requirements.js';
 
@@ -169,6 +171,25 @@ describe('the release numbers a version starts with', () => {
 
     test('the recommended jpipe-runner is no older than the one required', () => {
         expect(meetsMinimum(RECOMMENDED.runner, REQUIREMENTS.runner)).toBe(true);
+    });
+
+    // The oldest release that has everything this release uses: the newest feature's.
+    test('the recommended jpipe-runner is the one that brought the newest feature used', () => {
+        const releases = Object.values(RUNNER_FEATURES).map(feature => feature.since);
+        const newest = releases.reduce((a, b) => (meetsMinimum(a, b) ? a : b));
+        expect(RECOMMENDED.runner).toEqual(newest);
+        for (const since of releases) expect(meetsMinimum(since, REQUIREMENTS.runner)).toBe(true);
+    });
+
+    test('a jpipe-runner has a feature from the release that brought it, its development builds included', () => {
+        expect(runnerHas('4.1.0', 'events')).toBe(true);
+        expect(runnerHas('4.1.0.dev0', 'events')).toBe(true);
+        expect(runnerHas('4.0.3', 'events')).toBe(false);
+        expect(runnerHas('4.3.0', 'jobs')).toBe(false);
+        expect(runnerHas('4.4.0.dev0', 'jobs')).toBe(true);
+        expect(runnerHas('5.0.0rc1', 'jobs')).toBe(true);
+        expect(runnerHas(undefined, 'events')).toBe(false);
+        expect(runnerHas('installed', 'jobs')).toBe(false);
     });
 });
 

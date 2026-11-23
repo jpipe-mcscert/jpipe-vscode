@@ -180,7 +180,7 @@ describe('a run under way whose events are read', () => {
 
     test('the verdict bar says how far it is, and which step runs', () => {
         expect(panelState(running, 3).progress).toEqual({
-            decided: '1 of 3 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: 'release:e2',
+            decided: '1 of 3 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: ['release:e2'],
             statuses: null, observed: [], underway: ['release:e2'], pending: ['release:c']
         });
     });
@@ -206,7 +206,7 @@ describe('a run under way whose events are read', () => {
 
     test('the step running is named by its label, when the compiled model has one', () => {
         const labels = new Map([['release:e2', 'The changelog is up to date']]);
-        expect(panelState({ ...running, labels }, 3).progress?.running).toBe('The changelog is up to date');
+        expect(panelState({ ...running, labels }, 3).progress?.running).toEqual(['The changelog is up to date']);
         expect(rowsWithoutReport({ ...running, labels }).find(r => r.id === 'group/Running')!.children[0].label)
             .toBe('The changelog is up to date');
     });
@@ -216,7 +216,7 @@ describe('a run under way whose events are read', () => {
         const stopped = endedWithout({ ...running, dataflow: '<svg>own</svg>', live: true }, 'stopped', notice, new Date(2026, 10, 21));
         expect(stopped).toMatchObject({ phase: 'stopped', notice, dataflow: '<svg>own</svg>', live: true });
         expect(panelState(stopped, 4).progress).toMatchObject({
-            statuses: [{ id: 'release:e1', status: 'fail' }], underway: [], pending: [], running: null
+            statuses: [{ id: 'release:e1', status: 'fail' }], underway: [], pending: [], running: []
         });
     });
 
@@ -235,12 +235,18 @@ describe('a run under way whose events are read', () => {
         expect(panelState({ ...done(), progress }, 5).elements).toEqual(['release:e', 'release:c']);
     });
 
-    test('several steps running at once are counted', () => {
+    // With --jobs, from jpipe-runner 4.4, several steps run at once (#136).
+    test('several steps running at once are each named, by their labels, in the order they started', () => {
         const two = reading(
-            { event: 'run.started', schema_version: '1.0', elements: ['j:a', 'j:b'] },
-            { event: 'element.started', id: 'j:a' }, { event: 'element.started', id: 'j:b' });
-        expect(progressOf(two).running).toBe('2 steps');
-        expect(progressOf(reading({ event: 'run.started', schema_version: '1.0', elements: ['j:a'] })).running).toBeNull();
+            { event: 'run.started', schema_version: '1.0', elements: ['j:a', 'j:b', 'j:c'] },
+            { event: 'element.started', id: 'j:b' }, { event: 'element.started', id: 'j:a' });
+        expect(progressOf(two, new Map([['j:a', 'Tests pass']])).running).toEqual(['j:b', 'Tests pass']);
+        expect(progressOf(reading({ event: 'run.started', schema_version: '1.0', elements: ['j:a'] })).running).toEqual([]);
+    });
+
+    test('none is running once the run is no longer under way', () => {
+        const one = reading({ event: 'run.started', schema_version: '1.0', elements: ['j:a'] }, { event: 'element.started', id: 'j:a' });
+        expect(progressOf(one, new Map(), true, false).running).toEqual([]);
     });
 
     test('once it ended, the verdict says the rest', () => {

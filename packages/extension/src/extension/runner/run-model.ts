@@ -12,7 +12,8 @@ import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
 import { MODELS_VIEW_ID, sameFile } from '../models-view/models-view.js';
 import {
-    RUNNER_COMMAND_SETTING, RUN_TASK_TYPE, cannotRun, dataflowFlag, relaunchWithout, resolveRunner, runnerArguments, streamsEvents, type DataflowFlag
+    JOBS_SETTING, RUNNER_COMMAND_SETTING, RUN_TASK_TYPE, cannotRun, dataflowFlag, jobsArguments, readJobs, relaunchWithout, resolveRunner,
+    runnerArguments, runsJobs, streamsEvents, type DataflowFlag
 } from './runner-invocation.js';
 import type { RunnerEnvironment } from './environment.js';
 import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
@@ -167,7 +168,7 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
     if (!files) return;
     try {
         await launch(deps, token, { document, name, check, libraries: libraries.map(library => library.uri.fsPath), steps }, files,
-            { draw: true, stream: true });
+            { draw: true, stream: true, jobs: true });
     } finally {
         await discard(files.folder);
     }
@@ -189,6 +190,8 @@ interface Asked {
     draw: boolean;
     /** The run's events, when its release writes them. */
     stream: boolean;
+    /** Several steps at a time, as the jobs setting says, when its release can. */
+    jobs: boolean;
 }
 
 /**
@@ -203,6 +206,9 @@ interface Asked {
  * panel and Results show each element as soon as it is decided, until the report replaces what the
  * events said (jpipe-vscode ADR-VSC-0033). A check calls no step, so it has nothing to stream. A
  * runner that refuses the option is launched once more without it (`relaunchWithout`).
+ *
+ * With `jobs`, an execution by a runner that can runs as many steps at a time as the jobs setting
+ * says (`jobsArguments`); a runner that refuses the option is launched once more without it.
  */
 async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, asked: Asked): Promise<void> {
     const { document, name, check } = run;
@@ -213,13 +219,18 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
     deps.session.update(token, { progress: null, live: false, dataflow: null });
     const eventsFor = (release: string | undefined): string | undefined =>
         asked.stream && !check && streamsEvents(release) ? files.events.fsPath : undefined;
-    const argsFor = (release: string | undefined): string[] => withReport(
-        runnerArguments(run.libraries, files.compiled.fsPath), files.report.fsPath, check,
-        draw ? { path: files.dataflow.fsPath, flag: flagFor(deps, release) } : undefined,
-        eventsFor(release));
+    const jobsFor = (release: string | undefined): boolean => asked.jobs && runsJobs(release, check);
+    const argsFor = (release: string | undefined): string[] => [
+        ...(jobsFor(release) ? jobsOption(deps, folder) : []),
+        ...withReport(
+            runnerArguments(run.libraries, files.compiled.fsPath), files.report.fsPath, check,
+            draw ? { path: files.dataflow.fsPath, flag: flagFor(deps, release) } : undefined,
+            eventsFor(release))
+    ];
     const invocation = await chooseInvocation(deps, token, { folder, cwd, askRelease: draw || !check }, argsFor);
     if (!invocation) return;
     const events = eventsFor(invocation.release);
+    const jobs = jobsFor(invocation.release);
     if (events) {
         // What names an element still running or waiting, before its event carries its label.
         deps.session.update(token, { labels: compiledLabels(await readFileText(files.compiled) ?? '') });
@@ -259,7 +270,7 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
     const read = await readReport(files.report);
     const ended: Ended = { taskName: task.name, exitCode, cwd, showOutput };
     if ('problem' in read) {
-        await endedWithoutReport(deps, token, run, files, { draw, stream: events !== undefined }, ended, read.problem);
+        await endedWithoutReport(deps, token, run, files, { draw, stream: events !== undefined, jobs }, ended, read.problem);
     } else {
         await showReport(deps, token, run, files, ended, read.report);
     }
@@ -312,6 +323,30 @@ async function showPreview(
     if (followed() && deps.session.isCurrent(token) && deps.session.running) {
         deps.session.update(token, { dataflow: svg, live: true, drawingMissing: null });
     }
+}
+
+/** The jobs setting as last noted in the log, so that what is said about it is said once. */
+let notedJobs: string | undefined;
+
+/**
+ * The `--jobs` option for a run in `folder`, from the jobs setting (`jobsArguments`). A setting that
+ * is not `auto` or a whole number runs as `auto`, and one above the CPUs this editor may use is
+ * lowered to them; either is said in the log, once.
+ */
+function jobsOption(deps: RunDeps, folder: vscode.WorkspaceFolder | undefined): string[] {
+    const setting = vscode.workspace.getConfiguration('jpipe', folder?.uri).get<unknown>(JOBS_SETTING, 'auto');
+    const { jobs, invalid } = readJobs(setting);
+    const cores = os.availableParallelism();
+    const { args, loweredFrom } = jobsArguments(jobs, cores);
+    let note: string | undefined;
+    if (invalid) {
+        note = `The jobs setting, ${JSON.stringify(setting)}, is neither "auto" nor a whole number of at least 1: runs use "auto"`;
+    } else if (loweredFrom !== undefined) {
+        note = `The jobs setting asks for ${loweredFrom} steps at a time, and this computer has ${cores} CPUs for them: runs use ${cores}`;
+    }
+    if (note !== undefined && note !== notedJobs) deps.logger.warn(note);
+    notedJobs = note;
+    return args;
 }
 
 /** The option that draws the dataflow, for the runner release that will run (`dataflowFlag`). */
@@ -372,10 +407,15 @@ async function endedWithoutReport(
         deps.session.endWith(token, 'stopped', { text: `${name} was stopped.`, action: { label: 'Show Output', id: 'showOutput' } });
         return;
     }
-    const without = relaunchWithout(ended.exitCode, asked.draw, asked.stream);
+    const without = relaunchWithout(ended.exitCode, { drew: asked.draw, streamed: asked.stream, jobs: asked.jobs });
     if (without === 'drawing') {
         deps.logger.warn(`${ended.taskName}: launched again without the drawing, which may need Graphviz`);
         await launch(deps, token, run, files, { ...asked, draw: false });
+        return;
+    }
+    if (without === 'jobs') {
+        deps.logger.warn(`${ended.taskName}: launched again without --jobs, which this jpipe-runner build may not know`);
+        await launch(deps, token, run, files, { ...asked, jobs: false });
         return;
     }
     if (without === 'events') {

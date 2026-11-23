@@ -44,6 +44,18 @@ export function isRunPanelMessage(value: unknown): value is HostToRunPanel {
         && HOST_MESSAGE_TYPES.has((value as { type?: unknown }).type as string);
 }
 
+/**
+ * What the verdict bar says of the steps under way, `running`, by their labels: each named while
+ * there are one or two, counted past that, since a label is a sentence and the bar one line. Its
+ * tooltip names them all, one a line.
+ */
+export function runningText(running: readonly string[]): { text: string; title: string } {
+    if (running.length === 0) return { text: '', title: '' };
+    if (running.length === 1) return { text: `running ${running[0]}`, title: 'The step under way' };
+    const text = running.length === 2 ? `running ${running[0]} and ${running[1]}` : `running ${running.length} steps`;
+    return { text, title: ['The steps under way:', ...running.map(label => `• ${label}`)].join('\n') };
+}
+
 const byId = <T extends HTMLElement = HTMLElement>(doc: Document, id: string): T => doc.getElementById(id) as T;
 
 export class RunPage {
@@ -194,10 +206,11 @@ export class RunPage {
         counts.append(...shown.counts.map(count => this.countLink(count)));
     }
 
-    /** The step a run under way is running, from its events. */
+    /** The steps a run under way is running, from its events (`runningText`). */
     private showRunning(progress: Progress, when: HTMLElement): void {
-        when.textContent = progress.running ? `running ${progress.running}` : '';
-        when.title = progress.running ? 'The step under way' : '';
+        const { text, title } = runningText(progress.running);
+        when.textContent = text;
+        when.title = title;
     }
 
     /** A count of the verdict bar: a button that opens what it counts in Results. */

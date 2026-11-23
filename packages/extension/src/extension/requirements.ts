@@ -36,13 +36,40 @@ export const REQUIREMENTS = {
  * upgrading brings (jpipe-vscode ADR-VSC-0032). Raising one is a user-facing change too.
  */
 export const RECOMMENDED = {
-    /**
-     * jpipe-runner 4.1 writes a run's events as it goes (`--events`), draws the run before its
-     * first step, and says when each source is observed: what the Run panel and Results follow a
-     * run with (ADR-VSC-0033). An older runner's runs are shown when they end.
-     */
-    runner: [4, 1, 0]
+    /** The newest release in `RUNNER_FEATURES`: 4.4, which runs independent steps together. */
+    runner: [4, 4, 0]
 } as const satisfies Record<string, ReleaseNumbers>;
+
+/**
+ * What jpipe-runner releases after the minimum add that this release uses, each from the release
+ * that brought it. Each is asked only of a runner known to have it, since a runner refuses an
+ * option it does not know and runs nothing; `brings` is what Check jPipe Installation says
+ * upgrading to it brings.
+ */
+export const RUNNER_FEATURES = {
+    /**
+     * `--events`: the run's events, written as it goes, which the Run panel and Results follow it
+     * with; the drawing made before the first step, and when each source is observed
+     * (ADR-VSC-0033). An older runner's runs are shown when they end.
+     */
+    events: { since: [4, 1, 0], brings: 'shows runs as they go' },
+    /**
+     * `--jobs`: up to that many steps at a time, when the argument does not order them
+     * (jpipe-runner ADR-0038). An older runner runs one step at a time.
+     */
+    jobs: { since: [4, 4, 0], brings: 'runs steps together' }
+} as const satisfies Record<string, { since: ReleaseNumbers; brings: string }>;
+
+export type RunnerFeature = keyof typeof RUNNER_FEATURES;
+
+/**
+ * Whether the jpipe-runner release `version` (`4.1.0`, `4.1.0.dev0`, `5.0.0rc1`) has `feature`,
+ * development builds of the release that brought it included. An unknown release has none.
+ */
+export function runnerHas(version: string | undefined, feature: RunnerFeature): boolean {
+    const numbers = releaseNumbers(version);
+    return numbers !== undefined && meetsMinimum(numbers, RUNNER_FEATURES[feature].since);
+}
 
 /**
  * The release numbers a version starts with — `4.1.0.dev0` → `[4, 1, 0]`, `5.0.0rc1` →

@@ -71,8 +71,8 @@ export interface Progress {
     decided: string;
     /** The outcomes so far, each opening its group in Results. */
     counts: VerdictCount[];
-    /** The step under way, by its element's label, or `2 steps` when several are; null between steps. */
-    running: string | null;
+    /** The steps under way, by their elements' labels, in the order they started; empty between steps. */
+    running: string[];
     /**
      * The elements decided so far, to draw over the drawing, when the drawing is the run's own,
      * drawn before its first step; null otherwise, and the run is waited for under the busy overlay.

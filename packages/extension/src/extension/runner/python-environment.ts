@@ -11,8 +11,9 @@
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pathKeyOf } from '../process-launcher.js';
-import { formatRelease, meetsMinimum, pylanceLine, RECOMMENDED, releaseNumbers, REQUIREMENTS } from '../requirements.js';
-import { streamsEvents } from './runner-invocation.js';
+import {
+    formatRelease, meetsMinimum, pylanceLine, releaseNumbers, REQUIREMENTS, RUNNER_FEATURES, runnerHas, type RunnerFeature
+} from '../requirements.js';
 
 /** The Python jpipe-runner runs on (`../requirements.ts` says why). */
 export const MIN_PYTHON = REQUIREMENTS.python;
@@ -383,9 +384,11 @@ function runnerLines(probe: Probe | undefined, declaredLocal: string | undefined
     const local = probe.localSource;
     const lines = local ? [`jpipe-runner: ${version} (local copy)`, `  ${short(local)}`] : [`jpipe-runner: ${version}`];
     if (local && declaredLocal && declaredLocal !== probe.runnerVersion) lines.push(`  now ${declaredLocal}: reinstall it`);
-    // Below the recommended release, what upgrading brings: a run followed as it goes.
-    if (!streamsEvents(probe.runnerVersion) && releaseNumbers(probe.runnerVersion) !== undefined) {
-        lines.push(`  ${formatRelease(RECOMMENDED.runner)} or newer shows runs as they go`);
+    // Below the recommended release, what upgrading brings, each from the release that brings it.
+    if (releaseNumbers(probe.runnerVersion) !== undefined) {
+        for (const [feature, { since, brings }] of Object.entries(RUNNER_FEATURES)) {
+            if (!runnerHas(probe.runnerVersion, feature as RunnerFeature)) lines.push(`  ${formatRelease(since)} or newer ${brings}`);
+        }
     }
     return lines;
 }

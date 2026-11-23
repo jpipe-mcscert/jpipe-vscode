@@ -1,5 +1,10 @@
 ## Changelog
 
+### v2.1.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Features:
+    - **Runs run independent steps together.** With jpipe-runner 4.4 or newer, ▶ now runs the steps that do not depend on each other at the same time, one per processor, so a model whose evidence takes a while, such as a test suite, a linter and a scanner under one strategy, finishes sooner. The Run panel names every step under way. The new jobs setting, under jPipe › Runner › General, sets how many steps may run at once: `auto` by default, or a number, with `1` running them one at a time as before. jpipe-runner 4.4.0 is now the recommended release, and Check jPipe Installation says what upgrading brings. **A step library must be ready for steps that run together:** a step that writes a file another evidence reads, or changes the working directory or an environment variable, can fail in the editor and pass in CI, where jpipe-runner runs one step at a time unless told otherwise; set the jobs setting to `1` if that happens. With an older jpipe-runner, runs are unchanged (#136)
+
 ### v2.0.3 (2026-11-23)
 - Leader: Sébastien Mosser
   - Bug Fixes:
