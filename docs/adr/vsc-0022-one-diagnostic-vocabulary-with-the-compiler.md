@@ -48,7 +48,7 @@ jpipe-compiler checkout, and `scripts/release.sh preflight` runs it.
 | Code | How the editor's check relates to the compiler's |
 |---|---|
 | `no-duplicate-ids` | exact |
-| `duplicate-model` | **a subset**: the same words, on every model declared after another of its name, whatever their kinds; the compiler also compares the files a model loads, the editor only its own file (#122) |
+| `duplicate-model` | exact in words and in which declaration is kept, across the files a model loads, in the order the compiler reads them; a later declaration in a loaded file is reported on the `load` that brings it in, since the editor cannot underline that file — see below |
 | `has-abstract-support` | exact, inherited `@support` included on both sides |
 | `no-abstract-support` | same rule from the opposite vantage — the compiler checks it after the override commands run, the editor before expansion |
 | `strategy-supported` | exact |
@@ -115,6 +115,15 @@ editor therefore does not report `conclusion-supported` on a later conclusion ei
 anchored on its id, in place of `single-conclusion`. The compiler decides it from the declaration
 alone and discards each such conclusion with the relations that use it, so the editor reports
 neither `single-conclusion` nor `conclusion-supported` on them.
+
+**`duplicate-model` compares every model the compiler reads** to build the file, as its
+`DuplicateModelFilter` does: the file's own models and loads in the order they are written, a
+loaded file's models where its `load` is, each file once, and a file loaded `as lib` naming its
+models `lib:T`, as do the files it loads. The first declaration of a name is kept and every later
+one is flagged, `Model 'T' is already declared at lib.jd:2`. When the later one is in a loaded
+file, the compiler underlines it there, and the editor, validating the loading file, cannot; it
+reports it on that file's `load` that brings it in, naming both places:
+`Model 'T' in lib2.jd:1 is already declared at lib.jd:2`.
 
 **`cyclic-implements` fires once per cycle**, as the compiler's `ExecutionFailureDiagnostics`
 reports it. A model waits on the template it implements, and a composed model on its operator's

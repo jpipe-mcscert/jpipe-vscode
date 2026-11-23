@@ -4,6 +4,10 @@ import { parseHelper } from "langium/test";
 import { Diagnostic, DiagnosticSeverity } from "vscode-languageserver-types";
 import type { Unit } from "jpipe-language";
 import { createJpipeServices, isUnit } from "jpipe-language";
+import * as path from "node:path";
+
+/** The file name the compiler names a model's place by: `lib.jd` in `at lib.jd:8`. */
+const fileOf = (doc: LangiumDocument): string => path.basename(doc.uri.fsPath);
 
 let services: ReturnType<typeof createJpipeServices>;
 let parse: ReturnType<typeof parseHelper<Unit>>;
@@ -60,7 +64,7 @@ describe('Validation tests', () => {
         assertNoParseErrors(doc);
         const messages = diagnosticMessages(doc);
         // The compiler's words, on the later declaration only, pointing at the first one, which is kept.
-        expect(messages.filter(m => m.startsWith("Model 'J' is already declared"))).toEqual(["Model 'J' is already declared at line 2"]);
+        expect(messages.filter(m => m.startsWith("Model 'J' is already declared"))).toEqual([`Model 'J' is already declared at ${fileOf(doc)}:2`]);
     });
 
     test('a template and a justification of one name collide too, as the compiler has it', async () => {
@@ -74,7 +78,7 @@ describe('Validation tests', () => {
             }
         `);
         assertNoParseErrors(doc);
-        expect(diagnosticMessages(doc).filter(m => m.startsWith("Model 'X'"))).toEqual(["Model 'X' is already declared at line 1"]);
+        expect(diagnosticMessages(doc).filter(m => m.startsWith("Model 'X'"))).toEqual([`Model 'X' is already declared at ${fileOf(doc)}:1`]);
     });
 
     test('duplicate template name triggers error', async () => {

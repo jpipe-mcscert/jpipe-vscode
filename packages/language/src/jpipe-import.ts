@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import {
     isJustification,
+    isLoad,
     isTemplate,
     type Justification,
     type Load,
@@ -34,6 +35,16 @@ const PRUNED_DIRECTORIES = new Set(['node_modules', 'out', '.git']);
 
 /** Upper bound on entries visited per expansion, so a pattern near a huge tree fails loudly. */
 const MAX_WALK_ENTRIES = 20_000;
+
+/** A model the compiler reads when it builds a file, under the name it gives it there. */
+export interface ModelDeclaration {
+    /** `T`, or `lib:T` for a model of a file loaded `as lib`. */
+    readonly name: string;
+    readonly model: Justification | Template;
+    readonly document: LangiumDocument;
+    /** The `load` of the built file that brought the model in; `undefined` for the file's own. */
+    readonly via?: Load;
+}
 
 /**
  * Import service for handling imports and resolving imported documents, templates, and elements.
@@ -387,6 +398,40 @@ export class JpipeImportService {
     }
 
     /**
+     * Every model the compiler reads when it builds `currentDoc`, in the order it reads them.
+     *
+     * The compiler's `LoadResolver` splices a loaded file's commands in where its `load` is, so a
+     * file's models and loads count in the order they are written, and a loaded file's models
+     * where it is loaded. A file is read once, the first time it is met: one that two files load
+     * is not read twice. A file loaded `as lib` names its models `lib:T`, and so do the files it
+     * loads in turn. This is the order `DuplicateModelFilter` decides which declaration is first.
+     */
+    modelDeclarations(unit: Unit, currentDoc: LangiumDocument): ModelDeclaration[] {
+        const declarations: ModelDeclaration[] = [];
+        const read = new Set<string>([path.resolve(fsPathOf(currentDoc.uri))]);
+        const walk = (current: Unit, document: LangiumDocument, prefix: string | undefined, via: Load | undefined): void => {
+            const items = [...current.body, ...current.imports]
+                .sort((a, b) => (a.$cstNode?.offset ?? 0) - (b.$cstNode?.offset ?? 0));
+            for (const item of items) {
+                if (!isLoad(item)) {
+                    declarations.push({ name: qualify(prefix, item.id), model: item, document, via });
+                    continue;
+                }
+                const namespace = item.namespace ? qualify(prefix, item.namespace) : prefix;
+                for (const loaded of this.resolveImportedDocuments(item, document)) {
+                    const file = path.resolve(fsPathOf(loaded.uri));
+                    const loadedUnit = loaded.parseResult.value as Unit | undefined;
+                    if (read.has(file) || !loadedUnit) continue;
+                    read.add(file);
+                    walk(loadedUnit, loaded, namespace, via ?? item);
+                }
+            }
+        };
+        walk(unit, currentDoc, undefined, undefined);
+        return declarations;
+    }
+
+    /**
      * Traverse `load` edges starting from the current unit:
      * - Start from direct loads of `currentDoc` (must be explicitly loaded by the root doc)
      * - Then follow loads found inside imported docs (transitively), resolving relative to each doc
@@ -496,4 +541,9 @@ export class JpipeImportService {
     private getLocalTemplates(unit: Unit): Template[] {
         return unit.body.filter((b): b is Template => isTemplate(b));
     }
+}
+
+/** `name` under `prefix`, the namespace a file was loaded under: `lib:T`. */
+function qualify(prefix: string | undefined, name: string): string {
+    return prefix ? `${prefix}:${name}` : name;
 }

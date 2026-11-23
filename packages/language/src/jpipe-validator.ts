@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { AstUtils, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
 import { GlobExpansionError, isGlobPattern } from './jpipe-glob.js';
 import {
@@ -13,8 +14,6 @@ import {
     type Justification,
     type Load,
     type Relation,
-    isTemplate,
-    isJustification,
     isAbstractSupport,
     isConclusion,
     isEvidence,
@@ -23,7 +22,7 @@ import {
 } from './generated/ast.js';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
-import type { JpipeImportService } from './jpipe-import.js';
+import type { JpipeImportService, ModelDeclaration } from './jpipe-import.js';
 import type { JpipeUnificationService } from './jpipe-unification.js';
 import {
     HOOK_KEY,
@@ -36,7 +35,7 @@ import {
     requiredConfigKeys
 } from './jpipe-operators.js';
 import {
-    cannotSeeAllElements, expandedElements, getAllElements, getLocalElements, hookTarget, implementsCycle,
+    cannotSeeAllElements, expandedElements, fsPathOf, getAllElements, getLocalElements, hookTarget, implementsCycle,
     implementsLoops, isDiscardedConclusion, qualifiedIdText, requiredOverrides
 } from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
@@ -47,11 +46,11 @@ export function registerValidationChecks(services: JpipeServices) {
     const registry = services.validation.ValidationRegistry;
     const validator = services.validation.JpipeValidator;
     const checks: ValidationChecks<JpipeAstType> = {
-        Unit:           validator.checkUnitNotEmpty,
+        Unit:           [validator.checkUnitNotEmpty, validator.checkDuplicateModels],
         Load:           validator.checkLoadResolves,
         Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkDuplicateSources, validator.checkConfigKeys, validator.checkUnificationMethod, validator.checkRefineHook],
-        Template:       [validator.checkDuplicateModelName, validator.checkCyclicImplements, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
-        Justification:  [validator.checkDuplicateModelName, validator.checkCyclicImplements, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
+        Template:       [validator.checkCyclicImplements, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
+        Justification:  [validator.checkCyclicImplements, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
         Evidence:       validator.checkLabelNotEmpty,
         Strategy:       [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
         Conclusion:     [validator.checkLabelNotEmpty, validator.checkInheritedConclusion, validator.checkConclusionIncomingFromStrategy],
@@ -332,21 +331,37 @@ export class JpipeValidator {
     }
 
     /**
-     * Flags a model declared under a name another model of the file already has, whatever their
+     * Flags a model declared under a name a model read before it already has, whatever their
      * kinds: the compiler rejects it under the same code and in the same words, and drops the later
-     * one with its whole body (jpipe-vscode ADR-VSC-0022). So, as there, the first declaration is
-     * the one kept and every later one is flagged, pointing at it. The compiler also compares the
-     * files a model loads; this checks one file (#122).
+     * one with its whole body (`DuplicateModelFilter`; jpipe-vscode ADR-VSC-0022). The compiler
+     * compares every model it reads to build this file, those of the files it loads included, in
+     * the order it reads them (`modelDeclarations`). So, as there, the first declaration is the one
+     * kept, and every later one is flagged, pointing at the first as `at lib.jd:8`.
+     *
+     * A later declaration in a loaded file is underlined by the compiler in that file, which this
+     * validation does not reach. It is reported on the `load` of this file that brings it in, with
+     * the place of both declarations: the build of this file fails because of it.
      */
-    checkDuplicateModelName(model: Justification | Template, accept: ValidationAcceptor): void {
-        const unit = model.$container;
-        if (!unit) return;
-        const named = unit.body.filter(item => (isJustification(item) || isTemplate(item)) && item.id === model.id);
-        if (named.indexOf(model) < 1) return;
-        const first = named[0].$cstNode?.range.start.line;
-        const where = first === undefined ? '' : ` at line ${first + 1}`;
-        report(accept, JpipeIssue.DuplicateModel, `Model '${model.id}' is already declared${where}`,
-               { node: model, property: 'id' }, { id: model.id });
+    checkDuplicateModels(unit: Unit, accept: ValidationAcceptor): void {
+        const document = unit.$document;
+        if (!document) return;
+        const first = new Map<string, ModelDeclaration>();
+        for (const declaration of this.importService.modelDeclarations(unit, document)) {
+            const earlier = first.get(declaration.name);
+            if (!earlier) {
+                first.set(declaration.name, declaration);
+                continue;
+            }
+            const where = `is already declared at ${placeOf(earlier)}`;
+            const data = { id: declaration.name };
+            if (declaration.via) {
+                report(accept, JpipeIssue.DuplicateModel, `Model '${declaration.name}' in ${placeOf(declaration)} ${where}`,
+                       { node: declaration.via, property: 'path' }, data);
+            } else {
+                report(accept, JpipeIssue.DuplicateModel, `Model '${declaration.name}' ${where}`,
+                       { node: declaration.model, property: 'id' }, data);
+            }
+        }
     }
 
     /**
@@ -609,4 +624,10 @@ function describeCycle(cycle: ReadonlyArray<Justification | Template>): string {
             ? `, which '${model.composition.operator}' builds from ${next}`
             : ` implements ${next}`;
     }).join('');
+}
+
+/** Where the compiler says a model is declared: the file's name and the line, `lib.jd:8`. */
+function placeOf(declaration: ModelDeclaration): string {
+    const line = (declaration.model.$cstNode?.range.start.line ?? 0) + 1;
+    return `${path.basename(fsPathOf(declaration.document.uri))}:${line}`;
 }
