@@ -12,6 +12,7 @@ import {
     type Template,
     type Justification,
     type Load,
+    type Relation,
     isTemplate,
     isJustification,
     isAbstractSupport,
@@ -34,7 +35,10 @@ import {
     operatorSpec,
     requiredConfigKeys
 } from './jpipe-operators.js';
-import { buildsOnComposition, expandedElements, getAllElements, getLocalElements, hookTarget, implementsChain, qualifiedIdText } from './jpipe-utils.js';
+import {
+    cannotSeeAllElements, expandedElements, getAllElements, getLocalElements, hookTarget, isDiscardedConclusion,
+    qualifiedIdText, requiredOverrides
+} from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 import { messageOf } from './jpipe-errors.js';
@@ -50,7 +54,7 @@ export function registerValidationChecks(services: JpipeServices) {
         Justification:  [validator.checkDuplicateModelName, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
         Evidence:       validator.checkLabelNotEmpty,
         Strategy:       [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
-        Conclusion:     [validator.checkLabelNotEmpty, validator.checkConclusionIncomingFromStrategy],
+        Conclusion:     [validator.checkLabelNotEmpty, validator.checkInheritedConclusion, validator.checkConclusionIncomingFromStrategy],
         SubConclusion:  validator.checkLabelNotEmpty,
         AbstractSupport: validator.checkLabelNotEmpty
     };
@@ -223,14 +227,14 @@ export class JpipeValidator {
      * the same defect and jpipe-vscode ADR-VSC-0022 says one defect reads one way.
      *
      * `hookTarget` decides what resolves, and matches the compiler: against the ids template
-     * expansion gives inherited elements, then by its suffix fallback. Three shapes are passed over instead, each because the editor genuinely cannot answer:
+     * expansion gives inherited elements, then by its suffix fallback. Two shapes are passed over
+     * instead, each because the editor genuinely cannot answer:
      *
-     * - **A base that `buildsOnComposition`**, when the hook matches none of the ids this can see:
-     *   it may name one the operator builds.
+     * - **A base for which `cannotSeeAllElements` holds**, when the hook matches none of the ids
+     *   this can see: it may name one an operator builds, or one inherited through an `implements`
+     *   that does not resolve. In the second case the visible problem is the `implements`, and
+     *   pointing at the hook would send the user to the wrong line.
      * - **An unresolved first source**, which is a linking error already reported where it is.
-     * - **A broken `implements` chain**, where the inherited half of the element list is missing.
-     *   The hook may name something perfectly real that this cannot see, and the visible problem
-     *   is the `implements` — pointing at the hook would send the user to the wrong line.
      *
      * A missing `hook` is `missing-config-key`'s business and is left alone. An empty one is not:
      * the key is present, so nothing else reports it, and the compiler looks `''` up like any other
@@ -243,8 +247,8 @@ export class JpipeValidator {
         if (!entry || actual === undefined) return;
 
         const base = composition.params?.refs[0]?.ref;
-        if (!base || hasUnresolvedParent(base)) return;
-        if (hookTarget(base, actual) || buildsOnComposition(base)) return;
+        if (!base) return;
+        if (hookTarget(base, actual) || cannotSeeAllElements(base)) return;
 
         const candidates = expandedElements(base)
             .map(entry => entry.id)
@@ -256,6 +260,8 @@ export class JpipeValidator {
 
     checkLabelNotEmpty(element: Evidence | Strategy | Conclusion | SubConclusion | AbstractSupport,
                         accept: ValidationAcceptor): void {
+        // The compiler discards such a conclusion before reading its label.
+        if (isDiscardedConclusion(element)) return;
         if (element.name?.length === 0) {
             report(accept, JpipeIssue.NoEmptyLabel, 'Element label should not be empty',
                    { node: element, property: 'name' });
@@ -313,22 +319,25 @@ export class JpipeValidator {
      *
      * Inherited conclusions count, which is why this reads `getAllElements`: the compiler checks
      * completeness *after* `implements` has inlined the parent's elements, so a justification
-     * whose conclusion comes from its template satisfies the rule there and must here.
+     * whose conclusion comes from its template satisfies the rule there and must here. A conclusion
+     * of its own does not count in a model that `implements` one: the compiler has discarded it.
      *
      * The grammar requires a non-empty body, so `justification J { }` is a parse error rather than
      * this; what reaches here is a model with contents that simply do not include a conclusion.
      *
-     * A model that `buildsOnComposition` — `justification K is assemble(J, T) { … }`, or one
-     * implementing a composed template — is skipped, because its elements do not exist until the
-     * operator has run. `assemble` synthesises a conclusion from `conclusionLabel`, so the compiler
+     * A model for which `cannotSeeAllElements` holds is skipped. One built on a composition —
+     * `justification K is assemble(J, T) { … }`, or one implementing a composed template — has
+     * elements that do not exist until the operator has run; one whose `implements` does not
+     * resolve inherits its conclusion from a template this cannot read, and the unresolved
+     * reference is the one error to report (#129). `assemble` synthesises a conclusion from `conclusionLabel`, so the compiler
      * checks the *result* and is satisfied; checking the source text here would report an error on
      * a model that builds. The cost is that a composition whose result genuinely has no conclusion
      * is caught by the compiler and not by the editor, which is the right way round: silence about
      * a real problem beats noise about one that is not.
      */
     checkModelHasConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
-        if (buildsOnComposition(model)) return;
-        if (getAllElements(model).some(isConclusion)) return;
+        if (cannotSeeAllElements(model)) return;
+        if (getAllElements(model).some(element => isConclusion(element) && !isDiscardedConclusion(element))) return;
 
         report(accept, JpipeIssue.ConclusionPresent, `Model '${model.id}' has no conclusion`,
                { node: model, property: 'id' }, { id: model.id });
@@ -350,8 +359,12 @@ export class JpipeValidator {
      * Reported on each extra rather than once on the model, and anchored on the extra's id, so the
      * squiggle lands on the declaration to remove and the first conclusion is left unmarked —
      * the same shape as `checkDuplicateElementIds`, and the same anchor the compiler uses.
+     *
+     * A model that `implements` a template is left to `checkInheritedConclusion`: the compiler
+     * refuses each of its conclusions under that code instead, however many there are.
      */
     checkSingleConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
+        if (model.parent) return;
         const conclusions = getLocalElements(model).filter(isConclusion);
         for (const extra of conclusions.slice(1)) {
             report(accept, JpipeIssue.SingleConclusion, `Model '${model.id}' declares multiple conclusions`,
@@ -365,12 +378,13 @@ export class JpipeValidator {
      * The compiler's own note for this rule says it best: a template with no abstract supports is
      * a justification in disguise. It refuses to build one, and the message here is its wording.
      *
-     * A template that `buildsOnComposition` is left alone: the `@support` elements a `refine` leaves
-     * unrefined are in no body this can read. Declaring the wrong kind for an operator's result is a
-     * different error in the compiler, raised once the operator has run.
+     * A template for which `cannotSeeAllElements` holds is left alone: the `@support` elements a
+     * `refine` leaves unrefined, or those of a template that does not resolve, are in no body this
+     * can read. Declaring the wrong kind for an operator's result is a different error in the
+     * compiler, raised once the operator has run.
      */
     checkTemplateHasSupport(template: Template, accept: ValidationAcceptor): void {
-        if (buildsOnComposition(template)) return;
+        if (cannotSeeAllElements(template)) return;
         const allElements = getAllElements(template);
         const hasSupport = allElements.some(elem => isAbstractSupport(elem));
 
@@ -398,6 +412,8 @@ export class JpipeValidator {
             const id = qualifiedIdText(element.id);
             // An element being typed has no id yet; it is not a duplicate of every other one.
             if (!id) continue;
+            // Discarded by the compiler before ids are compared, so it clashes with nothing.
+            if (isDiscardedConclusion(element)) continue;
             if (seen.has(id)) {
                 report(accept, JpipeIssue.NoDuplicateIds, `Duplicate element id '${id}' in model '${model.id}'`,
                        { node: element, property: 'id' }, { id, modelId: model.id });
@@ -410,8 +426,9 @@ export class JpipeValidator {
         const body = strategy.$container;
         if (!body?.rels) return;
 
-        // `to` is absent while `e supports ` is still being typed, which is most of the time.
-        const incoming = body.rels.filter(r => r.to?.ref === strategy);
+        // `to` is absent while `e supports ` is still being typed, which is most of the time. A
+        // relation using a discarded conclusion is discarded with it, so it supports nothing.
+        const incoming = body.rels.filter(r => r.to?.ref === strategy && !isDiscardedRelation(r));
         if (incoming.length === 0) {
             report(accept, JpipeIssue.StrategySupported, `Strategy '${qualifiedIdText(strategy.id)}' is not supported by any evidence, sub-conclusion, or @support.`,
                    { node: strategy, property: 'id' }, { targetId: qualifiedIdText(strategy.id) });
@@ -430,9 +447,33 @@ export class JpipeValidator {
         }
     }
 
+    /**
+     * Flags a conclusion declared by a model that `implements` a template.
+     *
+     * Such a model inherits its template's conclusion (jpipe-compiler ADR-0012), and the compiler
+     * refuses one of its own while it reads the file: every conclusion the model declares is
+     * reported, and discarded with the relations that use it (`ActionListProvider.enterConclusion`).
+     * The rule reads the declaration alone, so it holds whether or not the template resolves, and
+     * the message names the template as the `implements` line spells it, as the compiler's does.
+     *
+     * Discarding is why no other rule says anything about these conclusions, or counts them: see
+     * `isDiscardedConclusion`. An answer about an element that will not exist is the wrong problem
+     * to put in front of someone.
+     */
+    checkInheritedConclusion(conclusion: Conclusion, accept: ValidationAcceptor): void {
+        if (!isDiscardedConclusion(conclusion)) return;
+        const model = conclusion.$container.$container;
+        const parent = model.parent?.$refText ?? model.parent?.ref?.id ?? '';
+        report(accept, JpipeIssue.InheritedConclusion,
+               `Model '${model.id}' implements '${parent}' and inherits its conclusion: it cannot declare its own`,
+               { node: conclusion, property: 'id' },
+               { modelId: model.id, parentId: parent, id: qualifiedIdText(conclusion.id) });
+    }
+
     checkConclusionIncomingFromStrategy(conclusion: Conclusion, accept: ValidationAcceptor): void {
         const body = conclusion.$container;
         if (!body?.rels) return;
+        if (isDiscardedConclusion(conclusion)) return;
 
         // The compiler keeps only the first conclusion and discards the rest, so it never asks
         // whether a later one is supported — and neither should we. Without this, a model with two
@@ -461,9 +502,13 @@ export class JpipeValidator {
         const template = justification.parent.ref;
         const parentRefText = justification.parent.$refText ?? template.id;
         const localElements = getLocalElements(justification);
-        const localById = new Map(localElements.map(e => [qualifiedIdText(e.id), e]));
+        // A conclusion spelled as an override is discarded before overrides are matched, so the
+        // `@support` is still missing, as the compiler says, rather than overridden by the wrong kind.
+        const localById = new Map(localElements
+            .filter(e => !isDiscardedConclusion(e))
+            .map(e => [qualifiedIdText(e.id), e]));
 
-        const required = this.getRequiredOverrides(template, parentRefText);
+        const required = requiredOverrides(template, parentRefText);
         // Every gap is listed on each diagnostic, so a single action can close them all at once.
         const allMissing = required
             .filter(req => !localById.has(req.expectedKey))
@@ -493,63 +538,22 @@ export class JpipeValidator {
         }
     }
 
-    /**
-     * The `@support` elements a justification implementing `template` must override.
-     *
-     * `seen` guards the `implements` walk: a template may point back at itself, which the
-     * compiler reports as `cyclic-implements`, and the model sits in that state while it is being
-     * edited. Recursing through such a chain would exhaust the stack and abort validation for the
-     * whole document.
-     */
-    private getRequiredOverrides(
-        template: Template,
-        refText: string,
-        seen: Set<Template> = new Set()
-    ): Array<{ support: AbstractSupport; expectedKey: string; sourceTemplateId: string }> {
-        if (seen.has(template)) return [];
-        seen.add(template);
-        const local = template.contents?.body ?? [];
-        // Keys of non-abstract elements defined directly in this template (these override parent abstracts)
-        const localOverrideKeys = new Set(
-            local.filter(e => !isAbstractSupport(e)).map(e => qualifiedIdText(e.id))
-        );
-        const result: Array<{ support: AbstractSupport; expectedKey: string; sourceTemplateId: string }> = [];
-
-        // Abstract supports declared directly in this template
-        for (const elem of local) {
-            if (isAbstractSupport(elem)) {
-                result.push({
-                    support: elem,
-                    expectedKey: `${refText}:${qualifiedIdText(elem.id)}`,
-                    sourceTemplateId: template.id
-                });
-            }
-        }
-
-        // Propagate unresolved abstract supports from the parent chain
-        if (template.parent?.ref) {
-            const parentRefText = template.parent.$refText ?? template.parent.ref.id;
-            for (const req of this.getRequiredOverrides(template.parent.ref, parentRefText, seen)) {
-                // Skip if this template already provides a non-abstract override for it
-                if (!localOverrideKeys.has(req.expectedKey)) {
-                    result.push(req);
-                }
-            }
-        }
-
-        return result;
-    }
-
 
 }
 
 /**
- * Whether any `implements` in the model's chain names a template that did not resolve.
+ * Whether the compiler drops `relation` along with a discarded conclusion: whether either end is
+ * *written* as that conclusion's id (`ActionListProvider`, its `rejectedConclusions`).
  *
- * `getAllElements` follows `parent?.ref` and simply stops when it is undefined, so a model with a
- * broken `implements` reports a *shorter* element list rather than an error — which reads, to
- * anything asking "is this id here?", as a confident no.
+ * Matched on the text, as the compiler matches, rather than on what the reference resolves to:
+ * a short name the scope aliases to the conclusion is not its id, and the compiler keeps that
+ * relation.
  */
-function hasUnresolvedParent(model: Justification | Template): boolean {
-    return implementsChain(model).some(link => link.parent !== undefined && !link.parent.ref);
+function isDiscardedRelation(relation: Relation): boolean {
+    const rejected = new Set((relation.$container.body ?? [])
+        .filter(isDiscardedConclusion)
+        .map(element => qualifiedIdText((element as Conclusion).id)));
+    if (rejected.size === 0) return false;
+    return [relation.from?.$refText, relation.to?.$refText]
+        .some(text => text !== undefined && rejected.has(text.replace(/\s+/g, '')));
 }

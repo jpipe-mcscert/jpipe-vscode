@@ -29,6 +29,100 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
+// A loaded file that is not open is parsed from disk. Every lookup must get the
+// same parse, or the nodes of one are not found among the nodes of another and
+// references through a `load … as` alias stop resolving (#37). Only the loading
+// file is built here, which is the configuration the bug needed.
+// ---------------------------------------------------------------------------
+
+describe('A loaded file that is not open', () => {
+
+    const LIBRARY = `template T {
+ @support a is "A"
+ strategy s is "S"
+ conclusion c is "C"
+ a supports s
+ s supports c
+}`;
+
+    test('resolves references through its alias into an inherited template', async () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
+        try {
+            fs.writeFileSync(path.join(tmpDir, 'library.jd'), LIBRARY);
+            document = await parse(`load "./library.jd" as lib
+
+justification J implements lib:T {
+ evidence lib:T:a is "Signed off"
+ lib:T:a supports lib:T:s
+}`, { documentUri: pathToFileURL(path.join(tmpDir, 'user.jd')).toString(), validation: true });
+
+            expect(diagnosticMessages(document)).toEqual([]);
+            const relation = document.parseResult.value.body.find(isJustification)?.contents?.rels[0];
+            expect(relation?.to?.ref?.$type).toBe('Strategy');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true });
+        }
+    });
+
+    // A closed file between the loading file and the template it implements: its own references
+    // must follow the template when it changes, while its nodes stay the ones others point at.
+    test('follows a change to the file it loads in turn', async () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
+        try {
+            const basePath = path.join(tmpDir, 'base.jd');
+            fs.writeFileSync(basePath, 'template B {\n conclusion c is "C"\n strategy s is "S"\n @support a is "A"\n a supports s\n s supports c\n}');
+            fs.writeFileSync(path.join(tmpDir, 'middle.jd'), 'load "./base.jd"\ntemplate M implements B { @support m is "M" }');
+            document = await parse('load "./middle.jd"\njustification J implements M { evidence B:a is "A" evidence M:m is "M" }',
+                { documentUri: pathToFileURL(path.join(tmpDir, 'user.jd')).toString() });
+            const middle = document.parseResult.value.body.find(isJustification)?.parent?.ref;
+            const idsOfBase = () => (middle?.parent?.ref?.contents?.body ?? []).map(e => e.id?.parts.join(':'));
+            expect(idsOfBase()).toEqual(['c', 's', 'a']);
+
+            fs.writeFileSync(basePath, 'template B {\n conclusion c is "C"\n strategy s is "S"\n @support a is "A"\n @support extra is "X"\n a supports s\n extra supports s\n s supports c\n}');
+            const later = new Date(Date.now() + 10_000);
+            fs.utimesSync(basePath, later, later);
+            await services.shared.workspace.DocumentBuilder.update([], []);
+
+            // The same middle node, now pointing at the base as it is on disk.
+            expect(document.parseResult.value.body.find(isJustification)?.parent?.ref).toBe(middle);
+            expect(idsOfBase()).toEqual(['c', 's', 'a', 'extra']);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true });
+        }
+    });
+
+    test('is parsed once for each version of it on disk', async () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-import-'));
+        try {
+            fs.writeFileSync(path.join(tmpDir, 'library.jd'), LIBRARY);
+            document = await parse('load "./library.jd"\njustification J implements T { evidence T:a is "A" }',
+                { documentUri: pathToFileURL(path.join(tmpDir, 'user.jd')).toString() });
+            const importService = services.Jpipe.references.JpipeImportService;
+
+            const first = importService.parseDocumentFromPath('./library.jd', document);
+            expect(importService.parseDocumentFromPath('./library.jd', document)).toBe(first);
+
+            // An edit elsewhere in the workspace leaves the parse alone: documents that are not
+            // relinked still hold references into it.
+            importService.invalidateGlobCache();
+            expect(importService.parseDocumentFromPath('./library.jd', document)).toBe(first);
+
+            // A change on disk, made outside the editor, is read.
+            const libraryPath = path.join(tmpDir, 'library.jd');
+            fs.writeFileSync(libraryPath, LIBRARY.replace('"S"', '"Changed"'));
+            const later = new Date(Date.now() + 10_000);
+            fs.utimesSync(libraryPath, later, later);
+            const reread = importService.parseDocumentFromPath('./library.jd', document);
+            expect(reread).toBeDefined();
+            expect(reread).not.toBe(first);
+            expect(reread!.textDocument.getText()).toContain('"Changed"');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true });
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Relative import resolution — exercises the `relativeToDoc` branch of
 // JpipeImportService.parseDocumentFromPath, the exact code path that was
 // malformed on Windows. Runs green on POSIX before and after the fix, so it

@@ -16,6 +16,7 @@ import { fixLoadPath } from './fix-load-path.js';
 import { fixOperatorName } from './fix-operator-name.js';
 import { fixUnificationMethod } from './fix-unification-method.js';
 import { fixOverrideType } from './fix-override-type.js';
+import { fixInheritedConclusion } from './fix-inherited-conclusion.js';
 import { convertModelKind } from './convert-model-kind.js';
 import { organizeLoads } from './organize-loads.js';
 import { sortElements } from './sort-elements.js';
@@ -25,6 +26,7 @@ import type { RefactoringDefinition, RegisteredQuickFix } from './types.js';
 export const JPIPE_QUICK_FIXES: readonly RegisteredQuickFix[] = [
     addSupportOverride,
     fixOverrideType,
+    fixInheritedConclusion,
     fixOperatorName,
     addRequiredConfigKeys,
     fixConfigKey,

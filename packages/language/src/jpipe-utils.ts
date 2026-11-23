@@ -1,6 +1,7 @@
 import { type AstNode, type CstNode, GrammarUtils, URI } from 'langium';
 import { DefaultNameProvider } from 'langium';
 import {
+    type AbstractSupport,
     isAbstractSupport,
     isConclusion,
     type Justification,
@@ -138,21 +139,34 @@ export function getLocalElements(node: Justification | Template): JustificationE
 }
 
 /**
- * Whether `model`'s elements come, in whole or in part, from a composition: whether it is composed
- * itself, or a template its `implements` chain names is.
+ * Whether some of `model`'s elements are in no body this can read: whether its `implements` chain
+ * reaches a composed model or a template that does not resolve, or loops back on itself.
  *
  * A composed model — `template T is refine(P, Q) { hook: "a" }` — has no body. Its elements are the
  * ones the operator builds from its sources, under ids such as `P:b` that no `.jd` file declares,
- * and `implements` hands them down to every model below it. `getAllElements` and
- * `expandedElements` read bodies only, so past a composition the list they return is short without
- * saying so, and anything asking "is there a conclusion / a `@support` / an element with this id?"
- * hears a confident no about a model the compiler builds (its example 028).
+ * and `implements` hands them down to every model below it. An `implements` that does not resolve
+ * hides elements the same way: the chain stops there, and the inherited half of the list with it.
+ * `getAllElements` and `expandedElements` read bodies only, so in both cases the list they return
+ * is short without saying so, and anything asking "is there a conclusion / a `@support` / an
+ * element with this id?" hears a confident no about a model the compiler builds (its example 028),
+ * or one whose only problem is the `implements` line (#129). That line is already reported as an
+ * unresolved reference, which points the user at the one thing to fix. A chain that loops has no
+ * element list at all: the compiler reports `cyclic-implements` there and judges nothing else, so
+ * neither may this (the editor does not report the cycle yet, #128).
  *
- * Until the operators are ported, such a model is left alone by every rule that needs its whole
- * element list: a missing element there is a fact about what this can read, not about the model.
+ * Such a model is left alone by every rule that needs its whole element list: a missing element
+ * there is a fact about what this can read, not about the model. The operators are never ported:
+ * a composition's elements are to be read from the compiler (jpipe-vscode ADR-VSC-0034).
  */
-export function buildsOnComposition(model: Justification | Template): boolean {
-    return implementsChain(model).some(link => link.composition !== undefined);
+export function cannotSeeAllElements(model: Justification | Template): boolean {
+    return implementsLoops(model) || implementsChain(model).some(link =>
+        link.composition !== undefined || (link.parent !== undefined && !link.parent.ref));
+}
+
+/** Whether `model`'s `implements` chain comes back to a model already on it (`cyclic-implements`). */
+export function implementsLoops(model: Justification | Template): boolean {
+    // The walk stops at a link with no parent, or at one whose parent it has already visited.
+    return implementsChain(model).at(-1)?.parent?.ref !== undefined;
 }
 
 /**
@@ -185,9 +199,9 @@ export interface ExpandedElement {
  * is the template that declared it, and an id already qualified keeps its qualifier — so an element
  * `U` declares is `U:e` in a model two `implements` below it, never `T:U:e`. A local element keeps
  * the id it is written with, and replaces the inherited one it shares an id with: that is how
- * `evidence T:a` overrides `@support a`. A local conclusion likewise displaces an inherited one.
- * The compiler rejects that last pairing outright, and letting the local one win keeps a hook from
- * adding a second, misleading error to a model already reported for it.
+ * `evidence T:a` overrides `@support a`. A conclusion written in a model that `implements` a
+ * template is left out: the compiler reports it as `inherited-conclusion` and discards it, so the
+ * model keeps the conclusion it inherits, and a hook or an override answers to that one.
  *
  * Inherited elements come first and local ones after, which is the compiler's order and the one a
  * suffix match is first-found in. The AST node is the declaration, so identity survives the
@@ -204,12 +218,11 @@ export function expandedElements(
         ? expandedElements(parent, seen).map(({ element, id }) =>
             ({ element, id: id.includes(':') ? id : `${parent.id}:${id}` }))
         : [];
-    const local = getLocalElements(model).map(element => ({ element, id: qualifiedIdText(element.id) }));
+    const local = getLocalElements(model)
+        .filter(element => !isDiscardedConclusion(element))
+        .map(element => ({ element, id: qualifiedIdText(element.id) }));
     const replaced = new Set(local.map(entry => entry.id));
-    const ownConclusion = local.some(entry => isConclusion(entry.element));
-    const kept = inherited.filter(entry =>
-        !replaced.has(entry.id) && !(ownConclusion && isConclusion(entry.element)));
-    return [...kept, ...local];
+    return [...inherited.filter(entry => !replaced.has(entry.id)), ...local];
 }
 
 /**
@@ -225,11 +238,11 @@ export function expandedElements(
  * name `T:a`. The suffix pass skips the conclusion, as the compiler's does, so an inherited
  * conclusion answers only to its full `T:c`.
  *
- * A base that `buildsOnComposition` has elements this cannot see, and the compiler scans them
- * first. An exact id stays reliable there — what the base declares itself replaces any inherited
- * element of that id — but a suffix match does not, since a hidden element may end the same way.
- * Only the exact pass runs on such a base, so `undefined` means "not found" on a plain base and
- * "cannot tell" on one that `buildsOnComposition`; callers must not report the latter.
+ * On a base for which `cannotSeeAllElements` holds, some elements are hidden from this, and the
+ * compiler scans them first. An exact id stays reliable there — what the base declares itself
+ * replaces any inherited element of that id — but a suffix match does not, since a hidden element
+ * may end the same way. Only the exact pass runs on such a base, so `undefined` means "not found"
+ * on a fully visible base and "cannot tell" on the other kind; callers must not report the latter.
  */
 export function hookTarget(
     base: Justification | Template,
@@ -238,7 +251,75 @@ export function hookTarget(
     const elements = expandedElements(base);
     const exact = elements.find(entry => entry.id === hook);
     if (exact) return exact.element;
-    if (buildsOnComposition(base)) return undefined;
+    if (cannotSeeAllElements(base)) return undefined;
     const suffix = `:${hook}`;
     return elements.find(entry => !isConclusion(entry.element) && entry.id.endsWith(suffix))?.element;
+}
+
+/**
+ * Whether `element` is a conclusion the compiler throws away: one declared by a model that
+ * `implements` a template, and so inherits its conclusion.
+ *
+ * The compiler refuses it while reading the file (`inherited-conclusion`, from the declaration
+ * alone) and drops it together with every relation that uses it, before any other rule runs. Every
+ * check must therefore read the model as if it were not written: it does not satisfy
+ * `conclusion-present`, support a strategy, override a `@support`, clash with another id, or need
+ * support of its own.
+ */
+export function isDiscardedConclusion(element: AstNode | undefined): boolean {
+    return isConclusion(element) && element.$container?.$container?.parent !== undefined;
+}
+
+/** A `@support` a justification must override, and the id the override has to be written with. */
+export interface RequiredOverride {
+    readonly support: AbstractSupport;
+    readonly expectedKey: string;
+    readonly sourceTemplateId: string;
+}
+
+/**
+ * The `@support` elements a justification implementing `template` must override.
+ *
+ * `seen` guards the `implements` walk: a template may point back at itself, which the
+ * compiler reports as `cyclic-implements`, and the model sits in that state while it is being
+ * edited. Recursing through such a chain would exhaust the stack and abort validation for the
+ * whole document.
+ */
+export function requiredOverrides(
+    template: Template,
+    refText: string,
+    seen: Set<Template> = new Set()
+): RequiredOverride[] {
+    if (seen.has(template)) return [];
+    seen.add(template);
+    const local = template.contents?.body ?? [];
+    // Keys of non-abstract elements defined directly in this template (these override parent abstracts)
+    const localOverrideKeys = new Set(
+        local.filter(e => !isAbstractSupport(e) && !isDiscardedConclusion(e)).map(e => qualifiedIdText(e.id))
+    );
+    const result: RequiredOverride[] = [];
+
+    // Abstract supports declared directly in this template
+    for (const elem of local) {
+        if (isAbstractSupport(elem)) {
+            result.push({
+                support: elem,
+                expectedKey: `${refText}:${qualifiedIdText(elem.id)}`,
+                sourceTemplateId: template.id
+            });
+        }
+    }
+
+    // Propagate unresolved abstract supports from the parent chain
+    if (template.parent?.ref) {
+        const parentRefText = template.parent.$refText ?? template.parent.ref.id;
+        for (const req of requiredOverrides(template.parent.ref, parentRefText, seen)) {
+            // Skip if this template already provides a non-abstract override for it
+            if (!localOverrideKeys.has(req.expectedKey)) {
+                result.push(req);
+            }
+        }
+    }
+
+    return result;
 }

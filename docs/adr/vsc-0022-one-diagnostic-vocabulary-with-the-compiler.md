@@ -54,8 +54,9 @@ jpipe-compiler checkout, and `scripts/release.sh preflight` runs it.
 | `strategy-supported` | exact |
 | `invalid-support` | **a subset**: the compiler covers every ill-typed support pair, the editor only the strategy side |
 | `conclusion-supported` | one code over two checks — see below |
-| `conclusion-present` | inherited conclusions count; composed models are skipped — see below |
+| `conclusion-present` | inherited conclusions count; a model whose `implements` chain reaches a composition or does not resolve is skipped — see below |
 | `single-conclusion` | exact, down to the anchor column |
+| `inherited-conclusion` | exact, on every conclusion a model with an `implements` declares, whether or not the template resolves |
 
 **Coined by the extension**, for one of three reasons. The distinction matters when the compiler
 next gains a rule, and `jpipe-compiler-codes.ts` keeps each code under its reason:
@@ -97,7 +98,9 @@ path is meaningless for a glob that matched nothing.
 `implements` has inlined the parent's elements. **It skips composed models**:
 `justification K is assemble(J, T) { … }` has no body, its elements exist only once the operator
 has run, and `assemble` synthesises a conclusion from `conclusionLabel`. The compiler judges the
-result, and so cannot be predicted from the source text. No quick fix is offered — writing a
+result, and so cannot be predicted from the source text. A model whose `implements` does not
+resolve is skipped for the same reason: its conclusion would come from a template the editor cannot
+read, and the compiler reports only the unknown template. No quick fix is offered — writing a
 conclusion means writing the claim the argument exists to make, which the editor cannot guess.
 
 **`single-conclusion` fires on every conclusion after the first**, anchored on the extra one's
@@ -106,10 +109,15 @@ conclusion a model declares and discards every later one (`ActionListProvider.en
 returns without creating it), so it never asks whether a later conclusion is supported. The
 editor therefore does not report `conclusion-supported` on a later conclusion either.
 
+**`inherited-conclusion` fires on every conclusion of a model that `implements` a template**,
+anchored on its id, in place of `single-conclusion`. The compiler decides it from the declaration
+alone and discards each such conclusion with the relations that use it, so the editor reports
+neither `single-conclusion` nor `conclusion-supported` on them.
+
 **Rules the editor does not check.** The compiler reports, and the editor is silent on:
 `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`, `unresolved-override`,
 `cyclic-implements`, `implements-error`, `reference-into-template`, `incompatible-unification`,
-`inherited-conclusion`, `ambiguous-id`, and `invalid-support` beyond strategies. `unknown-model` and `unknown-element` *are* covered, but
+`ambiguous-id`, and `invalid-support` beyond strategies. `unknown-model` and `unknown-element` *are* covered, but
 under Langium's own `linking-error`, a vocabulary this repository does not own — the seam
 `add-missing-load.ts` keys on.
 
@@ -120,8 +128,8 @@ behind, since every id unified into an element keeps addressing it. A key landin
 gives a consumer no way to choose, and `jpipe-runner` discards the whole model rather than guess.
 Aliases are created only by `CompositionOperator` and `Unifier`, as `RegisterAlias` commands, so
 no `.jd` file names one and none exists until an operator has run. Checking the rule would mean
-executing unification in the language server — the boundary `conclusion-present` declines to
-cross for composed models. It is vendored to be filed, and its entry in `COMPILER_CODES` says so.
+executing unification in the language server, which jpipe-vscode ADR-VSC-0034 rules out. It is
+vendored to be filed, and its entry in `COMPILER_CODES` says so.
 
 ## Rationale
 

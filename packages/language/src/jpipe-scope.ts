@@ -10,7 +10,7 @@ import {
     type Template,
     type Unit
 } from './generated/ast.js';
-import { getAllElements, getLocalElements, localName, qualifiedIdText } from './jpipe-utils.js';
+import { getAllElements, getLocalElements, implementsLoops, isDiscardedConclusion, localName, qualifiedIdText } from './jpipe-utils.js';
 import { getDocumentAndUnit } from './jpipe-ast-context.js';
 
 
@@ -80,7 +80,17 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
         // provider, which runs after linking is complete.
 
         const { document, unit } = getDocumentAndUnit(owner);
-        const localElements = getLocalElements(owner);
+        const declared = getLocalElements(owner);
+
+        // A conclusion declared under `implements` is discarded by the compiler, and so is every
+        // relation written with its id. Such a reference still resolves to it, so the relation is
+        // recognised as discarded and nothing else is reported on it. Every other reference
+        // resolves as if it were not declared: `e` names the inherited `T:e`, not a discarded
+        // `conclusion T:e`, as the compiler's lookup does once the conclusion is gone.
+        const written = context.reference.$refText.replace(/\s+/g, '');
+        const discarded = declared.find(e => isDiscardedConclusion(e) && qualifiedIdText(e.id) === written);
+        if (discarded) return this.createScope([this.descriptions.createDescription(discarded, written)]);
+        const localElements = declared.filter(e => !isDiscardedConclusion(e));
 
         // Local element keys take priority; inherited entries with the same key are
         // the originals being overridden and must be excluded to avoid duplicate keys.
@@ -92,7 +102,12 @@ export class JpipeScopeProvider extends DefaultScopeProvider {
                 .filter(e => !localElements.includes(e))
                 .map(e => ({ element: e, key: qualifiedIdText(e.id) }));
 
-        const inheritedEntries = allInheritedEntries.filter(({ key }) => !localKeys.has(key));
+        // An ancestor's discarded conclusion is not inherited either: the compiler reports a
+        // relation naming it as `unknown-element`. On a chain that loops, the compiler reports the
+        // cycle and judges nothing else, so the editor reports no reference into it.
+        const keepDiscarded = implementsLoops(owner);
+        const inheritedEntries = allInheritedEntries.filter(({ element, key }) =>
+            !localKeys.has(key) && (keepDiscarded || !isDiscardedConclusion(element)));
 
         // Count occurrences of each short name to detect ambiguity for the fallback aliases.
         const shortNameCount = new Map<string, number>();

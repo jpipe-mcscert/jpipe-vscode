@@ -222,8 +222,8 @@ export function elementEdits(
  * element declared `T:a`. Identity is also what keeps a same-named element of an unrelated model
  * out of the rename — spelling alone could not tell the two apart.
  *
- * On a base that `buildsOnComposition`, `hookTarget` answers only for a hook spelling an id
- * exactly, and nothing here can say what any other hook names. That is the known cost — such a
+ * On a base for which `cannotSeeAllElements` holds, `hookTarget` answers only for a hook spelling
+ * an id exactly, and nothing here can say what any other hook names. That is the known cost — such a
  * hook keeps the old spelling — and it is the honest half of a guess.
  *
  * Only the last segment is rewritten, so `"T:a"` becomes `"T:b"` and the qualifier survives.

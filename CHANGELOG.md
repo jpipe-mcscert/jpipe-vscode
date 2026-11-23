@@ -1,5 +1,12 @@
 ## Changelog
 
+### v2.0.2 (2026-11-22)
+- Leader: Sébastien Mosser
+  - Bug Fixes:
+    - **References into a loaded template resolve whether or not its file is open.** In a model that loads a file under a name (`load "library.jd" as lib`), a relation reaching one of the template's own elements, such as `lib:T:s`, was underlined as unresolved until you opened `library.jd`, and completion and go-to-definition went wrong in the same way. Nothing about the model had changed, only which tabs were open, so the error seemed to come and go. It now resolves either way (#37)
+    - **A model that implements a template is told it cannot have a conclusion of its own, in the compiler's words.** Such a model argues for its template's conclusion, and the jPipe compiler 4 refuses one written in it. The editor used to say something else, that the conclusion had no strategy or that the model had two, or nothing at all when the conclusion was supported. Each such conclusion is now underlined with the compiler's message, and the rest of the model is judged without it, as the compiler judges it. A quick fix turns it into a sub-conclusion, which keeps the relations that use it working, or into an evidence when it was written as an override (#123)
+    - **No more errors that only repeat a missing template.** When the template after `implements` does not resolve, because of a typo or a missing `load`, the editor also said that the model had no conclusion, or that a template declared no `@support`, though both would come from the template it could not find. Those errors are gone, as they are in the compiler: the `implements` line is underlined, which is where the fix goes (#129)
+
 ### v2.0.1 (2026-11-22)
 - Leader: Sébastien Mosser
   - Bug Fixes:
