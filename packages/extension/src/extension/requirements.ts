@@ -72,6 +72,17 @@ export function runnerHas(version: string | undefined, feature: RunnerFeature): 
 }
 
 /**
+ * Whether the jpipe-runner release `version` may lack `feature` though it reports a release that
+ * has it: a pre-release of the very release that brought it (`4.4.0.dev0`, `4.4.0rc1`), which may
+ * predate the change. A release, or any later version, has it.
+ */
+export function runnerMayLack(version: string | undefined, feature: RunnerFeature): boolean {
+    const numbers = releaseNumbers(version);
+    if (numbers === undefined || !runnerHas(version, feature)) return false;
+    return meetsMinimum(RUNNER_FEATURES[feature].since, numbers) && version !== formatRelease(numbers);
+}
+
+/**
  * The release numbers a version starts with — `4.1.0.dev0` → `[4, 1, 0]`, `5.0.0rc1` →
  * `[5, 0, 0]` — or `undefined` when it starts with none, as `installed` does.
  */

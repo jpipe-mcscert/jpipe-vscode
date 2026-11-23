@@ -22,24 +22,29 @@ nothing.
 
 ## Decision
 
-- **A setting, `jpipe.runner.jobs`, in jPipe › Runner › General** (ADR-VSC-0028): `auto`, or a whole
+- **A setting, `jpipe.runner.jobs`, in a group of its own, jPipe › Runner › Execution**
+  (ADR-VSC-0028): how a run runs, where General says which runner runs it. `auto`, or a whole
   number of at least 1. It is a string with a pattern, so that the Settings editor shows a text box
   and refuses anything else, rather than sending the user to `settings.json`. A number written in
   `settings.json` is read as well. Anything else runs as `auto`, and the log says so, once.
 - **`auto` by default**, passed as `--jobs auto`, so that the runner counts the CPUs it may use.
 - **A number is passed as it is, capped at the CPUs this editor may use**
-  (`os.availableParallelism()`): more threads than CPUs only make the steps wait for one another.
-  The log says, once, when it was lowered. The runner runs on the same machine as the extension
-  host, a remote one included, since it is launched as that host's task.
+  (`os.availableParallelism()`), as the issue that asked for the setting specified (#136). The log
+  says, once, when it was lowered. The runner is launched as a task of the extension host, so it
+  runs on that host's machine, a remote one included, unless the runner command the user names
+  wraps it elsewhere, in a container say: then the cap is that of the editor's machine, and `auto`,
+  which the runner counts for itself, is the value to use.
 - **Asked only of a runner known to have it**, 4.4 and later, development builds included
   (`RUNNER_FEATURES.jobs` in `requirements.ts`, `runsJobs` in `runner/runner-invocation.ts`), like
   `--events` (ADR-VSC-0033). A runner whose release is unknown is not asked, and runs as before.
   A development build of 4.4 from before the option refuses it with a usage error and no report:
-  the run is launched once more without it (`relaunchWithout`), as for `--events`. Every 4.4 build
-  knows `--events`, so a usage error with both asked is put down to `--jobs`.
+  the run is launched once more without it (`relaunchWithout`), as for `--events`. Only a
+  pre-release of the release that brought an option may lack it (`runnerMayLack`), so a usage
+  error from any other release is the user's to read, and launches nothing again. Every 4.4 build
+  knows `--events`, so a usage error with both in doubt is put down to `--jobs`.
 - **A check is not asked**: it calls no step.
-- **The Run panel's verdict bar names every step under way**: one or two by their labels, more
-  counted, with all of them in its tooltip. The drawing and Results already mark each running
+- **The Run panel's verdict bar names every step under way**: one by its label, more counted, since
+  a label is a sentence and the bar one line, with all of them in its tooltip. The drawing and Results already mark each running
   element on its own.
 - **jpipe-runner's recommended release becomes 4.4.0** (ADR-VSC-0032), and Check jPipe Installation
   says, of an older one, what each later release brings.

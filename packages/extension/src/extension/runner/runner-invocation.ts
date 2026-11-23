@@ -113,13 +113,13 @@ export const USAGE_EXIT = 2;
  */
 export const FILE_PROBLEM_EXIT = 4;
 
-/** What a launch asked the runner for besides its report, each of which it may refuse. */
+/** What a launch asked the runner for besides its report, that it may have refused. */
 export interface AskedOptions {
-    /** A drawing of the run: `--diagram`, or `--dataflow` on 4.0. */
+    /** A drawing of the run: `--diagram`, or `--dataflow` on 4.0, which needs Graphviz. */
     drew: boolean;
-    /** Its events: `--events`. */
+    /** Its events, `--events`, of a build that may not know them (`runnerMayLack`). */
     streamed: boolean;
-    /** Several steps at a time: `--jobs`. */
+    /** Several steps at a time, `--jobs`, of a build that may not know them (`runnerMayLack`). */
     jobs: boolean;
 }
 
@@ -129,8 +129,8 @@ export interface AskedOptions {
  * case, so launching again costs nothing.
  *
  * - **The jobs**, on a usage error: a development build of 4.4 from before `--jobs` reports the
- *   release that has it, and refuses the option. Only such a build is asked for it, and it knows
- *   `--events`, so the jobs are what it refused.
+ *   release that has it, and refuses the option. Every 4.4 build knows `--events`, so the jobs are
+ *   what it refused. A usage error from a release that has both is the user's to read.
  * - **The events**, on a usage error: a development build of 4.1 from before `--events` reports
  *   the release that has it, and refuses the option.
  * - **The drawing**, when a file could not be written: most often, Graphviz is missing.

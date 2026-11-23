@@ -6,7 +6,7 @@ import { messageOf } from '../../shared/errors.js';
 import { underWay } from '../../shared/run-kind.js';
 import { findDiagramName } from '../compiler/compiler-invocation.js';
 import { ImageFormat, type ImageGenerator } from '../compiler/image-generator.js';
-import { CompilerTooOldError } from '../requirements.js';
+import { CompilerTooOldError, runnerMayLack } from '../requirements.js';
 import type { Model } from '../models-view/models-tree.js';
 import type { ModelsView } from '../models-view/models-view.js';
 import type { LibrariesView } from './libraries-view.js';
@@ -268,7 +268,7 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
     }
 
     const read = await readReport(files.report);
-    const ended: Ended = { taskName: task.name, exitCode, cwd, showOutput };
+    const ended: Ended = { taskName: task.name, exitCode, cwd, showOutput, release: invocation.release };
     if ('problem' in read) {
         await endedWithoutReport(deps, token, run, files, { draw, stream: events !== undefined, jobs }, ended, read.problem);
     } else {
@@ -364,6 +364,8 @@ interface Ended {
     cwd: string;
     /** Bring its terminal forward. */
     showOutput: () => void;
+    /** The runner release it ran, as it reported it. */
+    release: string | undefined;
 }
 
 /** The task a run is launched as: a build-like action with a terminal of its own, kept in the background. */
@@ -407,7 +409,12 @@ async function endedWithoutReport(
         deps.session.endWith(token, 'stopped', { text: `${name} was stopped.`, action: { label: 'Show Output', id: 'showOutput' } });
         return;
     }
-    const without = relaunchWithout(ended.exitCode, { drew: asked.draw, streamed: asked.stream, jobs: asked.jobs });
+    // An option is put down for a usage error only when the build may not know it.
+    const without = relaunchWithout(ended.exitCode, {
+        drew: asked.draw,
+        streamed: asked.stream && runnerMayLack(ended.release, 'events'),
+        jobs: asked.jobs && runnerMayLack(ended.release, 'jobs')
+    });
     if (without === 'drawing') {
         deps.logger.warn(`${ended.taskName}: launched again without the drawing, which may need Graphviz`);
         await launch(deps, token, run, files, { ...asked, draw: false });

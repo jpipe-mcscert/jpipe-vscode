@@ -209,11 +209,12 @@ describe('a run under way', () => {
     });
 
     // With --jobs, from jpipe-runner 4.4, several steps run at once (#136).
-    test('names two steps running at once, and counts more, with every one in its tooltip', () => {
+    test('counts the steps running at once, with every one in its tooltip', () => {
         const page = newPage();
         const progress = { decided: '0 of 4 decided', counts: [], running: ['Tests pass', 'Lint is clean'], statuses: null, underway: [], pending: [], observed: [] };
         page.apply(state({ revision: 1, phase: 'running', verdict: null, progress }));
-        expect(byId('verdict-when').textContent).toBe('running Tests pass and Lint is clean');
+        expect(byId('verdict-when').textContent).toBe('running 2 steps');
+        expect(byId('verdict-when').title).toBe('The steps under way:\n• Tests pass\n• Lint is clean');
         page.apply(state({ revision: 2, phase: 'running', verdict: null, progress: { ...progress, running: ['a', 'b', 'c'] } }));
         expect(byId('verdict-when').textContent).toBe('running 3 steps');
         expect(byId('verdict-when').title).toBe('The steps under way:\n• a\n• b\n• c');

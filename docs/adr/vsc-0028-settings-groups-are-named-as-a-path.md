@@ -38,6 +38,7 @@ The groups are:
 | `jPipe › Compiler › Validation` | exclusions, extra unification methods |
 | `jPipe › Compiler › Logging` | the log level |
 | `jPipe › Runner › General` | execution environment, runner command, step libraries |
+| `jPipe › Runner › Execution` | how a run runs: how many steps at a time |
 | `jPipe › Runner › Development` | a local copy of the runner, for work on the runner itself |
 
 A new group takes a title of this form under the tool it belongs to. A third tool would add a

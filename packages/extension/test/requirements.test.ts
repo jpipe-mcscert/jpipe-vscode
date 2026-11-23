@@ -19,6 +19,7 @@ import {
     REQUIREMENTS,
     RUNNER_FEATURES,
     runnerHas,
+    runnerMayLack,
     type InstallationFacts
 } from '../src/extension/requirements.js';
 
@@ -190,6 +191,16 @@ describe('the release numbers a version starts with', () => {
         expect(runnerHas('5.0.0rc1', 'jobs')).toBe(true);
         expect(runnerHas(undefined, 'events')).toBe(false);
         expect(runnerHas('installed', 'jobs')).toBe(false);
+    });
+
+    // What tells a refused option from the user's own usage error, which is not launched again.
+    test('only a pre-release of the release that brought a feature may lack it', () => {
+        for (const version of ['4.4.0.dev0', '4.4.0rc1', '4.4.dev3']) expect(runnerMayLack(version, 'jobs'), version).toBe(true);
+        for (const version of ['4.4.0', '4.4', '4.4.1.dev0', '4.5.0', '4.3.0.dev0', 'installed', undefined]) {
+            expect(runnerMayLack(version, 'jobs'), String(version)).toBe(false);
+        }
+        expect(runnerMayLack('4.1.0.dev0', 'events')).toBe(true);
+        expect(runnerMayLack('4.4.0.dev0', 'events')).toBe(false);
     });
 });
 

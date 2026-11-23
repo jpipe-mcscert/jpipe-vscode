@@ -45,15 +45,16 @@ export function isRunPanelMessage(value: unknown): value is HostToRunPanel {
 }
 
 /**
- * What the verdict bar says of the steps under way, `running`, by their labels: each named while
- * there are one or two, counted past that, since a label is a sentence and the bar one line. Its
- * tooltip names them all, one a line.
+ * What the verdict bar says of the steps under way, `running`, by their labels: one named, several
+ * counted, since a label is a sentence and the bar one line. Its tooltip names them all, one a line.
  */
 export function runningText(running: readonly string[]): { text: string; title: string } {
     if (running.length === 0) return { text: '', title: '' };
     if (running.length === 1) return { text: `running ${running[0]}`, title: 'The step under way' };
-    const text = running.length === 2 ? `running ${running[0]} and ${running[1]}` : `running ${running.length} steps`;
-    return { text, title: ['The steps under way:', ...running.map(label => `• ${label}`)].join('\n') };
+    return {
+        text: `running ${running.length} steps`,
+        title: ['The steps under way:', ...running.map(label => `• ${label}`)].join('\n')
+    };
 }
 
 const byId = <T extends HTMLElement = HTMLElement>(doc: Document, id: string): T => doc.getElementById(id) as T;
