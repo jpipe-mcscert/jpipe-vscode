@@ -402,13 +402,18 @@ export class JpipeImportService {
      *
      * The compiler's `LoadResolver` splices a loaded file's commands in where its `load` is, so a
      * file's models and loads count in the order they are written, and a loaded file's models
-     * where it is loaded. A file is read once, the first time it is met: one that two files load
-     * is not read twice. A file loaded `as lib` names its models `lib:T`, and so do the files it
-     * loads in turn. This is the order `DuplicateModelFilter` decides which declaration is first.
+     * where it is loaded. A file is read once under each namespace, the first time it is met
+     * there (`LoadResolver.expandOne`): one that two files load is not read twice, while one also
+     * loaded `as lib` is read again, its models named `lib:T`, as are those of the files it loads
+     * in turn. A file is known by its real path, so a link or another spelling of its name is
+     * the same file, as the compiler's `identity` has it. This is the order in which
+     * `DuplicateModelFilter` decides which declaration is first.
      */
     modelDeclarations(unit: Unit, currentDoc: LangiumDocument): ModelDeclaration[] {
         const declarations: ModelDeclaration[] = [];
-        const read = new Set<string>([path.resolve(fsPathOf(currentDoc.uri))]);
+        const root = identity(fsPathOf(currentDoc.uri));
+        // A file is read again under another namespace, whose names its models then carry.
+        const read = new Set<string>();
         const walk = (current: Unit, document: LangiumDocument, prefix: string | undefined, via: Load | undefined): void => {
             const items = [...current.body, ...current.imports]
                 .sort((a, b) => (a.$cstNode?.offset ?? 0) - (b.$cstNode?.offset ?? 0));
@@ -419,16 +424,24 @@ export class JpipeImportService {
                 }
                 const namespace = item.namespace ? qualify(prefix, item.namespace) : prefix;
                 for (const loaded of this.resolveImportedDocuments(item, document)) {
-                    const file = path.resolve(fsPathOf(loaded.uri));
+                    const file = identity(fsPathOf(loaded.uri));
+                    const key = `${file}|${namespace ?? ''}`;
                     const loadedUnit = loaded.parseResult.value as Unit | undefined;
-                    if (read.has(file) || !loadedUnit) continue;
-                    read.add(file);
+                    if (file === root || read.has(key) || !loadedUnit) continue;
+                    read.add(key);
                     walk(loadedUnit, loaded, namespace, via ?? item);
                 }
             }
         };
         walk(unit, currentDoc, undefined, undefined);
         return declarations;
+    }
+
+    /** Whether `unit` loads, directly or through another file, one of `uris`. */
+    loadsAnyOf(unit: Unit, currentDoc: LangiumDocument, uris: ReadonlySet<string>): boolean {
+        const files = new Set([...uris].map(uri => identity(fsPathOf(URI.parse(uri)))));
+        return this.getTransitiveImportedDocuments(unit, currentDoc)
+            .some(document => files.has(identity(fsPathOf(document.uri))));
     }
 
     /**
@@ -546,4 +559,17 @@ export class JpipeImportService {
 /** `name` under `prefix`, the namespace a file was loaded under: `lib:T`. */
 function qualify(prefix: string | undefined, name: string): string {
     return prefix ? `${prefix}:${name}` : name;
+}
+
+/**
+ * The file `filePath` names, whatever the spelling: its real path when it exists, so that a link or
+ * a name in another case on a case-insensitive disk is the same file, as in the compiler's
+ * `LoadResolver.identity`; otherwise the path made absolute.
+ */
+function identity(filePath: string): string {
+    try {
+        return fs.realpathSync.native(filePath);
+    } catch {
+        return path.resolve(filePath);
+    }
 }

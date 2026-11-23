@@ -67,6 +67,13 @@ describe('Validation tests', () => {
         expect(messages.filter(m => m.startsWith("Model 'J' is already declared"))).toEqual([`Model 'J' is already declared at ${fileOf(doc)}:2`]);
     });
 
+    // compiler 4.0.0: the place is the line of the model's name, not of its keyword.
+    test('the place given is the line of the first one\'s name', async () => {
+        const model = 'justification\n  T { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }';
+        const doc = await parse(`${model}\n${model}`);
+        expect(diagnosticMessages(doc).filter(m => m.startsWith("Model 'T'"))).toEqual([`Model 'T' is already declared at ${fileOf(doc)}:2`]);
+    });
+
     test('a template and a justification of one name collide too, as the compiler has it', async () => {
         const doc = await parse(`template X {
                 conclusion c is "Claim"

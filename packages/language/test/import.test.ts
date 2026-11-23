@@ -370,6 +370,47 @@ describe('A model named like one in a loaded file', () => {
             .toEqual([{ line: 1, message: "Model 'm:T' in lib2.jd:1 is already declared at lib.jd:2" }]);
     });
 
+    // compiler 4.0.0 reads a file again under another namespace: lib.jd, flat here, is read once
+    // more inside `m` through mid.jd, and its `m:T` clashes with lib2.jd's.
+    test('in a file read again under another namespace, it clashes there', async () => {
+        const files = { 'lib.jd': `\n${T}`, 'lib2.jd': T, 'mid.jd': `load "lib.jd"\n${J('Q')}` };
+        expect(await build(files, `load "lib.jd"\nload "mid.jd" as m\nload "lib2.jd" as m\n${J('K')}`))
+            .toEqual([{ line: 2, message: "Model 'm:T' in lib2.jd:1 is already declared at lib.jd:2" }]);
+    });
+
+    test('a file reached through a link is the same file', async () => {
+        const files = { 'lib.jd': `\n${T}` };
+        const main = `load "lib.jd"\nload "link/lib.jd"\n${J('K')}`;
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-duplicates-'));
+        for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(tmpDir, name), text);
+        try {
+            fs.symlinkSync(tmpDir, path.join(tmpDir, 'link'), 'dir');
+        } catch {
+            return; // a platform that refuses links without privileges, such as Windows
+        }
+        document = await parse(main, { documentUri: pathToFileURL(path.join(tmpDir, 'main.jd')).toString(), validation: true });
+        expect((document.diagnostics ?? []).filter(d => (d.data as { code?: string } | undefined)?.code === 'duplicate-model')).toEqual([]);
+    });
+
+    // Two models from one declaration, through two namespaces: not one model given twice.
+    test('two namespaces over one file give an operator two distinct sources', async () => {
+        await build({ 'lib.jd': J('b') }, 'load "lib.jd" as x\nload "lib.jd" as y\ntemplate j is assemble(x:b, y:b) { conclusionLabel: "X" strategyLabel: "Y" }');
+        expect((document?.diagnostics ?? []).filter(d => (d.data as { code?: string } | undefined)?.code === 'duplicate-source')).toEqual([]);
+    });
+
+    // Langium checks an unchanged document again only when a reference reaches into a changed
+    // one, and a `load` is a path: what the loaded files declare would otherwise go stale.
+    test('the loading file is checked again when a file it loads changes', async () => {
+        const files = { 'lib.jd': `\n${T}`, 'mid.jd': `load "lib.jd"\n${J('M')}`, 'other.jd': J('O') };
+        await build(files, `load "mid.jd"\n${J('K')}`);
+        const builder = services.shared.workspace.DocumentBuilder as unknown as {
+            shouldRelink(document: LangiumDocument, changed: Set<string>): boolean
+        };
+        const uriOf = (name: string) => URI.file(path.join(tmpDir, name)).toString();
+        expect(builder.shouldRelink(document!, new Set([uriOf('lib.jd')]))).toBe(true);
+        expect(builder.shouldRelink(document!, new Set([uriOf('other.jd')]))).toBe(false);
+    });
+
     test('in a file two others load, it is read once', async () => {
         const files = { 'lib.jd': `\n${T}`, 'a.jd': `load "lib.jd"\n${J('A')}`, 'b.jd': `load "lib.jd"\n${J('B')}` };
         expect(await build(files, `load "a.jd"\nload "b.jd"\n${J('K')}`)).toEqual([]);

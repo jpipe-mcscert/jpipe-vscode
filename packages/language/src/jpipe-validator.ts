@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import { AstUtils, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
+import { AstUtils, GrammarUtils, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
 import { GlobExpansionError, isGlobPattern } from './jpipe-glob.js';
 import {
     type JpipeAstType,
@@ -35,8 +35,8 @@ import {
     requiredConfigKeys
 } from './jpipe-operators.js';
 import {
-    cannotSeeAllElements, expandedElements, fsPathOf, getAllElements, getLocalElements, hookTarget, implementsCycle,
-    implementsLoops, isDiscardedConclusion, qualifiedIdText, requiredOverrides
+    cannotSeeAllElements, expandedElements, fsPathOf, getAllElements, getLocalElements, hookTarget, implementsChain,
+    implementsCycle, isDiscardedConclusion, qualifiedIdText, requiredOverrides
 } from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
@@ -151,12 +151,15 @@ export class JpipeValidator {
     checkDuplicateSources(composition: Composition, accept: ValidationAcceptor): void {
         const params = composition.params;
         if (!params || !operatorSpec(composition.operator)) return;
-        const seen = new Set<unknown>();
+        const seen = new Set<string>();
         params.refs.forEach((ref, index) => {
+            // Compared by name, as the compiler compares them: a file loaded under two namespaces
+            // gives two models, `x:b` and `y:b`, from one declaration. A source that does not
+            // resolve is the compiler's `unknown-model`, and it goes no further.
             const source = ref.$refText.replace(/\s+/g, '');
-            const key = ref.ref ?? source;
-            if (!seen.has(key)) {
-                seen.add(key);
+            if (!ref.ref) return;
+            if (!seen.has(source)) {
+                seen.add(source);
                 return;
             }
             report(accept, JpipeIssue.DuplicateSource,
@@ -174,7 +177,7 @@ export class JpipeValidator {
     checkCyclicImplements(model: Justification | Template, accept: ValidationAcceptor): void {
         const cycle = implementsCycle(model);
         if (!cycle) return;
-        const [reporter] = cycle.filter(link => link.parent !== undefined).map(link => link.id).sort();
+        const [reporter] = cycle.filter(link => link.parent !== undefined && !link.composition).map(link => link.id).sort();
         if (reporter !== model.id) return;
         report(accept, JpipeIssue.CyclicImplements, `cycle detected: ${describeCycle(cycle)}`,
                { node: model, property: 'parent' }, { modelId: model.id, cycle: cycle.map(link => link.id) });
@@ -352,10 +355,10 @@ export class JpipeValidator {
                 first.set(declaration.name, declaration);
                 continue;
             }
-            const where = `is already declared at ${placeOf(earlier)}`;
+            const where = `is already declared${placeOf(earlier, ' at ')}`;
             const data = { id: declaration.name };
             if (declaration.via) {
-                report(accept, JpipeIssue.DuplicateModel, `Model '${declaration.name}' in ${placeOf(declaration)} ${where}`,
+                report(accept, JpipeIssue.DuplicateModel, `Model '${declaration.name}'${placeOf(declaration, ' in ')} ${where}`,
                        { node: declaration.via, property: 'path' }, data);
             } else {
                 report(accept, JpipeIssue.DuplicateModel, `Model '${declaration.name}' ${where}`,
@@ -551,8 +554,8 @@ export class JpipeValidator {
 
     checkJustificationOverride(justification: Justification, accept: ValidationAcceptor): void {
         this.logger.debug(`Checking overrides for justification '${justification.id}'`);
-        // On a chain that loops, the compiler reports the cycle and builds nothing below it.
-        if (!justification.parent?.ref || implementsLoops(justification)) return;
+        // On a chain through a cycle, the compiler reports the cycle and builds nothing below it.
+        if (!justification.parent?.ref || implementsChain(justification).some(link => implementsCycle(link))) return;
 
         const template = justification.parent.ref;
         const parentRefText = justification.parent.$refText ?? template.id;
@@ -626,8 +629,13 @@ function describeCycle(cycle: ReadonlyArray<Justification | Template>): string {
     }).join('');
 }
 
-/** Where the compiler says a model is declared: the file's name and the line, `lib.jd:8`. */
-function placeOf(declaration: ModelDeclaration): string {
-    const line = (declaration.model.$cstNode?.range.start.line ?? 0) + 1;
-    return `${path.basename(fsPathOf(declaration.document.uri))}:${line}`;
+/**
+ * Where the compiler says a model is declared, after `lead`: the file's name and the line of the
+ * model's name, ` at lib.jd:8`; nothing when it is not known, as the compiler leaves it out.
+ */
+function placeOf(declaration: ModelDeclaration, lead: string): string {
+    const name = declaration.model.$cstNode
+        && GrammarUtils.findNodeForProperty(declaration.model.$cstNode, 'id');
+    if (!name) return '';
+    return `${lead}${path.basename(fsPathOf(declaration.document.uri))}:${name.range.start.line + 1}`;
 }

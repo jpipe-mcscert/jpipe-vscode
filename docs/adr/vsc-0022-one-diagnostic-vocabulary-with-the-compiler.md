@@ -118,8 +118,10 @@ neither `single-conclusion` nor `conclusion-supported` on them.
 
 **`duplicate-model` compares every model the compiler reads** to build the file, as its
 `DuplicateModelFilter` does: the file's own models and loads in the order they are written, a
-loaded file's models where its `load` is, each file once, and a file loaded `as lib` naming its
-models `lib:T`, as do the files it loads. The first declaration of a name is kept and every later
+loaded file's models where its `load` is, each file once under each namespace and known by its
+real path, and a file loaded `as lib` naming its models `lib:T`, as do the files it loads. Because a
+`load` is a path rather than a reference, the document builder checks a file again when a file it
+loads changes. The first declaration of a name is kept and every later
 one is flagged, `Model 'T' is already declared at lib.jd:2`. When the later one is in a loaded
 file, the compiler underlines it there, and the editor, validating the loading file, cannot; it
 reports it on that file's `load` that brings it in, naming both places:
@@ -127,12 +129,13 @@ reports it on that file's `load` that brings it in, naming both places:
 
 **`cyclic-implements` fires once per cycle**, as the compiler's `ExecutionFailureDiagnostics`
 reports it. A model waits on the template it implements, and a composed model on its operator's
-sources, so a cycle may run through both. The diagnostic goes on the `implements` of the cycle's
+sources only (the compiler refuses an `implements` beside an operator), so a cycle may run through
+both. The diagnostic goes on the `implements` of the cycle's
 first model in alphabetical order that has one, anchored on the template it names, and describes
 the cycle from that model: `a implements b implements a`, or
 `j implements t, which 'assemble' builds from j`. A model that only implements a template on a
-cycle is not reported. The compiler builds nothing on a chain that loops, so every rule that needs
-the model's elements, the overrides among them, stays silent there.
+cycle is not reported. The compiler builds nothing on a chain through a cycle, so every rule that
+needs the model's elements, the overrides among them, stays silent there.
 
 **Rules the editor does not check.** The compiler reports, and the editor is silent on:
 `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`, `unresolved-override`,

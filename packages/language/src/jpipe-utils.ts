@@ -177,10 +177,11 @@ export function implementsLoops(model: Justification | Template): boolean {
  * on its operator's sources, so a cycle may run through both:
  * `cyc implements built, which 'assemble' builds from cyc`. The walk is depth first from the
  * template, in the order the model names what it waits on, and visits each model once. A model
- * that implements a template on a cycle without being on it closes none.
+ * that implements a template on a cycle without being on it closes none, and nor does a composed
+ * model, whose `implements` the compiler refuses rather than follows.
  */
 export function implementsCycle(model: Justification | Template): Array<Justification | Template> | undefined {
-    const template = model.parent?.ref;
+    const template = model.composition ? undefined : model.parent?.ref;
     if (!template) return undefined;
     const path: Array<Justification | Template> = [model];
     const visited = new Set<Justification | Template>();
@@ -196,11 +197,16 @@ export function implementsCycle(model: Justification | Template): Array<Justific
     return extend(template) ? path : undefined;
 }
 
-/** The models `model` is built from: the template it implements, then its operator's sources. */
+/**
+ * The models `model` is built from: its operator's sources, or else the template it implements.
+ * The compiler builds a composed model from its sources alone, and refuses an `implements` written
+ * beside them (`invalid-operator-call`), so that edge is not part of its graph.
+ */
 function waitsOn(model: Justification | Template): Array<Justification | Template> {
-    const sources = (model.composition?.params?.refs ?? []).map(ref => ref.ref);
-    return [model.parent?.ref, ...sources].filter(
-        (next): next is Justification | Template => next !== undefined);
+    const next = model.composition
+        ? model.composition.params?.refs.map(ref => ref.ref) ?? []
+        : [model.parent?.ref];
+    return next.filter((link): link is Justification | Template => link !== undefined);
 }
 
 /**

@@ -639,6 +639,24 @@ describe('a cycle of implements is reported once, as the compiler reports it', (
         expect(reported).toEqual([]);
     });
 
+    // compiler 4.0.0 refuses the `implements` of a composed model (invalid-operator-call) rather
+    // than follow it, so no cycle runs through it.
+    test('not through the implements of a composed model, which the compiler does not follow', async () => {
+        const source = 'justification A { conclusion c is "C" strategy s is "S" evidence a is "E" s supports c a supports s }\n'
+            + 'justification B { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }\n'
+            + 'template Q implements R is refine(A, B) { hook: "a" }\n'
+            + 'template R implements Q { @support g is "G" }';
+        expect(await cyclic(source)).toEqual([]);
+    });
+
+    test('and a model below a cycle through an operator is not judged', async () => {
+        const source = 'justification b { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }\n'
+            + 'template cyc implements built { @support h is "H" }\n'
+            + 'template built is assemble(cyc, b) { conclusionLabel: "Built"  strategyLabel: "SB" }\n'
+            + 'justification J implements cyc { evidence e2 is "E2" }';
+        expect((await diagnosticsIn(source)).filter(d => d.range.start.line === 3).map(d => issueCodeOf(d))).toEqual([]);
+    });
+
     test('not on a chain that ends', async () => {
         expect(await cyclic(`${TEMPLATE}\njustification J implements T { evidence T:a is "A" evidence T:b is "B" }`)).toEqual([]);
     });
@@ -670,5 +688,10 @@ describe('a model given twice to one operator', () => {
         const other = 'justification d { conclusion c is "C" strategy s is "S" evidence e is "E" s supports c e supports s }';
         expect(await repeats(`${B}\n${other}\ntemplate r is refine(b, d) { hook: "e" }`)).toEqual([]);
         expect(await repeats(`${B}\njustification n is nope(b, b)`)).toEqual([]);
+    });
+
+    // compiler 4.0.0: unknown-model, twice, and nothing about the repeat.
+    test('not for a source that does not resolve', async () => {
+        expect(await repeats(`${B}\njustification j is assemble(nope, nope) { conclusionLabel: "X" strategyLabel: "Y" }`)).toEqual([]);
     });
 });
