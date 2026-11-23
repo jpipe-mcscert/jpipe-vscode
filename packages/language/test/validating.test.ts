@@ -623,7 +623,7 @@ describe('Cyclic implements', () => {
         const doc = await parse(`
             template A implements B { @support a is "A" conclusion c is "C" a supports c }
             template B implements A { @support b is "B" conclusion c2 is "C2" b supports c2 }
-            justification J implements A { conclusion jc is "" strategy s is "S" s supports jc }
+            justification J implements A { strategy s is "" }
         `);
         assertNoParseErrors(doc);
         const messages = diagnosticMessages(doc);

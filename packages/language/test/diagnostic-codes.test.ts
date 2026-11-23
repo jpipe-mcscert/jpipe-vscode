@@ -343,6 +343,33 @@ describe('a model that implements a template inherits its conclusion', () => {
             expect(unknown).toEqual(['x']);
         });
 
+        test('its label is not checked', async () => {
+            const source = `${BASE}\njustification J implements T { evidence T:e is "E" conclusion x is "" }`;
+            expect(await jpipeCodesIn(source)).toEqual([JpipeIssue.InheritedConclusion]);
+        });
+
+        // compiler 4.0.0: `e` is the inherited @support, which supports the strategy; only the
+        // override is missing.
+        test('a short name in a relation it is not written in names the inherited element', async () => {
+            const source = `${BASE}\njustification J implements T { conclusion T:e is "E" strategy y is "Y" e supports y }`;
+            expect((await jpipeCodesIn(source)).sort())
+                .toEqual([JpipeIssue.InheritedConclusion, JpipeIssue.NoAbstractSupport].sort());
+            expect(await linkingErrorsIn(source)).toEqual([]);
+        });
+
+        test('a relation written with its id still resolves, and reports nothing', async () => {
+            const source = `${BASE}\njustification J implements T { evidence T:e is "E" conclusion x is "X" strategy y is "Y" T:e supports y y supports x }`;
+            expect(await jpipeCodesIn(source)).toEqual([JpipeIssue.InheritedConclusion]);
+            expect(await linkingErrorsIn(source)).toEqual([]);
+        });
+
+        // compiler 4.0.0: unknown element 'x' in model 'J'.
+        test('a model below does not inherit it', async () => {
+            const source = `${BASE}\ntemplate U implements T { conclusion x is "X" }\n`
+                + 'justification J implements U { evidence T:e is "E" strategy y is "Y" y supports x }';
+            expect((await linkingErrorsIn(source)).map(d => d.range.start.line)).toEqual([2]);
+        });
+
         test('its id clashes with nothing', async () => {
             const source = `${BASE}\njustification J implements T { evidence T:e is "E" conclusion x is "X" evidence x is "Y" }`;
             expect(await jpipeCodesIn(source)).toEqual([JpipeIssue.InheritedConclusion]);

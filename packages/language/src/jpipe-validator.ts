@@ -260,6 +260,8 @@ export class JpipeValidator {
 
     checkLabelNotEmpty(element: Evidence | Strategy | Conclusion | SubConclusion | AbstractSupport,
                         accept: ValidationAcceptor): void {
+        // The compiler discards such a conclusion before reading its label.
+        if (isDiscardedConclusion(element)) return;
         if (element.name?.length === 0) {
             report(accept, JpipeIssue.NoEmptyLabel, 'Element label should not be empty',
                    { node: element, property: 'name' });

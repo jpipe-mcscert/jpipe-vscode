@@ -159,11 +159,14 @@ export function getLocalElements(node: Justification | Template): JustificationE
  * a composition's elements are to be read from the compiler (jpipe-vscode ADR-VSC-0034).
  */
 export function cannotSeeAllElements(model: Justification | Template): boolean {
-    const chain = implementsChain(model);
-    // The walk stops at a link with no parent, or at one whose parent it has already visited.
-    const loops = chain.at(-1)?.parent?.ref !== undefined;
-    return loops || chain.some(link =>
+    return implementsLoops(model) || implementsChain(model).some(link =>
         link.composition !== undefined || (link.parent !== undefined && !link.parent.ref));
+}
+
+/** Whether `model`'s `implements` chain comes back to a model already on it (`cyclic-implements`). */
+export function implementsLoops(model: Justification | Template): boolean {
+    // The walk stops at a link with no parent, or at one whose parent it has already visited.
+    return implementsChain(model).at(-1)?.parent?.ref !== undefined;
 }
 
 /**
