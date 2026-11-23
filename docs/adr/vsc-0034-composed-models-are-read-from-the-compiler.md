@@ -54,8 +54,12 @@ holds:
     compiler's JSON export of that model.
 - **Linking reads the declarations itself.** Langium resolves references synchronously while it
   builds documents, so the scope provider and the import service cannot await contents. They read
-  the bodies, as before; a reference to an element only an operator builds is compiled contents'
+  the bodies, as before, and so does completion of a relation's ends, which must offer exactly what
+  linking resolves. A reference to an element only an operator builds is compiled contents'
   concern, served to linking from their cache.
+- **Ids are the ones the compiler gives in the file asking.** A model of a file loaded under a
+  namespace is asked for under it (`lib` for `lib:K`), and every id of its contents carries it,
+  as the compiler names everything of such a file: `lib:T:a`, `lib:U:x`.
 - **Compiled elements are tied back to source.** Each element is linked to the AST declarations
   its `origins` name, so identity survives: renaming `@support abs2` in `pattern` reaches every
   element built from it, and go-to-definition lands on that declaration.

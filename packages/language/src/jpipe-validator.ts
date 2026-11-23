@@ -35,7 +35,8 @@ import {
     requiredConfigKeys
 } from './jpipe-operators.js';
 import {
-    fsPathOf, getLocalElements, buildsOnCycle, implementsCycle, isDiscardedConclusion, qualifiedIdText, requiredOverrides
+    fsPathOf, getLocalElements, buildsOnCycle, implementsCycle, isDiscardedConclusion, qualifiedIdText, requiredOverrides,
+    writtenNamespace
 } from './jpipe-utils.js';
 import { hookTarget, type ModelContents } from './jpipe-model-contents.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
@@ -290,9 +291,11 @@ export class JpipeValidator {
         const actual = entry?.value;
         if (!entry || actual === undefined) return;
 
-        const base = composition.params?.refs[0]?.ref;
+        const source = composition.params?.refs[0];
+        const base = source?.ref;
         if (!base) return;
-        const contents = await this.contents.contentsOf(base);
+        // As the composition's file sees it: `lib:K` is K of a file loaded `as lib`.
+        const contents = await this.contents.contentsOf(base, writtenNamespace(source?.$refText, base.id));
         if (contents.kind === 'cannot-tell' || hookTarget(contents, actual)) return;
 
         const candidates = contents.elements

@@ -1,9 +1,11 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as url from 'node:url';
-import { beforeAll, describe, expect, test } from 'vitest';
-import { EmptyFileSystem } from 'langium';
-import { parseHelper } from 'langium/test';
+import { afterEach, beforeAll, describe, expect, test } from 'vitest';
+import { EmptyFileSystem, type LangiumDocument } from 'langium';
+import { clearDocuments, parseHelper } from 'langium/test';
+import { Diagnostic } from 'vscode-languageserver-types';
 import type { Justification, Template, Unit } from 'jpipe-language';
 import { createJpipeServices } from 'jpipe-language';
 import {
@@ -17,11 +19,13 @@ import {
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 
+let services: ReturnType<typeof createJpipeServices>;
+let doParse: ReturnType<typeof parseHelper<Unit>>;
 let parse: (input: string) => Promise<Unit>;
 
 beforeAll(() => {
-    const services = createJpipeServices(EmptyFileSystem);
-    const doParse = parseHelper<Unit>(services.Jpipe);
+    services = createJpipeServices(EmptyFileSystem);
+    doParse = parseHelper<Unit>(services.Jpipe);
     parse = async (input: string) => (await doParse(input)).parseResult.value;
 });
 
@@ -100,6 +104,70 @@ template B implements A { @support b is "B" }`);
         const contents = await new ModelContents(declared, compiled).contentsOf(modelNamed(unit, 'A'));
         expect(contents.kind).toBe('cannot-tell');
         expect([...declared.asked, ...compiled.asked]).toEqual([]);
+    });
+});
+
+/**
+ * A file loaded under a namespace names everything in it with that namespace, in the compiler: a
+ * template `T` of `load "lib.jd" as lib` is `lib:T`, the element `a` it hands down `lib:T:a`, and an
+ * override written `U:x` inside it `lib:U:x`. Cases checked against jPipe 4.1.0 (`diagnostic`, and
+ * `process -f json` for the ids).
+ */
+describe('the contents of a model implementing a template of a file loaded under a namespace', () => {
+
+    let dir: string | undefined;
+    let documents: LangiumDocument<Unit>[] = [];
+
+    afterEach(async () => {
+        await clearDocuments(services.shared, documents);
+        documents = [];
+        if (dir) fs.rmSync(dir, { recursive: true, force: true });
+        dir = undefined;
+    });
+
+    const LIB = `template U {
+    conclusion c is "C"
+    strategy s is "S"
+    @support x is "X"
+    evidence u is "U"
+    x supports s
+    u supports s
+    s supports c
+}
+template T implements U {
+    @support a is "A"
+    evidence U:x is "X done"
+    evidence e is "E"
+}`;
+
+    async function root(text: string): Promise<LangiumDocument<Unit>> {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-contents-'));
+        fs.writeFileSync(path.join(dir, 'lib.jd'), LIB);
+        const document = await doParse(text, { documentUri: url.pathToFileURL(path.join(dir, 'main.jd')).toString(), validation: true });
+        documents.push(document);
+        return document;
+    }
+
+    const errors = (document: LangiumDocument) => (document.diagnostics ?? [])
+        .filter(d => d.severity === 1).map(d => Diagnostic.getMessageString(d));
+
+    test('are named under the namespace, two templates deep, as the compiler names them', async () => {
+        const document = await root('load "lib.jd" as lib\njustification J implements lib:T { evidence lib:T:a is "Done" }');
+        const contents = await services.Jpipe.references.ModelContents.contentsOf(modelNamed(document.parseResult.value, 'J'));
+        expect(ids(contents).sort()).toEqual(['lib:T:a', 'lib:T:e', 'lib:U:c', 'lib:U:s', 'lib:U:u', 'lib:U:x']);
+    });
+
+    test('lose a @support its override names with the namespace', async () => {
+        const document = await root('load "lib.jd" as lib\ntemplate T2 implements lib:T { evidence lib:T:a is "Now concrete" }');
+        expect(errors(document)).toContain("Template 'T2' declares no abstract supports");
+    });
+
+    test('answer a hook written with the namespace', async () => {
+        const document = await root(`load "lib.jd" as lib
+justification J implements lib:T { evidence lib:T:a is "Done" }
+justification P { conclusion pc is "P" strategy ps is "PS" evidence pe is "PE" pe supports ps ps supports pc }
+justification R is refine(J, P) { hook: "lib:T:e" }`);
+        expect(errors(document).filter(m => m.startsWith('Hook element'))).toEqual([]);
     });
 });
 

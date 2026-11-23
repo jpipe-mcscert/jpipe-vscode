@@ -222,6 +222,21 @@ export function implementsChain(model: Justification | Template): Array<Justific
     return chain;
 }
 
+/**
+ * The namespace a reference to the model `id` is written with: `lib` for `lib:T`, empty for `T`.
+ * A reference that does not end with the model's id, being edited say, is read as having none.
+ */
+export function writtenNamespace(refText: string | undefined, id: string): string {
+    const written = (refText ?? '').replaceAll(/\s+/g, '');
+    return written.endsWith(`:${id}`) ? written.slice(0, -(id.length + 1)) : '';
+}
+
+/** `name` under `namespace`: `lib:T`, or `T` under none. */
+function qualify(namespace: string, name: string): string {
+    if (!namespace) return name;
+    return name ? `${namespace}:${name}` : namespace;
+}
+
 /** An element of a model, under the id the compiler gives it once `implements` is expanded. */
 export interface ExpandedElement {
     readonly element: JustificationElement;
@@ -240,24 +255,38 @@ export interface ExpandedElement {
  * template is left out: the compiler reports it as `inherited-conclusion` and discards it, so the
  * model keeps the conclusion it inherits, and a hook or an override answers to that one.
  *
+ * `namespace` is the one `model` is seen under, from the file the question is asked in: `lib` for a
+ * model of a file loaded `as lib`, empty for one of that file. The compiler names everything of a
+ * file loaded under a namespace with it, models and the qualified ids written there alike, so a
+ * template `T` of that file is `lib:T`, an element `a` it hands down is `lib:T:a`, and an override
+ * written `U:x` in it is `lib:U:x`. Namespaces compose along nested loads, so each `implements`
+ * adds the one its reference is written with (`writtenNamespace`).
+ *
  * Inherited elements come first and local ones after, which is the compiler's order and the one a
  * suffix match is first-found in. The AST node is the declaration, so identity survives the
  * renaming — which is what lets rename follow a hook spelled with the effective id.
  */
 export function expandedElements(
     model: Justification | Template,
+    namespace = '',
     seen: Set<Justification | Template> = new Set()
 ): ExpandedElement[] {
     if (seen.has(model)) return [];
     seen.add(model);
     const parent = model.parent?.ref;
-    const inherited = parent
-        ? expandedElements(parent, seen).map(({ element, id }) =>
-            ({ element, id: id.includes(':') ? id : `${parent.id}:${id}` }))
-        : [];
+    let inherited: ExpandedElement[] = [];
+    if (parent) {
+        const parentNamespace = qualify(namespace, writtenNamespace(model.parent?.$refText, parent.id));
+        const parentName = qualify(parentNamespace, parent.id);
+        inherited = expandedElements(parent, parentNamespace, seen).map(({ element, id }) =>
+            ({ element, id: id.includes(':') ? id : `${parentName}:${id}` }));
+    }
     const local = getLocalElements(model)
         .filter(element => !isDiscardedConclusion(element))
-        .map(element => ({ element, id: qualifiedIdText(element.id) }));
+        .map(element => {
+            const written = qualifiedIdText(element.id);
+            return { element, id: written.includes(':') ? qualify(namespace, written) : written };
+        });
     const replaced = new Set(local.map(entry => entry.id));
     return [...inherited.filter(entry => !replaced.has(entry.id)), ...local];
 }

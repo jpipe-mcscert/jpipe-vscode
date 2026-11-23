@@ -36,7 +36,7 @@ import {
     type JustificationElement,
     type AbstractSupport
 } from './generated/ast.js';
-import { fsPathOf, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { fsPathOf, getLocalElements, qualifiedIdText, writtenNamespace } from './jpipe-utils.js';
 import { listedIn } from './jpipe-model-contents.js';
 import { messageOf } from './jpipe-errors.js';
 
@@ -506,7 +506,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         const contexts = Array.from(this.buildContexts(document, params.position));
         if (contexts.length > 0) {
-            const templateCompletions = this.getTemplateElementCompletions(contexts[0]);
+            const templateCompletions = await this.getTemplateElementCompletions(contexts[0]);
             if (templateCompletions.length > 0) {
                 items = [...templateCompletions, ...items];
             }
@@ -551,7 +551,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         // Under the id the compiler gives each element in the base, which is what a hook is looked
         // up by: `T:e` for an `e` the base inherits from T, which names it whether or not every
         // element of the base can be seen.
-        const contents = await this.services.references.ModelContents.contentsOf(base);
+        const contents = await this.services.references.ModelContents.contentsOf(base, writtenNamespace(firstParam, base.id));
         return listedIn(contents)
             .filter(({ element, id }) => isEvidence(element) && id.length > 0)
             .filter(({ id }) => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, id))
@@ -835,7 +835,13 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         };
     }
 
-    private getTemplateElementCompletions(context: CompletionContext): CompletionItem[] {
+    /**
+     * The `@support` elements a justification has still to override, each under the id the
+     * override is written with: those its contents still list, since an override, in it or in a
+     * template between, replaces the `@support` of that id. Read from its contents whole or not,
+     * since a `@support` this can see is worth offering even where others are hidden.
+     */
+    private async getTemplateElementCompletions(context: CompletionContext): Promise<CompletionItem[]> {
         if (this.logger.shouldLog('debug')) this.logger.debug(`Completion request at line ${context.position.line}:${context.position.character}`);
         try {
             const currentNode = context.node;
@@ -849,19 +855,15 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
             if (!justification.parent?.ref) return [];
 
-            const doc = context.document;
-            const unit = doc.parseResult.value as Unit | undefined;
-            if (!unit) return [];
-
-            // Use namespace-qualified keys so snippets match the qualified-ID scheme.
-            const inheritedEntries = this.importService.getInheritedElementsWithKeys(justification, unit, doc);
-            const existingIds = new Set(getLocalElements(justification).map(el => qualifiedIdText(el.id)));
+            const contents = await this.services.references.ModelContents.contentsOf(justification);
+            const own = new Set<JustificationElement>(getLocalElements(justification));
             const suggestedIds = new Set<string>();
 
             const completions: CompletionItem[] = [];
-            for (const { element, key } of inheritedEntries) {
-                if (!isAbstractSupport(element)) continue; // only @support elements require explicit override
-                if (existingIds.has(key) || suggestedIds.has(key)) continue;
+            for (const { element, id: key } of listedIn(contents)) {
+                // Only an inherited @support requires an explicit override.
+                if (!isAbstractSupport(element) || own.has(element)) continue;
+                if (suggestedIds.has(key)) continue;
                 const completion = this.createTemplateElementCompletion(element, key, context);
                 if (completion) {
                     suggestedIds.add(key);

@@ -38,8 +38,8 @@ export type Contents =
     };
 
 /** *Cannot tell*, for `model`, with what its bodies show. */
-function cannotTell(model: Justification | Template): Contents {
-    const visible = expandedElements(model);
+function cannotTell(model: Justification | Template, namespace = ''): Contents {
+    const visible = expandedElements(model, namespace);
     const own = new Set<AstNode>(getLocalElements(model));
     return { kind: 'cannot-tell', visible, declared: visible.filter(entry => own.has(entry.element)) };
 }
@@ -49,9 +49,13 @@ export function listedIn(contents: Contents): readonly ExpandedElement[] {
     return contents.kind === 'elements' ? contents.elements : contents.visible;
 }
 
-/** One way of answering for a model's contents. */
+/**
+ * One way of answering for a model's contents. `namespace` is the one the model is seen under from
+ * the file asking, `lib` for a model reached as `lib:K`; ids are given as the compiler gives them
+ * there (`expandedElements`).
+ */
 export interface ContentsSource {
-    contentsOf(model: Justification | Template): Promise<Contents>;
+    contentsOf(model: Justification | Template, namespace?: string): Promise<Contents>;
 }
 
 /**
@@ -59,8 +63,8 @@ export interface ContentsSource {
  * model whose chain is plain and resolves (`expandedElements`).
  */
 export class DeclaredContents implements ContentsSource {
-    async contentsOf(model: Justification | Template): Promise<Contents> {
-        return { kind: 'elements', elements: expandedElements(model) };
+    async contentsOf(model: Justification | Template, namespace = ''): Promise<Contents> {
+        return { kind: 'elements', elements: expandedElements(model, namespace) };
     }
 }
 
@@ -69,8 +73,8 @@ export class DeclaredContents implements ContentsSource {
  * compiler's JSON export once #132 lands; until then *cannot tell*, with what the bodies show.
  */
 export class CompiledContents implements ContentsSource {
-    async contentsOf(model: Justification | Template): Promise<Contents> {
-        return cannotTell(model);
+    async contentsOf(model: Justification | Template, namespace = ''): Promise<Contents> {
+        return cannotTell(model, namespace);
     }
 }
 
@@ -93,14 +97,17 @@ export class ModelContents {
      *   elements no body declares, under ids such as `P:b`, which `implements` hands down to every
      *   model below it: compiled contents answer.
      * - **Any other chain** is plain: declared contents answer.
+     *
+     * `namespace` is the one `model` is seen under from the file asking: `lib` for a model reached
+     * as `lib:K` (`writtenNamespace`), and the ids answered are the ones the compiler gives there.
      */
-    async contentsOf(model: Justification | Template): Promise<Contents> {
+    async contentsOf(model: Justification | Template, namespace = ''): Promise<Contents> {
         const chain = implementsChain(model);
         if (implementsLoops(model) || chain.some(link => link.parent !== undefined && !link.parent.ref)) {
-            return cannotTell(model);
+            return cannotTell(model, namespace);
         }
-        if (chain.some(link => link.composition !== undefined)) return this.compiled.contentsOf(model);
-        return this.declared.contentsOf(model);
+        if (chain.some(link => link.composition !== undefined)) return this.compiled.contentsOf(model, namespace);
+        return this.declared.contentsOf(model, namespace);
     }
 }
 

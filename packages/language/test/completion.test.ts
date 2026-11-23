@@ -874,6 +874,38 @@ describe('Hook value completion', () => {
         });
     });
 
+    // An override in a template between replaces the @support of that id, as it does in the
+    // compiler, so only what is still abstract in the justification's contents is offered (#131).
+    test('offers, in a justification, an override for each @support it still has to override', async () => {
+        await checkCompletion({
+            text: `
+                template U {
+                    conclusion c is "C"
+                    strategy s is "S"
+                    @support x is "X"
+                    @support y is "Y"
+                    x supports s
+                    y supports s
+                    s supports c
+                }
+                template T implements U {
+                    @support a is "A"
+                    evidence U:x is "X done"
+                }
+                justification J implements T {
+                    evidence U:y is "Y done"
+                    <|>
+                }
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).toContain('evidence T:a');
+                expect(labels.filter(label => /^(evidence|sub-conclusion) U:/.test(label))).toEqual([]);
+            }
+        });
+    });
+
     // A hook is looked up by the id the compiler gives the element in the base: an inherited `e`
     // is `T:e` there, which names it exactly, even in a base whose other elements are hidden.
     test('offers an inherited evidence under the id it has in the base', async () => {

@@ -28,6 +28,7 @@ import {
 } from './generated/ast.js';
 import { HOOK_KEY } from './jpipe-operators.js';
 import { hookTarget, type ModelContents } from './jpipe-model-contents.js';
+import { writtenNamespace } from './jpipe-utils.js';
 
 /** An identifier written out segment by segment — `['lib', 'T', 'abs']` for `lib:T:abs`. */
 export type NamePrefix = readonly string[];
@@ -238,11 +239,13 @@ export async function hookEdits(
         const composition = model.composition;
         if (composition?.operator !== 'refine') return [];
         const entry = composition.config?.entries.find(candidate => candidate.key === HOOK_KEY);
-        const base = composition.params?.refs[0]?.ref;
-        return entry?.value && base ? [{ entry, hook: entry.value, base }] : [];
+        const source = composition.params?.refs[0];
+        const base = source?.ref;
+        return entry?.value && base ? [{ entry, hook: entry.value, base, namespace: writtenNamespace(source?.$refText, base.id) }] : [];
     });
     // Each base's contents are asked at once, not one hook after another.
-    const targets = await Promise.all(hooks.map(async ({ hook, base }) => hookTarget(await contents.contentsOf(base), hook)));
+    const targets = await Promise.all(hooks.map(async ({ hook, base, namespace }) =>
+        hookTarget(await contents.contentsOf(base, namespace), hook)));
     return hooks.flatMap(({ entry }, i) => {
         const target = targets[i];
         if (!target || !affected.has(target)) return [];
