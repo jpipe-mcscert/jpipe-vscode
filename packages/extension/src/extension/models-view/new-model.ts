@@ -159,17 +159,38 @@ export function loadsFile(newText: string, fileUri: string, targetUri: string): 
     const written = /^\s*load\s+"([^"]+)"/.exec(newText)?.[1];
     if (written === undefined) return false;
     // The server writes a path, not a URI: `%`, `#` and `?` in it are characters of a file name,
-    // so it is resolved with path arithmetic, against the decoded path of the file.
-    let resolved: string;
-    if (/^[a-zA-Z]:\//.test(written)) resolved = `/${written[0].toLowerCase()}${written.slice(1)}`;
-    else if (written.startsWith('/')) resolved = written;
-    else resolved = posix.join(posix.dirname(pathOf(fileUri)), written);
-    return posix.normalize(resolved) === pathOf(targetUri);
+    // so it is resolved with path arithmetic, against the decoded path of the file. A UNC file
+    // keeps its server: `//server/share/t.jd` is on `server`, and a relative path stays on the
+    // loading file's.
+    const from = placeOf(fileUri);
+    let resolved: Place;
+    if (written.startsWith('//')) {
+        const [host, ...rest] = written.slice(2).split('/');
+        resolved = { host: host.toLowerCase(), path: `/${rest.join('/')}` };
+    } else if (/^[a-zA-Z]:\//.test(written)) {
+        resolved = { host: '', path: `/${written[0].toLowerCase()}${written.slice(1)}` };
+    } else if (written.startsWith('/')) {
+        resolved = { host: from.host, path: written };
+    } else {
+        resolved = { host: from.host, path: posix.join(posix.dirname(from.path), written) };
+    }
+    const target = placeOf(targetUri);
+    return resolved.host === target.host && posix.normalize(resolved.path) === target.path;
 }
 
-/** A file URI's path, decoded, with a Windows drive in lower case: `/c:/w/a.jd`. */
-function pathOf(uri: string): string {
-    return decodeURIComponent(new URL(uri).pathname).replace(/^\/[A-Z]:/, drive => drive.toLowerCase());
+/** Where a file is: its UNC server, `''` for a local file, and its path. */
+interface Place {
+    host: string;
+    path: string;
+}
+
+/** A file URI's place: its server in lower case, its path decoded, a Windows drive in lower case. */
+function placeOf(uri: string): Place {
+    const url = new URL(uri);
+    return {
+        host: url.host.toLowerCase(),
+        path: decodeURIComponent(url.pathname).replace(/^\/[A-Z]:/, drive => drive.toLowerCase())
+    };
 }
 
 /**

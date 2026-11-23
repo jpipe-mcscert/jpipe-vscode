@@ -281,7 +281,7 @@ async function appendToFile(
     const end = document.lineAt(document.lineCount - 1).range.end;
     const separator = appendSeparator(document.getText());
     if (template) {
-        const alias = templateReach(symbols ?? [], template.name)?.alias;
+        const alias = templateReach(symbols ?? [], template.name, vscode.SymbolKind.Interface)?.alias;
         await editor.edit(builder => builder.insert(end, separator + modelSnippet(kind, name, template, alias)));
     } else {
         await editor.insertSnippet(new vscode.SnippetString(separator + modelSnippet(kind, name)), end);
@@ -304,8 +304,10 @@ async function appendToFile(
  */
 async function connectTemplate(editor: vscode.TextEditor, name: string, template: Model): Promise<boolean> {
     const document = editor.document;
-    const header = new RegExp(`justification\\s+${name}\\s+implements\\s+`).exec(document.getText());
-    if (!header) return false;
+    // The model was appended, so it is the last header of its name: an earlier one, in a comment
+    // say, is not it.
+    const header = [...document.getText().matchAll(new RegExp(String.raw`justification\s+${name}\s+implements\s+`, 'g'))].at(-1);
+    if (header?.index === undefined) return false;
     const start = document.positionAt(header.index + header[0].length);
     const reference = document.getWordRangeAtPosition(start, /[\w:]+/) ?? new vscode.Range(start, start);
     const written = document.getText(reference);

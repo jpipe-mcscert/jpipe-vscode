@@ -130,9 +130,16 @@ describe('the load an implementation takes', () => {
         // A path is not a URI: these are characters of the file's name.
         ['load "./lib/50%.jd"\n', 'file:///w/a.jd', 'file:///w/lib/50%25.jd'],
         ['load "./lib/a#1.jd"\n', 'file:///w/a.jd', 'file:///w/lib/a%231.jd'],
-        ['load "./lib/why?.jd"\n', 'file:///w/a.jd', 'file:///w/lib/why%3F.jd']
+        ['load "./lib/why?.jd"\n', 'file:///w/a.jd', 'file:///w/lib/why%3F.jd'],
+        // A UNC file keeps its server.
+        ['load "../lib/t.jd"\n', 'file://server-a/share/app/a.jd', 'file://server-a/share/lib/t.jd'],
+        ['load "//server-b/share/lib/t.jd"\n', 'file://server-a/share/app/a.jd', 'file://server-b/share/lib/t.jd']
     ])('%s, written in %s, loads %s', (newText, file, target) => {
         expect(loadsFile(newText, file, target)).toBe(true);
+    });
+
+    test('is not a relative load landing on another UNC server', () => {
+        expect(loadsFile('load "../lib/t.jd"\n', 'file://server-a/share/app/a.jd', 'file://server-b/share/lib/t.jd')).toBe(false);
     });
 
     test('is not one loading another file of the same template name', () => {

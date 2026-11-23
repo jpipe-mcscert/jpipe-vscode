@@ -233,22 +233,28 @@ describe('an empty view says why', () => {
 // What New Justification Implementing… asks before writing `implements` (#121).
 describe('how a file reaches a template', () => {
 
+    const TEMPLATE = 11;
+    const JUSTIFICATION = 5;
+    const MODULE = 2;
     const symbols = [
-        { name: '(default)', children: [{ name: 'Local' }, { name: 'Plain' }] },
-        { name: 'lib', children: [{ name: 'Signoff' }, { name: 'Plain' }] }
+        { name: '(default)', kind: MODULE, children: [
+            { name: 'Local', kind: TEMPLATE }, { name: 'Plain', kind: TEMPLATE }, { name: 'Signoff', kind: JUSTIFICATION }
+        ] },
+        { name: 'lib', kind: MODULE, children: [{ name: 'Signoff', kind: TEMPLATE }, { name: 'Plain', kind: TEMPLATE }] }
     ];
 
     test('declared or loaded without a name, it is reached as it is', () => {
-        expect(templateReach(symbols, 'Local')).toEqual({});
-        expect(templateReach(symbols, 'Plain')).toEqual({});
+        expect(templateReach(symbols, 'Local', TEMPLATE)).toEqual({});
+        expect(templateReach(symbols, 'Plain', TEMPLATE)).toEqual({});
     });
 
-    test('loaded under a name, it is reached through it', () => {
-        expect(templateReach(symbols, 'Signoff')).toEqual({ alias: 'lib' });
+    // A justification of the same name in the file is not the template the alias brings in.
+    test('loaded under a name, it is reached through it, whatever justification shares its name', () => {
+        expect(templateReach(symbols, 'Signoff', TEMPLATE)).toEqual({ alias: 'lib' });
     });
 
     test('anywhere else, it is not reached, nor by a file with no symbols yet', () => {
-        expect(templateReach(symbols, 'Missing')).toBeUndefined();
-        expect(templateReach([], 'Signoff')).toBeUndefined();
+        expect(templateReach(symbols, 'Missing', TEMPLATE)).toBeUndefined();
+        expect(templateReach([], 'Signoff', TEMPLATE)).toBeUndefined();
     });
 });

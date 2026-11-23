@@ -37,6 +37,7 @@ export interface WireDocumentSymbol {
 /** What `templateReach` reads of a symbol, which the editor's own `DocumentSymbol` also has. */
 export interface NamedSymbol {
     readonly name: string;
+    readonly kind: number;
     readonly children?: readonly NamedSymbol[];
 }
 
@@ -108,11 +109,19 @@ export function elementsOf(symbols: readonly WireDocumentSymbol[], model: Model)
  *
  * A file's symbols list its own models and those of its plain loads under `(default)`, and each
  * aliased `load` as a namespace holding the models it brings in, a glob's matches included. Names
- * are all there is to go by: two loads each bringing a template of the same name cannot be told
- * apart here, and the plain one, then the first, is taken.
+ * and kinds are all there is to go by: two loads each bringing a template of the same name
+ * cannot be told apart here, and the plain one, then the first, is taken. `templateKind` is the
+ * `SymbolKind` of a template, `Interface`, as the caller's symbols number it: 11 on the wire, 10
+ * in the editor's own enum.
  */
-export function templateReach(symbols: readonly NamedSymbol[], template: string): { alias?: string } | undefined {
-    const lists = (namespace: NamedSymbol) => (namespace.children ?? []).some(s => s.name === template);
+export function templateReach(
+    symbols: readonly NamedSymbol[],
+    template: string,
+    templateKind: number
+): { alias?: string } | undefined {
+    // A justification of that name is not the template: `implements` names templates only.
+    const lists = (namespace: NamedSymbol) =>
+        (namespace.children ?? []).some(s => s.name === template && s.kind === templateKind);
     if (symbols.some(s => s.name === DEFAULT_NAMESPACE && lists(s))) return {};
     const alias = symbols.find(s => s.name !== DEFAULT_NAMESPACE && lists(s))?.name;
     return alias === undefined ? undefined : { alias };
@@ -168,7 +177,7 @@ export async function fetchElements(request: RequestFn, model: Model): Promise<E
         }
         if (!declared) break;
         const template = parent.name;
-        const alias = templateReach(symbols, template)?.alias;
+        const alias = templateReach(symbols, template, SYMBOL_KIND_INTERFACE)?.alias;
         const inheritedFrom = { template, uri: parent.uri };
         const qualifier = alias ? `${alias}:${template}` : template;
         elements.push(...declared
