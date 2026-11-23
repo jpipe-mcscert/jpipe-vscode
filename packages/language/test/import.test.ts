@@ -411,6 +411,34 @@ describe('A model named like one in a loaded file', () => {
         expect(builder.shouldRelink(document!, new Set([uriOf('other.jd')]))).toBe(false);
     });
 
+    // a.jd loads b.jd as x, which loads a.jd as y: a new namespace at each turn.
+    test('a cyclic load under namespaces ends', async () => {
+        const files = { 'a.jd': `load "b.jd" as x\n${J('A')}`, 'b.jd': `load "a.jd" as y\n${J('B')}` };
+        expect(await build(files, `load "a.jd"\n${J('K')}`)).toEqual([]);
+        // Without a stop, the walk read a.jd and b.jd again under x:y, x:y:x, … until the stack
+        // overflowed inside load resolution, which swallows it.
+        const names = services.Jpipe.references.JpipeImportService
+            .modelDeclarations(document!.parseResult.value, document!).map(declaration => declaration.name);
+        expect(names).toEqual(['x:B', 'A', 'K']);
+    });
+
+    test('the loading file is checked again when a file it loads is deleted, or one its pattern matches is added', async () => {
+        const files = { 'lib.jd': `\n${T}`, 'mid.jd': `load "lib.jd"\n${J('M')}`, 'models/a.jd': J('A') };
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-duplicates-'));
+        fs.mkdirSync(path.join(tmpDir, 'models'));
+        for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(tmpDir, name), text);
+        document = await parse(`load "mid.jd"\nload "models/*.jd"\n${J('K')}`,
+            { documentUri: pathToFileURL(path.join(tmpDir, 'main.jd')).toString() });
+        const builder = services.shared.workspace.DocumentBuilder as unknown as {
+            shouldRelink(document: LangiumDocument, changed: Set<string>): boolean
+        };
+        const uriOf = (name: string) => URI.file(path.join(tmpDir, name)).toString();
+        fs.rmSync(path.join(tmpDir, 'lib.jd'));
+        expect(builder.shouldRelink(document, new Set([uriOf('lib.jd')]))).toBe(true);
+        expect(builder.shouldRelink(document, new Set([uriOf('models/new.jd')]))).toBe(true);
+        expect(builder.shouldRelink(document, new Set([uriOf('elsewhere/new.jd')]))).toBe(false);
+    });
+
     test('in a file two others load, it is read once', async () => {
         const files = { 'lib.jd': `\n${T}`, 'a.jd': `load "lib.jd"\n${J('A')}`, 'b.jd': `load "lib.jd"\n${J('B')}` };
         expect(await build(files, `load "a.jd"\nload "b.jd"\n${J('K')}`)).toEqual([]);

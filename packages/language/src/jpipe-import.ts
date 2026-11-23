@@ -414,6 +414,10 @@ export class JpipeImportService {
         const root = identity(fsPathOf(currentDoc.uri));
         // A file is read again under another namespace, whose names its models then carry.
         const read = new Set<string>();
+        // The files being read, root first. One loaded again below itself is a cyclic load, which
+        // the compiler refuses outright and the validator reports; under a new namespace at each
+        // turn it would otherwise never end.
+        const reading = new Set<string>([root]);
         const walk = (current: Unit, document: LangiumDocument, prefix: string | undefined, via: Load | undefined): void => {
             const items = [...current.body, ...current.imports]
                 .sort((a, b) => (a.$cstNode?.offset ?? 0) - (b.$cstNode?.offset ?? 0));
@@ -427,9 +431,11 @@ export class JpipeImportService {
                     const file = identity(fsPathOf(loaded.uri));
                     const key = `${file}|${namespace ?? ''}`;
                     const loadedUnit = loaded.parseResult.value as Unit | undefined;
-                    if (file === root || read.has(key) || !loadedUnit) continue;
+                    if (reading.has(file) || read.has(key) || !loadedUnit) continue;
                     read.add(key);
+                    reading.add(file);
                     walk(loadedUnit, loaded, namespace, via ?? item);
+                    reading.delete(file);
                 }
             }
         };
@@ -437,11 +443,34 @@ export class JpipeImportService {
         return declarations;
     }
 
-    /** Whether `unit` loads, directly or through another file, one of `uris`. */
+    /**
+     * Whether a change to one of `uris` can change what `unit` loads, directly or through
+     * another file: whether one is a file a literal `load` names, existing or not, so that
+     * deleting or creating it counts, or lies under the directory a pattern is matched in, so
+     * that a file added to or removed from its matches counts too.
+     */
     loadsAnyOf(unit: Unit, currentDoc: LangiumDocument, uris: ReadonlySet<string>): boolean {
-        const files = new Set([...uris].map(uri => identity(fsPathOf(URI.parse(uri)))));
-        return this.getTransitiveImportedDocuments(unit, currentDoc)
-            .some(document => files.has(identity(fsPathOf(document.uri))));
+        const changed = [...uris].map(uri => identity(fsPathOf(URI.parse(uri))));
+        const reaches = (load: Load, document: LangiumDocument): boolean => {
+            const base = path.dirname(fsPathOf(document.uri));
+            if (!isGlobPattern(load.path)) {
+                return changed.includes(identity(path.resolve(base, load.path)));
+            }
+            let anchor: string;
+            try {
+                anchor = identity(path.resolve(base, anchorGlob(load.path).prefix));
+            } catch {
+                return false; // a malformed pattern matches nothing, whatever changes
+            }
+            return changed.some(file => file.startsWith(anchor + path.sep));
+        };
+        const units: Array<[Unit, LangiumDocument]> = [
+            [unit, currentDoc],
+            ...this.getTransitiveImportedDocuments(unit, currentDoc)
+                .map(document => [document.parseResult.value as Unit, document] as [Unit, LangiumDocument])
+        ];
+        return units.some(([current, document]) =>
+            (current?.imports ?? []).some(load => reaches(load, document)));
     }
 
     /**
@@ -562,14 +591,21 @@ function qualify(prefix: string | undefined, name: string): string {
 }
 
 /**
- * The file `filePath` names, whatever the spelling: its real path when it exists, so that a link or
- * a name in another case on a case-insensitive disk is the same file, as in the compiler's
- * `LoadResolver.identity`; otherwise the path made absolute.
+ * The file `filePath` names, whatever the spelling: its real path, so that a link or a name in
+ * another case on a case-insensitive disk is the same file, as in the compiler's
+ * `LoadResolver.identity`.
  */
 function identity(filePath: string): string {
+    const absolute = path.resolve(filePath);
     try {
-        return fs.realpathSync.native(filePath);
+        return fs.realpathSync.native(absolute);
     } catch {
-        return path.resolve(filePath);
+        // A file that does not exist, deleted or not yet created, is known by the real path of
+        // its directory, so that it compares equal to itself before and after.
+        try {
+            return path.join(fs.realpathSync.native(path.dirname(absolute)), path.basename(absolute));
+        } catch {
+            return absolute;
+        }
     }
 }
