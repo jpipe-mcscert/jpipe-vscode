@@ -5,7 +5,8 @@
  * template. Asking one question — the name — and working the rest out is what keeps that from
  * being a chain of dialogs, and the working out is all here, where it can be tested
  * (jpipe-vscode ADR-VSC-0004): whether a name is usable, which file it goes to, which folder that
- * file goes in, the `load` an implementation needs, and the text that is written.
+ * file goes in, which of the server's `load` fixes an implementation takes, and the text that is
+ * written. The `load` itself is the server's to write (#121).
  *
  * URIs are handled as strings throughout. A `file:` URI's path is POSIX on every platform —
  * `file:///c%3A/models/a.jd` on Windows — so POSIX path arithmetic on it is correct everywhere,
@@ -108,25 +109,6 @@ export function chooseFolder(context: FolderContext): string | undefined {
     return ranked[0]?.[0] ?? context.workspaceFolders[0];
 }
 
-/** The drive of a URI's path (`/c:/models/a.jd` → `c`), on Windows; `undefined` elsewhere. */
-const driveOf = (pathname: string): string | undefined => /^\/([a-zA-Z]):/.exec(pathname)?.[1].toLowerCase();
-
-/**
- * The path a `load` in `fromFile` writes to reach `toFile`: relative, `/`-separated. No relative
- * path leads from one Windows drive to another, so a file on another drive is named in full
- * (`d:/lib/signoff.jd`).
- */
-export function relativeLoadPath(fromFile: string, toFile: string): string {
-    // Windows spells a drive in either case, and both are the same drive.
-    const pathOf = (uri: string): string =>
-        decodeURIComponent(new URL(uri).pathname).replace(/^\/[A-Z]:/, drive => drive.toLowerCase());
-    const from = pathOf(dirnameOf(fromFile));
-    const to = pathOf(toFile);
-    const drive = driveOf(to);
-    if (drive !== undefined && drive !== driveOf(from)) return to.slice(1);
-    return posix.relative(from, to);
-}
-
 /** The template a new justification implements. */
 export interface ImplementedTemplate {
     name: string;
@@ -167,94 +149,56 @@ export function modelSnippet(kind: NewModelKind, name: string, template?: Implem
     ].join('\n');
 }
 
-/** A `load` line, as Organize Loads writes them. */
-export const loadLine = (path: string): string => `load "${path}"`;
-
 /**
- * `text` with its comments blanked out, line for line and column for column, so that what is
- * looked for in it is only found where the language would read it. A string keeps its contents:
- * `//` inside one starts no comment.
+ * Whether a server edit loads `targetUri` into `fileUri`: whether it writes a `load` whose path,
+ * read from `fileUri`'s folder, names that file. How New Justification Implementing… picks, among
+ * the server's "add missing load" fixes, the one for its template when several files declare a
+ * template of that name. The path is the server's, so its spelling is the server's too.
  */
-export function withoutComments(text: string): string {
-    let out = '';
-    let i = 0;
-    const blank = (end: number): void => {
-        for (; i < end; i++) out += text[i] === '\n' || text[i] === '\r' ? text[i] : ' ';
+export function loadsFile(newText: string, fileUri: string, targetUri: string): boolean {
+    const written = /^\s*load\s+"([^"]+)"/.exec(newText)?.[1];
+    if (written === undefined) return false;
+    // The server writes a path, not a URI: `%`, `#` and `?` in it are characters of a file name,
+    // so it is resolved with path arithmetic, against the decoded path of the file. A UNC file
+    // keeps its server: `//server/share/t.jd` is on `server`, and a relative path stays on the
+    // loading file's.
+    const from = placeOf(fileUri);
+    let resolved: Place;
+    if (written.startsWith('//')) {
+        const [host, ...rest] = written.slice(2).split('/');
+        resolved = { host: host.toLowerCase(), path: `/${rest.join('/')}` };
+    } else if (/^[a-zA-Z]:\//.test(written)) {
+        resolved = { host: '', path: `/${written[0].toLowerCase()}${written.slice(1)}` };
+    } else if (written.startsWith('/')) {
+        resolved = { host: from.host, path: written };
+    } else {
+        resolved = { host: from.host, path: posix.join(posix.dirname(from.path), written) };
+    }
+    const target = placeOf(targetUri);
+    // A UNC share is a Windows path too, as case-insensitive as a drive.
+    if (target.host !== '') return resolved.host === target.host && posix.normalize(resolved.path).toLowerCase() === target.path.toLowerCase();
+    return resolved.host === target.host && samePath(posix.normalize(resolved.path), target.path);
+}
+
+/** Whether two paths are one: on a Windows drive or a UNC share, whatever their case. */
+function samePath(a: string, b: string): boolean {
+    const windows = (p: string) => /^\/[a-z]:\//.test(p);
+    return windows(a) || windows(b) ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+/** Where a file is: its UNC server, `''` for a local file, and its path. */
+interface Place {
+    host: string;
+    path: string;
+}
+
+/** A file URI's place: its server in lower case, its path decoded, a Windows drive in lower case. */
+function placeOf(uri: string): Place {
+    const url = new URL(uri);
+    return {
+        host: url.host.toLowerCase(),
+        path: decodeURIComponent(url.pathname).replace(/^\/[A-Z]:/, drive => drive.toLowerCase())
     };
-    while (i < text.length) {
-        const c = text[i];
-        if (c === '"' || c === "'") {
-            const end = stringEnd(text, i);
-            out += text.slice(i, end);
-            i = end;
-        } else if (text.startsWith('//', i)) {
-            const newline = text.indexOf('\n', i);
-            blank(newline < 0 ? text.length : newline);
-        } else if (text.startsWith('/*', i)) {
-            const close = text.indexOf('*/', i + 2);
-            blank(close < 0 ? text.length : close + 2);
-        } else {
-            out += c;
-            i++;
-        }
-    }
-    return out;
-}
-
-/** Where the string opening at `start` ends: after its closing quote, or at the end of its line. */
-function stringEnd(text: string, start: number): number {
-    let i = start + 1;
-    while (i < text.length && text[i] !== '\n') {
-        if (text[i] === '\\') i += 2;
-        else if (text[i++] === text[start]) return i;
-    }
-    return Math.min(i, text.length);
-}
-
-/** A `load` of a single file, as written: its path, and the name it is loaded `as`, if any. */
-const LITERAL_LOAD = /^[ \t]*load[ \t]+(["'])([^"'\n]*)\1(?:[ \t]+as[ \t]+(\w+))?/gm;
-
-/**
- * How `text`, the content of `fileUri`, already reaches `targetUri`: it is that file, or it loads
- * it with a literal path, in which case `alias` is the name it loads it `as`, if it gives one.
- * `undefined` when it does not. A glob that happens to match it is not recognised; the cost of
- * that miss is one redundant `load`, which resolves to a file already loaded and changes nothing.
- * A `load` in a comment is not one.
- */
-export function reachOf(text: string, fileUri: string, targetUri: string): { alias?: string } | undefined {
-    if (sameUri(fileUri, targetUri)) return {};
-    const folder = dirnameOf(fileUri);
-    for (const match of withoutComments(text).matchAll(LITERAL_LOAD)) {
-        const path = match[2];
-        if (/[*?[{]/.test(path)) continue;
-        if (sameUri(resolveLoad(path, folder), targetUri)) return match[3] ? { alias: match[3] } : {};
-    }
-    return undefined;
-}
-
-/** The URI a literal `load` path names, from a file in `folder`. */
-function resolveLoad(path: string, folder: string): string {
-    if (path.startsWith('/')) return `file://${path}`;
-    // `d:/lib/a.jd` is a path on a Windows drive, not a URI whose scheme is `d`.
-    if (/^[a-zA-Z]:[\\/]/.test(path)) return `file:///${path.replace(/\\/g, '/')}`;
-    return new URL(path, `${folder}/`).toString();
-}
-
-function sameUri(a: string, b: string): boolean {
-    const norm = (u: string) => decodeURIComponent(new URL(u).pathname);
-    return norm(a) === norm(b);
-}
-
-/**
- * Where to put a new `load` in an existing file: the line after its last `load`, or line 0 when it
- * has none, so loads stay together at the top. A `load` in a comment does not count, so the new
- * one is not put inside that comment.
- */
-export function loadInsertionLine(text: string): number {
-    const lines = withoutComments(text).split('\n');
-    let last = -1;
-    lines.forEach((line, i) => { if (/^\s*load\s/.test(line)) last = i; });
-    return last + 1;
 }
 
 /**

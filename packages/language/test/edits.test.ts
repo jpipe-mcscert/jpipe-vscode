@@ -8,6 +8,7 @@
  * banner, detaching the file's own header from the file. Anchoring on the CST is what fixes it,
  * and the banner cases below are what keep it fixed.
  */
+import * as path from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
 import { EmptyFileSystem, type LangiumDocument } from 'langium';
 import { parseHelper } from 'langium/test';
@@ -55,6 +56,23 @@ describe('load paths', () => {
 
     test('a file outside the directory keeps its ../ prefix rather than gaining ./', () => {
         expect(relativeLoadPath('/w/sub/model.jd', '/w/base.jd')).toBe('../base.jd');
+    });
+
+    // No relative path leads from one Windows drive to another: `./d:/lib/t.jd` named a folder
+    // `d:` beside the model, so the lightbulb's load never resolved.
+    test('a file on another Windows drive is written in full, with forward slashes', () => {
+        expect(relativeLoadPath('c:\\w\\model.jd', 'd:\\lib\\t.jd', path.win32)).toBe('d:/lib/t.jd');
+        expect(relativeLoadPath('c:\\w\\app\\model.jd', 'c:\\w\\lib\\t.jd', path.win32)).toBe('../lib/t.jd');
+    });
+
+    test('a load on a Windows drive is the same load whatever the drive letter\'s case', async () => {
+        const document = await parse('load "D:/lib/t.jd"\njustification J { conclusion c is "C" }');
+        expect(isLoaded(document.parseResult.value, 'd:/lib/t.jd')).toBe(true);
+    });
+
+    test('a load written in full gets no ./ in front', async () => {
+        const document = await parse('justification J { conclusion c is "C" }');
+        expect(applied(document, createLoadEdit(document, 'd:/lib/t.jd'))).toContain('load "d:/lib/t.jd"');
     });
 
     test('isLoaded compares in normalized form, so ./x.jd and x.jd are the same load', async () => {

@@ -12,10 +12,26 @@ import type { Justification, Template, Unit } from './generated/ast.js';
 
 // ── load paths ───────────────────────────────────────────────────────────────────────────────
 
-/** The path to write in a `load`, relative to the file declaring it, always `./`- or `../`-led. */
-export function relativeLoadPath(sourcePath: string, targetPath: string): string {
-    const relative = path.relative(path.dirname(sourcePath), targetPath).replaceAll('\\', '/');
-    return relative.startsWith('../') ? relative : `./${relative}`;
+/**
+ * The path to write in a `load`, relative to the file declaring it, `./`- or `../`-led. A file on
+ * another Windows drive has no relative path: it is written in full, `d:/lib/t.jd`, as
+ * `path.relative` gives it back, never `./d:/lib/t.jd`. `paths` is the platform's path module,
+ * passed only by tests.
+ */
+export function relativeLoadPath(
+    sourcePath: string,
+    targetPath: string,
+    paths: Pick<typeof path, 'relative' | 'dirname' | 'isAbsolute'> = path
+): string {
+    const relative = paths.relative(paths.dirname(sourcePath), targetPath);
+    const written = relative.replaceAll('\\', '/');
+    if (paths.isAbsolute(relative)) return written;
+    return written.startsWith('../') ? written : `./${written}`;
+}
+
+/** Whether a load path is absolute, `/lib/t.jd` or `d:/lib/t.jd`, so that no `./` goes in front. */
+function isWrittenInFull(loadPath: string): boolean {
+    return loadPath.startsWith('/') || /^[a-zA-Z]:\//.test(loadPath);
 }
 
 /**
@@ -26,7 +42,9 @@ export function normalizeLoadPath(filePath: string): string {
     return filePath
         .replaceAll(/^["']|["']$/g, '')
         .replaceAll(/^\.\//g, '')
-        .replaceAll('\\', '/');
+        .replaceAll('\\', '/')
+        // A Windows drive is one drive in either case: `D:/lib` is `d:/lib`.
+        .replace(/^([A-Z]):\//, (_, drive: string) => `${drive.toLowerCase()}:/`);
 }
 
 /**
@@ -86,7 +104,7 @@ export function createLoadEdit(
     if (!unit || isLoaded(unit, relativePath, namespace)) return undefined;
 
     const { line, suffix } = findLoadInsertion(document);
-    const finalPath = relativePath.startsWith('../')
+    const finalPath = relativePath.startsWith('../') || isWrittenInFull(relativePath)
         ? relativePath
         : `./${normalizeLoadPath(relativePath)}`;
     const alias = namespace ? ` as ${namespace}` : '';

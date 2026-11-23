@@ -152,7 +152,7 @@ export function getLocalElements(node: Justification | Template): JustificationE
  * or one whose only problem is the `implements` line (#129). That line is already reported as an
  * unresolved reference, which points the user at the one thing to fix. A chain that loops has no
  * element list at all: the compiler reports `cyclic-implements` there and judges nothing else, so
- * neither may this (the editor does not report the cycle yet, #128).
+ * neither may this (`implementsCycle` finds the cycle to report).
  *
  * Such a model is left alone by every rule that needs its whole element list: a missing element
  * there is a fact about what this can read, not about the model. The operators are never ported:
@@ -167,6 +167,68 @@ export function cannotSeeAllElements(model: Justification | Template): boolean {
 export function implementsLoops(model: Justification | Template): boolean {
     // The walk stops at a link with no parent, or at one whose parent it has already visited.
     return implementsChain(model).at(-1)?.parent?.ref !== undefined;
+}
+
+/**
+ * The cycle `model`'s `implements` closes, in order from `model`, or `undefined` if it closes none.
+ *
+ * A port of the compiler's `ExecutionFailureDiagnostics.cycleThrough`, which decides what
+ * `cyclic-implements` reports. A model waits on the template it implements, and a composed model
+ * on its operator's sources, so a cycle may run through both:
+ * `cyc implements built, which 'assemble' builds from cyc`. The walk is depth first from the
+ * template, in the order the model names what it waits on, and visits each model once. A model
+ * that implements a template on a cycle without being on it closes none, and nor does a composed
+ * model, whose `implements` the compiler refuses rather than follows.
+ */
+export function implementsCycle(model: Justification | Template): Array<Justification | Template> | undefined {
+    const template = model.composition ? undefined : model.parent?.ref;
+    if (!template) return undefined;
+    const path: Array<Justification | Template> = [model];
+    const visited = new Set<Justification | Template>();
+    const extend = (next: Justification | Template): boolean => {
+        if (next === model) return true;
+        if (visited.has(next)) return false;
+        visited.add(next);
+        path.push(next);
+        if (waitsOn(next).some(extend)) return true;
+        path.pop();
+        return false;
+    };
+    return extend(template) ? path : undefined;
+}
+
+/**
+ * Whether building `model` waits on a cycle anywhere below it: through the templates it implements
+ * and the sources of the operators that build them, as `waitsOn` follows them. The compiler builds
+ * nothing that waits on a cycle, and reports only the cycle (`cyclic-implements`), even where no
+ * model of `model`'s own chain is on it: `J implements Top`, `Top implements built`, and `built`
+ * assembled from a model that implements `built`.
+ */
+export function buildsOnCycle(model: Justification | Template): boolean {
+    const done = new Set<Justification | Template>();
+    const onPath = new Set<Justification | Template>();
+    const visit = (current: Justification | Template): boolean => {
+        if (onPath.has(current)) return true;
+        if (done.has(current)) return false;
+        onPath.add(current);
+        const found = waitsOn(current).some(visit);
+        onPath.delete(current);
+        done.add(current);
+        return found;
+    };
+    return visit(model);
+}
+
+/**
+ * The models `model` is built from: its operator's sources, or else the template it implements.
+ * The compiler builds a composed model from its sources alone, and refuses an `implements` written
+ * beside them (`invalid-operator-call`), so that edge is not part of its graph.
+ */
+function waitsOn(model: Justification | Template): Array<Justification | Template> {
+    const next = model.composition
+        ? model.composition.params?.refs.map(ref => ref.ref) ?? []
+        : [model.parent?.ref];
+    return next.filter((link): link is Justification | Template => link !== undefined);
 }
 
 /**

@@ -1,4 +1,5 @@
-import { AstUtils, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
+import * as path from 'node:path';
+import { AstUtils, GrammarUtils, type LangiumDocument, type ValidationAcceptor, type ValidationChecks } from 'langium';
 import { GlobExpansionError, isGlobPattern } from './jpipe-glob.js';
 import {
     type JpipeAstType,
@@ -13,8 +14,6 @@ import {
     type Justification,
     type Load,
     type Relation,
-    isTemplate,
-    isJustification,
     isAbstractSupport,
     isConclusion,
     isEvidence,
@@ -23,7 +22,7 @@ import {
 } from './generated/ast.js';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
-import type { JpipeImportService } from './jpipe-import.js';
+import type { JpipeImportService, ModelDeclaration } from './jpipe-import.js';
 import type { JpipeUnificationService } from './jpipe-unification.js';
 import {
     HOOK_KEY,
@@ -36,10 +35,11 @@ import {
     requiredConfigKeys
 } from './jpipe-operators.js';
 import {
-    cannotSeeAllElements, expandedElements, getAllElements, getLocalElements, hookTarget, isDiscardedConclusion,
-    qualifiedIdText, requiredOverrides
+    cannotSeeAllElements, expandedElements, fsPathOf, getAllElements, getLocalElements, buildsOnCycle, hookTarget,
+    implementsCycle, isDiscardedConclusion, qualifiedIdText, requiredOverrides
 } from './jpipe-utils.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
+import { byCodeUnit } from './jpipe-text.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
 import { messageOf } from './jpipe-errors.js';
 
@@ -47,11 +47,11 @@ export function registerValidationChecks(services: JpipeServices) {
     const registry = services.validation.ValidationRegistry;
     const validator = services.validation.JpipeValidator;
     const checks: ValidationChecks<JpipeAstType> = {
-        Unit:           validator.checkUnitNotEmpty,
+        Unit:           [validator.checkUnitNotEmpty, validator.checkDuplicateModels],
         Load:           validator.checkLoadResolves,
-        Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkConfigKeys, validator.checkUnificationMethod, validator.checkRefineHook],
-        Template:       [validator.checkDuplicateModelName, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
-        Justification:  [validator.checkDuplicateModelName, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
+        Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkDuplicateSources, validator.checkConfigKeys, validator.checkUnificationMethod, validator.checkRefineHook],
+        Template:       [validator.checkCyclicImplements, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
+        Justification:  [validator.checkCyclicImplements, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
         Evidence:       validator.checkLabelNotEmpty,
         Strategy:       [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
         Conclusion:     [validator.checkLabelNotEmpty, validator.checkInheritedConclusion, validator.checkConclusionIncomingFromStrategy],
@@ -140,6 +140,48 @@ export class JpipeValidator {
             report(accept, JpipeIssue.UnknownOperator, `Unknown operator '${composition.operator}'. Expected: ${knownOperatorNames().join(', ')}.`,
                    { node: composition, property: 'operator' }, { actual: composition.operator, known: knownOperatorNames() });
         }
+    }
+
+    /**
+     * A model given twice to one operator, as the compiler refuses it for every operator
+     * (`CompositionOperator.requireDistinctSources`): composing a model with itself either merges
+     * every element with its copy or fails on an unrelated unification error. In its words, on
+     * each repeat. It is decided by the source alone, so it needs no contents
+     * (jpipe-vscode ADR-VSC-0034).
+     */
+    checkDuplicateSources(composition: Composition, accept: ValidationAcceptor): void {
+        const params = composition.params;
+        if (!params || !operatorSpec(composition.operator)) return;
+        const seen = new Set<string>();
+        params.refs.forEach((ref, index) => {
+            // Compared by name, as the compiler compares them: a file loaded under two namespaces
+            // gives two models, `x:b` and `y:b`, from one declaration. A source that does not
+            // resolve is the compiler's `unknown-model`, and it goes no further.
+            const source = ref.$refText.replace(/\s+/g, '');
+            if (!ref.ref) return;
+            if (!seen.has(source)) {
+                seen.add(source);
+                return;
+            }
+            report(accept, JpipeIssue.DuplicateSource,
+                   `'${composition.operator}' for '${composition.$container.id}': the model '${source}' is given more than once`,
+                   { node: params, property: 'refs', index }, { operator: composition.operator, source });
+        });
+    }
+
+    /**
+     * An `implements` that closes a cycle, which the compiler reports as `cyclic-implements` and
+     * builds nothing of. A cycle is reported once, as the compiler reports it: by the `implements`
+     * of its first model in alphabetical order that has one, in the compiler's words, on the
+     * template it names. A model that only implements a template on a cycle is not reported.
+     */
+    checkCyclicImplements(model: Justification | Template, accept: ValidationAcceptor): void {
+        const cycle = implementsCycle(model);
+        if (!cycle) return;
+        const [reporter] = cycle.filter(link => link.parent !== undefined && !link.composition).map(link => link.id).sort(byCodeUnit);
+        if (reporter !== model.id) return;
+        report(accept, JpipeIssue.CyclicImplements, `cycle detected: ${describeCycle(cycle)}`,
+               { node: model, property: 'parent' }, { modelId: model.id, cycle: cycle.map(link => link.id) });
     }
 
     /**
@@ -293,21 +335,37 @@ export class JpipeValidator {
     }
 
     /**
-     * Flags a model declared under a name another model of the file already has, whatever their
+     * Flags a model declared under a name a model read before it already has, whatever their
      * kinds: the compiler rejects it under the same code and in the same words, and drops the later
-     * one with its whole body (jpipe-vscode ADR-VSC-0022). So, as there, the first declaration is
-     * the one kept and every later one is flagged, pointing at it. The compiler also compares the
-     * files a model loads; this checks one file (#122).
+     * one with its whole body (`DuplicateModelFilter`; jpipe-vscode ADR-VSC-0022). The compiler
+     * compares every model it reads to build this file, those of the files it loads included, in
+     * the order it reads them (`modelDeclarations`). So, as there, the first declaration is the one
+     * kept, and every later one is flagged, pointing at the first as `at lib.jd:8`.
+     *
+     * A later declaration in a loaded file is underlined by the compiler in that file, which this
+     * validation does not reach. It is reported on the `load` of this file that brings it in, with
+     * the place of both declarations: the build of this file fails because of it.
      */
-    checkDuplicateModelName(model: Justification | Template, accept: ValidationAcceptor): void {
-        const unit = model.$container;
-        if (!unit) return;
-        const named = unit.body.filter(item => (isJustification(item) || isTemplate(item)) && item.id === model.id);
-        if (named.indexOf(model) < 1) return;
-        const first = named[0].$cstNode?.range.start.line;
-        const where = first === undefined ? '' : ` at line ${first + 1}`;
-        report(accept, JpipeIssue.DuplicateModel, `Model '${model.id}' is already declared${where}`,
-               { node: model, property: 'id' }, { id: model.id });
+    checkDuplicateModels(unit: Unit, accept: ValidationAcceptor): void {
+        const document = unit.$document;
+        if (!document) return;
+        const first = new Map<string, ModelDeclaration>();
+        for (const declaration of this.importService.modelDeclarations(unit, document)) {
+            const earlier = first.get(declaration.name);
+            if (!earlier) {
+                first.set(declaration.name, declaration);
+                continue;
+            }
+            const where = `is already declared${placeOf(earlier, ' at ')}`;
+            const data = { id: declaration.name };
+            if (declaration.via) {
+                report(accept, JpipeIssue.DuplicateModel, `Model '${declaration.name}'${placeOf(declaration, ' in ')} ${where}`,
+                       { node: declaration.via, property: 'path' }, data);
+            } else {
+                report(accept, JpipeIssue.DuplicateModel, `Model '${declaration.name}' ${where}`,
+                       { node: declaration.model, property: 'id' }, data);
+            }
+        }
     }
 
     /**
@@ -497,7 +555,8 @@ export class JpipeValidator {
 
     checkJustificationOverride(justification: Justification, accept: ValidationAcceptor): void {
         this.logger.debug(`Checking overrides for justification '${justification.id}'`);
-        if (!justification.parent?.ref) return;
+        // Below a cycle, the compiler reports the cycle and builds nothing.
+        if (!justification.parent?.ref || buildsOnCycle(justification)) return;
 
         const template = justification.parent.ref;
         const parentRefText = justification.parent.$refText ?? template.id;
@@ -556,4 +615,28 @@ function isDiscardedRelation(relation: Relation): boolean {
     if (rejected.size === 0) return false;
     return [relation.from?.$refText, relation.to?.$refText]
         .some(text => text !== undefined && rejected.has(text.replace(/\s+/g, '')));
+}
+
+/**
+ * A cycle as the compiler writes it (`describeCycle`): `a implements b implements a`, and, through an
+ * operator, `j implements t, which 'assemble' builds from j`.
+ */
+function describeCycle(cycle: ReadonlyArray<Justification | Template>): string {
+    return cycle[0].id + cycle.map((model, index) => {
+        const next = cycle[(index + 1) % cycle.length].id;
+        return model.composition
+            ? `, which '${model.composition.operator}' builds from ${next}`
+            : ` implements ${next}`;
+    }).join('');
+}
+
+/**
+ * Where the compiler says a model is declared, after `lead`: the file's name and the line of the
+ * model's name, ` at lib.jd:8`; nothing when it is not known, as the compiler leaves it out.
+ */
+function placeOf(declaration: ModelDeclaration, lead: string): string {
+    const name = declaration.model.$cstNode
+        && GrammarUtils.findNodeForProperty(declaration.model.$cstNode, 'id');
+    if (!name) return '';
+    return `${lead}${path.basename(fsPathOf(declaration.document.uri))}:${name.range.start.line + 1}`;
 }

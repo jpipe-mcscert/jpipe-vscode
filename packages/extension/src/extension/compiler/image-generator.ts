@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { JpipeLogger } from '../logger.js';
 import { asProcessFailure, detailOf, messageOf } from '../../shared/errors.js';
+import { CompilerVerdicts } from './compiler-verdicts.js';
 import { ReleaseManager } from './release-manager.js';
 import { runProgram } from '../process-launcher.js';
 import {
@@ -212,7 +213,7 @@ export class ImageGenerator {
 
         const execKey = execKeyOf(resolved);
         // A compiler that rejected `-f json` stays refused while it answers `--version` the same.
-        this.verdicts.delete(execKey);
+        this.verdicts.forget(execKey);
         // Two starts of the compiler, neither waiting on the other's answer.
         const [verdict, doctor] = await Promise.all([
             this.verdictFor(resolved, config),
@@ -267,7 +268,7 @@ export class ImageGenerator {
             // does not know `-f json`, so it predates what this extension needs. Said as such
             // rather than shown as picocli's usage dump.
             const tooOld = new CompilerTooOldError(undefined);
-            this.rejectJson(execKeyOf(resolved));
+            this.verdicts.rejectJson(execKeyOf(resolved));
             this.tellTooOld(execKeyOf(resolved), tooOld);
             return { raw: tooOld.message, report: null, exitCode: undefined };
         }
@@ -293,63 +294,22 @@ export class ImageGenerator {
         return run.raw;
     }
 
-    /**
-     * What each compiler's version means for this extension, by resolved command.
-     *
-     * Only a usable answer, from a compiler that did answer, is kept: the version is a property
-     * of the build, and running `--version` before every save would be a second process for a
-     * fact that cannot change.
-     * A compiler found too old is asked again next time, because the next thing its user does
-     * is update it — often in place, under the same command — and a cached refusal would outlive
-     * the update until the window is reloaded. Keyed by the resolved command, so pointing
-     * `cliPath` or `jarFile` at a different build asks again.
-     */
-    private readonly verdicts = new Map<string, CompilerVerdict>();
+    /** What each compiler's version means, by resolved command: see `CompilerVerdicts`. */
+    private readonly verdicts = new CompilerVerdicts();
 
     /** The too-old compilers the user has been told about, by command and version: once each. */
     private readonly toldTooOld = new Set<string>();
-
-    /**
-     * The compilers that rejected `diagnostic -f json` whatever their version said, with what
-     * `--version` printed then (`null`: it could not be asked). Such a compiler is too old for
-     * every feature, not only the diagnostics, for as long as it answers the same. It is asked
-     * on every use meanwhile: an update in place, under the same command, changes the answer,
-     * and the compiler is then judged afresh.
-     */
-    private readonly rejectsJson = new Map<string, string | null>();
-
-    /** What each compiler's `--version` printed last, for `rejectsJson` to compare against. */
-    private readonly versionOutputs = new Map<string, string>();
-
-    private rejectJson(execKey: string): void {
-        this.rejectsJson.set(execKey, this.versionOutputs.get(execKey) ?? null);
-        this.verdicts.delete(execKey);
-    }
 
     private async verdictFor(
         resolved: { file: string; args: string[] },
         config: vscode.WorkspaceConfiguration
     ): Promise<CompilerVerdict> {
         const execKey = execKeyOf(resolved);
-        const rejected = this.rejectsJson.get(execKey);
-        const cached = this.verdicts.get(execKey);
-        if (rejected === undefined && cached) return cached;
-
+        const cached = this.verdicts.cached(execKey);
+        if (cached) return cached;
         const output = await this.askVersion(resolved, config, execKey);
-        if (rejected !== undefined) {
-            if ((output ?? null) === rejected) return { kind: 'too-old', version: undefined };
-            this.logger.debug(`Compiler at '${execKey}' answers differently since it rejected 'diagnostic -f json'; judging it afresh`);
-            this.rejectsJson.delete(execKey);
-        }
-        // A build that cannot be asked its version this time is let through: the run itself will
-        // report the real problem, if there is one. Not remembered, since the failure may be
-        // passing — a cold JVM over the timeout — and remembering it would let an old compiler
-        // through for the rest of the session.
-        if (output === undefined) return { kind: 'unknown' };
-
-        const verdict = compilerVerdict(parseCompilerVersion(output));
+        const verdict = this.verdicts.answer(execKey, output, printed => compilerVerdict(parseCompilerVersion(printed)));
         this.logger.debug(`Compiler at '${execKey}': ${compilerLine(verdict)}`);
-        if (verdict.kind !== 'too-old') this.verdicts.set(execKey, verdict);
         return verdict;
     }
 
@@ -365,9 +325,7 @@ export class ImageGenerator {
                 [...resolved.args, '--headless', '--version'],
                 { env: envWithPath(), timeout: timeoutMs(config), maxBuffer: MAX_OUTPUT_BYTES }
             );
-            const output = `${stdout}\n${stderr}`;
-            this.versionOutputs.set(execKey, output);
-            return output;
+            return `${stdout}\n${stderr}`;
         } catch (e: unknown) {
             this.logger.debug(`Could not read the compiler version from '${execKey}': ${messageOf(e)}`);
             return undefined;
