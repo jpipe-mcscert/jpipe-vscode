@@ -36,7 +36,8 @@ import {
     type JustificationElement,
     type AbstractSupport
 } from './generated/ast.js';
-import { fsPathOf, getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { fsPathOf, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { listedIn } from './jpipe-model-contents.js';
 import { messageOf } from './jpipe-errors.js';
 
 const WORD_CHARACTER = /\w/;
@@ -485,7 +486,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         // Inside a config value only that value is completed. Most values are free text, where
         // nothing applies — certainly not the key names, which is what used to be offered here.
         if (cursor?.at === 'value') {
-            return { ...result, items: this.getConfigValueCompletions(document, cursor, pos) };
+            return { ...result, items: await this.getConfigValueCompletions(document, cursor, pos) };
         }
 
         if (cursor?.at === 'operator') {
@@ -529,8 +530,13 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
      * to anything else — hooking a strategy or a conclusion would graft an argument into the
      * middle of one. The compiler resolves the hook by id and does not check its type, so this
      * narrows what is suggested rather than what is permitted.
+     *
+     * Read from the model's contents, whole or not: an element this can see is worth offering even
+     * where others are hidden from it.
      */
-    private getHookValueCompletions(document: LangiumDocument, firstParam: string | undefined, partial: string, position: Position): CompletionItem[] {
+    private async getHookValueCompletions(
+        document: LangiumDocument, firstParam: string | undefined, partial: string, position: Position
+    ): Promise<CompletionItem[]> {
         if (!firstParam) return [];
 
         const unit = document.parseResult.value as Unit | undefined;
@@ -542,7 +548,9 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             document.textDocument.offsetAt(position) - partial.length
         );
 
-        return getAllElements(base)
+        const contents = await this.services.references.ModelContents.contentsOf(base);
+        return listedIn(contents)
+            .map(entry => entry.element)
             .filter(element => isEvidence(element))
             .filter(element => qualifiedIdText(element.id).length > 0)
             .filter(element => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, qualifiedIdText(element.id)))
@@ -594,11 +602,11 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
     }
 
     /** The values worth offering for a config key: only `hook` and `unifyBy` have a known set. */
-    private getConfigValueCompletions(
+    private async getConfigValueCompletions(
         document: LangiumDocument,
         cursor: Extract<CompositionCursor, { at: 'value' }>,
         position: Position
-    ): CompletionItem[] {
+    ): Promise<CompletionItem[]> {
         if (cursor.key === 'hook' && cursor.operator === 'refine') {
             return this.getHookValueCompletions(document, cursor.sources[0], cursor.partial, position);
         }

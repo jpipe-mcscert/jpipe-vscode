@@ -127,6 +127,46 @@ describe('Validation tests', () => {
         expect(diagnostic?.severity).toBe(DiagnosticSeverity.Error);
     });
 
+    // The compiler counts a template's @support once `implements` is expanded: one it overrides
+    // with an evidence is gone. Checked against jPipe 4.1.0's `diagnostic`, which reports
+    // `has-abstract-support` on T2 and nothing on T1.
+    test('a template whose every inherited @support it overrides declares none', async () => {
+        const doc = await parse(`
+            template T1 {
+                conclusion c is "C"
+                strategy s is "S"
+                @support a is "A"
+                a supports s
+                s supports c
+            }
+            template T2 implements T1 {
+                evidence T1:a is "Now concrete"
+            }
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).filter(m => m.includes('declares no abstract supports')))
+            .toEqual(["Template 'T2' declares no abstract supports"]);
+    });
+
+    test('a template that overrides some inherited @support and keeps another still declares one', async () => {
+        const doc = await parse(`
+            template T1 {
+                conclusion c is "C"
+                strategy s is "S"
+                @support a is "A"
+                @support b is "B"
+                a supports s
+                b supports s
+                s supports c
+            }
+            template T2 implements T1 {
+                evidence T1:a is "Now concrete"
+            }
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).filter(m => m.includes('declares no abstract supports'))).toEqual([]);
+    });
+
     test('@support not overridden triggers error', async () => {
         const doc = await parse(`
             template T {

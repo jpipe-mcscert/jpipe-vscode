@@ -17,9 +17,8 @@ a model's whole element list therefore cannot handle a model built on a composit
 the rules `conclusion-present`, `has-abstract-support`, `unknown-hook`, `ambiguous-id` and
 `unique-identifiers`, and also completion, hover, rename and go-to-definition through such a
 model. Until 2.0.1 some of these rules reported errors on models the compiler builds
-(jpipe-compiler example 028, #126). The fix makes them stay silent on such models
-(`cannotSeeAllElements` in `jpipe-utils.ts`), which leaves models the compiler refuses shown clean
-(#127).
+(jpipe-compiler example 028, #126). The fix makes them stay silent on such models, which leaves
+models the compiler refuses shown clean (#127).
 
 There were two ways to give the editor those elements. One was to port the operators to
 TypeScript, as `jpipe-glob.ts` ports Java NIO globs (jpipe-vscode ADR-VSC-0007). The other was
@@ -36,15 +35,25 @@ the elements of a model built on a composition, they come from the compiler.**
 They come through one polymorphic API, so a consumer never knows, or asks, which kind of model it
 holds:
 
-- **One question, one answer type.** A consumer asks for a model's contents and receives either
-  its effective elements, under the ids the compiler gives them, or *cannot tell*. Validation
-  rules, completion, hover, rename and definition all ask this question. None of them calls
-  `cannotSeeAllElements` or reads a body directly.
-- **Two implementations behind it.**
+- **One question, one answer type.** A consumer asks for a model's contents
+  (`ModelContents.contentsOf`, in `jpipe-model-contents.ts`) and receives either its effective
+  elements, under the ids the compiler gives them, or *cannot tell*. Validation rules,
+  completion, hover, rename and definition all ask this question. None of them reads an element
+  list around it: `getAllElements` and `expandedElements` are imported only by the declared
+  implementation and by linking (below), which `test/model-contents.test.ts` holds.
+- ***Cannot tell* lists what it can see.** It carries the elements the bodies show. A consumer may
+  find an element there by its exact id, since what a model declares replaces any element of that
+  id it inherits; it may never conclude from them that an element is missing. That is what keeps
+  a `refine` hook spelling an exact id renamed on a base built on a composition.
+- **Two implementations behind it, chosen by the service.**
   - *Declared* contents serve a model whose `implements` chain is plain. They are read from the
-    bodies, as `expandedElements` reads them today.
+    bodies (`expandedElements`).
   - *Compiled* contents serve a model that builds on a composition. They are read from the
     compiler's JSON export of that model.
+- **Linking reads the declarations itself.** Langium resolves references synchronously while it
+  builds documents, so the scope provider and the import service cannot await contents. They read
+  the bodies, as before; a reference to an element only an operator builds is compiled contents'
+  concern, served to linking from their cache.
 - **Compiled elements are tied back to source.** Each element is linked to the AST declarations
   its `origins` name, so identity survives: renaming `@support abs2` in `pattern` reaches every
   element built from it, and go-to-definition lands on that declaration.
@@ -78,9 +87,10 @@ holds:
 - **Silence stays the fallback, not an error.** Without the compiler's answer, the editor knows
   nothing it did not know before. Reporting on a guess would put errors on models that build,
   which is the trade jpipe-vscode ADR-VSC-0022 refuses for composed models.
-- **A stub that always says *cannot tell* was rejected as the end state.** It is what
-  `cannotSeeAllElements` amounts to today. It is correct, but it leaves features blind exactly
-  where the language is hardest to follow.
+- **A stub that always says *cannot tell* was rejected as the end state.** It is what the editor
+  did before this record, and what compiled contents answer until they read the compiler's
+  export. It is correct, but it leaves features blind exactly where the language is hardest to
+  follow.
 
 ## Consequences
 

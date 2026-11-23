@@ -35,9 +35,9 @@ import {
     requiredConfigKeys
 } from './jpipe-operators.js';
 import {
-    cannotSeeAllElements, expandedElements, fsPathOf, getAllElements, getLocalElements, buildsOnCycle, hookTarget,
-    implementsCycle, isDiscardedConclusion, qualifiedIdText, requiredOverrides
+    fsPathOf, getLocalElements, buildsOnCycle, implementsCycle, isDiscardedConclusion, qualifiedIdText, requiredOverrides
 } from './jpipe-utils.js';
+import { hookTarget, type ModelContents } from './jpipe-model-contents.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { byCodeUnit } from './jpipe-text.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
@@ -65,11 +65,13 @@ export class JpipeValidator {
     private readonly logger: JpipeServerLogger;
     private readonly importService: JpipeImportService;
     private readonly unification: JpipeUnificationService;
+    private readonly contents: ModelContents;
 
     constructor(services: JpipeServices) {
         this.logger = services.logger;
         this.importService = services.references.JpipeImportService;
         this.unification = services.unification;
+        this.contents = services.references.ModelContents;
     }
 
     /**
@@ -268,21 +270,21 @@ export class JpipeValidator {
      * `hook element 'x' not found in base model 'B'`. That message is borrowed here, because it is
      * the same defect and jpipe-vscode ADR-VSC-0022 says one defect reads one way.
      *
-     * `hookTarget` decides what resolves, and matches the compiler: against the ids template
-     * expansion gives inherited elements, then by its suffix fallback. Two shapes are passed over
-     * instead, each because the editor genuinely cannot answer:
+     * `hookTarget` decides what resolves, and matches the compiler: against the base's contents,
+     * under the ids template expansion gives inherited elements, then by its suffix fallback. Two
+     * shapes are passed over instead, each because the editor genuinely cannot answer:
      *
-     * - **A base for which `cannotSeeAllElements` holds**, when the hook matches none of the ids
-     *   this can see: it may name one an operator builds, or one inherited through an `implements`
-     *   that does not resolve. In the second case the visible problem is the `implements`, and
-     *   pointing at the hook would send the user to the wrong line.
+     * - **A base whose contents cannot tell**, when the hook matches none of the ids this can see:
+     *   it may name one an operator builds, or one inherited through an `implements` that does not
+     *   resolve. In the second case the visible problem is the `implements`, and pointing at the
+     *   hook would send the user to the wrong line.
      * - **An unresolved first source**, which is a linking error already reported where it is.
      *
      * A missing `hook` is `missing-config-key`'s business and is left alone. An empty one is not:
      * the key is present, so nothing else reports it, and the compiler looks `''` up like any other
      * hook and fails the build on it.
      */
-    checkRefineHook(composition: Composition, accept: ValidationAcceptor): void {
+    async checkRefineHook(composition: Composition, accept: ValidationAcceptor): Promise<void> {
         if (composition.operator !== 'refine') return;
         const entry = composition.config?.entries.find(candidate => candidate.key === HOOK_KEY);
         const actual = entry?.value;
@@ -290,9 +292,10 @@ export class JpipeValidator {
 
         const base = composition.params?.refs[0]?.ref;
         if (!base) return;
-        if (hookTarget(base, actual) || cannotSeeAllElements(base)) return;
+        const contents = await this.contents.contentsOf(base);
+        if (contents.kind === 'cannot-tell' || hookTarget(contents, actual)) return;
 
-        const candidates = expandedElements(base)
+        const candidates = contents.elements
             .map(entry => entry.id)
             .filter(id => id.length > 0);
         report(accept, JpipeIssue.UnknownHook,
@@ -375,15 +378,16 @@ export class JpipeValidator {
      * justifications, so this one does too. An argument with nothing at its root is not an
      * argument.
      *
-     * Inherited conclusions count, which is why this reads `getAllElements`: the compiler checks
+     * Inherited conclusions count, which is why this reads the model's contents: the compiler checks
      * completeness *after* `implements` has inlined the parent's elements, so a justification
      * whose conclusion comes from its template satisfies the rule there and must here. A conclusion
-     * of its own does not count in a model that `implements` one: the compiler has discarded it.
+     * of its own does not count in a model that `implements` one: the compiler has discarded it,
+     * and so have the contents.
      *
      * The grammar requires a non-empty body, so `justification J { }` is a parse error rather than
      * this; what reaches here is a model with contents that simply do not include a conclusion.
      *
-     * A model for which `cannotSeeAllElements` holds is skipped. One built on a composition —
+     * A model whose contents cannot tell is skipped. One built on a composition —
      * `justification K is assemble(J, T) { … }`, or one implementing a composed template — has
      * elements that do not exist until the operator has run; one whose `implements` does not
      * resolve inherits its conclusion from a template this cannot read, and the unresolved
@@ -393,9 +397,10 @@ export class JpipeValidator {
      * is caught by the compiler and not by the editor, which is the right way round: silence about
      * a real problem beats noise about one that is not.
      */
-    checkModelHasConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
-        if (cannotSeeAllElements(model)) return;
-        if (getAllElements(model).some(element => isConclusion(element) && !isDiscardedConclusion(element))) return;
+    async checkModelHasConclusion(model: Justification | Template, accept: ValidationAcceptor): Promise<void> {
+        const contents = await this.contents.contentsOf(model);
+        if (contents.kind === 'cannot-tell') return;
+        if (contents.elements.some(({ element }) => isConclusion(element))) return;
 
         report(accept, JpipeIssue.ConclusionPresent, `Model '${model.id}' has no conclusion`,
                { node: model, property: 'id' }, { id: model.id });
@@ -436,15 +441,19 @@ export class JpipeValidator {
      * The compiler's own note for this rule says it best: a template with no abstract supports is
      * a justification in disguise. It refuses to build one, and the message here is its wording.
      *
-     * A template for which `cannotSeeAllElements` holds is left alone: the `@support` elements a
-     * `refine` leaves unrefined, or those of a template that does not resolve, are in no body this
-     * can read. Declaring the wrong kind for an operator's result is a different error in the
+     * Read on the template's contents, as the compiler reads it once `implements` is expanded: a
+     * `@support` that the template overrides with an evidence is no longer one, so a template
+     * whose every `@support` is overridden declares none.
+     *
+     * A template whose contents cannot tell is left alone: the `@support` elements a `refine`
+     * leaves unrefined, or those of a template that does not resolve, are in no body this can
+     * read. Declaring the wrong kind for an operator's result is a different error in the
      * compiler, raised once the operator has run.
      */
-    checkTemplateHasSupport(template: Template, accept: ValidationAcceptor): void {
-        if (cannotSeeAllElements(template)) return;
-        const allElements = getAllElements(template);
-        const hasSupport = allElements.some(elem => isAbstractSupport(elem));
+    async checkTemplateHasSupport(template: Template, accept: ValidationAcceptor): Promise<void> {
+        const contents = await this.contents.contentsOf(template);
+        if (contents.kind === 'cannot-tell') return;
+        const hasSupport = contents.elements.some(({ element }) => isAbstractSupport(element));
 
         if (!hasSupport) {
             report(accept, JpipeIssue.HasAbstractSupport, `Template '${template.id}' declares no abstract supports`,

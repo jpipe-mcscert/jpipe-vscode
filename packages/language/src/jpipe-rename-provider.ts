@@ -95,7 +95,7 @@ export class JpipeRenameProvider extends DefaultRenameProvider {
         switch (target.kind) {
             case 'refuse':  return this.decline(target.reason);
             case 'model':   return this.renameModel(target.model, params.newName);
-            case 'element': return this.renameElement(target.element, params.newName);
+            case 'element': return await this.renameElement(target.element, params.newName);
             default:        return super.rename(document, params);
         }
     }
@@ -191,7 +191,7 @@ export class JpipeRenameProvider extends DefaultRenameProvider {
      * first gathers every declaration that restates this one, the second rewrites those and every
      * relation reaching them.
      */
-    private renameElement(element: JustificationElement, newName: string): WorkspaceEdit | undefined {
+    private async renameElement(element: JustificationElement, newName: string): Promise<WorkspaceEdit | undefined> {
         const owner = ownerOf(element);
         const name = localName(element.id);
         if (!owner || !name) return undefined;
@@ -207,7 +207,7 @@ export class JpipeRenameProvider extends DefaultRenameProvider {
             collect(changes, document.uri.toString(), [
                 ...elementEdits(unit, prefixes, name, affected, newName),
                 // A `refine` hook names the element in a string, so nothing above sees it.
-                ...hookEdits(unit, affected, newName)
+                ...await hookEdits(unit, affected, newName, this.services.references.ModelContents)
             ]);
         }
         return { changes };
