@@ -42,7 +42,9 @@ export function normalizeLoadPath(filePath: string): string {
     return filePath
         .replaceAll(/^["']|["']$/g, '')
         .replaceAll(/^\.\//g, '')
-        .replaceAll('\\', '/');
+        .replaceAll('\\', '/')
+        // A Windows drive is one drive in either case: `D:/lib` is `d:/lib`.
+        .replace(/^([A-Z]):\//, (_, drive: string) => `${drive.toLowerCase()}:/`);
 }
 
 /**

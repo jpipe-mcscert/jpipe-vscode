@@ -16,7 +16,7 @@
  * - **A compiler that rejected `diagnostic -f json` is refused** whatever its version said: it is
  *   older than the version it claims. That is the same refusal, held against what it printed.
  * - **A compiler that cannot be asked is let through** (`unknown`), and the run itself reports the
- *   real problem; a refusal it earned stays while it still cannot be asked. Not kept otherwise,
+ *   real problem; a refusal it earned stays while it cannot be asked. Not kept otherwise,
  *   since the failure may be passing, a cold JVM over the timeout, and keeping it would let an old
  *   compiler through for the rest of the session.
  */
@@ -55,7 +55,9 @@ export class CompilerVerdicts {
         const entry = this.entryOf(command);
         if (output !== undefined) entry.lastOutput = output;
         if (entry.refusedWhile !== undefined) {
-            if ((output ?? null) === entry.refusedWhile) return REJECTED_JSON;
+            // Held while it answers the same, and while it cannot be asked at all: one failed
+            // ask, a cold JVM over the timeout, says nothing about whether it was updated.
+            if (output === undefined || output === entry.refusedWhile) return REJECTED_JSON;
             entry.refusedWhile = undefined;
         }
         if (output === undefined) return { kind: 'unknown' };

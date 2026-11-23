@@ -423,7 +423,8 @@ export class JpipeImportService {
                 .sort((a, b) => (a.$cstNode?.offset ?? 0) - (b.$cstNode?.offset ?? 0));
             for (const item of items) {
                 if (!isLoad(item)) {
-                    declarations.push({ name: qualify(prefix, item.id), model: item, document, via });
+                    // A model still being typed has no name yet, and so clashes with nothing.
+                    if (item.id) declarations.push({ name: qualify(prefix, item.id), model: item, document, via });
                     continue;
                 }
                 const namespace = item.namespace ? qualify(prefix, item.namespace) : prefix;
@@ -450,28 +451,37 @@ export class JpipeImportService {
      * that a file added to or removed from its matches counts too.
      */
     loadsAnyOf(unit: Unit, currentDoc: LangiumDocument, uris: ReadonlySet<string>): boolean {
-        const changed = [...uris].map(uri => identity(fsPathOf(URI.parse(uri))));
+        // Asked of every document with a `load`, with the same set, on each update.
+        let changed = this.changedFiles.get(uris);
+        if (!changed) {
+            changed = [...uris].map(uri => comparable(identity(fsPathOf(URI.parse(uri)))));
+            this.changedFiles.set(uris, changed);
+        }
+        const files = changed;
         const reaches = (load: Load, document: LangiumDocument): boolean => {
             const base = path.dirname(fsPathOf(document.uri));
             if (!isGlobPattern(load.path)) {
-                return changed.includes(identity(path.resolve(base, load.path)));
+                return files.includes(comparable(identity(path.resolve(base, load.path))));
             }
             let anchor: string;
             try {
-                anchor = identity(path.resolve(base, anchorGlob(load.path).prefix));
+                anchor = comparable(identity(path.resolve(base, anchorGlob(load.path).prefix)));
             } catch {
                 return false; // a malformed pattern matches nothing, whatever changes
             }
-            return changed.some(file => file.startsWith(anchor + path.sep));
+            const under = anchor.endsWith(path.sep) ? anchor : anchor + path.sep;
+            return files.some(file => file.startsWith(under));
         };
-        const units: Array<[Unit, LangiumDocument]> = [
-            [unit, currentDoc],
-            ...this.getTransitiveImportedDocuments(unit, currentDoc)
-                .map(document => [document.parseResult.value as Unit, document] as [Unit, LangiumDocument])
-        ];
-        return units.some(([current, document]) =>
-            (current?.imports ?? []).some(load => reaches(load, document)));
+        const loads = (current: Unit | undefined, document: LangiumDocument) =>
+            (current?.imports ?? []).some(load => reaches(load, document));
+        // The file's own loads first: the files they reach are walked only when none matches.
+        return loads(unit, currentDoc)
+            || this.getTransitiveImportedDocuments(unit, currentDoc)
+                .some(document => loads(document.parseResult.value as Unit | undefined, document));
     }
+
+    /** What `loadsAnyOf` compares a set of changed URIs as, worked out once per set. */
+    private readonly changedFiles = new WeakMap<ReadonlySet<string>, string[]>();
 
     /**
      * Traverse `load` edges starting from the current unit:
@@ -608,4 +618,13 @@ function identity(filePath: string): string {
             return absolute;
         }
     }
+}
+
+/**
+ * A path as a case-insensitive disk compares it, macOS and Windows by default: a file loaded as
+ * `Lib.jd` and reported as `lib.jd` is one file. A file that exists is already spelled as on disk
+ * by `identity`; one that was just deleted is not.
+ */
+function comparable(filePath: string): string {
+    return process.platform === 'darwin' || process.platform === 'win32' ? filePath.toLowerCase() : filePath;
 }

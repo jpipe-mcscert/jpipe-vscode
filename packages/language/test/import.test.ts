@@ -439,6 +439,22 @@ describe('A model named like one in a loaded file', () => {
         expect(builder.shouldRelink(document, new Set([uriOf('elsewhere/new.jd')]))).toBe(false);
     });
 
+    // While a header is being typed, the model has no name yet.
+    test('two models with no name yet do not clash', async () => {
+        expect(await build({ 'lib.jd': 'justification ' }, 'load "lib.jd"\ntemplate ')).toEqual([]);
+    });
+
+    // A case-insensitive disk: the load says `Lib.jd`, the deleted file is reported as `lib.jd`.
+    test.runIf(process.platform === 'darwin' || process.platform === 'win32')(
+        'the loading file is checked again when a file it loads under another case is deleted', async () => {
+            await build({ 'lib.jd': `\n${T}` }, `load "Lib.jd"\n${J('K')}`);
+            const builder = services.shared.workspace.DocumentBuilder as unknown as {
+                shouldRelink(document: LangiumDocument, changed: Set<string>): boolean
+            };
+            fs.rmSync(path.join(tmpDir, 'lib.jd'));
+            expect(builder.shouldRelink(document!, new Set([URI.file(path.join(tmpDir, 'lib.jd')).toString()]))).toBe(true);
+        });
+
     test('in a file two others load, it is read once', async () => {
         const files = { 'lib.jd': `\n${T}`, 'a.jd': `load "lib.jd"\n${J('A')}`, 'b.jd': `load "lib.jd"\n${J('B')}` };
         expect(await build(files, `load "a.jd"\nload "b.jd"\n${J('K')}`)).toEqual([]);

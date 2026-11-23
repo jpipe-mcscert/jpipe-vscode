@@ -141,4 +141,14 @@ describe('a compiler that rejected diagnostic -f json', () => {
         other.rejectJson(COMMAND);
         expect(other.answer(COMMAND, 'jPipe 4.0.0', judge)).toEqual({ kind: 'too-old', version: undefined });
     });
+
+    // A cold JVM over the timeout says nothing about whether the compiler was updated.
+    test('stays refused through an ask that fails', () => {
+        const verdicts = new CompilerVerdicts();
+        const { judge } = judging({ 'jPipe 4.0.0': SUPPORTED });
+        verdicts.answer(COMMAND, 'jPipe 4.0.0', judge);
+        verdicts.rejectJson(COMMAND);
+        expect(verdicts.answer(COMMAND, undefined, judge)).toEqual({ kind: 'too-old', version: undefined });
+        expect(verdicts.answer(COMMAND, 'jPipe 4.0.0', judge)).toEqual({ kind: 'too-old', version: undefined });
+    });
 });

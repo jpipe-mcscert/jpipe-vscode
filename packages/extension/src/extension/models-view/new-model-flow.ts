@@ -290,6 +290,16 @@ async function appendToFile(
 }
 
 /**
+ * Where the new implementation's header is, up to the template it names. The model was appended,
+ * so it is the last header of its name: an earlier one, in a comment say, is not it.
+ */
+function headerOf(document: vscode.TextDocument, name: string): { index: number; length: number } | undefined {
+    const pattern = new RegExp(String.raw`justification\s+${name}\s+implements\s+`, 'g');
+    const last = [...document.getText().matchAll(pattern)].at(-1);
+    return last?.index === undefined ? undefined : { index: last.index, length: last[0].length };
+}
+
+/**
  * Make the template a new implementation names resolve to `template`, and say whether it does.
  *
  * The server is asked where the name resolves, rather than trusting it: names are all the symbols
@@ -304,11 +314,9 @@ async function appendToFile(
  */
 async function connectTemplate(editor: vscode.TextEditor, name: string, template: Model): Promise<boolean> {
     const document = editor.document;
-    // The model was appended, so it is the last header of its name: an earlier one, in a comment
-    // say, is not it.
-    const header = [...document.getText().matchAll(new RegExp(String.raw`justification\s+${name}\s+implements\s+`, 'g'))].at(-1);
-    if (header?.index === undefined) return false;
-    const start = document.positionAt(header.index + header[0].length);
+    const header = headerOf(document, name);
+    if (!header) return false;
+    const start = document.positionAt(header.index + header.length);
     const reference = document.getWordRangeAtPosition(start, /[\w:]+/) ?? new vscode.Range(start, start);
     const written = document.getText(reference);
 
@@ -334,7 +342,8 @@ async function connectTemplate(editor: vscode.TextEditor, name: string, template
         .some(edit => loadsFile(edit.newText, document.uri.toString(), template.uri)));
     if (load?.edit && await vscode.workspace.applyEdit(load.edit)) return true;
     void vscode.window.showWarningMessage(
-        `Could not add the load of ${vscode.workspace.asRelativePath(wanted)}: add it from the lightbulb on '${written}'.`);
+        `Could not add a load of ${vscode.workspace.asRelativePath(wanted)} to ${vscode.workspace.asRelativePath(document.uri)}: `
+        + `add one at its top. The lightbulb on '${written}' offers it, unless the file is excluded from jPipe validation.`);
     return false;
 }
 
@@ -348,9 +357,9 @@ async function connectTemplate(editor: vscode.TextEditor, name: string, template
  */
 async function overrideSupports(editor: vscode.TextEditor, name: string): Promise<void> {
     const uri = editor.document.uri;
-    const header = editor.document.getText().indexOf(`justification ${name} implements`);
-    if (header < 0) return;
-    const modelLine = editor.document.positionAt(header).line;
+    const header = headerOf(editor.document, name);
+    if (!header) return;
+    const modelLine = editor.document.positionAt(header.index).line;
 
     const missing = await waitFor(() => vscode.languages.getDiagnostics(uri).find(d =>
         codeOf(d) === JpipeIssue.NoAbstractSupport && d.range.start.line >= modelLine));

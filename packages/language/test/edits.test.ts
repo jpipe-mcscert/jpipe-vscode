@@ -65,6 +65,11 @@ describe('load paths', () => {
         expect(relativeLoadPath('c:\\w\\app\\model.jd', 'c:\\w\\lib\\t.jd', path.win32)).toBe('../lib/t.jd');
     });
 
+    test('a load on a Windows drive is the same load whatever the drive letter\'s case', async () => {
+        const document = await parse('load "D:/lib/t.jd"\njustification J { conclusion c is "C" }');
+        expect(isLoaded(document.parseResult.value, 'd:/lib/t.jd')).toBe(true);
+    });
+
     test('a load written in full gets no ./ in front', async () => {
         const document = await parse('justification J { conclusion c is "C" }');
         expect(applied(document, createLoadEdit(document, 'd:/lib/t.jd'))).toContain('load "d:/lib/t.jd"');
