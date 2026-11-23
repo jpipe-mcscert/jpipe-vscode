@@ -34,6 +34,12 @@ export interface WireDocumentSymbol {
     children?: WireDocumentSymbol[];
 }
 
+/** What `templateReach` reads of a symbol, which the editor's own `DocumentSymbol` also has. */
+export interface NamedSymbol {
+    readonly name: string;
+    readonly children?: readonly NamedSymbol[];
+}
+
 export type ElementKind = 'conclusion' | 'strategy' | 'evidence' | 'sub-conclusion' | 'support';
 
 /**
@@ -97,18 +103,19 @@ export function elementsOf(symbols: readonly WireDocumentSymbol[], model: Model)
 }
 
 /**
- * The alias `template` is loaded under in the file whose symbols these are, or `undefined` when
- * it is declared there or loaded without one.
+ * How the file whose symbols these are reaches `template`: `{}` when it declares it or loads it
+ * without a name, `{ alias }` when it loads it `as` one, `undefined` when it does not reach it.
  *
- * A file's symbols list each aliased `load` as a namespace holding the models it brings in, so
- * the alias is the namespace listing a template of that name. Names are all there is to go by:
- * two aliased loads each bringing a template of the same name cannot be told apart here, and the
- * first is taken.
+ * A file's symbols list its own models and those of its plain loads under `(default)`, and each
+ * aliased `load` as a namespace holding the models it brings in, a glob's matches included. Names
+ * are all there is to go by: two loads each bringing a template of the same name cannot be told
+ * apart here, and the plain one, then the first, is taken.
  */
-function aliasOf(symbols: readonly WireDocumentSymbol[], template: string): string | undefined {
-    const lists = (namespace: WireDocumentSymbol) => (namespace.children ?? []).some(s => s.name === template);
-    if (symbols.some(s => s.name === DEFAULT_NAMESPACE && lists(s))) return undefined;
-    return symbols.find(s => s.name !== DEFAULT_NAMESPACE && lists(s))?.name;
+export function templateReach(symbols: readonly NamedSymbol[], template: string): { alias?: string } | undefined {
+    const lists = (namespace: NamedSymbol) => (namespace.children ?? []).some(s => s.name === template);
+    if (symbols.some(s => s.name === DEFAULT_NAMESPACE && lists(s))) return {};
+    const alias = symbols.find(s => s.name !== DEFAULT_NAMESPACE && lists(s))?.name;
+    return alias === undefined ? undefined : { alias };
 }
 
 /** Whether `id`, declared nearer the model, is an override of `element` of `template`. */
@@ -161,7 +168,7 @@ export async function fetchElements(request: RequestFn, model: Model): Promise<E
         }
         if (!declared) break;
         const template = parent.name;
-        const alias = aliasOf(symbols, template);
+        const alias = templateReach(symbols, template)?.alias;
         const inheritedFrom = { template, uri: parent.uri };
         const qualifier = alias ? `${alias}:${template}` : template;
         elements.push(...declared

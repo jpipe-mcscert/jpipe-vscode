@@ -8,6 +8,7 @@ import {
     elementsOf,
     emptyMessage,
     fetchElements,
+    templateReach,
     type WireDocumentSymbol
 } from '../src/extension/models-view/elements-tree.js';
 import { keyOf, type Model, type WireTypeHierarchyItem } from '../src/extension/models-view/models-tree.js';
@@ -226,5 +227,28 @@ describe('an empty view says why', () => {
 
     test('and says nothing when there are rows', () => {
         expect(emptyMessage(model('Release', 2), elementsOf(SYMBOLS, model('Release', 2)))).toBeUndefined();
+    });
+});
+
+// What New Justification Implementing… asks before writing `implements` (#121).
+describe('how a file reaches a template', () => {
+
+    const symbols = [
+        { name: '(default)', children: [{ name: 'Local' }, { name: 'Plain' }] },
+        { name: 'lib', children: [{ name: 'Signoff' }, { name: 'Plain' }] }
+    ];
+
+    test('declared or loaded without a name, it is reached as it is', () => {
+        expect(templateReach(symbols, 'Local')).toEqual({});
+        expect(templateReach(symbols, 'Plain')).toEqual({});
+    });
+
+    test('loaded under a name, it is reached through it', () => {
+        expect(templateReach(symbols, 'Signoff')).toEqual({ alias: 'lib' });
+    });
+
+    test('anywhere else, it is not reached, nor by a file with no symbols yet', () => {
+        expect(templateReach(symbols, 'Missing')).toBeUndefined();
+        expect(templateReach([], 'Signoff')).toBeUndefined();
     });
 });

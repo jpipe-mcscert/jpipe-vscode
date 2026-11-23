@@ -1,19 +1,17 @@
 import * as vscode from 'vscode';
 import { JpipeIssue } from 'jpipe-language';
 import type { Model } from './models-tree.js';
+import { templateReach } from './elements-tree.js';
 import {
     appendSeparator,
     chooseFolder,
     dirnameOf,
     fileNameFor,
     joinUri,
-    loadInsertionLine,
-    loadLine,
-    reachOf,
+    loadsFile,
     modelSnippet,
     nameError,
     nameWarning,
-    relativeLoadPath,
     type NewModelKind
 } from './new-model.js';
 
@@ -70,10 +68,13 @@ export async function newModel(models: readonly Model[], request: NewModelReques
     const { name, target } = answer;
     const template = request.template;
 
-    const editor = target.mode === 'new'
-        ? await writeNewFile(joinUri(target.folder, fileNameFor(name)), request.kind, name, template)
+    const written = target.mode === 'new'
+        ? { editor: await writeNewFile(joinUri(target.folder, fileNameFor(name)), request.kind, name, template), reached: false }
         : await appendToFile(target.file, request.kind, name, template);
-    if (editor && template) await overrideSupports(editor, name);
+    if (!written.editor || !template) return;
+    // A file that reaches the template already has no error to wait for.
+    if (!written.reached) await loadTemplate(written.editor, name, template);
+    await overrideSupports(written.editor, name);
 }
 
 /** Ask for the name, with the target shown and changeable. `undefined` if dismissed. */
@@ -255,42 +256,65 @@ async function writeNewFile(
     }
     const editor = await vscode.window.showTextDocument(fileUri, { preview: false });
     if (template) {
-        const text = `${loadLine(relativeLoadPath(uri, template.uri))}\n\n${modelSnippet(kind, name, template)}`;
-        await editor.edit(builder => builder.insert(new vscode.Position(0, 0), text));
+        await editor.edit(builder => builder.insert(new vscode.Position(0, 0), modelSnippet(kind, name, template)));
     } else {
         await editor.insertSnippet(new vscode.SnippetString(modelSnippet(kind, name)), new vscode.Position(0, 0));
     }
     return editor;
 }
 
-/** Open an existing file and append the model, adding the template's `load` if it is missing. */
+/**
+ * Open an existing file and append the model. A template the file already reaches is implemented
+ * under the name it reaches it by, `lib:Signoff` through a `load … as lib`; one it does not is
+ * loaded afterwards, by `loadTemplate`.
+ */
 async function appendToFile(
     uri: string,
     kind: NewModelKind,
     name: string,
     template: Model | undefined
-): Promise<vscode.TextEditor> {
+): Promise<{ editor: vscode.TextEditor; reached: boolean }> {
     const editor = await vscode.window.showTextDocument(vscode.Uri.parse(uri), { preview: false });
     const document = editor.document;
-    // A template in this very file, or one the file already loads, needs no `load`; one it loads
-    // under a name is implemented under that name.
-    const reach = template ? reachOf(document.getText(), uri, template.uri) : undefined;
-    if (template && !reach) {
-        const line = loadInsertionLine(document.getText());
-        // A first `load` gets a blank line between it and the models below.
-        const trailer = line === 0 && document.getText().trim().length > 0 ? '\n\n' : '\n';
-        await editor.edit(builder => builder.insert(
-            new vscode.Position(line, 0),
-            loadLine(relativeLoadPath(uri, template.uri)) + trailer));
-    }
     const end = document.lineAt(document.lineCount - 1).range.end;
     const separator = appendSeparator(document.getText());
-    if (template) {
-        await editor.edit(builder => builder.insert(end, separator + modelSnippet(kind, name, template, reach?.alias)));
-    } else {
+    if (!template) {
         await editor.insertSnippet(new vscode.SnippetString(separator + modelSnippet(kind, name)), end);
+        return { editor, reached: false };
     }
-    return editor;
+    const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[] | undefined>(
+        'vscode.executeDocumentSymbolProvider', document.uri);
+    const reach = templateReach(symbols ?? [], template.name);
+    await editor.edit(builder => builder.insert(end, separator + modelSnippet(kind, name, template, reach?.alias)));
+    return { editor, reached: reach !== undefined };
+}
+
+/**
+ * Load the template a new implementation names, if its file does not yet, with the server's own
+ * "add missing load" fix (#121): the one the author would pick from the lightbulb, so the `load`
+ * is written as every other is, `load "./lib/signoff.jd"`, where the server puts loads.
+ *
+ * The model was written naming its template; if the file does not reach it, the server answers
+ * with an unresolved reference there, and offers a `load` for each file declaring a template of
+ * that name. The one whose path names the template's file is applied. If no diagnostic arrives,
+ * the template resolved, and there is nothing to load.
+ */
+async function loadTemplate(editor: vscode.TextEditor, name: string, template: Model): Promise<void> {
+    const document = editor.document;
+    const header = new RegExp(`justification\\s+${name}\\s+implements\\s+`).exec(document.getText());
+    if (!header) return;
+    const start = document.positionAt(header.index + header[0].length);
+    const reference = document.getWordRangeAtPosition(start, /[\w:]+/) ?? new vscode.Range(start, start);
+
+    const unresolved = await waitFor(() => vscode.languages.getDiagnostics(document.uri)
+        .find(d => d.severity === vscode.DiagnosticSeverity.Error && d.range.intersection(reference) !== undefined));
+    if (!unresolved) return;
+
+    const actions = await vscode.commands.executeCommand<vscode.CodeAction[]>(
+        'vscode.executeCodeActionProvider', document.uri, reference, vscode.CodeActionKind.QuickFix.value);
+    const load = actions?.find(action => action.edit?.get(document.uri)
+        .some(edit => loadsFile(edit.newText, document.uri.toString(), template.uri)));
+    if (load?.edit) await vscode.workspace.applyEdit(load.edit);
 }
 
 /**
