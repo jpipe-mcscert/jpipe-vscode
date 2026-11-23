@@ -152,7 +152,7 @@ export function getLocalElements(node: Justification | Template): JustificationE
  * or one whose only problem is the `implements` line (#129). That line is already reported as an
  * unresolved reference, which points the user at the one thing to fix. A chain that loops has no
  * element list at all: the compiler reports `cyclic-implements` there and judges nothing else, so
- * neither may this (the editor does not report the cycle yet, #128).
+ * neither may this (`implementsCycle` finds the cycle to report).
  *
  * Such a model is left alone by every rule that needs its whole element list: a missing element
  * there is a fact about what this can read, not about the model. The operators are never ported:
@@ -167,6 +167,40 @@ export function cannotSeeAllElements(model: Justification | Template): boolean {
 export function implementsLoops(model: Justification | Template): boolean {
     // The walk stops at a link with no parent, or at one whose parent it has already visited.
     return implementsChain(model).at(-1)?.parent?.ref !== undefined;
+}
+
+/**
+ * The cycle `model`'s `implements` closes, in order from `model`, or `undefined` if it closes none.
+ *
+ * A port of the compiler's `ExecutionFailureDiagnostics.cycleThrough`, which decides what
+ * `cyclic-implements` reports. A model waits on the template it implements, and a composed model
+ * on its operator's sources, so a cycle may run through both:
+ * `cyc implements built, which 'assemble' builds from cyc`. The walk is depth first from the
+ * template, in the order the model names what it waits on, and visits each model once. A model
+ * that implements a template on a cycle without being on it closes none.
+ */
+export function implementsCycle(model: Justification | Template): Array<Justification | Template> | undefined {
+    const template = model.parent?.ref;
+    if (!template) return undefined;
+    const path: Array<Justification | Template> = [model];
+    const visited = new Set<Justification | Template>();
+    const extend = (next: Justification | Template): boolean => {
+        if (next === model) return true;
+        if (visited.has(next)) return false;
+        visited.add(next);
+        path.push(next);
+        if (waitsOn(next).some(extend)) return true;
+        path.pop();
+        return false;
+    };
+    return extend(template) ? path : undefined;
+}
+
+/** The models `model` is built from: the template it implements, then its operator's sources. */
+function waitsOn(model: Justification | Template): Array<Justification | Template> {
+    const sources = (model.composition?.params?.refs ?? []).map(ref => ref.ref);
+    return [model.parent?.ref, ...sources].filter(
+        (next): next is Justification | Template => next !== undefined);
 }
 
 /**

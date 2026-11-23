@@ -70,9 +70,10 @@ export const COMPILER_CODES = [
  *
  * - **It does not check this at all.** `no-empty-label`, `support-override-type`.
  * - **It reports it under one code for several problems**: `invalid-operator-call` from 4.0.0, the
- *   `execution-error` catch-all before. The editor keeps a code per problem, because each has a
- *   quick fix of its own, chosen by its code: `unknown-operator`, `operator-arity`,
- *   `missing-config-key`, `unknown-config-key`, `unknown-unification-method`, `unknown-hook`.
+ *   `execution-error` catch-all before. The editor keeps a code per problem, because each is a
+ *   repair of its own, and a quick fix is chosen by its code: `unknown-operator`,
+ *   `operator-arity`, `duplicate-source`, `missing-config-key`, `unknown-config-key`,
+ *   `unknown-unification-method`, `unknown-hook`.
  * - **It reports it as `FATAL`, and a fatal carries no code by policy** (jpipe-compiler ADR-0016):
  *   the whole `load-*` family, `cyclic-load`, and `no-empty-unit` — an empty file is a syntax
  *   error there, `Compilation aborted due to syntax errors`, which no rule name reaches.
@@ -85,6 +86,7 @@ export const EXTENSION_ONLY_CODES = [
     'no-empty-unit',
     'unknown-operator',
     'operator-arity',
+    'duplicate-source',
     'unknown-config-key',
     'unknown-unification-method',
     'unknown-hook',

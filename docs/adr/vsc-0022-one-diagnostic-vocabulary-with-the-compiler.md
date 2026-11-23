@@ -57,17 +57,19 @@ jpipe-compiler checkout, and `scripts/release.sh preflight` runs it.
 | `conclusion-present` | inherited conclusions count; a model whose `implements` chain reaches a composition or does not resolve is skipped — see below |
 | `single-conclusion` | exact, down to the anchor column |
 | `inherited-conclusion` | exact, on every conclusion a model with an `implements` declares, whether or not the template resolves |
+| `cyclic-implements` | exact: one diagnostic per cycle, in the compiler's words, on the same `implements` |
 
 **Coined by the extension**, for one of three reasons. The distinction matters when the compiler
 next gains a rule, and `jpipe-compiler-codes.ts` keeps each code under its reason:
 
 - *The compiler does not check it at all:* `no-empty-label`, `support-override-type`.
 - *The compiler reports it under one code for several problems:* `invalid-operator-call` from
-  compiler 4.0.0, the `execution-error` catch-all before. Each of these has a quick fix of its own,
+  compiler 4.0.0, the `execution-error` catch-all before. Each of these is a repair of its own,
   and a quick fix finds its diagnostic by code (the modules of `code-actions/`), so the editor
   keeps a code per problem rather than adopting the compiler's one:
-  `unknown-operator`, `operator-arity`, `missing-config-key`, `unknown-config-key`,
-  `unknown-unification-method`, `unknown-hook`.
+  `unknown-operator`, `operator-arity`, `duplicate-source`, `missing-config-key`,
+  `unknown-config-key`, `unknown-unification-method`, `unknown-hook`. Their messages are the
+  editor's own, except `duplicate-source`, which is worded as the compiler words it.
 - *The compiler reports it as `FATAL`, and a fatal carries no code by policy*
   (jpipe-compiler ADR-0016): the whole `load-*` family, `cyclic-load`, and `no-empty-unit`. There
   is nothing upstream to adopt for these, by policy rather than by omission.
@@ -114,10 +116,19 @@ anchored on its id, in place of `single-conclusion`. The compiler decides it fro
 alone and discards each such conclusion with the relations that use it, so the editor reports
 neither `single-conclusion` nor `conclusion-supported` on them.
 
+**`cyclic-implements` fires once per cycle**, as the compiler's `ExecutionFailureDiagnostics`
+reports it. A model waits on the template it implements, and a composed model on its operator's
+sources, so a cycle may run through both. The diagnostic goes on the `implements` of the cycle's
+first model in alphabetical order that has one, anchored on the template it names, and describes
+the cycle from that model: `a implements b implements a`, or
+`j implements t, which 'assemble' builds from j`. A model that only implements a template on a
+cycle is not reported. The compiler builds nothing on a chain that loops, so every rule that needs
+the model's elements, the overrides among them, stays silent there.
+
 **Rules the editor does not check.** The compiler reports, and the editor is silent on:
 `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`, `unresolved-override`,
-`cyclic-implements`, `implements-error`, `reference-into-template`, `incompatible-unification`,
-`ambiguous-id`, and `invalid-support` beyond strategies. `unknown-model` and `unknown-element` *are* covered, but
+`implements-error`, `reference-into-template`, `incompatible-unification`, `ambiguous-id`, and
+`invalid-support` beyond strategies. `unknown-model` and `unknown-element` *are* covered, but
 under Langium's own `linking-error`, a vocabulary this repository does not own — the seam
 `add-missing-load.ts` keys on.
 

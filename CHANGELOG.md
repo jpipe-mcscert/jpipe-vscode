@@ -1,5 +1,11 @@
 ## Changelog
 
+### v2.0.3 (Unreleased)
+- Leader: Sébastien Mosser
+  - Bug Fixes:
+    - **A loop of `implements` is reported.** When templates implement one another in a circle, directly or through the models an operator such as `assemble` is built from, the jPipe compiler refuses the file, but the editor said nothing about the loop. It is now underlined once, on the `implements` the compiler points at, with the compiler's message, which names every step of the loop. A model that merely implements a template caught in the loop is no longer told that it misses overrides, since the compiler builds nothing there (#128)
+    - **A model given twice to one operator is reported.** The compiler refuses `refine(b, b)` and `assemble(b, b)`, because a model cannot be composed with itself. The editor now underlines the repeated model with the compiler's message (#128)
+
 ### v2.0.2 (2026-11-22)
 - Leader: Sébastien Mosser
   - Bug Fixes:
