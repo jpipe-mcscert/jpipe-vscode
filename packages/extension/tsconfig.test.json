@@ -21,6 +21,8 @@
     },
     "include": [
         "test/**/*.ts",
-        "src/**/*.ts"
+        "src/**/*.ts",
+        // Read by `coverage-exclusions.test.ts`, which compares its list with SonarQube's.
+        "vitest.config.ts"
     ]
 }

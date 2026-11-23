@@ -87,12 +87,19 @@ they must not be anchored at the package root. `src/generated/**` does not match
 
 ## Consequences
 
-- **Two exclusion lists must agree.** They are in different files, in different formats, and
-  nothing enforces their agreement. A module added to one and not the other produces either an
-  unexplained 0% in Sonar or a silently inflated local figure. The correspondence is exact for
-  the extension's source modules; Sonar carries two additional entries with no Vitest
-  counterpart, `packages/language/src/index.ts` (eighteen `export *` lines, reporting `LF:0`)
-  and `esbuild.mjs` (a build script outside Vitest's `src/` coverage scope).
+- **Two exclusion lists must agree.** They are in different files and in different formats. A
+  module added to one and not the other produces either an unexplained 0% in Sonar or a silently
+  inflated local figure. `test/coverage-exclusions.test.ts` holds them together, and fails:
+  - **when they differ.** The correspondence is exact for the extension's source modules. Sonar
+    carries two additional entries with no Vitest counterpart, which the test names:
+    `packages/language/src/index.ts` (eighteen `export *` lines, reporting `LF:0`) and
+    `esbuild.mjs` (a build script outside Vitest's `src/` coverage scope);
+  - **when a module that reaches `vscode` at run time, directly or through a module it imports,
+    is in neither list;**
+  - **when an entry names a file that no longer exists.**
+
+  Entry points and files of types only are not checked: they cannot be recognised from an
+  import, and the comments beside them say why each is there.
 - The extension's figure covers only the half of the package that is loadable, and reads high
   for that reason — it is not comparable to the language package's.
 - `coverage/` is git-ignored and removed by both `clean` scripts. Both were required in the same

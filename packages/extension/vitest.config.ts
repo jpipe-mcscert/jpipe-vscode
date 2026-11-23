@@ -30,7 +30,9 @@ export default defineConfig({
             //
             // The rule for this list is *uncoverable by construction, never merely untested*:
             // a module belongs here because it cannot be loaded, not because covering it is
-            // inconvenient. See jpipe-vscode ADR-VSC-0004.
+            // inconvenient. See jpipe-vscode ADR-VSC-0004. `sonar.coverage.exclusions` in
+            // sonar-project.properties repeats this list, and `test/coverage-exclusions.test.ts`
+            // fails when the two differ or a module that reaches `vscode` is in neither.
             exclude: [
                 'src/extension/main.ts',
                 'src/extension/logger.ts',
