@@ -1,6 +1,6 @@
 ## Changelog
 
-### v2.0.3 (Unreleased)
+### v2.0.3 (2026-11-23)
 - Leader: Sébastien Mosser
   - Bug Fixes:
     - **A loop of `implements` is reported.** When templates implement one another in a circle, directly or through the models an operator such as `assemble` is built from, the jPipe compiler refuses the file, but the editor said nothing about the loop. It is now underlined once, on the `implements` the compiler points at, with the compiler's message, which names every step of the loop. A model that merely implements a template caught in the loop is no longer told that it misses overrides, since the compiler builds nothing there (#128)
