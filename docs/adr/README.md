@@ -71,3 +71,4 @@ The compiler's records are at
 | [VSC-0032](vsc-0032-each-release-names-the-oldest-tools-it-works-with.md) | Each release names the oldest tools it works with | 2026-11-19 | Accepted |
 | [VSC-0033](vsc-0033-a-run-is-followed-from-its-events.md) | A run is followed from its events, which preview its report | 2026-11-21 | Accepted |
 | [VSC-0034](vsc-0034-composed-models-are-read-from-the-compiler.md) | A composed model's elements are read from the compiler, never recomputed | 2026-11-22 | Accepted |
+| [VSC-0035](vsc-0035-runs-run-independent-steps-together.md) | Runs run independent steps together, unless a setting says otherwise | 2026-11-23 | Accepted |

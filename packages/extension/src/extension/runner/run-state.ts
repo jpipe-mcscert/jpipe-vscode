@@ -104,19 +104,18 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
 const decidedOf = (progress: RunProgress): string => `${progress.decided.size} of ${progress.elements.length} decided`;
 
 /**
- * How far a run under way is, for the panel: its verdict bar names the step running by its label,
+ * How far a run under way is, for the panel: its verdict bar names the steps running by their labels,
  * and, when the drawing on show is the run's own (`live`), its elements are coloured as decided,
  * and those not decided yet marked, running or waiting. A run that ended without its report keeps
  * its colours, but nothing runs or waits any more (`underWay` false).
  */
 export function progressOf(progress: RunProgress, labels: Labels = new Map(), live = false, underWay = true): Progress {
     const running = underWay ? [...progress.running.keys()] : [];
-    const one = running.length === 1 ? labels.get(running[0]) ?? running[0] : null;
     const decided = [...progress.decided.values()].map(d => d.element);
     return {
         decided: decidedOf(progress),
         counts: outcomeLinks(decided),
-        running: running.length > 1 ? `${running.length} steps` : one,
+        running: running.map(id => labels.get(id) ?? id),
         statuses: live ? decided.flatMap((e): LiveStatus[] => e.status === null ? [] : [{
             id: e.id, status: e.status, reason: e.reason, rootCause: e.status === 'skip' && e.blockedBy.length === 0,
             produced: e.produced.map(([name]) => name),

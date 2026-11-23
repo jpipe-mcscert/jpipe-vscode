@@ -71,7 +71,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
           runner/               ← running justifications with jpipe-runner (ADR-VSC-0025)
             library-scan.ts     ← finds step libraries by reading Python, never importing it (tested)
             step-binding.ts     ← the runner's id → element binding rules, for the Outline (tested)
-            runner-invocation.ts ← which runner program, which arguments (tested)
+            runner-invocation.ts ← which runner program, which arguments, `--jobs` from the jobs setting (tested; ADR-VSC-0035)
             libraries-view.ts   ← the Libraries view; checkboxes = `jpipe.runner.libraries`
             run-model.ts        ← ▶ and ✓: compile to JSON, launch the runner as a VS Code task, hand its report and drawings to the session
             run-report.ts       ← the runner's JSON report → the rows of the Results view (tested; ADR-VSC-0029)
@@ -176,7 +176,7 @@ The `JpipeCompletionProvider` deliberately never falls through to Langium's glob
 Exit codes: `1` = model has errors, `42` = compiler crashed.
 
 ### Required versions
-`src/extension/requirements.ts` names the **oldest** compiler, jpipe-runner and Python this release works with, and no newest (jpipe-vscode ADR-VSC-0032). A compiler below the minimum is refused before any run, with an update offered; the managed install lists only releases at or above it. Raising a minimum is a user-facing change: changelog entry, and the Marketplace README's "Required software" (held by `test/requirements.test.ts`). `RECOMMENDED` names releases that are better but not required (jpipe-runner 4.1.0, which follows a run as it goes): code asks for what they add only of a release that has it, Check jPipe Installation says what upgrading brings, and the extension is not released before they are published. Pylance is a soft dependency — never add it to `extensionDependencies` or `extensionPack`.
+`src/extension/requirements.ts` names the **oldest** compiler, jpipe-runner and Python this release works with, and no newest (jpipe-vscode ADR-VSC-0032). A compiler below the minimum is refused before any run, with an update offered; the managed install lists only releases at or above it. Raising a minimum is a user-facing change: changelog entry, and the Marketplace README's "Required software" (held by `test/requirements.test.ts`). `RECOMMENDED` names releases that are better but not required (jpipe-runner 4.4.0, the newest of `RUNNER_FEATURES`: 4.1 follows a run as it goes, 4.4 runs independent steps together): code asks for each feature only of a release that has it (`runnerHas`), Check jPipe Installation says what upgrading brings, and the extension is not released before they are published. Pylance is a soft dependency — never add it to `extensionDependencies` or `extensionPack`.
 
 ---
 

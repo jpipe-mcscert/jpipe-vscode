@@ -206,21 +206,26 @@ describe('the report', () => {
             'Python: 3.15.2',
             'jpipe-runner: 4.0.0',
             '  4.1.0 or newer shows runs as they go',
+            '  4.4.0 or newer runs steps together',
             'Editor: uses this environment',
             'Also on this computer: 4.0.0'
         ].join('\n'));
     });
 
-    test('says what upgrading jpipe-runner brings only below the recommended release, and when its release is known', () => {
+    test('says what upgrading jpipe-runner brings, from the release that brings it, and only when its release is known', () => {
         const report = (runnerVersion?: string) => environmentReport({
             environment: { python: '/home/me/work/demo/.venv/bin/python' },
             probe: probe({ version: [3, 15, 2], hasRunner: true, ...(runnerVersion ? { runnerVersion } : {}) }),
             editorPython: '/home/me/work/demo/.venv/bin/python',
             editorFollows: true
         }, places);
-        expect(report('4.0.3')).toContain('4.1.0 or newer shows runs as they go');
-        for (const version of ['4.1.0', '4.1.0.dev0', '5.0.0rc1', undefined]) {
+        expect(report('4.0.3')).toContain('4.1.0 or newer shows runs as they go\n  4.4.0 or newer runs steps together');
+        for (const version of ['4.1.0', '4.1.0.dev0', '4.3.2']) {
             expect(report(version)).not.toContain('or newer shows runs');
+            expect(report(version)).toContain('4.4.0 or newer runs steps together');
+        }
+        for (const version of ['4.4.0', '4.4.0.dev0', '5.0.0rc1', undefined]) {
+            expect(report(version)).not.toContain(' or newer ');
         }
     });
 
@@ -237,6 +242,7 @@ describe('the report', () => {
             'Python: 3.15.2',
             'jpipe-runner: 4.1.0.dev0 (local copy)',
             `  ${path.join('~', 'work', 'jpipe-runner')}`,
+            '  4.4.0 or newer runs steps together',
             'Editor: uses this environment',
             'Also on this computer: 4.0.0'
         ].join('\n'));
@@ -295,10 +301,11 @@ describe('the report', () => {
     test('no line is wider than a narrow dialog, home paths included', () => {
         const report = environmentReport({
             environment: { python: '/home/me/work/demo/.venv/bin/python' },
-            probe: probe({ hasRunner: true, runnerVersion: '4.1.0.dev0', localSource: '/home/me/work/jpipe/jpipe-runner' }),
+            probe: probe({ hasRunner: true, runnerVersion: '4.0.0.dev0', localSource: '/home/me/work/jpipe/jpipe-runner' }),
             editorPython: '/home/me/work/demo/.venv/bin/python',
             editorFollows: true
         }, places);
+        expect(report).toContain(' or newer ');
         for (const line of report.split('\n')) expect(line.length, line).toBeLessThanOrEqual(40);
     });
 

@@ -37,10 +37,10 @@ asks for that file, is in the extension's storage, outside the workspace.
 An execution is followed from its events whenever the runner can write them, and the report
 replaces what they said when the run ends.
 
-- **Asked for from 4.1, the recommended release.** `--events <run folder>/<name>.events.jsonl` is
-  passed to a runner whose release, asked of it as it is launched (ADR-VSC-0031), is at least
-  jpipe-runner's recommended release (`RECOMMENDED.runner` in `requirements.ts`, ADR-VSC-0032),
-  development builds included (`streamsEvents` in `runner/runner-invocation.ts`). A runner whose release is unknown
+- **Asked for from 4.1.** `--events <run folder>/<name>.events.jsonl` is passed to a runner whose
+  release, asked of it as it is launched (ADR-VSC-0031), is at least the one that brought the
+  option (`RUNNER_FEATURES.events` in `requirements.ts`, ADR-VSC-0032), development builds included
+  (`streamsEvents` in `runner/runner-invocation.ts`). A runner whose release is unknown
   is not asked. A check is not asked either: it calls no step, so its stream would say nothing the
   report does not. A development build of 4.1 from before the option reports the release that has
   it, and refuses it with a usage error and no report: a run asked for its events that ends so is

@@ -52,8 +52,11 @@ runner is a workspace that cannot run yet, and the environment fix upgrades it.
 has everything this release uses, where the minimum is the oldest it works with at all. A release
 between the two works, without what the recommended one adds, and is never refused for it. The
 code asks for what the recommended release adds only of a release that has it, and Check jPipe
-Installation says, below it, what upgrading brings. jpipe-runner's is 4.1.0, which follows a run
-as it goes (jpipe-vscode ADR-VSC-0033).
+Installation says, below it, what upgrading brings. For jpipe-runner, each such feature is listed
+with the release that brought it (`RUNNER_FEATURES`): 4.1 follows a run as it goes
+(jpipe-vscode ADR-VSC-0033), and 4.4 runs independent steps together (ADR-VSC-0035). The
+recommended release is the newest of them, 4.4.0, and each feature is asked of a runner from its
+own release, not from the recommended one.
 
 **Pylance is wanted, not required.** It is not an `extensionDependencies` or `extensionPack`
 entry. A workspace with step libraries is offered it once, after the environment's own offer and
