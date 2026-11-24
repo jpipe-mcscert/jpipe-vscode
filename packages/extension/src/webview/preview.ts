@@ -2,7 +2,7 @@ import type { HostToWebview, RenderMessage, ViewMode, WebviewToHost } from '../s
 import { renderFailureNotice, showsFailureNotice } from '../shared/render-failure.js';
 import { DiagnosticView, type DiagnosticViewState } from './diagnostic-view.js';
 import { applyDimming, findElement } from './highlight.js';
-import { DiagramCanvas, type SavedFraming } from './canvas.js';
+import { DiagramCanvas, diagramIdentity, type SavedFraming } from './canvas.js';
 
 /**
  * The preview panel's page: the diagram of the model under the cursor, or its diagnostic report.
@@ -215,7 +215,7 @@ function applyRender(msg: RenderMessage): void {
     setMode('diagram');
     // A diagram is its model in its document: the framing is kept while both stay the same.
     canvas.show(msg.svg, { documentPath: msg.documentPath, diagramName: msg.diagramName },
-        JSON.stringify([msg.documentUri, msg.diagramName]));
+        diagramIdentity(msg.documentUri, msg.diagramName));
     setRenderFailure(msg.error);
     setUnsaved(msg.unsaved);
     setBusy(false);

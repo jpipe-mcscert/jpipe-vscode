@@ -39,6 +39,7 @@ const DATAFLOW = svg('release (dataflow)', 'release:e', 'release:c');
 const state = (over: Partial<RunPanelState> = {}): RunPanelState => ({
     revision: 1,
     name: 'release',
+    uri: 'file:///w/release.jd',
     check: false,
     phase: 'done',
     verdict: {
@@ -137,9 +138,14 @@ describe('a run that ended', () => {
         expect(byId('svg-wrapper').querySelector('svg')).toBeNull();
         page.apply(state({ revision: 3, dataflow: svg('release (dataflow)', 'release:e', 'release:c') }));
         expect(sameView(view(), framed)).toBe(true);
-        // Another justification opens on its own.
+        // Another justification opens on its own, and so does one of the same name in another file.
         page.apply(state({ revision: 4, name: 'other', dataflow: svg('other (dataflow)', 'other:e') }));
         expect(sameView(view(), framed)).toBe(false);
+        page.apply(state({ revision: 5, dataflow: svg('release (dataflow)', 'release:e', 'release:c') }));
+        button('zoom-in').click();
+        const again = view();
+        page.apply(state({ revision: 6, uri: 'file:///w/elsewhere/release.jd', dataflow: svg('release (dataflow)', 'release:e', 'release:c') }));
+        expect(sameView(view(), again)).toBe(false);
     });
 
     test('a reloaded page comes back framed as the reader left it, for the same justification', () => {

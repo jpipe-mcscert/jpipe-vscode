@@ -182,6 +182,19 @@ describe('showing a diagram', () => {
         expectBox(canvas.view, framed);
     });
 
+    test('a diagram that cannot be shown leaves the framing, and what it frames, as they were', () => {
+        const canvas = newCanvas();
+        const release = { documentPath: '/w/release.jd', diagramName: 'release' };
+        canvas.show(SVG, release);
+        canvas.zoomStep('in');
+        const framed = canvas.framing!;
+        canvas.show('<html>not a diagram', { ...release, diagramName: 'other' });
+        expect(canvas.framing).toEqual(framed);
+        // The other diagram, once it can be shown, opens on its own rather than on release's view.
+        canvas.show(SVG, { ...release, diagramName: 'other' });
+        expectBox(canvas.view, initialBox(FRAME));
+    });
+
     test('a restored framing is kept by the replay of its diagram, and only of its diagram', () => {
         const caption = { documentPath: '/w/release.jd', diagramName: 'release' };
         const shown = newCanvas();

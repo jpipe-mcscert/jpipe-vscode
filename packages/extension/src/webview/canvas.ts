@@ -91,9 +91,12 @@ export interface SavedFraming {
     on: string;
 }
 
-/** A diagram's identity, when the page gives none: what its caption names. */
-function identityOf(caption: Caption): string {
-    return JSON.stringify([caption.documentPath, caption.diagramName]);
+/**
+ * A diagram's identity, as `show` takes it: the model `name` in the document `document`. Two
+ * diagrams are the same diagram, drawn again, when their identities are equal.
+ */
+export function diagramIdentity(document: string | null, name: string | null): string {
+    return JSON.stringify([document, name]);
 }
 
 /** Arrow keys, in client pixels per press. Shift moves a screenful at a time. */
@@ -168,7 +171,7 @@ export class DiagramCanvas {
         return this.svgEl;
     }
 
-    /** What is on screen. */
+    /** What is on screen. A page persists `framing`, which says which diagram it frames, not this. */
     get view(): Box | null {
         return this.vb;
     }
@@ -198,10 +201,8 @@ export class DiagramCanvas {
      * opening on the initial view otherwise. The diagram is told by `identity`, or else by what its
      * caption names. False when the text is no diagram, which leaves the canvas empty.
      */
-    show(svgText: string, caption: Caption, identity: string = identityOf(caption)): boolean {
+    show(svgText: string, caption: Caption, identity = diagramIdentity(caption.documentPath, caption.diagramName)): boolean {
         const previous = this.vb;
-        const keepView = identity === this.framedOn;
-        this.framedOn = identity;
         this.source = { svg: svgText, caption };
         this.install();
         const content = this.content;
@@ -213,7 +214,10 @@ export class DiagramCanvas {
         // The panel may have been resized while the diagram was produced, so a preserved view
         // still has to be re-fitted to the current aspect ratio.
         const f = { content, viewport: this.panelSize(), baseScale: this.baseScale };
-        const keep = keepView && previous !== null;
+        const keep = identity === this.framedOn && previous !== null;
+        // Named once its view is set: a diagram that could not be shown leaves the view, and what
+        // it frames, as they were.
+        this.framedOn = identity;
         this.setViewBox(keep ? clampTranslation(normalizeAspect(previous, f.viewport), content) : initialBox(f));
         if (!keep) this.viewOrigin = 'initial';
         return true;

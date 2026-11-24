@@ -93,6 +93,8 @@ export interface RunPanelState {
     revision: number;
     /** The justification the panel is about. */
     name: string;
+    /** The document it is declared in: with its name, what tells its drawing from another's. */
+    uri: string;
     check: boolean;
     phase: RunPhase;
     /** Set once a run has a report. */

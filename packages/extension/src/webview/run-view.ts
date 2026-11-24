@@ -1,6 +1,6 @@
 import type { HostToRunPanel, Progress, RunKind, RunPanelState, RunPanelToHost, Tone, VerdictCount } from '../shared/run-protocol.js';
 import { kindOf, underWay } from '../shared/run-kind.js';
-import { DiagramCanvas, type SavedFraming } from './canvas.js';
+import { DiagramCanvas, diagramIdentity, type SavedFraming } from './canvas.js';
 import { applyFocus, downstream, elementOf, nameOf, nodeNamed } from './flow.js';
 import { colourRun, markProgress } from './run-colours.js';
 
@@ -69,6 +69,8 @@ export class RunPage {
     private countsShown: string | null = null;
     /** What is on the canvas, so a state that changes something else does not redraw it. */
     private drawn: string | null = null;
+    /** The identity of the justification `drawn` is the drawing of: the same text may draw two. */
+    private drawnOf: string | null = null;
     /**
      * The last drawing coloured: what it was coloured from and with, and the result. A run under
      * way sends its state at every step started, which changes no colour, and colouring parses and
@@ -251,16 +253,19 @@ export class RunPage {
             return;
         }
         this.body.dataset.mode = 'diagram';
-        if (this.drawn === svg) {
+        const identity = diagramIdentity(state.uri, state.name);
+        if (this.drawn === svg && this.drawnOf === identity) {
             this.canvas.refreshMinimap();
             this.applyMarks();
             return;
         }
         // The same justification keeps its framing from one run to the next, cleared between them,
         // and from the drawing a run is coloured on to the one it ends with, which puts every node
-        // in the same place: the canvas tells them by the caption, which names the justification.
-        this.canvas.show(svg, { documentPath: null, diagramName: `${state.name} (dataflow)` });
+        // in the same place. A justification is its name in its document: another of that name,
+        // in another file, opens on its own.
+        this.canvas.show(svg, { documentPath: null, diagramName: `${state.name} (dataflow)` }, identity);
         this.drawn = svg;
+        this.drawnOf = identity;
         this.applyMarks();
     }
 
