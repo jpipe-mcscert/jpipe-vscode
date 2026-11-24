@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { parseReport, type RunReport } from '../src/extension/runner/run-report.js';
 import {
-    clockTime, elementCandidates, endedWithout, outOfDateReason, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
+    clockTime, elementCandidates, endedWithReport, endedWithout, outOfDateReason, NO_DRAWING, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
     type ShownRun
 } from '../src/extension/runner/run-state.js';
 import { kindOf, underWay } from '../src/shared/run-kind.js';
@@ -28,7 +28,7 @@ const done = (over: Partial<ShownRun> = {}): ShownRun => ({
     ...startedRun('release', 'file:///w/release.jd', false, LIBRARIES),
     phase: 'done',
     report: report({ elements: [{ id: 'release:e', status: 'pass' }, { id: 'release:c', status: 'pass' }] }),
-    dataflow: '<svg>dataflow</svg>',
+    drawing: { kind: 'final', svg: '<svg>dataflow</svg>' },
     endedAt: new Date(2026, 10, 15, 14, 2),
     ...over
 });
@@ -37,12 +37,12 @@ describe('a run starting', () => {
 
     test('is under way, with nothing to say yet', () => {
         const run = startedRun('release', 'file:///w/release.jd', true, LIBRARIES);
-        expect(run).toMatchObject({ phase: 'running', check: true, report: null, notice: null, outOfDate: null, dataflow: null });
+        expect(run).toMatchObject({ phase: 'running', check: true, report: null, notice: null, outOfDate: null, drawing: null });
     });
 
     test('starts from an empty panel: nothing of the previous run stays, not even its drawing', () => {
         const run = startedRun('release', 'file:///w/release.jd', false, LIBRARIES);
-        expect(run).toMatchObject({ dataflow: null, live: false, progress: null, report: null, drawingMissing: null });
+        expect(run).toMatchObject({ drawing: null, progress: null, report: null });
     });
 });
 
@@ -58,6 +58,7 @@ describe('the page\'s state', () => {
         });
         expect(state.elements).toEqual(['release:e', 'release:c']);
         expect(state.dataflow).toBe('<svg>dataflow</svg>');
+        expect(state.drawingMissing).toBeNull();
     });
 
     test('says a check is a check, never an execution that passed', () => {
@@ -181,8 +182,10 @@ describe('a run under way whose events are read', () => {
     test('the verdict bar says how far it is, and which step runs', () => {
         expect(panelState(running, 3).progress).toEqual({
             decided: '1 of 3 decided', counts: [{ text: '1 failed', row: 'group/Failed' }], running: ['release:e2'],
-            statuses: null, observed: [], underway: ['release:e2'], pending: ['release:c']
+            underway: ['release:e2'], pending: ['release:c']
         });
+        // No drawing of its own yet: it is waited for under the busy overlay.
+        expect(panelState(running, 3).colouring).toBeNull();
     });
 
     test('on its own drawing, the elements decided are sent to be coloured, with what the drawing needs', () => {
@@ -194,14 +197,15 @@ describe('a run under way whose events are read', () => {
             }, diagnostics: [] },
             { event: 'element.decided', element: { id: 'j:e2', status: 'skip', reason: 'later', produced: { ok: { value: true } } }, diagnostics: [] },
             { event: 'element.decided', element: { id: 'j:s', status: 'skip', blocked_by: ['j:e1'] }, diagnostics: [] });
-        const live = { ...startedRun('j', 'file:///w/j.jd', false, LIBRARIES), progress: decided, live: true };
-        expect(panelState(live, 1).progress?.statuses).toEqual([
+        const live: ShownRun = { ...startedRun('j', 'file:///w/j.jd', false, LIBRARIES), progress: decided, drawing: { kind: 'live', svg: '<svg>own</svg>' } };
+        expect(panelState(live, 1).colouring?.statuses).toEqual([
             { id: 'j:e1', status: 'fail', reason: 'cannot read x', rootCause: false, produced: [], unreachable: ['x'] },
             { id: 'j:e2', status: 'skip', reason: 'later', rootCause: true, produced: ['ok'], unreachable: [] },
             { id: 'j:s', status: 'skip', reason: null, rootCause: false, produced: [], unreachable: [] }
         ]);
-        // Another run's drawing, kept under the busy overlay, is not coloured with this one's.
-        expect(panelState({ ...live, live: false }, 1).progress?.statuses).toBeNull();
+        expect(panelState(live, 1).dataflow).toBe('<svg>own</svg>');
+        // A drawing that is not the run's own is not coloured with what it decided.
+        expect(panelState({ ...live, drawing: { kind: 'final', svg: '<svg>other</svg>' } }, 1).colouring).toBeNull();
     });
 
     test('the step running is named by its label, when the compiled model has one', () => {
@@ -213,18 +217,17 @@ describe('a run under way whose events are read', () => {
 
     test('stopped, its own drawing keeps the colours of what it decided, and nothing runs or waits', () => {
         const notice = { text: 'release was stopped.', action: null };
-        const stopped = endedWithout({ ...running, dataflow: '<svg>own</svg>', live: true }, 'stopped', notice, new Date(2026, 10, 21));
-        expect(stopped).toMatchObject({ phase: 'stopped', notice, dataflow: '<svg>own</svg>', live: true });
-        expect(panelState(stopped, 4).progress).toMatchObject({
-            statuses: [{ id: 'release:e1', status: 'fail' }], underway: [], pending: [], running: []
-        });
+        const stopped = endedWithout({ ...running, drawing: { kind: 'live', svg: '<svg>own</svg>' } }, 'stopped', notice, new Date(2026, 10, 21));
+        expect(stopped).toMatchObject({ phase: 'stopped', notice, drawing: { kind: 'live', svg: '<svg>own</svg>' } });
+        expect(panelState(stopped, 4).colouring).toMatchObject({ statuses: [{ id: 'release:e1', status: 'fail' }] });
+        expect(panelState(stopped, 4).progress).toBeNull();
     });
 
     test('stopped before the runner drew it, it has no drawing, and nothing to colour', () => {
         const notice = { text: 'release could not start.', action: null };
         const stopped = endedWithout(running, 'blocked', notice, new Date());
-        expect(stopped.dataflow).toBeNull();
-        expect(panelState(stopped, 4).progress).toBeNull();
+        expect(stopped.drawing).toBeNull();
+        expect(panelState(stopped, 4)).toMatchObject({ dataflow: null, colouring: null, progress: null });
     });
 
     test('its elements can be selected and opened from the drawing before the report, and after a stop', () => {
@@ -244,9 +247,20 @@ describe('a run under way whose events are read', () => {
         expect(progressOf(reading({ event: 'run.started', schema_version: '1.0', elements: ['j:a'] })).running).toEqual([]);
     });
 
-    test('none is running once the run is no longer under way', () => {
+    test('a run no longer under way says nothing of how far it is, even with steps it left running', () => {
         const one = reading({ event: 'run.started', schema_version: '1.0', elements: ['j:a'] }, { event: 'element.started', id: 'j:a' });
-        expect(progressOf(one, new Map(), true, false).running).toEqual([]);
+        const stopped = endedWithout({ ...running, progress: one }, 'stopped', { text: 'stopped', action: null }, new Date());
+        expect(panelState(stopped, 4).progress).toBeNull();
+    });
+
+    test('ended with its report, the drawing it was coloured on gives way to the one it ended with, or to why it has none', () => {
+        const live: ShownRun = { ...running, drawing: { kind: 'live', svg: '<svg>own</svg>' } };
+        const at = new Date(2026, 10, 24, 9, 30);
+        const drawn = endedWithReport(live, report({}), '<svg>final</svg>', at);
+        expect(drawn).toMatchObject({ phase: 'done', drawing: { kind: 'final', svg: '<svg>final</svg>' }, notice: null, endedAt: at });
+        expect(panelState(drawn, 4)).toMatchObject({ dataflow: '<svg>final</svg>', colouring: null, progress: null });
+        const undrawn = endedWithReport(live, report({}), null, at);
+        expect(panelState(undrawn, 4)).toMatchObject({ dataflow: null, drawingMissing: NO_DRAWING, colouring: null });
     });
 
     test('once it ended, the verdict says the rest', () => {

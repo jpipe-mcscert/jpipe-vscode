@@ -331,7 +331,7 @@ async function showPreview(
         deps.logger.debug(`${taskName}: the drawing made before the first step was gone before it was read`);
         return;
     }
-    if (followed() && deps.session.running) deps.session.update(token, { dataflow: svg, live: true, drawingMissing: null });
+    if (followed() && deps.session.running) deps.session.update(token, { drawing: { kind: 'live', svg } });
 }
 
 /** The jobs setting as last noted in the log, so that what is said about it is said once. */
@@ -457,15 +457,7 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
     const dataflow = report.dataflow === null ? null : await readFileText(files.dataflow);
     // The events, if the runner wrote them, are kept: only they say how long each step took.
     const progress = deps.session.run?.progress;
-    const shown = deps.session.update(token, {
-        phase: 'done',
-        report,
-        dataflow,
-        live: false,
-        drawingMissing: dataflow ? null : NO_DRAWING,
-        endedAt: new Date(),
-        notice: null
-    });
+    const shown = deps.session.finish(token, report, dataflow);
     // A newer run may have started while the drawing was read: Results stays with it, as the panel does.
     if (!shown) return;
     await deps.results.show({
@@ -473,9 +465,6 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
         durations: progress ? durationsOf(progress) : undefined
     });
 }
-
-/** Why a run has no drawing: the runner could not draw, which is most often Graphviz missing. */
-const NO_DRAWING = 'jpipe-runner could not draw this run. Drawing needs Graphviz\'s dot command, as the preview does: run Check jPipe Installation to see whether it is installed.';
 
 /** The text of `file`, or null if it cannot be read. */
 async function readFileText(file: vscode.Uri): Promise<string | null> {

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { Notice } from '../../shared/run-protocol.js';
-import { endedWithout, outOfDateReason, startedRun, type Change, type ShownRun } from './run-state.js';
+import type { RunReport } from './run-report.js';
+import { endedWithReport, endedWithout, outOfDateReason, startedRun, type Change, type ShownRun } from './run-state.js';
 
 /** What the session needs to know about the Libraries view: which libraries are checked, and when that changes. */
 export interface CheckedLibraries {
@@ -108,6 +109,16 @@ export class RunSession implements vscode.Disposable {
     /** Say something about the run on show, whatever its phase: what stops it being run again, say. */
     say(notice: Notice): void {
         if (this.shown) this.show({ ...this.shown, notice });
+    }
+
+    /**
+     * End the run of launch `token` with its report and the drawing it ended with, if any
+     * (`endedWithReport`). False, and nothing changes, when another launch has taken over.
+     */
+    finish(token: number, report: RunReport, svg: string | null): boolean {
+        if (!this.isCurrent(token) || !this.shown) return false;
+        this.show(endedWithReport(this.shown, report, svg, new Date()));
+        return true;
     }
 
     /** End the run of launch `token` without a report, saying why (`endedWithout`). */

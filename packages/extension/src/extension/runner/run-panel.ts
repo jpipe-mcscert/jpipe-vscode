@@ -11,7 +11,7 @@ import { LIBRARIES_VIEW_ID } from './libraries-view.js';
 import type { ResultsView } from './results-view.js';
 import { getRunShellHtml } from './run-shell.js';
 import type { RunSession } from './run-session.js';
-import { elementCandidates, panelState } from './run-state.js';
+import { drawingOf, elementCandidates, panelState } from './run-state.js';
 
 /** The webview panel's type, which VS Code keys a panel's state by. */
 export const RUN_PANEL_TYPE = 'jpipe.run';
@@ -227,7 +227,7 @@ export class RunPanel implements vscode.Disposable {
      */
     private async download(shown: string | null): Promise<void> {
         const run = this.session.run;
-        const svg = shown ?? run?.dataflow;
+        const svg = shown ?? (run && drawingOf(run));
         if (!run || !svg) return;
         const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.parse(run.uri))?.uri;
         const name = `${run.name}-dataflow.svg`;
