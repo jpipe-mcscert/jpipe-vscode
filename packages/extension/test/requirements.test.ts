@@ -19,6 +19,8 @@ import {
     REQUIREMENTS,
     RUNNER_FEATURES,
     runnerHas,
+    COMPILER_FEATURES,
+    compilerHas,
     runnerMayLack,
     type InstallationFacts
 } from '../src/extension/requirements.js';
@@ -98,6 +100,26 @@ describe('what a user is told about the compiler', () => {
         expect(compilerLine({ kind: 'supported', version: '4.0.0' })).toBe('Compiler: 4.0.0');
         expect(compilerLine({ kind: 'too-old', version: '2.5.0' })).toBe(`Compiler: 2.5.0, too old (needs ${minimum} or newer)`);
         expect(compilerLine({ kind: 'unknown' })).toContain(`needs ${minimum} or newer`);
+    });
+
+    // Below the recommended release, what upgrading brings, as for jpipe-runner.
+    test('the report line of a supported compiler says what a newer one brings', () => {
+        expect(compilerLine({ kind: 'supported', version: '3.2.0' })).toBe('Compiler: 3.2.0\n  4.0.0 or newer checks composed models');
+        expect(compilerLine({ kind: 'supported', version: '4.1.0' })).toBe('Compiler: 4.1.0');
+    });
+
+    test('a compiler has a feature from the release that brought it, its development builds included', () => {
+        expect(compilerHas('4.0.0', 'composed')).toBe(true);
+        expect(compilerHas('4.0.0-SNAPSHOT', 'composed')).toBe(true);
+        expect(compilerHas('3.9.2', 'composed')).toBe(false);
+        expect(compilerHas(undefined, 'composed')).toBe(false);
+    });
+
+    test('the recommended compiler is the one that brought the newest feature used', () => {
+        const releases = Object.values(COMPILER_FEATURES).map(feature => feature.since);
+        const newest = releases.reduce((a, b) => (meetsMinimum(a, b) ? a : b));
+        expect(RECOMMENDED.compiler).toEqual(newest);
+        for (const since of releases) expect(meetsMinimum(since, REQUIREMENTS.compiler)).toBe(true);
     });
 });
 
@@ -215,6 +237,10 @@ describe('the Marketplace page states the same requirements', () => {
         expect(readme).toContain(`version ${formatRelease(REQUIREMENTS.compiler)} or newer`);
         expect(readme).toContain(`${formatRelease(REQUIREMENTS.runner)} or newer`);
         expect(readme).toContain(`Python ${formatRelease(REQUIREMENTS.python)} or`);
+    });
+
+    test('so is the recommended compiler, which checks composed models', () => {
+        expect(readme).toContain(`compiler ${formatRelease(RECOMMENDED.compiler)} or newer, the recommended release`);
     });
 
     test('so is the recommended jpipe-runner, which follows a run as it goes', () => {

@@ -18,6 +18,7 @@ import {
 import {
     COMPILER_INSTALL_GUIDE,
     CompilerTooOldError,
+    compilerHas,
     compilerLine,
     compilerUpdate,
     compilerVerdict,
@@ -25,6 +26,7 @@ import {
 } from '../requirements.js';
 import { isRenderableReport } from '../../shared/diagnostic-model.js';
 import type { DiagnosticReport } from '../../shared/diagnostic-report.js';
+import { RunLimit } from './run-limit.js';
 
 /**
  * The outcome of one `diagnostic` run.
@@ -273,6 +275,31 @@ export class ImageGenerator {
             return { raw: tooOld.message, report: null, exitCode: undefined };
         }
         return { raw: run.raw, report: this.parseReport(run.stdout), exitCode: run.exitCode };
+    }
+
+    /** Reports asked by the language server run two at a time: each starts a JVM. */
+    private readonly reportRuns = new RunLimit(2);
+
+    /**
+     * The compiler's report on the file `fsPath`, as saved, which the language server reads a
+     * composed model's elements from (jpipe-vscode ADR-VSC-0034), or `null` when there is none.
+     *
+     * Quiet, unlike `generateDiagnostic`: nobody asked for it, so a compiler missing, misconfigured
+     * or too old is not reported here, and its models are left alone as before. Only a compiler
+     * that names composed elements as the editor reads them is run (`COMPILER_FEATURES`).
+     */
+    public async reportFor(fsPath: string): Promise<DiagnosticReport | null> {
+        const config = vscode.workspace.getConfiguration('jpipe');
+        let resolved: { file: string; args: string[] };
+        try {
+            resolved = this.resolveExecCommand(config);
+        } catch {
+            return null;
+        }
+        const verdict = await this.verdictFor(resolved, config);
+        if (verdict.kind !== 'supported' || !compilerHas(verdict.version, 'composed')) return null;
+        const run = await this.reportRuns.run(() => this.runDiagnostic(resolved, path.normalize(fsPath), config, true));
+        return run.unknownOption ? null : this.parseReport(run.stdout);
     }
 
     /**

@@ -123,9 +123,9 @@ export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
         // `T:a` names the element whose id is `a` in T: one T declares, or one it inherits under a
         // qualifier of its own (`U:a`, which `a` names by suffix). Whole contents or not, since a
         // declaration it can see is the one to go to. Its own come last in the contents.
-        const listed = listedIn(await this.contents.contentsOf(template, templatePath.slice(0, -1).join(':')));
+        const listed = listedIn(await this.contents.contentsOf(template, templatePath.slice(0, -1).join(':'), ownerDoc));
         const targetElement = (listed.find(entry => entry.id === elementName)
-            ?? [...listed].reverse().find(entry => localName(entry.element.id) === elementName))?.element;
+            ?? [...listed].reverse().find(entry => entry.element && localName(entry.element.id) === elementName))?.element;
         if (!targetElement?.$cstNode) return undefined;
 
         const targetDoc = this.getDocument(targetElement);

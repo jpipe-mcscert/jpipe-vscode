@@ -16,7 +16,7 @@
  * Pure functions over an AST — no services — so the rename provider and its tests reach the same
  * answer without a workspace.
  */
-import { GrammarUtils, type AstNode, type CstNode } from 'langium';
+import { AstUtils, GrammarUtils, type AstNode, type CstNode } from 'langium';
 import { TextEdit } from 'vscode-languageserver-types';
 import {
     isJustification,
@@ -225,7 +225,8 @@ export function elementEdits(
  *
  * On a base whose contents cannot tell, `hookTarget` answers only for a hook spelling an id
  * exactly, and nothing here can say what any other hook names. That is the known cost — such a
- * hook keeps the old spelling — and it is the honest half of a guess.
+ * hook keeps the old spelling — and it is the honest half of a guess. So does a hook naming an
+ * element an operator merged from several: which of them its spelling follows is not known.
  *
  * Only the last segment is rewritten, so `"T:a"` becomes `"T:b"` and the qualifier survives.
  */
@@ -245,10 +246,11 @@ export async function hookEdits(
     });
     // Each base's contents are asked at once, not one hook after another.
     const targets = await Promise.all(hooks.map(async ({ hook, base, namespace }) =>
-        hookTarget(await contents.contentsOf(base, namespace), hook)));
+        hookTarget(await contents.contentsOf(base, namespace, AstUtils.getDocument(unit)), hook)));
     return hooks.flatMap(({ entry }, i) => {
+        // An element merged from several names each of them, and none in particular.
         const target = targets[i];
-        if (!target || !affected.has(target)) return [];
+        if (!target?.element || target.merged || !affected.has(target.element)) return [];
         const edit = stringTailEdit(GrammarUtils.findNodeForProperty(entry.$cstNode, 'value'), newName);
         return edit ? [edit] : [];
     });

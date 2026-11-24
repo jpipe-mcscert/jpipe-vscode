@@ -36,9 +36,36 @@ export const REQUIREMENTS = {
  * upgrading brings (jpipe-vscode ADR-VSC-0032). Raising one is a user-facing change too.
  */
 export const RECOMMENDED = {
+    /** The newest release in `COMPILER_FEATURES`: 4.0, whose results the editor reads composed models from. */
+    compiler: [4, 0, 0],
     /** The newest release in `RUNNER_FEATURES`: 4.4, which runs independent steps together. */
     runner: [4, 4, 0]
 } as const satisfies Record<string, ReleaseNumbers>;
+
+/**
+ * What compiler releases after the minimum add that this release uses, each from the release that
+ * brought it, as `RUNNER_FEATURES` has it for jpipe-runner; `brings` is what Check jPipe
+ * Installation says upgrading to it brings.
+ */
+export const COMPILER_FEATURES = {
+    /**
+     * The elements of a model built by an operator, under the ids 4.0 gives them, which the
+     * editor checks composed models against (jpipe-vscode ADR-VSC-0034). An older compiler names
+     * them otherwise, and its report is not asked: those models are left alone, as before.
+     */
+    composed: { since: [4, 0, 0], brings: 'checks composed models' }
+} as const satisfies Record<string, { since: ReleaseNumbers; brings: string }>;
+
+export type CompilerFeature = keyof typeof COMPILER_FEATURES;
+
+/**
+ * Whether the compiler release `version`, as a verdict shows it (`4.0.0`, `4.0.0-SNAPSHOT`), has
+ * `feature`, development builds of the release that brought it included. An unknown one has none.
+ */
+export function compilerHas(version: string | undefined, feature: CompilerFeature): boolean {
+    const numbers = releaseNumbers(version);
+    return numbers !== undefined && meetsMinimum(numbers, COMPILER_FEATURES[feature].since);
+}
 
 /**
  * What jpipe-runner releases after the minimum add that this release uses, each from the release
@@ -240,11 +267,19 @@ export function installationSummary(facts: InstallationFacts): {
     return { severity: 'info', title: `jPipe is ready${runs}.` };
 }
 
-/** The report's line about the compiler's version. */
+/**
+ * The report's line about the compiler's version, and below a supported one older than the
+ * recommended release, what upgrading brings.
+ */
 export function compilerLine(verdict: CompilerVerdict): string {
     const needed = `needs ${formatRelease(REQUIREMENTS.compiler)} or newer`;
     switch (verdict.kind) {
-        case 'supported': return `Compiler: ${verdict.version}`;
+        case 'supported': return [
+            `Compiler: ${verdict.version}`,
+            ...Object.entries(COMPILER_FEATURES)
+                .filter(([feature]) => !compilerHas(verdict.version, feature as CompilerFeature))
+                .map(([, { since, brings }]) => `  ${formatRelease(since)} or newer ${brings}`)
+        ].join('\n');
         case 'too-old': return `Compiler: ${verdict.version ?? 'an older release'}, too old (${needed})`;
         case 'unknown': return `Compiler: version not reported (${needed})`;
     }

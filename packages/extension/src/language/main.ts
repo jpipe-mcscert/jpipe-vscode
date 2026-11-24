@@ -3,7 +3,8 @@ import { NodeFileSystem } from 'langium/node';
 import { createConnection, ProposedFeatures } from 'vscode-languageserver/node';
 import { createJpipeServices } from 'jpipe-language';
 import type { LogLevel } from 'jpipe-language';
-import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
+import { URI } from 'langium';
+import { COMPILER_INPUTS_CHANGED, COMPILER_REPORT, SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 
 // Create a connection to the client
 const connection = createConnection(ProposedFeatures.all);
@@ -48,6 +49,18 @@ connection.onNotification(SET_UNIFICATION_METHODS, async (methods: unknown) => {
     Jpipe.unification.setAdditionalMethods(toStringArray(methods) ?? []);
     const documents = shared.workspace.LangiumDocuments.all.toArray();
     await shared.workspace.DocumentBuilder.build(documents, { validation: true });
+});
+
+// A composed model's elements are read from the compiler's report, which the client runs it for
+// (jpipe-vscode ADR-VSC-0034). When files it reads change on disk, the reports they can change are
+// forgotten, and the documents that read them are checked again.
+Jpipe.references.CompilerReports.connect(uri => connection.sendRequest(COMPILER_REPORT, { uri }));
+connection.onNotification(COMPILER_INPUTS_CHANGED, async (uris: unknown) => {
+    const forgotten = Jpipe.references.CompilerReports.forget(new Set(toStringArray(uris) ?? []));
+    const documents = forgotten
+        .map(uri => shared.workspace.LangiumDocuments.getDocument(URI.parse(uri)))
+        .filter(document => document !== undefined);
+    if (documents.length > 0) await shared.workspace.DocumentBuilder.build(documents, { validation: true });
 });
 
 // Start the language server with the shared services

@@ -20,6 +20,7 @@ export { EXTRACT_TEMPLATE_KIND } from './code-actions/extract-template.js';
 export {
     TOKEN_ABSTRACT, TOKEN_ELEMENT, TOKEN_LOAD, TOKEN_RELATION, TOKEN_STRUCTURE
 } from './jpipe-semantic-token-provider.js';
+export { CompilerReports, readReport, type CompilerReport, type ReportRequest } from './jpipe-compiler-report.js';
 export * from './jpipe-logger.js';
 export * from './jpipe-exclusions.js';
 export * from './generated/ast.js';

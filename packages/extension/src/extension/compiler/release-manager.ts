@@ -84,9 +84,15 @@ export class ReleaseManager {
         return installed;
     }
 
+    private readonly installed = new vscode.EventEmitter<void>();
+
+    /** Fires once a managed compiler is installed: what it reports may differ from the last one's. */
+    public readonly onDidInstall = this.installed.event;
+
     /** Record the active managed compiler. */
     public async setInstalled(tag: string, jarPath: string): Promise<void> {
         await this.context.globalState.update(KEY_INSTALLED, { tag, jarPath } satisfies InstalledCompiler);
+        this.installed.fire();
     }
 
     /**

@@ -636,3 +636,8 @@ function identity(filePath: string, links = 0): string {
 function comparable(filePath: string): string {
     return process.platform === 'darwin' || process.platform === 'win32' ? filePath.toLowerCase() : filePath;
 }
+
+/** What two spellings of one file compare equal as: its real path, cased as its disk compares names. */
+export function fileKey(filePath: string): string {
+    return comparable(identity(filePath));
+}

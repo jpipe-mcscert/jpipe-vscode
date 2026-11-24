@@ -1,0 +1,27 @@
+// A composed model whose source has an error: the compiler builds it as far as it got, so its
+// report cannot be trusted, and its contents cannot tell (jpipe-vscode #132).
+justification a {
+    conclusion c is "C"
+    strategy   s is "S"
+    evidence   e is "E"
+    s supports c
+    e supports s
+    typo supports s
+}
+
+justification b {
+    conclusion c is "Another C"
+    strategy   s is "Another S"
+    evidence   e is "Another E"
+    s supports c
+    e supports s
+}
+
+justification r is assemble(a, b) {
+    conclusionLabel: "R"
+    strategyLabel:   "SR"
+}
+
+justification probe is refine(r, b) {
+    hook: "nope"
+}

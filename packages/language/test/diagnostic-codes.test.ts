@@ -17,6 +17,7 @@ import type { Unit } from 'jpipe-language';
 import {
     CODE_PATTERN,
     COMPILER_CODES,
+    RULE_CODES,
     EXTENSION_ONLY_CODES,
     JpipeIssue,
     JpipeIssueSeverity,
@@ -479,6 +480,12 @@ describe('the vocabulary is shared with the compiler', () => {
     test('no code claims to be both the compiler\'s and ours', () => {
         const compiler = new Set<string>(COMPILER_CODES);
         expect(EXTENSION_ONLY_CODES.filter(code => compiler.has(code))).toEqual([]);
+    });
+
+    // Compiled contents ignore these when they ask whether a model was built whole.
+    test('the rule codes are the compiler\'s validation rules, the last of its codes', () => {
+        const compiler = [...COMPILER_CODES];
+        expect(compiler.slice(compiler.indexOf('no-duplicate-ids'))).toEqual([...RULE_CODES]);
     });
 
     // The compiler's report schema constrains `code` to exactly this, and would have rejected the

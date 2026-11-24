@@ -14,65 +14,87 @@ below the composition.
 
 The language server reads bodies only, so none of this is visible to it. Every feature that needs
 a model's whole element list therefore cannot handle a model built on a composition. That covers
-the rules `conclusion-present`, `has-abstract-support`, `unknown-hook`, `ambiguous-id` and
-`unique-identifiers`, and also completion, hover, rename and go-to-definition through such a
-model. Until 2.0.1 some of these rules reported errors on models the compiler builds
-(jpipe-compiler example 028, #126). The fix makes them stay silent on such models, which leaves
-models the compiler refuses shown clean (#127).
+the rules `conclusion-present`, `has-abstract-support`, `no-abstract-support`, `unknown-hook`
+and `ambiguous-id`, and also completion, hover, rename and go-to-definition through such a model.
+Until 2.0.1 some of these rules reported errors on models the compiler builds (jpipe-compiler
+example 028, #126). The fix makes them stay silent on such models, which leaves models the
+compiler refuses shown clean (#127).
 
 There were two ways to give the editor those elements. One was to port the operators to
 TypeScript, as `jpipe-glob.ts` ports Java NIO globs (jpipe-vscode ADR-VSC-0007). The other was
-to ask the compiler, which already exports a built model as JSON. Since 4.0.0 (jpipe-compiler
-#200), each element of that export carries its `origins`, the declaring model and id of every
-source element it was built from, and its `aliases`.
+to ask the compiler, which already reports every model it builds.
+
+It reports them in two places. `jpipe process -f json` exports one model, and since 4.0.0
+(jpipe-compiler #200) each element carries its `origins`, every source element it was built from.
+`jpipe diagnostic -f json` reports a whole file, under a published schema (`schemaVersion` 1,
+since 2.4.0), and the preview's diagnostics view already reads it. For every model it lists the
+elements under the ids the compiler gives them in that file, with their kinds, where each is
+declared, and the model's aliases. Its diagnostics say where each problem is.
+
+When any model of a file fails, the compiler exits with an error and still writes both. A model
+that failed to build appears in them as far as it got, with the elements after the failure
+missing (jpipe-compiler example 035: `twice`, `once`). Read as whole, such a model is missing
+elements, and rules then report what is not wrong.
 
 ## Decision
 
 **Composition operators are implemented once, in the compiler. The language server never builds,
 simulates or approximates what `refine`, `assemble` or unification produce. When a feature needs
-the elements of a model built on a composition, they come from the compiler.**
+the elements of a model built on a composition, they come from the compiler's diagnostic report
+of the file asking.**
 
 They come through one polymorphic API, so a consumer never knows, or asks, which kind of model it
 holds:
 
 - **One question, one answer type.** A consumer asks for a model's contents
   (`ModelContents.contentsOf`, in `jpipe-model-contents.ts`) and receives either its effective
-  elements, under the ids the compiler gives them, or *cannot tell*. Validation rules,
-  completion, rename and definition all ask this question, as will hover once it shows a model's
-  elements. None of them reads an element
-  list around it: `getAllElements` and `expandedElements` are imported only by the declared
-  implementation and by linking (below), which `test/model-contents.test.ts` holds.
+  elements, under the ids the compiler gives them, with the kind each has there, or *cannot
+  tell*. Validation rules, completion, rename and definition all ask this question, as will hover
+  once it shows a model's elements. None of them reads an element list around it:
+  `getAllElements` and `expandedElements` are imported only by the declared implementation and by
+  linking (below), which `test/model-contents.test.ts` holds.
 - ***Cannot tell* lists what it can see.** It carries the elements the bodies show, and which of
   them the model declares itself. A consumer may find one of those by its exact id, since what a
   model declares replaces any element of that id it inherits; an inherited element may share its
-  id with a hidden one. It may never conclude from them that an element is missing. That is what keeps
-  a `refine` hook spelling an exact id renamed on a base built on a composition.
+  id with a hidden one. It may never conclude from them that an element is missing, nor that an
+  id names only one element. That is what keeps a `refine` hook spelling an exact id renamed on a
+  base built on a composition, and a `@support` the bodies show required of a justification
+  below one.
 - **Two implementations behind it, chosen by the service.**
   - *Declared* contents serve a model whose `implements` chain is plain. They are read from the
-    bodies (`expandedElements`).
-  - *Compiled* contents serve a model that builds on a composition. They are read from the
-    compiler's JSON export of that model.
-- **Linking reads the declarations itself.** Langium resolves references synchronously while it
-  builds documents, so the scope provider and the import service cannot await contents. They read
-  the bodies, as before, and so does completion of a relation's ends, which must offer exactly what
-  linking resolves. A reference to an element only an operator builds is compiled contents'
-  concern, served to linking from their cache.
-- **Ids are the ones the compiler gives in the file asking.** A model of a file loaded under a
-  namespace is asked for under it (`lib` for `lib:K`), and every id of its contents carries it,
-  as the compiler names everything of such a file: `lib:T:a`, `lib:U:x`.
-- **Compiled elements are tied back to source.** Each element is linked to the AST declarations
-  its `origins` name, so identity survives: renaming `@support abs2` in `pattern` reaches every
-  element built from it, and go-to-definition lands on that declaration.
+    bodies (`expandedElements`), which bind each override as the compiler binds it: by its exact
+    id, or by the one inherited `@support` its id ends.
+  - *Compiled* contents serve a model that builds on a composition. The composed model nearest
+    it on its chain is read from the report, and the bodies of the models between are read on
+    top of it, as for a plain chain.
+- **The report is the asking file's, and ids are the ones it gives.** A model of a file loaded
+  under a namespace is named there as the compiler names everything of such a file: `lib:T`,
+  `lib:pattern:abs2`. The report of the file asking gives exactly those, so the editor never
+  works out how an operator's result is renamed under a namespace.
+- **A model is read from the report only when it was built whole.** No failure the report
+  locates may lie in the composed model or in any model it is built from. A failure located
+  nowhere, under a code, may concern any of them. Diagnostics of the compiler's validation rules
+  (`RULE_CODES`) are not failures: they run on a model already built, and may lie in another
+  model (`no-abstract-support` lies on the `@support`).
+- **Compiled elements are tied back to source.** Each element is linked to the declaration the
+  report places it at, so identity survives: go-to-definition lands on that declaration, and a
+  rename reaches a hook naming an element built from it. An element an operator merged from
+  several is marked so, since its one location cannot say which of them a name means, and a
+  rename leaves a hook naming it alone. One an operator made up has no declaration.
 - **The compiler is reached through the client.** The extension host already knows which
   compiler to run and whether it is recent enough (jpipe-vscode ADR-VSC-0016, ADR-VSC-0032). The
-  language server therefore sends the client a request and receives the export; it never starts
+  language server therefore sends the client a request and receives the report; it never starts
   a compiler itself. This keeps the language package free of the editor's settings and of any
   process launching.
 - ***Cannot tell* is the answer whenever the compiler cannot give one:** no compiler, one older
-  than 4.0.0, a model with errors the compiler refuses to build, or a request that fails. A
-  consumer given that answer stays silent, exactly as every rule does on a composed model today.
-  The declared implementation gives the same answer for a chain that does not resolve (#129), so
-  consumers handle one case, not two.
+  than 4.0.0, a model it did not build whole, or a request that fails. A consumer given that
+  answer stays silent, exactly as every rule did on a composed model before. The declared
+  implementation gives the same answer for a chain that does not resolve (#129), so consumers
+  handle one case, not two.
+- **Linking reads the declarations itself.** Langium resolves references synchronously while it
+  builds documents, so the scope provider and the import service cannot await contents. They read
+  the bodies, and so does completion of a relation's ends, which must offer exactly what linking
+  resolves.
 
 ## Rationale
 
@@ -84,9 +106,12 @@ holds:
   land twice, in two languages and two repositories, with no shared build to catch a mismatch.
   jpipe-vscode ADR-VSC-0022 shows what that costs for a list of diagnostic codes, which is far
   smaller than an operator.
-- **The compiler already publishes what the editor needs.** The JSON export is the built model,
-  with provenance. Reading it costs an adapter, while porting the operators would cost a
-  reimplementation.
+- **The diagnostic report is the export that says whether to trust it.** The model export carries
+  richer provenance, but a failed model's export cannot be told from a whole one without a second
+  run or reading the compiler's text output. The report locates its own failures, under a schema
+  the compiler publishes as a contract, and one run answers for every composed model of a file.
+  What it lacks, every origin of a merged element, no feature needs: such an element is marked
+  merged instead.
 - **Polymorphism keeps the boundary in one place.** If each consumer checked "is this composed?"
   and branched, every new feature would repeat that check and could forget it. A single API keeps
   the decision in one module, and a feature written against it works on both kinds of model.
@@ -94,29 +119,34 @@ holds:
   nothing it did not know before. Reporting on a guess would put errors on models that build,
   which is the trade jpipe-vscode ADR-VSC-0022 refuses for composed models.
 - **A stub that always says *cannot tell* was rejected as the end state.** It is what the editor
-  did before this record, and what compiled contents answer until they read the compiler's
-  export. It is correct, but it leaves features blind exactly where the language is hardest to
-  follow.
+  did before this record, and what compiled contents answer without a compiler. It is correct,
+  but it leaves features blind exactly where the language is hardest to follow.
 
 ## Consequences
 
 - **The contents API is asynchronous for every model.** A compiled answer arrives from another
   process, so a plain model's answer is awaited too, to keep the API uniform. The validation
-  checks, completion and rename that read contents become async. Langium allows that for all
-  three.
+  checks, completion, rename and code actions that read contents are async. Langium allows that
+  for all of them.
 - **Compiled contents follow the saved files.** The compiler reads its input and every file it
   loads from disk. Contents built on a composition are therefore as of the last save, while
-  declared contents follow the buffer. Answers are cached for each model, and the cache is dropped
-  when a file the model loads is saved.
-- **Running the compiler costs a JVM start.** Requests are made only for models that build on a
-  composition, are cached, and are never sent on a keystroke. A workspace without compositions
-  never starts the compiler for this.
+  declared contents follow the buffer. Reports are cached for each file asking, and dropped when
+  that file, or one it loads, changes on disk; the documents that read them are checked again.
+- **Running the compiler costs a JVM start.** A report is asked only for a file with a model
+  that builds on a composition, once until a file it reads changes, two at a time, and never on
+  a keystroke. A workspace without compositions never starts the compiler for this.
 - **A composed model's features depend on a recent compiler.** With no compiler, or one older
   than 4.0.0, they stay silent. This does not raise the minimum compiler (jpipe-vscode
-  ADR-VSC-0032): it is something a 4.0.0 compiler adds, and Check jPipe Installation says so.
-- **The JSON export is now a contract.** The adapter reads `elements`, `relations`, `aliases` and
-  `origins`. A change to that shape in the compiler breaks the editor, which is a reason to keep
-  the adapter small and its tests fed with real exports.
+  ADR-VSC-0032): 4.0.0 becomes the recommended release, and Check jPipe Installation says what
+  it adds.
+- **The diagnostic report is now a contract twice over.** The preview renders it, and compiled
+  contents read each model's `symbols` and `aliases`, and the `diagnostics`. A change to that
+  shape in the compiler is a new schema version, which the editor does not read until it knows
+  it. The adapter is small, and its tests are fed with reports captured from the compiler.
+- **A reference to an element only an operator builds does not link.** Linking cannot await the
+  report, so a relation naming such an element is reported as unresolved. The compiler refuses it
+  too, as `reference-into-template`: a model implementing a template may reference only the
+  template's `@support` elements, which it overrides.
 - **No feature may reach around the API.** Reading `contents.body`, or calling `getAllElements` or
   `expandedElements` from a rule or a provider, is the bypass this record forbids. Those helpers
   become details of the declared implementation.

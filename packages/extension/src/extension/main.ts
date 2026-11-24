@@ -15,7 +15,7 @@ import { RunnerEnvironment } from './runner/environment.js';
 import { ResultsView } from './runner/results-view.js';
 import { RunSession } from './runner/run-session.js';
 import { RunPanel } from './runner/run-panel.js';
-import { SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
+import { COMPILER_INPUTS_CHANGED, COMPILER_REPORT, SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 import { displayMessageOf, messageOf } from '../shared/errors.js';
 import { JpipeLogger } from './logger.js';
 
@@ -98,6 +98,14 @@ export function activate(context: vscode.ExtensionContext): void {
     const imageGenerator = new ImageGenerator(logger, releaseManager);
     const previewProvider = new PreviewProvider(imageGenerator, client, context, logger);
 
+    // A composed model's elements are read from the compiler (jpipe-vscode ADR-VSC-0034): the
+    // server asks for a file's report, and is told when what the compiler reads may have changed.
+    context.subscriptions.push(
+        client.onRequest(COMPILER_REPORT, (params: { uri: string }) =>
+            imageGenerator.reportFor(vscode.Uri.parse(params.uri).fsPath)),
+        ...watchCompilerInputs(logger, releaseManager)
+    );
+
     // Opportunistic, throttled "newer version available" check (managed mode only).
     void releaseManager.maybeNotifyUpdate(tag => installFromRelease({ releaseManager, logger }, tag));
 
@@ -116,6 +124,56 @@ export function activate(context: vscode.ExtensionContext): void {
     void vscode.commands.executeCommand('setContext', 'jpipe.activated', true);
 
     registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView, runSession, runPanel });
+}
+
+/** The settings that choose which compiler runs, and so what it reports. */
+const COMPILER_SETTINGS = ['executionMode', 'cliPath', 'jarFile', 'javaExecutable', 'jvmArgs', 'extraPath']
+    .map(setting => `jpipe.${setting}`);
+
+/**
+ * Tells the server which files the compiler reads may have changed on disk, a moment after they
+ * do, so that a save or a checkout of many files is one notification: saved in the editor,
+ * changed outside it, or every file at once when the compiler is changed or installed.
+ */
+function watchCompilerInputs(logger: JpipeLogger, releaseManager: ReleaseManager): vscode.Disposable[] {
+    let changedFiles = new Set<string>();
+    let everything = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const send = async (): Promise<void> => {
+        const uris = everything ? [] : [...changedFiles];
+        changedFiles = new Set();
+        everything = false;
+        timer = undefined;
+        try {
+            await client.start();
+            await client.sendNotification(COMPILER_INPUTS_CHANGED, uris);
+        } catch (err: unknown) {
+            logger.error(`Could not tell the language server which files changed: ${messageOf(err)}`);
+        }
+    };
+    const changed = (uri?: vscode.Uri): void => {
+        if (uri) changedFiles.add(uri.toString());
+        else everything = true;
+        timer ??= setTimeout(() => void send(), 300);
+    };
+
+    const watcher = vscode.workspace.createFileSystemWatcher('**/*.jd');
+    return [
+        watcher,
+        watcher.onDidChange(changed),
+        watcher.onDidCreate(changed),
+        watcher.onDidDelete(changed),
+        // A loaded file outside the workspace is seen by no watcher, but it may be saved here.
+        vscode.workspace.onDidSaveTextDocument(document => {
+            if (document.languageId === 'jpipe') changed(document.uri);
+        }),
+        vscode.workspace.onDidChangeConfiguration(event => {
+            if (COMPILER_SETTINGS.some(setting => event.affectsConfiguration(setting))) changed();
+        }),
+        releaseManager.onDidInstall(() => changed()),
+        { dispose: () => clearTimeout(timer) }
+    ];
 }
 
 // This function is called when the extension is deactivated.

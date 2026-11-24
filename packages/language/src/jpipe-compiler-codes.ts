@@ -39,9 +39,9 @@ export const COMPILER_CODES = [
     'incompatible-unification',
     'execution-error',
     'unresolved-symbol',
-    // From 4.0.0. The editor checks `duplicate-model` and `inherited-conclusion` under the same
-    // codes, and what `invalid-operator-call` covers under finer codes of its own, listed below; it
-    // leaves `ambiguous-id` to the compiler (jpipe-vscode ADR-VSC-0022).
+    // From 4.0.0. The editor checks `duplicate-model`, `inherited-conclusion` and, for overrides,
+    // `ambiguous-id` under the same codes, and what `invalid-operator-call` covers under finer codes
+    // of its own, listed below (jpipe-vscode ADR-VSC-0022).
     'duplicate-model',
     'inherited-conclusion',
     'invalid-operator-call',
@@ -62,6 +62,28 @@ export const COMPILER_CODES = [
     'no-abstract-support',
     'has-abstract-support'
 ] as const;
+
+/**
+ * The codes of the compiler's validation rules, `ConsistencyValidator` and `CompletenessValidator`:
+ * checks it runs on a model it has built. Every other code it reports names a failure to build one.
+ *
+ * Compiled contents read a model from the compiler's report only when it was built whole
+ * (jpipe-vscode ADR-VSC-0034), so a rule's diagnostic does not count against it: the model is
+ * wrong, but it is all there. It may even lie in another model, as `no-abstract-support` lies on
+ * the `@support` a justification does not override.
+ */
+export const RULE_CODES: ReadonlySet<string> = new Set([
+    'no-duplicate-ids',
+    'unique-identifiers',
+    'acyclic-support',
+    'acyclic-implements',
+    'conclusion-present',
+    'conclusion-supported',
+    'strategy-supported',
+    'sub-conclusion-supported',
+    'no-abstract-support',
+    'has-abstract-support'
+]);
 
 /**
  * Codes this extension coins, because the compiler has no rule of its own to adopt.
