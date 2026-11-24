@@ -354,6 +354,17 @@ function expand(
 }
 
 /**
+ * What `entry` overrides among `inherited`, bound as the compiler binds it, or `undefined` when it
+ * is no override to bind: not an evidence or a sub-conclusion, an unqualified id, or the exact id
+ * of an inherited element, which replaces it by that id alone.
+ */
+function overrideOf(entry: ModelElement & { element: JustificationElement }, inherited: readonly ModelElement[]): Binding | undefined {
+    const leaf = isEvidence(entry.element) || isSubConclusion(entry.element);
+    if (!leaf || !entry.id.includes(':') || inherited.some(candidate => candidate.id === entry.id)) return undefined;
+    return bind(inherited, entry.id);
+}
+
+/**
  * What `model` declares, under `namespace`, laid over the elements it `inherited`. An override is
  * bound as the compiler binds it, and takes the id of the `@support` it names: `evidence T:a`
  * replaces `lib:T:a`. One naming several replaces none, and marks them `contested`.
@@ -366,20 +377,16 @@ function overlay(model: Justification | Template, namespace: string, inherited: 
         if (isDiscardedConclusion(element)) continue;
         const written = qualifiedIdText(element.id);
         const entry = { element, kind: kindOf(element), id: written.includes(':') ? qualify(namespace, written) : written };
-        const overrides = (isEvidence(element) || isSubConclusion(element)) && written.includes(':');
-        if (overrides && !kept.some(candidate => candidate.id === entry.id)) {
-            const binding = bind(kept, entry.id);
-            if (binding.kind === 'ambiguous') {
-                binding.candidates.forEach(candidate => contested.add(candidate));
-                continue;
-            }
-            if (binding.kind === 'found' && binding.element.kind === 'abstract-support') {
-                kept = kept.filter(candidate => candidate !== binding.element);
-                local.push({ ...entry, id: binding.element.id });
-                continue;
-            }
+        const binding = overrideOf(entry, kept);
+        if (binding?.kind === 'ambiguous') {
+            binding.candidates.forEach(candidate => contested.add(candidate));
+        } else if (binding?.kind === 'found' && binding.element.kind === 'abstract-support') {
+            const support = binding.element;
+            kept = kept.filter(candidate => candidate !== support);
+            local.push({ ...entry, id: support.id });
+        } else {
+            local.push(entry);
         }
-        local.push(entry);
     }
     const replaced = new Set(local.map(entry => entry.id));
     return [
