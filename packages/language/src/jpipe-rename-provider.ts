@@ -95,7 +95,7 @@ export class JpipeRenameProvider extends DefaultRenameProvider {
         switch (target.kind) {
             case 'refuse':  return this.decline(target.reason);
             case 'model':   return this.renameModel(target.model, params.newName);
-            case 'element': return this.renameElement(target.element, params.newName);
+            case 'element': return await this.renameElement(target.element, params.newName);
             default:        return super.rename(document, params);
         }
     }
@@ -191,7 +191,7 @@ export class JpipeRenameProvider extends DefaultRenameProvider {
      * first gathers every declaration that restates this one, the second rewrites those and every
      * relation reaching them.
      */
-    private renameElement(element: JustificationElement, newName: string): WorkspaceEdit | undefined {
+    private async renameElement(element: JustificationElement, newName: string): Promise<WorkspaceEdit | undefined> {
         const owner = ownerOf(element);
         const name = localName(element.id);
         if (!owner || !name) return undefined;
@@ -202,13 +202,13 @@ export class JpipeRenameProvider extends DefaultRenameProvider {
             for (const override of overridesIn(unit, prefixes, name)) affected.add(override);
         }
 
+        // A `refine` hook names the element in a string, so nothing else sees it. Every document's
+        // hooks are read at once.
+        const contents = this.services.references.ModelContents;
+        const hooks = await Promise.all(candidates.map(({ unit }) => hookEdits(unit, affected, newName, contents)));
         const changes: Record<string, TextEdit[]> = {};
-        for (const { document, unit, prefixes } of candidates) {
-            collect(changes, document.uri.toString(), [
-                ...elementEdits(unit, prefixes, name, affected, newName),
-                // A `refine` hook names the element in a string, so nothing above sees it.
-                ...hookEdits(unit, affected, newName)
-            ]);
+        for (const [i, { document, unit, prefixes }] of candidates.entries()) {
+            collect(changes, document.uri.toString(), [...elementEdits(unit, prefixes, name, affected, newName), ...hooks[i]]);
         }
         return { changes };
     }

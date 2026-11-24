@@ -22,6 +22,7 @@ import { JpipeExclusionService } from './jpipe-exclusions.js';
 import { JpipeUnificationService } from './jpipe-unification.js';
 import { JpipeParserErrorMessageProvider } from './jpipe-parser-errors.js';
 import { JpipeDocumentBuilder } from './jpipe-document-builder.js';
+import { ModelContents } from './jpipe-model-contents.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -31,7 +32,9 @@ export type JpipeAddedServices = {
         JpipeValidator: JpipeValidator
     },
     references: {
-        JpipeImportService: JpipeImportService
+        JpipeImportService: JpipeImportService,
+        /** A model's elements, for every rule and provider (jpipe-vscode ADR-VSC-0034). */
+        ModelContents: ModelContents
     },
     logger: JpipeServerLogger,
     exclusions: JpipeExclusionService,
@@ -79,6 +82,7 @@ function buildJpipeModule(
         references: {
             ScopeProvider: (services) => new JpipeScopeProvider(services),
             JpipeImportService: (services) => new JpipeImportService(services),
+            ModelContents: () => new ModelContents(),
             NameProvider: () => new JpipeNameProvider()
         },
         lsp: {

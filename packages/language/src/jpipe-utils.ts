@@ -138,31 +138,6 @@ export function getLocalElements(node: Justification | Template): JustificationE
     return (node.contents?.body ?? []) as JustificationElement[];
 }
 
-/**
- * Whether some of `model`'s elements are in no body this can read: whether its `implements` chain
- * reaches a composed model or a template that does not resolve, or loops back on itself.
- *
- * A composed model — `template T is refine(P, Q) { hook: "a" }` — has no body. Its elements are the
- * ones the operator builds from its sources, under ids such as `P:b` that no `.jd` file declares,
- * and `implements` hands them down to every model below it. An `implements` that does not resolve
- * hides elements the same way: the chain stops there, and the inherited half of the list with it.
- * `getAllElements` and `expandedElements` read bodies only, so in both cases the list they return
- * is short without saying so, and anything asking "is there a conclusion / a `@support` / an
- * element with this id?" hears a confident no about a model the compiler builds (its example 028),
- * or one whose only problem is the `implements` line (#129). That line is already reported as an
- * unresolved reference, which points the user at the one thing to fix. A chain that loops has no
- * element list at all: the compiler reports `cyclic-implements` there and judges nothing else, so
- * neither may this (`implementsCycle` finds the cycle to report).
- *
- * Such a model is left alone by every rule that needs its whole element list: a missing element
- * there is a fact about what this can read, not about the model. The operators are never ported:
- * a composition's elements are to be read from the compiler (jpipe-vscode ADR-VSC-0034).
- */
-export function cannotSeeAllElements(model: Justification | Template): boolean {
-    return implementsLoops(model) || implementsChain(model).some(link =>
-        link.composition !== undefined || (link.parent !== undefined && !link.parent.ref));
-}
-
 /** Whether `model`'s `implements` chain comes back to a model already on it (`cyclic-implements`). */
 export function implementsLoops(model: Justification | Template): boolean {
     // The walk stops at a link with no parent, or at one whose parent it has already visited.
@@ -247,6 +222,21 @@ export function implementsChain(model: Justification | Template): Array<Justific
     return chain;
 }
 
+/**
+ * The namespace a reference to the model `id` is written with: `lib` for `lib:T`, empty for `T`.
+ * A reference that does not end with the model's id, being edited say, is read as having none.
+ */
+export function writtenNamespace(refText: string | undefined, id: string): string {
+    const written = (refText ?? '').replaceAll(/\s+/g, '');
+    return written.endsWith(`:${id}`) ? written.slice(0, -(id.length + 1)) : '';
+}
+
+/** `name` under `namespace`: `lib:T`, or `T` under none. */
+function qualify(namespace: string, name: string): string {
+    if (!namespace) return name;
+    return name ? `${namespace}:${name}` : namespace;
+}
+
 /** An element of a model, under the id the compiler gives it once `implements` is expanded. */
 export interface ExpandedElement {
     readonly element: JustificationElement;
@@ -265,57 +255,40 @@ export interface ExpandedElement {
  * template is left out: the compiler reports it as `inherited-conclusion` and discards it, so the
  * model keeps the conclusion it inherits, and a hook or an override answers to that one.
  *
+ * `namespace` is the one `model` is seen under, from the file the question is asked in: `lib` for a
+ * model of a file loaded `as lib`, empty for one of that file. The compiler names everything of a
+ * file loaded under a namespace with it, models and the qualified ids written there alike, so a
+ * template `T` of that file is `lib:T`, an element `a` it hands down is `lib:T:a`, and an override
+ * written `U:x` in it is `lib:U:x`. Namespaces compose along nested loads, so each `implements`
+ * adds the one its reference is written with (`writtenNamespace`).
+ *
  * Inherited elements come first and local ones after, which is the compiler's order and the one a
  * suffix match is first-found in. The AST node is the declaration, so identity survives the
  * renaming — which is what lets rename follow a hook spelled with the effective id.
  */
 export function expandedElements(
     model: Justification | Template,
+    namespace = '',
     seen: Set<Justification | Template> = new Set()
 ): ExpandedElement[] {
     if (seen.has(model)) return [];
     seen.add(model);
     const parent = model.parent?.ref;
-    const inherited = parent
-        ? expandedElements(parent, seen).map(({ element, id }) =>
-            ({ element, id: id.includes(':') ? id : `${parent.id}:${id}` }))
-        : [];
+    let inherited: ExpandedElement[] = [];
+    if (parent) {
+        const parentNamespace = qualify(namespace, writtenNamespace(model.parent?.$refText, parent.id));
+        const parentName = qualify(parentNamespace, parent.id);
+        inherited = expandedElements(parent, parentNamespace, seen).map(({ element, id }) =>
+            ({ element, id: id.includes(':') ? id : `${parentName}:${id}` }));
+    }
     const local = getLocalElements(model)
         .filter(element => !isDiscardedConclusion(element))
-        .map(element => ({ element, id: qualifiedIdText(element.id) }));
+        .map(element => {
+            const written = qualifiedIdText(element.id);
+            return { element, id: written.includes(':') ? qualify(namespace, written) : written };
+        });
     const replaced = new Set(local.map(entry => entry.id));
     return [...inherited.filter(entry => !replaced.has(entry.id)), ...local];
-}
-
-/**
- * The element a `refine` hook names in `base`, or `undefined` if it names none.
- *
- * A port of the compiler's `JustificationModel.findById`, and it must stay one: this decides both
- * whether a hook is reported as unknown and whether renaming an element rewrites it, so a rule
- * stricter than the compiler's invents errors and a looser one misses them.
- *
- * It matches against effective ids (`expandedElements`), so `hook: "T:e"` names an `e` that `Base`
- * inherits from `T` without overriding it. Two ways to match, in the compiler's order. An **exact**
- * id, and failing that a **suffix**: an id ending in `':' + hook`, which is what lets `hook: "a"`
- * name `T:a`. The suffix pass skips the conclusion, as the compiler's does, so an inherited
- * conclusion answers only to its full `T:c`.
- *
- * On a base for which `cannotSeeAllElements` holds, some elements are hidden from this, and the
- * compiler scans them first. An exact id stays reliable there — what the base declares itself
- * replaces any inherited element of that id — but a suffix match does not, since a hidden element
- * may end the same way. Only the exact pass runs on such a base, so `undefined` means "not found"
- * on a fully visible base and "cannot tell" on the other kind; callers must not report the latter.
- */
-export function hookTarget(
-    base: Justification | Template,
-    hook: string
-): JustificationElement | undefined {
-    const elements = expandedElements(base);
-    const exact = elements.find(entry => entry.id === hook);
-    if (exact) return exact.element;
-    if (cannotSeeAllElements(base)) return undefined;
-    const suffix = `:${hook}`;
-    return elements.find(entry => !isConclusion(entry.element) && entry.id.endsWith(suffix))?.element;
 }
 
 /**

@@ -27,7 +27,8 @@ import {
     type Unit
 } from './generated/ast.js';
 import { HOOK_KEY } from './jpipe-operators.js';
-import { hookTarget } from './jpipe-utils.js';
+import { hookTarget, type ModelContents } from './jpipe-model-contents.js';
+import { writtenNamespace } from './jpipe-utils.js';
 
 /** An identifier written out segment by segment — `['lib', 'T', 'abs']` for `lib:T:abs`. */
 export type NamePrefix = readonly string[];
@@ -222,34 +223,35 @@ export function elementEdits(
  * element declared `T:a`. Identity is also what keeps a same-named element of an unrelated model
  * out of the rename — spelling alone could not tell the two apart.
  *
- * On a base for which `cannotSeeAllElements` holds, `hookTarget` answers only for a hook spelling
- * an id exactly, and nothing here can say what any other hook names. That is the known cost — such a
+ * On a base whose contents cannot tell, `hookTarget` answers only for a hook spelling an id
+ * exactly, and nothing here can say what any other hook names. That is the known cost — such a
  * hook keeps the old spelling — and it is the honest half of a guess.
  *
  * Only the last segment is rewritten, so `"T:a"` becomes `"T:b"` and the qualifier survives.
  */
-export function hookEdits(
+export async function hookEdits(
     unit: Unit,
     affected: ReadonlySet<AstNode>,
-    newName: string
-): TextEdit[] {
-    const edits: TextEdit[] = [];
-    for (const model of modelsOf(unit)) {
+    newName: string,
+    contents: ModelContents
+): Promise<TextEdit[]> {
+    const hooks = modelsOf(unit).flatMap(model => {
         const composition = model.composition;
-        if (composition?.operator !== 'refine') continue;
-
+        if (composition?.operator !== 'refine') return [];
         const entry = composition.config?.entries.find(candidate => candidate.key === HOOK_KEY);
-        if (!entry?.value) continue;
-        const base = composition.params?.refs[0]?.ref;
-        if (!base) continue;
-
-        const target = hookTarget(base, entry.value);
-        if (!target || !affected.has(target)) continue;
-
+        const source = composition.params?.refs[0];
+        const base = source?.ref;
+        return entry?.value && base ? [{ entry, hook: entry.value, base, namespace: writtenNamespace(source?.$refText, base.id) }] : [];
+    });
+    // Each base's contents are asked at once, not one hook after another.
+    const targets = await Promise.all(hooks.map(async ({ hook, base, namespace }) =>
+        hookTarget(await contents.contentsOf(base, namespace), hook)));
+    return hooks.flatMap(({ entry }, i) => {
+        const target = targets[i];
+        if (!target || !affected.has(target)) return [];
         const edit = stringTailEdit(GrammarUtils.findNodeForProperty(entry.$cstNode, 'value'), newName);
-        if (edit) edits.push(edit);
-    }
-    return edits;
+        return edit ? [edit] : [];
+    });
 }
 
 /**

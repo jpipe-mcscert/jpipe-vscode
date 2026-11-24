@@ -874,6 +874,67 @@ describe('Hook value completion', () => {
         });
     });
 
+    // An override in a template between replaces the @support of that id, as it does in the
+    // compiler, so only what is still abstract in the justification's contents is offered (#131).
+    test('offers, in a justification, an override for each @support it still has to override', async () => {
+        await checkCompletion({
+            text: `
+                template U {
+                    conclusion c is "C"
+                    strategy s is "S"
+                    @support x is "X"
+                    @support y is "Y"
+                    x supports s
+                    y supports s
+                    s supports c
+                }
+                template T implements U {
+                    @support a is "A"
+                    evidence U:x is "X done"
+                }
+                justification J implements T {
+                    evidence U:y is "Y done"
+                    <|>
+                }
+            `,
+            index: 0,
+            assert: (completions) => {
+                const labels = completions.items.map(i => i.label);
+                expect(labels).toContain('evidence T:a');
+                expect(labels.filter(label => /^(evidence|sub-conclusion) U:/.test(label))).toEqual([]);
+            }
+        });
+    });
+
+    // A hook is looked up by the id the compiler gives the element in the base: an inherited `e`
+    // is `T:e` there, which names it exactly, even in a base whose other elements are hidden.
+    test('offers an inherited evidence under the id it has in the base', async () => {
+        await checkCompletion({
+            text: `
+                template T {
+                    conclusion c is "C"
+                    strategy s is "S"
+                    evidence e is "Inherited"
+                    @support a is "A"
+                    e supports s
+                    a supports s
+                    s supports c
+                }
+                justification Base implements T { evidence T:a is "Own" }
+                justification Ref { conclusion rc is "RC" }
+                justification Composed is refine(Base, Ref) { hook: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                const item = completions.items.find(i => i.label === 'T:e');
+                expect(item, completions.items.map(i => i.label).join(', ')).toBeDefined();
+                expect((item?.textEdit as { newText?: string })?.newText).toBe('T:e');
+                expect(completions.items.map(i => i.label)).toContain('T:a');
+                expect(completions.items.map(i => i.label)).not.toContain('e');
+            }
+        });
+    });
+
     // An id like `e` says nothing on its own; the label is what tells them apart.
     test('shows each candidate label beside its id', async () => {
         await checkCompletion({
