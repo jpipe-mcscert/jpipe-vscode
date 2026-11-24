@@ -86,6 +86,14 @@ export const RULE_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The codes of failures the compiler recovers from while reading a model, building it whole all
+ * the same: `inherited-conclusion` drops the conclusion a model implementing a template declares,
+ * with the relations using it, and goes on. Like `RULE_CODES`, they do not count against reading a
+ * model built on that one from the report (jpipe-vscode ADR-VSC-0034).
+ */
+export const RECOVERED_CODES: ReadonlySet<string> = new Set(['inherited-conclusion']);
+
+/**
  * Codes this extension coins, because the compiler has no rule of its own to adopt.
  *
  * Three reasons appear here, and the distinction matters when the compiler next gains a rule:
@@ -95,7 +103,7 @@ export const RULE_CODES: ReadonlySet<string> = new Set([
  *   `execution-error` catch-all before. The editor keeps a code per problem, because each is a
  *   repair of its own, and a quick fix is chosen by its code: `unknown-operator`,
  *   `operator-arity`, `duplicate-source`, `missing-config-key`, `unknown-config-key`,
- *   `unknown-unification-method`, `unknown-hook`.
+ *   `unknown-unification-method`, `unknown-hook`, `ambiguous-hook`, `hook-not-leaf`.
  * - **It reports it as `FATAL`, and a fatal carries no code by policy** (jpipe-compiler ADR-0016):
  *   the whole `load-*` family, `cyclic-load`, and `no-empty-unit` — an empty file is a syntax
  *   error there, `Compilation aborted due to syntax errors`, which no rule name reaches.
@@ -112,6 +120,8 @@ export const EXTENSION_ONLY_CODES = [
     'unknown-config-key',
     'unknown-unification-method',
     'unknown-hook',
+    'ambiguous-hook',
+    'hook-not-leaf',
     'missing-config-key',
     'support-override-type',
     'load-unresolved',

@@ -3,7 +3,6 @@ import { NodeFileSystem } from 'langium/node';
 import { createConnection, ProposedFeatures } from 'vscode-languageserver/node';
 import { createJpipeServices } from 'jpipe-language';
 import type { LogLevel } from 'jpipe-language';
-import { URI } from 'langium';
 import { COMPILER_INPUTS_CHANGED, COMPILER_REPORT, SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 
 // Create a connection to the client
@@ -36,32 +35,35 @@ shared.lsp.LanguageServer.onInitialize(params => {
     }
 });
 
+/**
+ * Validates every document again, under the workspace lock as every build is: a compiler report
+ * arriving meanwhile checks its file again too, and two checks of one document at once would
+ * each add their diagnostics.
+ */
+function checkEverythingAgain(): Promise<void> {
+    const { WorkspaceLock, LangiumDocuments, DocumentBuilder } = shared.workspace;
+    return WorkspaceLock.write(token => DocumentBuilder.build(LangiumDocuments.all.toArray(), { validation: true }, token));
+}
+
 // Apply later changes without a restart, and re-validate everything so diagnostics are
 // cleared for newly excluded files and restored for newly included ones.
 connection.onNotification(SET_EXCLUDED_PATHS, async (paths: unknown) => {
     Jpipe.exclusions.setExcludedPaths(toStringArray(paths) ?? []);
-    const documents = shared.workspace.LangiumDocuments.all.toArray();
-    await shared.workspace.DocumentBuilder.build(documents, { validation: true });
+    await checkEverythingAgain();
 });
 
 // Declaring a relation the build registers should take effect at once, like exclusions do.
 connection.onNotification(SET_UNIFICATION_METHODS, async (methods: unknown) => {
     Jpipe.unification.setAdditionalMethods(toStringArray(methods) ?? []);
-    const documents = shared.workspace.LangiumDocuments.all.toArray();
-    await shared.workspace.DocumentBuilder.build(documents, { validation: true });
+    await checkEverythingAgain();
 });
 
 // A composed model's elements are read from the compiler's report, which the client runs it for
 // (jpipe-vscode ADR-VSC-0034). When files it reads change on disk, the reports they can change are
 // forgotten, and the documents that read them are checked again.
 Jpipe.references.CompilerReports.connect(uri => connection.sendRequest(COMPILER_REPORT, { uri }));
-connection.onNotification(COMPILER_INPUTS_CHANGED, async (uris: unknown) => {
-    const forgotten = Jpipe.references.CompilerReports.forget(new Set(toStringArray(uris) ?? []));
-    const documents = forgotten
-        .map(uri => shared.workspace.LangiumDocuments.getDocument(URI.parse(uri)))
-        .filter(document => document !== undefined);
-    if (documents.length > 0) await shared.workspace.DocumentBuilder.build(documents, { validation: true });
-});
+connection.onNotification(COMPILER_INPUTS_CHANGED, (uris: unknown) =>
+    Jpipe.references.CompilerReports.inputsChanged(new Set(toStringArray(uris) ?? [])));
 
 // Start the language server with the shared services
 startLanguageServer(shared);

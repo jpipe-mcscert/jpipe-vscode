@@ -12,12 +12,13 @@
  * run and whether it is recent enough (jpipe-vscode ADR-VSC-0016, ADR-VSC-0032), and the answer is
  * the report of the file **as last saved**: the compiler reads files from disk.
  */
-import { URI, type LangiumDocument } from 'langium';
+import * as fs from 'node:fs';
+import { DocumentState, URI, type LangiumDocument } from 'langium';
 import type { Unit } from './generated/ast.js';
 import type { JpipeServices } from './jpipe-module.js';
 import type { JpipeServerLogger } from './jpipe-logger.js';
-import type { JpipeImportService } from './jpipe-import.js';
-import type { ElementKind } from './jpipe-utils.js';
+import { fileKey, type JpipeImportService } from './jpipe-import.js';
+import { fsPathOf, type ElementKind } from './jpipe-utils.js';
 import { messageOf } from './jpipe-errors.js';
 
 /** A position in a source file: `line` 1-based, `column` 0-based, `source` the report's own file when absent. */
@@ -115,16 +116,37 @@ export function readReport(value: unknown): CompilerReport | undefined {
  */
 export type ReportRequest = (uri: string) => Promise<unknown>;
 
+/** How long an answer without a report stands before it is asked again: a compiler may have been installed meanwhile, or a run may have failed once. */
+const RETRY_AFTER_MS = 60_000;
+
+/** What is known of one file's report: on its way, or arrived, as a report or as none. */
+interface Entry {
+    arrived: boolean;
+    report?: CompilerReport;
+    /** When it was asked, then when it arrived. */
+    at: number;
+}
+
 /**
  * The compiler's reports, one per file asked about, kept until a save can change them.
  *
  * A report is asked for only when a model builds on a composition, and only once until a file it
- * depends on is saved: nothing is sent on a keystroke. Asking for a report already on its way
- * waits for that one.
+ * depends on is saved: nothing is sent on a keystroke. Nothing waits for one either: checking a
+ * file must not stand behind a JVM start, nor every file queued behind it. Until a file's report
+ * has arrived, `reportOf` has none to give, and the file is checked again once it arrives. An
+ * answer without a report is asked again after a minute, since the compiler may have been
+ * installed outside the editor, or a run may have failed once.
+ *
+ * The report says where things are in the files as they were saved, and it is read against the
+ * documents, whose text may have changed since: `readsAsSaved` says whether a document still
+ * reads as its saved file up to a point.
  */
 export class CompilerReports {
     private request: ReportRequest | undefined;
-    private readonly reports = new Map<string, Promise<CompilerReport | undefined>>();
+    private readonly entries = new Map<string, Entry>();
+    /** The saved text of each file read, by `fileKey`; `undefined` for a file that cannot be read. */
+    private readonly saved = new Map<string, string | undefined>();
+    private readonly inFlight = new Set<Promise<void>>();
     private readonly logger: JpipeServerLogger;
     private readonly services: JpipeServices;
 
@@ -140,39 +162,102 @@ export class CompilerReports {
     /** Asks `request` from now on. Until it is set, as in tests and outside an editor, there is no report. */
     connect(request: ReportRequest | undefined): void {
         this.request = request;
-        this.reports.clear();
+        this.entries.clear();
+        this.saved.clear();
     }
 
-    /** The report of `document`'s file as last saved, or `undefined` if there is none to be had. */
-    reportOf(document: LangiumDocument): Promise<CompilerReport | undefined> {
+    /**
+     * The report of `document`'s file as last saved, if it has arrived. When it has not, it is
+     * asked for, unless it is already on its way, and `document` is checked again once it comes.
+     */
+    reportOf(document: LangiumDocument): CompilerReport | undefined {
         const request = this.request;
-        if (!request || document.uri.scheme !== 'file') return Promise.resolve(undefined);
+        if (!request || document.uri.scheme !== 'file') return undefined;
         const key = document.uri.toString();
-        let report = this.reports.get(key);
-        if (!report) {
-            report = request(key).then(readReport, (error: unknown) => {
+        const entry = this.entries.get(key);
+        if (entry && (!entry.arrived || entry.report || Date.now() - entry.at < RETRY_AFTER_MS)) return entry.report;
+        this.ask(request, key);
+        return undefined;
+    }
+
+    private ask(request: ReportRequest, key: string): void {
+        const entry: Entry = { arrived: false, at: Date.now() };
+        this.entries.set(key, entry);
+        const arrival = request(key)
+            .then(readReport, (error: unknown) => {
                 this.logger.debug(`No compiler report for ${key}: ${messageOf(error)}`);
                 return undefined;
-            });
-            this.reports.set(key, report);
-        }
-        return report;
+            })
+            .then(async report => {
+                // Forgotten on its way: the files it was made from have changed since.
+                if (this.entries.get(key) !== entry) return;
+                Object.assign(entry, { arrived: true, report, at: Date.now() });
+                // A file checked without its report was checked with *cannot tell*, which only a
+                // report changes.
+                if (report) await this.recheck([key]);
+            })
+            .catch((error: unknown) => this.logger.error(`Could not check ${key} again: ${messageOf(error)}`));
+        this.inFlight.add(arrival);
+        void arrival.finally(() => this.inFlight.delete(arrival));
+    }
+
+    /** Resolves once no report is on its way, and every document one arrived for is checked again. */
+    async idle(): Promise<void> {
+        while (this.inFlight.size > 0) await Promise.all([...this.inFlight]);
+    }
+
+    /**
+     * Whether `document` reads, up to `end` (an offset), as its file was saved: whether what a
+     * report places before `end` is where the document has it.
+     */
+    readsAsSaved(document: LangiumDocument, end: number): boolean {
+        const file = fsPathOf(document.uri);
+        const key = fileKey(file);
+        if (!this.saved.has(key)) this.saved.set(key, readSaved(file));
+        const saved = this.saved.get(key);
+        return saved !== undefined && document.textDocument.getText().slice(0, end) === saved.slice(0, end);
+    }
+
+    /**
+     * The files `uris` changed on disk, or every file when `uris` is empty, for a change of
+     * compiler: forgets what they may have changed, and checks again every document whose report
+     * is forgotten.
+     */
+    async inputsChanged(uris: ReadonlySet<string>): Promise<void> {
+        if (uris.size === 0) this.saved.clear();
+        for (const uri of uris) this.saved.delete(fileKey(fsPathOf(URI.parse(uri))));
+        await this.recheck(this.forget(uris));
     }
 
     /**
      * Forgets the reports a save of `uris` may have changed: those of the saved files, and of
-     * every file that loads one, directly or not. An empty set forgets all of them, for a change
-     * of compiler. Returns the URIs of the documents whose reports were forgotten, so that they can
-     * be checked again.
+     * every file that loads one, directly or not. An empty set forgets all of them. Returns the
+     * URIs of the documents whose reports were forgotten.
      */
     forget(uris: ReadonlySet<string>): string[] {
         const forgotten: string[] = [];
-        for (const key of [...this.reports.keys()]) {
+        for (const key of [...this.entries.keys()]) {
             if (uris.size > 0 && !uris.has(key) && !this.loadsAny(key, uris)) continue;
-            this.reports.delete(key);
+            this.entries.delete(key);
             forgotten.push(key);
         }
         return forgotten;
+    }
+
+    /**
+     * Checks the documents of `keys` again. Under the workspace lock, as every build is: a write
+     * cancels the one running, and `update` then builds again whatever that one left unfinished.
+     */
+    private async recheck(keys: readonly string[]): Promise<void> {
+        const workspace = this.services.shared.workspace;
+        const documents = keys
+            .map(key => workspace.LangiumDocuments.getDocument(URI.parse(key)))
+            .filter(document => document !== undefined);
+        if (documents.length === 0) return;
+        await workspace.WorkspaceLock.write(async token => {
+            for (const document of documents) workspace.DocumentBuilder.resetToState(document, DocumentState.IndexedReferences);
+            await workspace.DocumentBuilder.update([], [], token);
+        });
     }
 
     private loadsAny(key: string, uris: ReadonlySet<string>): boolean {
@@ -181,5 +266,13 @@ export class CompilerReports {
         if (!document) return true;
         const unit = document.parseResult.value as Unit | undefined;
         return !unit || this.importService.loadsAnyOf(unit, document, uris);
+    }
+}
+
+function readSaved(file: string): string | undefined {
+    try {
+        return fs.readFileSync(file, 'utf8');
+    } catch {
+        return undefined;
     }
 }

@@ -42,7 +42,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
         jpipe-layout.ts         ← the house layout, pure over a document (what the formatter runs)
         jpipe-utils.ts          ← getAllElements / getLocalElements (AST helpers)
         jpipe-model-contents.ts ← a model's elements, for every rule and provider: declared or compiled, or *cannot tell* (ADR-VSC-0034)
-        jpipe-compiler-report.ts ← the compiler's `diagnostic -f json` report, asked of the client, cached per file until a save (ADR-VSC-0034)
+        jpipe-compiler-report.ts ← the compiler's `diagnostic -f json` report, asked of the client, never waited for (its file is checked again on arrival), cached per file until a save (ADR-VSC-0034)
         jpipe-overrides.ts      ← what an override names among inherited elements, bound as the compiler binds ids
         jpipe-glob.ts           ← Java-NIO glob matcher for `load` patterns (ADR-VSC-0007)
         code-actions/           ← one module per quick-fix/refactoring, aggregated by index.ts

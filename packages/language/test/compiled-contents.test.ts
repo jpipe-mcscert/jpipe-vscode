@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as url from 'node:url';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { EmptyFileSystem, URI, type LangiumDocument } from 'langium';
 import { clearDocuments, parseHelper } from 'langium/test';
 import { Diagnostic } from 'vscode-languageserver-types';
@@ -16,7 +16,7 @@ import { listedIn } from '../src/jpipe-model-contents.js';
  * The reports under `fixtures/compiled/` are real: `jpipe --headless diagnostic -f json -i <file>`,
  * run by jPipe 4.1.0 in that folder, with the folder's own path removed from `main.report.json`
  * so that it names `lib.jd` relatively. Their models are jpipe-compiler's examples 028 and 035,
- * with a few additions marked as such.
+ * with a few additions marked as such, and variations on 035 (`hooks.jd`, `recovered.jd`).
  */
 
 const fixtures = path.join(path.dirname(url.fileURLToPath(import.meta.url)), 'fixtures', 'compiled');
@@ -25,10 +25,15 @@ let services: ReturnType<typeof createJpipeServices>;
 let documents: LangiumDocument<Unit>[] = [];
 let asked: string[] = [];
 
-/** What the client answers: the captured report of the file, or `null` when there is none. */
+/**
+ * What the client answers: the captured report of the file, or `null` when there is none. Not
+ * before the check that asked has ended, as a compiler's run does not: these checks are built
+ * outside the workspace lock, which keeps a check and the one its report brings apart.
+ */
 async function fromFixtures(uri: string): Promise<unknown> {
     const name = path.basename(URI.parse(uri).fsPath);
     asked.push(name);
+    await new Promise(resolve => setTimeout(resolve, 0));
     const report = path.join(fixtures, name.replace(/\.jd$/, '.report.json'));
     return fs.existsSync(report) ? JSON.parse(fs.readFileSync(report, 'utf8')) : null;
 }
@@ -40,19 +45,28 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+    await services.Jpipe.references.CompilerReports.idle();
     await clearDocuments(services.shared, documents);
     documents = [];
+    vi.restoreAllMocks();
 });
 
-async function open(name: string): Promise<LangiumDocument<Unit>> {
+/**
+ * `name` opened and checked, as saved unless `text` says otherwise, and checked again once its
+ * report has arrived, unless `waiting` says not to wait for it.
+ */
+async function open(name: string, { text, waiting = true }: { text?: string; waiting?: boolean } = {}): Promise<LangiumDocument<Unit>> {
     const file = path.join(fixtures, name);
-    const document = await parseHelper<Unit>(services.Jpipe)(fs.readFileSync(file, 'utf8'), {
+    const document = await parseHelper<Unit>(services.Jpipe)(text ?? fs.readFileSync(file, 'utf8'), {
         documentUri: url.pathToFileURL(file).toString(),
         validation: true
     });
     documents.push(document);
+    if (waiting) await services.Jpipe.references.CompilerReports.idle();
     return document;
 }
+
+const saved = (name: string): string => fs.readFileSync(path.join(fixtures, name), 'utf8');
 
 /** Each error as `line:code`, lines 1-based as the compiler counts them. */
 const errors = (document: LangiumDocument) => (document.diagnostics ?? [])
@@ -132,6 +146,49 @@ describe('a model built on a composition', () => {
         expect(contents.kind).toBe('cannot-tell');
     });
 
+    test('is not judged on a template whose source the compiler recovered from', async () => {
+        const document = await open('recovered.jd');
+        // 'l' declares a conclusion it inherits: an error, but 'l' and 'both' are built whole.
+        const k = document.textDocument.getText().split('\n').findIndex(line => line.startsWith('justification k')) + 1;
+        expect(errors(document)).toEqual(['14:inherited-conclusion', `${k}:no-abstract-support`, `${k}:no-abstract-support`]);
+        expect(document.diagnostics!.filter(d => d.code === 'no-abstract-support').map(d => (d.data as { expectedKey: string }).expectedKey))
+            .toEqual(['l:top:h', 'r:top:h']);
+    });
+
+    test('is told a hook names several elements, or an override is none, as the compiler tells it', async () => {
+        const document = await open('hooks.jd');
+        const twice = document.textDocument.getText().split('\n').findIndex(line => line.startsWith('justification twice')) + 1;
+        expect(errors(document)).toEqual(['34:ambiguous-hook', `${twice}:no-abstract-support`, `${twice}:no-abstract-support`, '42:strategy-supported']);
+        expect(messages(document, 'ambiguous-hook')).toEqual([
+            "ambiguous hook 'top:h' in 'both': it names 'l:top:h', 'r:top:h'; write the qualified id"
+        ]);
+    });
+
+    test('cannot tell while a file it is built from reads otherwise than saved, before it', async () => {
+        const above = await open('refine.jd', { text: `// not saved\n${saved('refine.jd')}` });
+        expect(errors(above)).toEqual([]);
+        expect((await services.Jpipe.references.ModelContents.contentsOf(modelNamed(above, 'ready'))).kind).toBe('cannot-tell');
+        await clearDocuments(services.shared, documents);
+        documents = [];
+        // Past the last model it is built from, an edit moves nothing the report places.
+        const below = await open('refine.jd', { text: `${saved('refine.jd')}\n// not saved\n` });
+        expect(errors(below)).toEqual(['115:no-abstract-support', '129:unknown-hook']);
+    });
+
+    test('does not wait for its report, and is checked again once it arrives', async () => {
+        let deliver!: () => void;
+        const arrived = new Promise<void>(resolve => { deliver = resolve; });
+        services.Jpipe.references.CompilerReports.connect(async uri => {
+            await arrived;
+            return fromFixtures(uri);
+        });
+        const document = await open('refine.jd', { waiting: false });
+        expect(errors(document)).toEqual([]);
+        deliver();
+        await services.Jpipe.references.CompilerReports.idle();
+        expect(errors(document)).toEqual(['115:no-abstract-support', '129:unknown-hook']);
+    });
+
     test('is judged as before when there is no compiler', async () => {
         services.Jpipe.references.CompilerReports.connect(undefined);
         expect(errors(await open('ambiguous.jd')).filter(error => !error.endsWith('linking-error'))).toEqual(['69:no-abstract-support']);
@@ -183,10 +240,28 @@ describe('the compiler\'s reports', () => {
         const lib = url.pathToFileURL(path.join(fixtures, 'lib.jd')).toString();
         // main.jd loads lib.jd; refine.jd does not.
         expect(reports.forget(new Set([lib]))).toEqual([main.uri.toString()]);
-        await reports.reportOf(main);
-        await reports.reportOf(refine);
+        reports.reportOf(main);
+        reports.reportOf(refine);
+        await reports.idle();
         expect(asked).toEqual(['main.jd', 'refine.jd', 'main.jd']);
         expect(reports.forget(new Set())).toEqual(expect.arrayContaining([main.uri.toString(), refine.uri.toString()]));
+    });
+
+    test('are asked again a minute after there was none', async () => {
+        const reports = services.Jpipe.references.CompilerReports;
+        reports.connect(async uri => {
+            asked.push(path.basename(URI.parse(uri).fsPath));
+            return null;
+        });
+        const document = await open('refine.jd');
+        reports.reportOf(document);
+        await reports.idle();
+        expect(asked).toEqual(['refine.jd']);
+        const now = Date.now();
+        vi.spyOn(Date, 'now').mockReturnValue(now + 61_000);
+        reports.reportOf(document);
+        await reports.idle();
+        expect(asked).toEqual(['refine.jd', 'refine.jd']);
     });
 
     test('are read whole, in the version this release knows, or not at all', () => {

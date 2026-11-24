@@ -75,7 +75,13 @@ holds:
   locates may lie in the composed model or in any model it is built from. A failure located
   nowhere, under a code, may concern any of them. Diagnostics of the compiler's validation rules
   (`RULE_CODES`) are not failures: they run on a model already built, and may lie in another
-  model (`no-abstract-support` lies on the `@support`).
+  model (`no-abstract-support` lies on the `@support`). Nor are those the compiler recovers from
+  while reading a model (`RECOVERED_CODES`): `inherited-conclusion` drops a conclusion, and the
+  model is built whole without it.
+- **A model is read from the report only while its files read as saved.** The report places
+  elements and failures where the saved files have them. A file the composed model is built from
+  must therefore read as saved, in the editor, up to the last of those models it holds: an edit
+  above them moves every line the report names, and one below moves none.
 - **Compiled elements are tied back to source.** Each element is linked to the declaration the
   report places it at, so identity survives: go-to-definition lands on that declaration, and a
   rename reaches a hook naming an element built from it. An element an operator merged from
@@ -87,7 +93,8 @@ holds:
   a compiler itself. This keeps the language package free of the editor's settings and of any
   process launching.
 - ***Cannot tell* is the answer whenever the compiler cannot give one:** no compiler, one older
-  than 4.0.0, a model it did not build whole, or a request that fails. A consumer given that
+  than 4.0.0, a model it did not build whole, a file edited since, a request that fails, or a
+  report still on its way. A consumer given that
   answer stays silent, exactly as every rule did on a composed model before. The declared
   implementation gives the same answer for a chain that does not resolve (#129), so consumers
   handle one case, not two.
@@ -130,11 +137,18 @@ holds:
   for all of them.
 - **Compiled contents follow the saved files.** The compiler reads its input and every file it
   loads from disk. Contents built on a composition are therefore as of the last save, while
-  declared contents follow the buffer. Reports are cached for each file asking, and dropped when
-  that file, or one it loads, changes on disk; the documents that read them are checked again.
-- **Running the compiler costs a JVM start.** A report is asked only for a file with a model
-  that builds on a composition, once until a file it reads changes, two at a time, and never on
-  a keystroke. A workspace without compositions never starts the compiler for this.
+  declared contents follow the buffer, and an edit above a composed model's sources silences them
+  until it is saved. Reports are cached for each file asking, and dropped when that file, or one
+  it loads, changes on disk, or when the compiler or its settings change; the documents that read
+  them are checked again. An answer without a report is asked again after a minute, since a
+  compiler may have been installed outside the editor.
+- **Running the compiler costs a JVM start, and nothing waits for it.** A report is asked only
+  for a file with a model that builds on a composition, once until a file it reads changes, two
+  at a time, and never on a keystroke. Checking a file never waits for one: Langium checks
+  documents one after the other, and every file would stand behind each JVM start. Until a
+  report arrives, the file is checked as *cannot tell*, and it is checked again when it does,
+  under the workspace lock, as every build is. A workspace without compositions never starts the
+  compiler for this.
 - **A composed model's features depend on a recent compiler.** With no compiler, or one older
   than 4.0.0, they stay silent. This does not raise the minimum compiler (jpipe-vscode
   ADR-VSC-0032): 4.0.0 becomes the recommended release, and Check jPipe Installation says what
@@ -150,6 +164,10 @@ holds:
 - **No feature may reach around the API.** Reading `contents.body`, or calling `getAllElements` or
   `expandedElements` from a rule or a provider, is the bypass this record forbids. Those helpers
   become details of the declared implementation.
+- **A `refine` hook is bound as the compiler binds it.** The base's contents tell what a hook
+  names, so the editor reports what the compiler refuses there: a hook naming several elements
+  (`ambiguous-hook`) or one that is no leaf (`hook-not-leaf`), on any base, as well as one naming
+  nothing.
 - **Checks decided by the source alone do not need contents.** These include an operator's name,
   arity and configuration keys, its sources resolving, an `implements` or operator cycle, and a
   repeated source (#128). They are written against the AST, as today.

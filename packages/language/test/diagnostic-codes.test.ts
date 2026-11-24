@@ -58,6 +58,12 @@ const TEMPLATE = 'template T { @support a is "A" @support b is "B" conclusion c 
 const CYCLE = 'template A implements B { conclusion c is "C"  strategy s is "S"  @support h is "H"  s supports c  h supports s }\n'
     + 'template B implements A { @support g is "G" }';
 const MISSING_OVERRIDES = `${TEMPLATE}\njustification J implements T { evidence e is "E" }`;
+/** `e` is inherited twice by `J`, as `M:R:e` and `M:e`: a hook spelling `e` names both. */
+const AMBIGUOUS_HOOK = 'template R { conclusion c is "C" strategy s is "S" evidence e is "E" @support h is "H"\n e supports s\n h supports s\n s supports c }\n'
+    + 'template M implements R { evidence e is "E2" }\n'
+    + 'justification J implements M { evidence M:R:h is "H" }\n'
+    + 'justification B { conclusion d is "D" }\n'
+    + 'justification X is refine(J, B) { hook: "e" }';
 
 describe('diagnostic codes', () => {
 
@@ -83,6 +89,9 @@ describe('diagnostic codes', () => {
         [JpipeIssue.CyclicImplements, CYCLE],
         [JpipeIssue.UnknownUnificationMethod, 'justification A { conclusion c is "C" }\njustification B is assemble(A) { conclusionLabel: "C" strategyLabel: "S" unifyBy: "nope" }'],
         [JpipeIssue.UnknownHook, 'justification A { conclusion c is "C" }\njustification B { conclusion d is "D" }\njustification R is refine(A, B) { hook: "nope" }'],
+        [JpipeIssue.AmbiguousHook, AMBIGUOUS_HOOK],
+        [JpipeIssue.HookNotLeaf, 'justification A { conclusion c is "C" strategy s is "S" evidence e is "E"\n e supports s\n s supports c }\n'
+            + 'justification B { conclusion d is "D" }\njustification R is refine(A, B) { hook: "s" }'],
         [JpipeIssue.NoDuplicateIds, 'justification J { conclusion c is "C" evidence c is "E" }'],
         [JpipeIssue.StrategySupported, 'justification J { conclusion c is "C" strategy s is "S"\n s supports c }'],
         [JpipeIssue.InvalidSupport, 'justification J { conclusion c is "C" strategy s is "S" strategy t is "T"\n t supports s\n s supports c }'],
@@ -339,16 +348,22 @@ describe('a model that implements a template inherits its conclusion', () => {
             expect(missing).toEqual(['T:e']);
         });
 
-        // compiler 4.0.0 finds `T:c`, the conclusion the model keeps, and does not find `x`.
+        // compiler 4.0.0 finds `T:c`, the conclusion the model keeps, and refuses it as one; it
+        // does not find `x`.
         test('a refine hook finds the inherited conclusion, not the discarded one', async () => {
             const source = `${BASE}\njustification J implements T { evidence T:e is "E" conclusion x is "X" }\n`
                 + 'justification B { conclusion d is "D" }\n'
                 + 'justification R is refine(J, B) { hook: "T:c" }\n'
                 + 'justification R2 is refine(J, B) { hook: "x" }';
-            const unknown = (await diagnosticsIn(source))
+            const diagnostics = await diagnosticsIn(source);
+            const unknown = diagnostics
                 .filter(d => issueCodeOf(d) === JpipeIssue.UnknownHook)
                 .map(d => (d.data as JpipeIssueData<typeof JpipeIssue.UnknownHook>).actual);
             expect(unknown).toEqual(['x']);
+            const notLeaves = diagnostics
+                .filter(d => issueCodeOf(d) === JpipeIssue.HookNotLeaf)
+                .map(d => (d.data as JpipeIssueData<typeof JpipeIssue.HookNotLeaf>).actual);
+            expect(notLeaves).toEqual(['T:c']);
         });
 
         test('its label is not checked', async () => {

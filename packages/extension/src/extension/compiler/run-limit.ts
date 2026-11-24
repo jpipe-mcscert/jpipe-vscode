@@ -12,15 +12,16 @@ export class RunLimit {
     constructor(private readonly max: number) {}
 
     async run<T>(task: () => Promise<T>): Promise<T> {
-        while (this.running >= this.max) {
-            await new Promise<void>(resolve => this.waiting.push(resolve));
-        }
-        this.running++;
+        // A run that ends hands its slot to the first one waiting, which never gives it up between:
+        // a run arriving meanwhile finds every slot taken, and waits behind it.
+        if (this.running < this.max) this.running++;
+        else await new Promise<void>(resolve => this.waiting.push(resolve));
         try {
             return await task();
         } finally {
-            this.running--;
-            this.waiting.shift()?.();
+            const next = this.waiting.shift();
+            if (next) next();
+            else this.running--;
         }
     }
 }

@@ -1,0 +1,43 @@
+// Hooks into a composed model, and an override that is not one. 'top', 'l', 'r'
+// and 'both' are those of ambiguous.jd.
+template top {
+    conclusion c is "A top conclusion"
+    strategy   s is "A top strategy"
+    @support   h is "A top abstract support"
+    s supports c
+    h supports s
+}
+
+template l implements top {
+    evidence e is "A left evidence"
+}
+
+template r implements top {
+    evidence e is "A right evidence"
+}
+
+template both is assemble(l, r) {
+    conclusionLabel: "Both"
+    strategyLabel:   "Both strategies"
+    unifyExclude:    "l:top:h,r:top:h"
+}
+
+justification p {
+    conclusion c is "A refinement"
+    strategy   s is "Its strategy"
+    evidence   f is "Its evidence"
+    f supports s
+    s supports c
+}
+
+// 'top:h' names both l:top:h and r:top:h.
+justification x is refine(both, p) { hook: "top:h" }
+
+// 'l:e' is an evidence 'both' keeps: refined, without a word.
+template y is refine(both, p) { hook: "l:e" }
+
+// A strategy written with the end of a @support's id is an element of its own,
+// not an override: both @support elements are still missing.
+justification twice implements both {
+    strategy top:h is "Not an override"
+}

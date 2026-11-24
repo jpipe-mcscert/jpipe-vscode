@@ -21,12 +21,12 @@ import * as path from 'node:path';
 import { AstUtils, type LangiumDocument } from 'langium';
 import type { JustificationElement, Justification, Template } from './generated/ast.js';
 import {
-    buildsOnCycle, expandedElements, expandedOnto, fsPathOf, getLocalElements, implementsChain, implementsLoops,
-    qualify, writtenNamespace, type ModelElement
+    bind, buildsOnCycle, expandedElements, expandedOnto, fsPathOf, getLocalElements, implementsChain, implementsLoops,
+    qualify, writtenNamespace, type Binding, type ModelElement
 } from './jpipe-utils.js';
 import { fileKey } from './jpipe-import.js';
 import type { CompilerReport, CompilerReports, ReportModel } from './jpipe-compiler-report.js';
-import { RULE_CODES } from './jpipe-compiler-codes.js';
+import { RECOVERED_CODES, RULE_CODES } from './jpipe-compiler-codes.js';
 
 /**
  * What `contentsOf` answers. `elements` is the whole list, with the `aliases` the model's own
@@ -88,8 +88,10 @@ export class DeclaredContents implements ContentsSource {
  * The report is the file's as last saved, and it covers the whole file. A model is read from it
  * only when the compiler built it whole: when no error lies in it or in any model it is built
  * from. A model the compiler failed to build is still in the report, as far as it got, and its
- * elements are missing whatever came after the failure. *Cannot tell* is the answer then, and
- * whenever there is no report: no compiler, one too old, or a run that failed.
+ * elements are missing whatever came after the failure. It is read only while the files of those
+ * models read as saved up to the last of them, too: the report places elements and errors where
+ * the saved file has them. *Cannot tell* is the answer otherwise, and whenever there is no report:
+ * no compiler, one too old, a run that failed, or one still on its way.
  */
 export class CompiledContents implements ContentsSource {
     constructor(private readonly reports?: CompilerReports) {}
@@ -106,14 +108,24 @@ export class CompiledContents implements ContentsSource {
         if (!base || !this.reports || buildsOnCycle(base)) return cannotTell(model, namespace);
 
         const document = from ?? AstUtils.getDocument(model);
-        const report = await this.reports.reportOf(document);
+        const report = this.reports.reportOf(document);
         const built = report?.models.find(candidate => candidate.name === qualify(linkNamespace, base.id));
-        if (!report || !built || !builtWhole(report, base, document)) return cannotTell(model, namespace);
+        if (!report || !built || !this.readsAsSaved(base) || !builtWhole(report, base, document)) return cannotTell(model, namespace);
 
         const elements = expandedOnto(model, namespace, base, elementsOf(built, base, report, document));
         return model === base
             ? { kind: 'elements', elements, aliases: new Map(built.aliases.map(alias => [alias.from, alias.to])) }
             : { kind: 'elements', elements };
+    }
+
+    /** Whether each file `base` is built from reads as saved, up to the end of the last of its models there. */
+    private readsAsSaved(base: Justification | Template): boolean {
+        const ends = new Map<LangiumDocument, number>();
+        for (const model of buildClosure(base)) {
+            const document = AstUtils.getDocument(model);
+            ends.set(document, Math.max(ends.get(document) ?? 0, model.$cstNode?.end ?? Infinity));
+        }
+        return [...ends].every(([document, end]) => this.reports!.readsAsSaved(document, end));
     }
 }
 
@@ -149,13 +161,13 @@ function spanOf(model: Justification | Template): { file: string; first: number;
  * built from, itself included. A failure it reports nowhere in particular, but under a code, may
  * be about any of them. The ones under no code are its summaries, `model construction failed`,
  * which repeat what it reported where it was. What its validation rules report is no failure to
- * build (`RULE_CODES`).
+ * build (`RULE_CODES`), nor what it recovers from while reading (`RECOVERED_CODES`).
  */
 function builtWhole(report: CompilerReport, base: Justification | Template, document: LangiumDocument): boolean {
     const spans = buildClosure(base).map(spanOf);
     if (spans.includes(undefined)) return false;
     return report.diagnostics.every(diagnostic => {
-        if (diagnostic.code !== undefined && RULE_CODES.has(diagnostic.code)) return true;
+        if (diagnostic.code !== undefined && (RULE_CODES.has(diagnostic.code) || RECOVERED_CODES.has(diagnostic.code))) return true;
         if (diagnostic.line === undefined) return diagnostic.code === undefined;
         const file = fileKey(fileOf(diagnostic.source, report, document));
         const line = diagnostic.line;
@@ -236,33 +248,37 @@ function followAliases(aliases: ReadonlyMap<string, string> | undefined, id: str
 }
 
 /**
- * The element a `refine` hook names in a base whose contents are `contents`, or `undefined` if it
- * names none.
+ * What a `refine` hook names in a base whose contents are `contents`, or `undefined` when they
+ * cannot tell.
  *
  * A port of the compiler's `RefineOperator.resolveHook`, and it must stay one: this decides both
- * whether a hook is reported as unknown and whether renaming an element rewrites it, so a rule
- * stricter than the compiler's invents errors and a looser one misses them.
+ * whether a hook is reported and whether renaming an element rewrites it, so a rule stricter than
+ * the compiler's invents errors and a looser one misses them.
  *
  * The hook is first followed through the base's aliases, since an operator may have merged the
  * element it names into another, under a new id, at any step: `both:a:e` names what `both`'s
- * unification made of `a:e`. Then it matches against effective ids, so `hook: "T:e"` names an `e`
- * that `Base` inherits from `T` without overriding it. Two ways to match, in the compiler's order.
- * An **exact** id, and failing that a **suffix**: an id ending in `':' + hook`, which is what lets
- * `hook: "a"` name `T:a`. The suffix pass skips the conclusion, so an inherited conclusion answers
- * only to its full `T:c`.
+ * unification made of `a:e`. Then it is bound as the compiler binds an id the source writes
+ * (`bind`): the element with exactly that id, or failing that the one whose id ends with
+ * `':' + hook`, the conclusion last, so `hook: "a"` names `T:a`. Several such elements are an
+ * ambiguity, which the compiler refuses rather than settle by order. What the hook names must then
+ * be an evidence or a `@support`, which callers check: only a leaf can be refined.
  *
  * When the contents *cannot tell*, some elements are hidden from this, and the compiler scans them
  * first. An exact id stays reliable among what the base declares itself, which replaces any
  * inherited element of that id, and nowhere else: an inherited element may share its id with a
- * hidden one, and a suffix may match a hidden one too. Only that exact pass runs then, so
- * `undefined` means "not found" for whole contents and "cannot tell" otherwise; callers must not
- * report the latter.
+ * hidden one, and a suffix may match a hidden one too. Only that exact pass runs then, and
+ * `undefined` answers for everything else.
  */
+export function bindHook(contents: Contents, hook: string): Binding | undefined {
+    if (contents.kind === 'cannot-tell') {
+        const declared = contents.declared.find(entry => entry.id === hook);
+        return declared ? { kind: 'found', element: declared } : undefined;
+    }
+    return bind(contents.elements, followAliases(contents.aliases, hook));
+}
+
+/** The element a `refine` hook names in a base whose contents are `contents`, when it names exactly one (`bindHook`). */
 export function hookTarget(contents: Contents, hook: string): ModelElement | undefined {
-    if (contents.kind === 'cannot-tell') return contents.declared.find(entry => entry.id === hook);
-    const id = followAliases(contents.aliases, hook);
-    const exact = contents.elements.find(entry => entry.id === id);
-    if (exact) return exact;
-    const suffix = `:${id}`;
-    return contents.elements.find(entry => entry.kind !== 'conclusion' && entry.id.endsWith(suffix));
+    const binding = bindHook(contents, hook);
+    return binding?.kind === 'found' ? binding.element : undefined;
 }

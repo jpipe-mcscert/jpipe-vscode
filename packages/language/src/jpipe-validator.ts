@@ -40,7 +40,7 @@ import {
     fsPathOf, getLocalElements, buildsOnCycle, implementsCycle, isDiscardedConclusion, qualifiedIdText, writtenNamespace,
     type ModelElement
 } from './jpipe-utils.js';
-import { hookTarget, type ModelContents } from './jpipe-model-contents.js';
+import { bindHook, listedIn, type ModelContents } from './jpipe-model-contents.js';
 import { bind, inheritedElements } from './jpipe-overrides.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { byCodeUnit } from './jpipe-text.js';
@@ -267,18 +267,21 @@ export class JpipeValidator {
     }
 
     /**
-     * Flags a `refine` whose `hook` names no element of the model being refined.
+     * Flags a `refine` whose `hook` names no element of the model being refined, several of them,
+     * or one that is not a leaf.
      *
      * `hook` is a string in the grammar, so nothing links it: a typo, or a rename that passed it
      * by, produced a model that looked fine in the editor and died at build time with
      * `hook element 'x' not found in base model 'B'`. That message is borrowed here, because it is
      * the same defect and jpipe-vscode ADR-VSC-0022 says one defect reads one way.
      *
-     * `hookTarget` decides what resolves, and matches the compiler: against the base's contents,
-     * under the ids template expansion and the operators give its elements, through the aliases
-     * of the base's own operator, then by its suffix fallback. A base built on a composition is
-     * read as the compiler built it. Two shapes are passed over instead, each because the editor
-     * genuinely cannot answer:
+     * `bindHook` decides what the hook names, and matches the compiler: against the base's
+     * contents, under the ids template expansion and the operators give its elements, through the
+     * aliases of the base's own operator, then bound as the compiler binds an id. A base built on a
+     * composition is read as the compiler built it. A hook naming several elements is
+     * `ambiguous-hook`, and one naming an element that is neither an evidence nor a `@support` is
+     * `hook-not-leaf`, both worded as the compiler words them (#181 there). Two shapes are passed
+     * over instead, each because the editor genuinely cannot answer:
      *
      * - **A base whose contents cannot tell**, when the hook matches none of the ids this can see:
      *   it may name one an operator builds that the compiler could not report, or one inherited
@@ -301,14 +304,31 @@ export class JpipeValidator {
         if (!base) return;
         // As the composition's file sees it: `lib:K` is K of a file loaded `as lib`.
         const contents = await this.contents.contentsOf(base, writtenNamespace(source?.$refText, base.id), AstUtils.getDocument(composition));
-        if (contents.kind === 'cannot-tell' || hookTarget(contents, actual)) return;
+        const binding = bindHook(contents, actual);
+        if (!binding || contents.kind === 'cannot-tell' && binding.kind !== 'found') return;
+        const at = { node: entry, property: 'value' } as const;
+        // The base as this file names it, which is what the compiler calls it here.
+        const modelId = source?.$refText ?? base.id;
 
-        const candidates = contents.elements
-            .map(entry => entry.id)
-            .filter(id => id.length > 0);
-        report(accept, JpipeIssue.UnknownHook,
-               `Hook element '${actual}' not found in base model '${base.id}'`,
-               { node: entry, property: 'value' }, { actual, modelId: base.id, candidates });
+        if (binding.kind === 'found') {
+            const kind = binding.element.kind;
+            if (kind === 'evidence' || kind === 'abstract-support') return;
+            report(accept, JpipeIssue.HookNotLeaf,
+                   `hook '${actual}' is a ${kind} of '${modelId}': only an evidence or a @support can be refined`,
+                   at, { actual, modelId, kind });
+        } else if (binding.kind === 'ambiguous') {
+            const candidates = binding.candidates.map(candidate => candidate.id);
+            report(accept, JpipeIssue.AmbiguousHook,
+                   `ambiguous hook '${actual}' in '${modelId}': it names ${candidates.map(id => `'${id}'`).join(', ')}; write the qualified id`,
+                   at, { actual, modelId, candidates });
+        } else {
+            const candidates = listedIn(contents)
+                .filter(element => element.kind === 'evidence' || element.kind === 'abstract-support')
+                .map(element => element.id);
+            report(accept, JpipeIssue.UnknownHook,
+                   `Hook element '${actual}' not found in base model '${base.id}'`,
+                   at, { actual, modelId: base.id, candidates });
+        }
     }
 
     checkLabelNotEmpty(element: Evidence | Strategy | Conclusion | SubConclusion | AbstractSupport,
@@ -602,12 +622,17 @@ export class JpipeValidator {
         for (const element of getLocalElements(model)) {
             const id = qualifiedIdText(element.id);
             if (!id.includes(':') || isDiscardedConclusion(element)) continue;
-            const binding = bind(inherited, id);
+            // Only an evidence or a sub-conclusion overrides, and is bound as the compiler binds
+            // it. Another kind names a `@support` only by its exact id, as the wrong kind to stand
+            // for it: by a suffix, the compiler takes it for an element of its own.
+            const leaf = isEvidence(element) || isSubConclusion(element);
+            const exact = inherited.find(entry => entry.id === id);
+            const binding = leaf ? bind(inherited, id) : exact ? { kind: 'found' as const, element: exact } : { kind: 'missing' as const };
             if (binding.kind === 'found') {
                 if (!named.has(binding.element)) named.set(binding.element, element);
             } else if (binding.kind === 'ambiguous') {
                 binding.candidates.forEach(candidate => named.set(candidate, element));
-                if (inheritance.whole && (isEvidence(element) || isSubConclusion(element))) {
+                if (inheritance.whole) {
                     const candidates = binding.candidates.map(candidate => candidate.id);
                     report(accept, JpipeIssue.AmbiguousId,
                            `ambiguous id '${id}' in model '${model.id}': it names ${candidates.map(c => `'${c}'`).join(', ')}; write the qualified id`,

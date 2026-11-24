@@ -126,8 +126,8 @@ export function activate(context: vscode.ExtensionContext): void {
     registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView, runSession, runPanel });
 }
 
-/** The settings that choose which compiler runs, and so what it reports. */
-const COMPILER_SETTINGS = ['executionMode', 'cliPath', 'jarFile', 'javaExecutable', 'jvmArgs', 'extraPath']
+/** The settings that choose which compiler runs, and how long it may take: so what it reports. */
+const COMPILER_SETTINGS = ['executionMode', 'cliPath', 'jarFile', 'javaExecutable', 'jvmArgs', 'extraPath', 'compilerTimeout']
     .map(setting => `jpipe.${setting}`);
 
 /**
