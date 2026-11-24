@@ -22,6 +22,8 @@ computer:
   - [https://www.jpipe.org/tutorials/install/](https://www.jpipe.org/tutorials/install/)
 
 An older compiler is not used: the plugin says which version it found and offers to update it.
+With compiler 4.0.0 or newer, the recommended release, the editor also checks models built by
+`refine` or `assemble`, and those that implement them, against what the compiler builds.
 
 You can provide the compiler in three ways, selected via the `jpipe.executionMode` setting:
 

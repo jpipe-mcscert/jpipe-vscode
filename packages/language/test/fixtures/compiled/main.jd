@@ -1,0 +1,14 @@
+// Models built on a composed template of a file loaded under a namespace (jpipe-vscode #132).
+load "lib.jd" as lib
+
+justification done implements lib:refined {
+    evidence lib:pattern:abs2 is "Second part checklist"
+}
+
+justification short implements lib:refined {
+    evidence pattern:abs2 is "Written by its suffix"
+}
+
+justification missing implements lib:refined {
+    evidence other is "Unrelated evidence"
+}

@@ -39,9 +39,9 @@ export const COMPILER_CODES = [
     'incompatible-unification',
     'execution-error',
     'unresolved-symbol',
-    // From 4.0.0. The editor checks `duplicate-model` and `inherited-conclusion` under the same
-    // codes, and what `invalid-operator-call` covers under finer codes of its own, listed below; it
-    // leaves `ambiguous-id` to the compiler (jpipe-vscode ADR-VSC-0022).
+    // From 4.0.0. The editor checks `duplicate-model`, `inherited-conclusion` and, for overrides,
+    // `ambiguous-id` under the same codes, and what `invalid-operator-call` covers under finer codes
+    // of its own, listed below (jpipe-vscode ADR-VSC-0022).
     'duplicate-model',
     'inherited-conclusion',
     'invalid-operator-call',
@@ -64,6 +64,36 @@ export const COMPILER_CODES = [
 ] as const;
 
 /**
+ * The codes of the compiler's validation rules, `ConsistencyValidator` and `CompletenessValidator`:
+ * checks it runs on a model it has built. Every other code it reports names a failure to build one.
+ *
+ * Compiled contents read a model from the compiler's report only when it was built whole
+ * (jpipe-vscode ADR-VSC-0034), so a rule's diagnostic does not count against it: the model is
+ * wrong, but it is all there. It may even lie in another model, as `no-abstract-support` lies on
+ * the `@support` a justification does not override.
+ */
+export const RULE_CODES: ReadonlySet<string> = new Set([
+    'no-duplicate-ids',
+    'unique-identifiers',
+    'acyclic-support',
+    'acyclic-implements',
+    'conclusion-present',
+    'conclusion-supported',
+    'strategy-supported',
+    'sub-conclusion-supported',
+    'no-abstract-support',
+    'has-abstract-support'
+]);
+
+/**
+ * The codes of failures the compiler recovers from while reading a model, building it whole all
+ * the same: `inherited-conclusion` drops the conclusion a model implementing a template declares,
+ * with the relations using it, and goes on. Like `RULE_CODES`, they do not count against reading a
+ * model built on that one from the report (jpipe-vscode ADR-VSC-0034).
+ */
+export const RECOVERED_CODES: ReadonlySet<string> = new Set(['inherited-conclusion']);
+
+/**
  * Codes this extension coins, because the compiler has no rule of its own to adopt.
  *
  * Three reasons appear here, and the distinction matters when the compiler next gains a rule:
@@ -73,7 +103,7 @@ export const COMPILER_CODES = [
  *   `execution-error` catch-all before. The editor keeps a code per problem, because each is a
  *   repair of its own, and a quick fix is chosen by its code: `unknown-operator`,
  *   `operator-arity`, `duplicate-source`, `missing-config-key`, `unknown-config-key`,
- *   `unknown-unification-method`, `unknown-hook`.
+ *   `unknown-unification-method`, `unknown-hook`, `ambiguous-hook`, `hook-not-leaf`.
  * - **It reports it as `FATAL`, and a fatal carries no code by policy** (jpipe-compiler ADR-0016):
  *   the whole `load-*` family, `cyclic-load`, and `no-empty-unit` — an empty file is a syntax
  *   error there, `Compilation aborted due to syntax errors`, which no rule name reaches.
@@ -90,6 +120,8 @@ export const EXTENSION_ONLY_CODES = [
     'unknown-config-key',
     'unknown-unification-method',
     'unknown-hook',
+    'ambiguous-hook',
+    'hook-not-leaf',
     'missing-config-key',
     'support-override-type',
     'load-unresolved',

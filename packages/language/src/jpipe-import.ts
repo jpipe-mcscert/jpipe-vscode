@@ -484,43 +484,23 @@ export class JpipeImportService {
     private readonly changedFiles = new WeakMap<ReadonlySet<string>, string[]>();
 
     /**
-     * Traverse `load` edges starting from the current unit:
-     * - Start from direct loads of `currentDoc` (must be explicitly loaded by the root doc)
-     * - Then follow loads found inside imported docs (transitively), resolving relative to each doc
-     *
-     * This is a BFS over the import graph, bounded by a visited set.
+     * The documents `unit` loads, directly or through another file, each once: a BFS over `load`
+     * edges, from the loads of `currentDoc`, then those inside each loaded file, each resolved
+     * relative to the file it is written in, so nested globs work at any depth. Iterating
+     * `unit.imports` is itself the "explicitly loaded" check.
      */
-    private getTransitiveImportedDocuments(unit: Unit, currentDoc: LangiumDocument): LangiumDocument[] {
+    getTransitiveImportedDocuments(unit: Unit, currentDoc: LangiumDocument): LangiumDocument[] {
         const out: LangiumDocument[] = [];
         const visited = new Set<string>();
-
-        const enqueue: LangiumDocument[] = [];
-        // Iterating `unit.imports` is itself the "explicitly loaded" check that `resolveImport`
-        // used to perform by comparing paths — which a glob could not satisfy.
-        for (const load of unit.imports) {
-            for (const doc of this.resolveImportedDocuments(load, currentDoc)) {
-                const uri = doc.uri?.toString();
-                if (uri && !visited.has(uri)) {
-                    visited.add(uri);
-                    enqueue.push(doc);
-                    out.push(doc);
-                }
-            }
-        }
-
-        for (const doc of enqueue) {
-            const u = doc.parseResult.value as Unit | undefined;
-            if (!u) continue;
-            for (const load of u.imports) {
-                // Resolved relative to the importing document, so nested globs work at any depth.
-                for (const nextDoc of this.resolveImportedDocuments(load, doc)) {
-                    const uri = nextDoc.uri?.toString();
-                    if (uri && !visited.has(uri)) {
-                        visited.add(uri);
-                        enqueue.push(nextDoc);
-                        out.push(nextDoc);
-                    }
-                }
+        const queue: Array<{ unit: Unit | undefined; document: LangiumDocument }> = [{ unit, document: currentDoc }];
+        for (const { unit: current, document } of queue) {
+            const loaded = (current?.imports ?? []).flatMap(load => this.resolveImportedDocuments(load, document));
+            for (const next of loaded) {
+                const uri = next.uri?.toString();
+                if (!uri || visited.has(uri)) continue;
+                visited.add(uri);
+                out.push(next);
+                queue.push({ unit: next.parseResult.value as Unit | undefined, document: next });
             }
         }
 
@@ -635,4 +615,9 @@ function identity(filePath: string, links = 0): string {
  */
 function comparable(filePath: string): string {
     return process.platform === 'darwin' || process.platform === 'win32' ? filePath.toLowerCase() : filePath;
+}
+
+/** What two spellings of one file compare equal as: its real path, cased as its disk compares names. */
+export function fileKey(filePath: string): string {
+    return comparable(identity(filePath));
 }

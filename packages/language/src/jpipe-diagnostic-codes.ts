@@ -32,9 +32,12 @@ export const JpipeIssue = {
     DuplicateSource:        'duplicate-source',
     UnknownConfigKey:       'unknown-config-key',
     UnknownHook:            'unknown-hook',
+    AmbiguousHook:          'ambiguous-hook',
+    HookNotLeaf:            'hook-not-leaf',
     UnknownUnificationMethod: 'unknown-unification-method',
     MissingConfigKey:       'missing-config-key',
     NoAbstractSupport:      'no-abstract-support',
+    AmbiguousId:            'ambiguous-id',
     SupportOverrideType:    'support-override-type',
     StrategySupported:      'strategy-supported',
     InvalidSupport:         'invalid-support',
@@ -78,6 +81,7 @@ export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     [JpipeIssue.SingleConclusion]:      'error',   // rejected under this same code
     [JpipeIssue.InheritedConclusion]:   'error',   // rejected under this same code (from 4.0.0)
     [JpipeIssue.NoAbstractSupport]:     'error',   // rejected under this same code
+    [JpipeIssue.AmbiguousId]:           'error',   // rejected under this same code (from 4.0.0)
     [JpipeIssue.CyclicImplements]:      'error',   // rejected under this same code
     [JpipeIssue.StrategySupported]:     'error',   // rejected under this same code
     [JpipeIssue.ConclusionSupported]:   'error',   // rejected under this same code
@@ -95,6 +99,8 @@ export const JpipeIssueSeverity: Record<JpipeIssueCode, JpipeSeverity> = {
     [JpipeIssue.CyclicLoad]:            'error',   // FATAL from `LoadResolver`
     [JpipeIssue.NoEmptyUnit]:           'error',   // FATAL: "Compilation aborted due to syntax errors"
     [JpipeIssue.UnknownHook]:           'error',   // operator family: "hook element 'x' not found"
+    [JpipeIssue.AmbiguousHook]:         'error',   // operator family: "ambiguous hook 'x' in 'B'"
+    [JpipeIssue.HookNotLeaf]:           'error',   // operator family: "only an evidence or a @support can be refined"
 
     // Warnings — the compiler builds these files. Each was run through `jpipe diagnostic`, and each
     // exited 0.
@@ -193,8 +199,14 @@ export interface JpipeIssuePayloads {
     [JpipeIssue.InheritedConclusion]:   { modelId: string; parentId: string; id: string };
     /** `cycle` is the models in the order the message names them, starting with `modelId`. */
     [JpipeIssue.CyclicImplements]:      { modelId: string; cycle: string[] };
+    /** `candidates` are the inherited elements the id names, in the order the message names them. */
+    [JpipeIssue.AmbiguousId]:           { id: string; modelId: string; candidates: string[] };
     /** `candidates` are the ids a hook could name here, for a fix that offers the near misses. */
     [JpipeIssue.UnknownHook]:           { actual: string; modelId: string; candidates: string[] };
+    /** `candidates` are the elements the hook names, in the order the message names them. */
+    [JpipeIssue.AmbiguousHook]:         { actual: string; modelId: string; candidates: string[] };
+    /** `kind` is that of the element the hook names, as the message says it. */
+    [JpipeIssue.HookNotLeaf]:           { actual: string; modelId: string; kind: string };
     // `Record<never, never>` rather than `Record<string, never>`: only the former has `keyof`
     // equal to `never`, which is what marks a code as callable through `issue(code)` alone.
     [JpipeIssue.NoEmptyLabel]:          Record<never, never>;

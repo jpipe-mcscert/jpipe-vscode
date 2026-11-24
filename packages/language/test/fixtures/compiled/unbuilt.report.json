@@ -1,0 +1,414 @@
+{
+  "models": [
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "a",
+      "location": {
+        "line": 3,
+        "column": 14,
+        "source": "unbuilt.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 5,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "e"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "b",
+      "location": {
+        "line": 12,
+        "column": 14,
+        "source": "unbuilt.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 13,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 14,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 15,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "e"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 2,
+        "abstractSupport": 0,
+        "strategy": 3
+      },
+      "name": "r",
+      "location": {
+        "line": 20,
+        "column": 14,
+        "source": "unbuilt.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "a:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 13,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "b:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 5,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "a:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 14,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "b:s"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "a:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 15,
+            "column": 15,
+            "source": "unbuilt.jd"
+          },
+          "id": "b:e"
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "invalid-operator-call",
+      "line": 25,
+      "column": 14,
+      "source": "unbuilt.jd",
+      "message": "'refine' for 'probe': hook element 'nope' not found in base model 'r'"
+    },
+    {
+      "severity": "error",
+      "source": "unbuilt.jd",
+      "message": "model construction failed \u2014 see errors above"
+    },
+    {
+      "severity": "error",
+      "code": "unknown-element",
+      "line": 9,
+      "column": 4,
+      "source": "unbuilt.jd",
+      "message": "unknown element 'typo' in model 'a'"
+    },
+    {
+      "severity": "error",
+      "source": "unbuilt.jd",
+      "message": "unresolved symbol(s) \u2014 model cannot be built"
+    }
+  ],
+  "schemaVersion": 1,
+  "stats": {
+    "deferrals": 14,
+    "commands": {
+      "total": 15,
+      "macros": 2
+    }
+  },
+  "source": "unbuilt.jd",
+  "actions": [
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 1,
+      "description": "create_justification('a')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 2,
+      "description": "create_conclusion('a', 'c', 'C')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 3,
+      "description": "create_strategy('a', 's', 'S')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 4,
+      "description": "create_evidence('a', 'e', 'E')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 5,
+      "description": "support('a', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 6,
+      "description": "support('a', 's', 'e')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 7,
+      "description": "create_justification('b')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 8,
+      "description": "create_conclusion('b', 'c', 'Another C')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 9,
+      "description": "create_strategy('b', 's', 'Another S')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 10,
+      "description": "create_evidence('b', 'e', 'Another E')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 11,
+      "description": "support('b', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 12,
+      "description": "support('b', 's', 'e')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 13,
+      "description": "applyOperator('r', 'assemble', [a, b])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 14,
+      "description": "create_justification('r')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 15,
+      "description": "create_sub_conclusion('r', 'a:c', 'C')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 16,
+      "description": "create_strategy('r', 'a:s', 'S')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 17,
+      "description": "create_evidence('r', 'a:e', 'E')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 18,
+      "description": "create_sub_conclusion('r', 'b:c', 'Another C')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 19,
+      "description": "create_strategy('r', 'b:s', 'Another S')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 20,
+      "description": "create_evidence('r', 'b:e', 'Another E')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 21,
+      "description": "create_strategy('r', 'assembleStrategy', 'SR')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 22,
+      "description": "create_conclusion('r', 'assembleConclusion', 'R')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 23,
+      "description": "recordComposition('r', 'assemble', [a, b])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 24,
+      "description": "support('r', 'a:c', 'a:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 25,
+      "description": "support('r', 'a:s', 'a:e')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 26,
+      "description": "support('r', 'b:c', 'b:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 27,
+      "description": "support('r', 'b:s', 'b:e')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 28,
+      "description": "support('r', 'assembleStrategy', 'a:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 29,
+      "description": "support('r', 'assembleStrategy', 'b:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 30,
+      "description": "support('r', 'assembleConclusion', 'assembleStrategy')."
+    }
+  ],
+  "status": "errors"
+}

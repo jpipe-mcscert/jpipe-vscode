@@ -551,9 +551,9 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         // Under the id the compiler gives each element in the base, which is what a hook is looked
         // up by: `T:e` for an `e` the base inherits from T, which names it whether or not every
         // element of the base can be seen.
-        const contents = await this.services.references.ModelContents.contentsOf(base, writtenNamespace(firstParam, base.id));
+        const contents = await this.services.references.ModelContents.contentsOf(base, writtenNamespace(firstParam, base.id), document);
         return listedIn(contents)
-            .filter(({ element, id }) => isEvidence(element) && id.length > 0)
+            .flatMap(({ element, kind, id }) => element && kind === 'evidence' && id.length > 0 ? [{ element, id }] : [])
             .filter(({ id }) => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, id))
             .map(({ element, id }) => ({
                 label: id,
@@ -860,9 +860,9 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             const suggestedIds = new Set<string>();
 
             const completions: CompletionItem[] = [];
-            for (const { element, id: key } of listedIn(contents)) {
+            for (const { element, kind, id: key } of listedIn(contents)) {
                 // Only an inherited @support requires an explicit override.
-                if (!isAbstractSupport(element) || own.has(element)) continue;
+                if (kind !== 'abstract-support' || !element || own.has(element)) continue;
                 if (suggestedIds.has(key)) continue;
                 const completion = this.createTemplateElementCompletion(element, key, context);
                 if (completion) {

@@ -1,0 +1,1340 @@
+{
+  "models": [
+    {
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 0,
+        "subConclusion": 0,
+        "abstractSupport": 1,
+        "strategy": 1
+      },
+      "name": "root",
+      "location": {
+        "line": 9,
+        "column": 9,
+        "source": "ambiguous.jd"
+      },
+      "usedBy": [{
+        "name": "mid",
+        "location": {
+          "line": 17,
+          "column": 9,
+          "source": "ambiguous.jd"
+        }
+      }],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 10,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 11,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "a"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 12,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "x"
+        }
+      ]
+    },
+    {
+      "implements": "root",
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 0,
+        "subConclusion": 1,
+        "abstractSupport": 1,
+        "strategy": 2
+      },
+      "name": "mid",
+      "location": {
+        "line": 17,
+        "column": 9,
+        "source": "ambiguous.jd"
+      },
+      "usedBy": [{
+        "name": "j",
+        "location": {
+          "line": 25,
+          "column": 14,
+          "source": "ambiguous.jd"
+        }
+      }],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 10,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "root:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 18,
+            "column": 19,
+            "source": "ambiguous.jd"
+          },
+          "id": "root:x"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 11,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "root:a"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 19,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "a"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 20,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "y"
+        }
+      ]
+    },
+    {
+      "implements": "mid",
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 1,
+        "abstractSupport": 0,
+        "strategy": 2
+      },
+      "name": "j",
+      "location": {
+        "line": 25,
+        "column": 14,
+        "source": "ambiguous.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 10,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "root:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 18,
+            "column": 19,
+            "source": "ambiguous.jd"
+          },
+          "id": "root:x"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 11,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "root:a"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 19,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "mid:a"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 26,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "mid:y"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 27,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "e"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 0,
+        "subConclusion": 0,
+        "abstractSupport": 1,
+        "strategy": 1
+      },
+      "name": "top",
+      "location": {
+        "line": 33,
+        "column": 9,
+        "source": "ambiguous.jd"
+      },
+      "usedBy": [
+        {
+          "name": "l",
+          "location": {
+            "line": 41,
+            "column": 9,
+            "source": "ambiguous.jd"
+          }
+        },
+        {
+          "name": "r",
+          "location": {
+            "line": 45,
+            "column": 9,
+            "source": "ambiguous.jd"
+          }
+        }
+      ],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 34,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 35,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 36,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "h"
+        }
+      ]
+    },
+    {
+      "implements": "top",
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 1,
+        "strategy": 1
+      },
+      "name": "l",
+      "location": {
+        "line": 41,
+        "column": 9,
+        "source": "ambiguous.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 34,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "top:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 35,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "top:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 42,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "e"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 36,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "top:h"
+        }
+      ]
+    },
+    {
+      "implements": "top",
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 1,
+        "strategy": 1
+      },
+      "name": "r",
+      "location": {
+        "line": 45,
+        "column": 9,
+        "source": "ambiguous.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 34,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "top:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 35,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "top:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 46,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "e"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 36,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "top:h"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        {
+          "from": "l:top:c",
+          "to": "unified_0"
+        },
+        {
+          "from": "r:top:c",
+          "to": "unified_0"
+        },
+        {
+          "from": "l:top:s",
+          "to": "unified_1"
+        },
+        {
+          "from": "r:top:s",
+          "to": "unified_1"
+        }
+      ],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 1,
+        "abstractSupport": 2,
+        "strategy": 2
+      },
+      "name": "both",
+      "location": {
+        "line": 49,
+        "column": 9,
+        "source": "ambiguous.jd"
+      },
+      "usedBy": [
+        {
+          "name": "twice",
+          "location": {
+            "line": 55,
+            "column": 14,
+            "source": "ambiguous.jd"
+          }
+        },
+        {
+          "name": "once",
+          "location": {
+            "line": 62,
+            "column": 9,
+            "source": "ambiguous.jd"
+          }
+        }
+      ],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 34,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "unified_0"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 35,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "unified_1"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 42,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "l:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 46,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "r:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 36,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "l:top:h"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 36,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "r:top:h"
+        }
+      ]
+    },
+    {
+      "implements": "both",
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 3,
+        "subConclusion": 1,
+        "abstractSupport": 1,
+        "strategy": 2
+      },
+      "name": "twice",
+      "location": {
+        "line": 55,
+        "column": 14,
+        "source": "ambiguous.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "both:assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 34,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "both:unified_0"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 35,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "both:unified_1"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "both:assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 42,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "l:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 46,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "r:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 57,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "r:top:h"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 36,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "l:top:h"
+        }
+      ]
+    },
+    {
+      "implements": "both",
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 1,
+        "abstractSupport": 3,
+        "strategy": 3
+      },
+      "name": "once",
+      "location": {
+        "line": 62,
+        "column": 9,
+        "source": "ambiguous.jd"
+      },
+      "usedBy": [{
+        "name": "k",
+        "location": {
+          "line": 69,
+          "column": 14,
+          "source": "ambiguous.jd"
+        }
+      }],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "both:assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 34,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "both:unified_0"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 35,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "both:unified_1"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "both:assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 64,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "w"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 42,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "l:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 46,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "r:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 36,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "l:top:h"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 36,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "r:top:h"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 65,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "u"
+        }
+      ]
+    },
+    {
+      "implements": "once",
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 3,
+        "subConclusion": 1,
+        "abstractSupport": 3,
+        "strategy": 3
+      },
+      "name": "k",
+      "location": {
+        "line": 69,
+        "column": 14,
+        "source": "ambiguous.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "both:assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 34,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "both:unified_0"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 35,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "both:unified_1"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "both:assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 64,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "once:w"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 42,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "l:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 46,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "r:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 70,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "e2"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 36,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "l:top:h"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 36,
+            "column": 15,
+            "source": "ambiguous.jd"
+          },
+          "id": "r:top:h"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 65,
+            "column": 13,
+            "source": "ambiguous.jd"
+          },
+          "id": "once:u"
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ambiguous-id",
+      "line": 28,
+      "column": 4,
+      "source": "ambiguous.jd",
+      "message": "ambiguous id 'a' in model 'j': it names 'root:a', 'mid:a'; write the qualified id"
+    },
+    {
+      "severity": "error",
+      "code": "ambiguous-id",
+      "line": 56,
+      "column": 13,
+      "source": "ambiguous.jd",
+      "message": "ambiguous id 'top:h' in model 'twice': it names 'l:top:h', 'r:top:h'; write the qualified id"
+    },
+    {
+      "severity": "error",
+      "code": "ambiguous-id",
+      "line": 63,
+      "column": 13,
+      "source": "ambiguous.jd",
+      "message": "ambiguous id 'top:h' in model 'once': it names 'l:top:h', 'r:top:h'; write the qualified id"
+    },
+    {
+      "severity": "error",
+      "source": "ambiguous.jd",
+      "message": "model construction failed \u2014 see errors above"
+    },
+    {
+      "severity": "error",
+      "code": "no-abstract-support",
+      "line": 65,
+      "column": 13,
+      "source": "ambiguous.jd",
+      "message": "Abstract support 'once:u' in justification 'k' was not overridden"
+    }
+  ],
+  "schemaVersion": 1,
+  "stats": {
+    "deferrals": 12,
+    "commands": {
+      "total": 44,
+      "macros": 6
+    }
+  },
+  "source": "ambiguous.jd",
+  "actions": [
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 1,
+      "description": "create_template('root')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 2,
+      "description": "create_conclusion('root', 'c', 'A root conclusion')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 3,
+      "description": "create_strategy('root', 'a', 'A root strategy')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 4,
+      "description": "create_abstract_support('root', 'x', 'A root abstract support')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 5,
+      "description": "support('root', 'c', 'a')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 6,
+      "description": "support('root', 'a', 'x')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 7,
+      "description": "create_template('mid')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 8,
+      "description": "implements('mid', 'root')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 9,
+      "description": "override('mid', 'root:x', sub-conclusion, 'A mid sub-conclusion')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 10,
+      "description": "remove('mid', 'root:x')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 11,
+      "description": "add('mid', SubConclusion{id='root:x', label='A mid sub-conclusion'})"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 12,
+      "description": "rewire('mid', 'root:a', 'root:x'[AbstractSupport] -> 'root:x'[SubConclusion])"
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 13,
+      "description": "create_strategy('mid', 'a', 'A mid strategy')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 14,
+      "description": "create_abstract_support('mid', 'y', 'A mid abstract support')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 15,
+      "description": "support('mid', 'root:x', 'a')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 16,
+      "description": "support('mid', 'a', 'y')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 17,
+      "description": "create_justification('j')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 18,
+      "description": "implements('j', 'mid')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 19,
+      "description": "override('j', 'mid:y', evidence, 'An evidence')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 20,
+      "description": "remove('j', 'mid:y')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 21,
+      "description": "add('j', Evidence[id=mid:y, label=An evidence])"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 22,
+      "description": "rewire('j', 'mid:a', 'mid:y'[AbstractSupport] -> 'mid:y'[Evidence])"
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 23,
+      "description": "create_evidence('j', 'e', 'Another evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 24,
+      "description": "create_template('top')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 25,
+      "description": "create_conclusion('top', 'c', 'A top conclusion')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 26,
+      "description": "create_strategy('top', 's', 'A top strategy')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 27,
+      "description": "create_abstract_support('top', 'h', 'A top abstract support')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 28,
+      "description": "support('top', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 29,
+      "description": "support('top', 's', 'h')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 30,
+      "description": "create_template('l')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 31,
+      "description": "implements('l', 'top')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 32,
+      "description": "create_evidence('l', 'e', 'A left evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 33,
+      "description": "create_template('r')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 34,
+      "description": "implements('r', 'top')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 35,
+      "description": "create_evidence('r', 'e', 'A right evidence')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 36,
+      "description": "applyOperator('both', 'assemble', [l, r])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 37,
+      "description": "create_template('both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 38,
+      "description": "create_sub_conclusion('both', 'unified_0', 'A top conclusion')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 39,
+      "description": "create_strategy('both', 'unified_1', 'A top strategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 40,
+      "description": "create_abstract_support('both', 'l:top:h', 'A top abstract support')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 41,
+      "description": "create_evidence('both', 'l:e', 'A left evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 42,
+      "description": "create_abstract_support('both', 'r:top:h', 'A top abstract support')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 43,
+      "description": "create_evidence('both', 'r:e', 'A right evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 44,
+      "description": "create_strategy('both', 'assembleStrategy', 'Both strategies')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 45,
+      "description": "create_conclusion('both', 'assembleConclusion', 'Both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 46,
+      "description": "registerAlias('both', 'l:top:c' -> 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 47,
+      "description": "registerAlias('both', 'r:top:c' -> 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 48,
+      "description": "registerAlias('both', 'l:top:s' -> 'unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 49,
+      "description": "registerAlias('both', 'r:top:s' -> 'unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 50,
+      "description": "markUnified('both', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 51,
+      "description": "markUnified('both', 'unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 52,
+      "description": "recordComposition('both', 'assemble', [l, r])."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 53,
+      "description": "create_justification('twice')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 54,
+      "description": "create_template('once')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 55,
+      "description": "create_strategy('once', 'w', 'Its own strategy')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 56,
+      "description": "create_abstract_support('once', 'u', 'Its own abstract support')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 57,
+      "description": "create_justification('k')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 58,
+      "description": "create_evidence('k', 'e2', 'An unrelated evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 59,
+      "description": "support('both', 'unified_0', 'unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 60,
+      "description": "support('both', 'unified_1', 'l:top:h')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 61,
+      "description": "support('both', 'unified_1', 'r:top:h')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 62,
+      "description": "support('both', 'assembleStrategy', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 63,
+      "description": "support('both', 'assembleConclusion', 'assembleStrategy')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 64,
+      "description": "implements('twice', 'both')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 65,
+      "description": "override('twice', 'r:top:h', evidence, 'The right one')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 66,
+      "description": "remove('twice', 'r:top:h')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 67,
+      "description": "add('twice', Evidence[id=r:top:h, label=The right one])"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 68,
+      "description": "rewire('twice', 'both:unified_1', 'r:top:h'[AbstractSupport] -> 'r:top:h'[Evidence])"
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 69,
+      "description": "implements('once', 'both')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 70,
+      "description": "support('once', 'w', 'u')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 71,
+      "description": "implements('k', 'once')."
+    }
+  ],
+  "status": "errors"
+}

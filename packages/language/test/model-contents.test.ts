@@ -60,7 +60,7 @@ justification J implements T { evidence T:a is "Done" }`);
         expect(contents.kind).toBe('elements');
         expect(ids(contents)).toEqual(['T:c', 'T:s', 'T:a']);
         // The override replaces the @support it overrides.
-        expect(listedIn(contents).find(entry => entry.id === 'T:a')!.element.$type).toBe('Evidence');
+        expect(listedIn(contents).find(entry => entry.id === 'T:a')!.element!.$type).toBe('Evidence');
     });
 
     test('of a chain reaching a composition are asked of the compiled implementation, and of no other', async () => {
@@ -175,8 +175,8 @@ describe('a refine hook, read on contents', () => {
 
     const element = (id: string) => ({ $type: 'Evidence', id: { parts: id.split(':') } }) as never;
     const whole = (...list: string[]): Contents =>
-        ({ kind: 'elements', elements: list.map(id => ({ id, element: element(id) })) });
-    const entries = (list: string[]) => list.map(id => ({ id, element: element(id) }));
+        ({ kind: 'elements', elements: list.map(id => ({ id, kind: 'evidence', element: element(id) })) });
+    const entries = (list: string[]) => list.map(id => ({ id, kind: 'evidence' as const, element: element(id) }));
     const partial = (declared: string[], inherited: string[] = []): Contents =>
         ({ kind: 'cannot-tell', visible: [...entries(inherited), ...entries(declared)], declared: entries(declared) });
 
@@ -216,7 +216,7 @@ justification B implements T { evidence own is "O" }`);
 describe('the element helpers', () => {
 
     // Any mention, so that a namespace import (`utils.getAllElements`) counts as much as a named one.
-    const HELPERS = /\b(?:getAllElements|expandedElements)\b/;
+    const HELPERS = /\b(?:getAllElements|expandedElements|expandedOnto)\b/;
     const ALLOWED: Record<string, string> = {
         'jpipe-utils.ts': 'defines them',
         'jpipe-model-contents.ts': 'is the declared implementation',

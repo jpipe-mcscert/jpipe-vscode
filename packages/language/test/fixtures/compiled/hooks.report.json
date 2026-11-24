@@ -1,0 +1,1069 @@
+{
+  "models": [
+    {
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 0,
+        "subConclusion": 0,
+        "abstractSupport": 1,
+        "strategy": 1
+      },
+      "name": "top",
+      "location": {
+        "line": 3,
+        "column": 9,
+        "source": "hooks.jd"
+      },
+      "usedBy": [
+        {
+          "name": "l",
+          "location": {
+            "line": 11,
+            "column": 9,
+            "source": "hooks.jd"
+          }
+        },
+        {
+          "name": "r",
+          "location": {
+            "line": 15,
+            "column": 9,
+            "source": "hooks.jd"
+          }
+        }
+      ],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 5,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "h"
+        }
+      ]
+    },
+    {
+      "implements": "top",
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 1,
+        "strategy": 1
+      },
+      "name": "l",
+      "location": {
+        "line": 11,
+        "column": 9,
+        "source": "hooks.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "top:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 5,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "top:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 12,
+            "column": 13,
+            "source": "hooks.jd"
+          },
+          "id": "e"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "top:h"
+        }
+      ]
+    },
+    {
+      "implements": "top",
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 1,
+        "strategy": 1
+      },
+      "name": "r",
+      "location": {
+        "line": 15,
+        "column": 9,
+        "source": "hooks.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "top:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 5,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "top:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 16,
+            "column": 13,
+            "source": "hooks.jd"
+          },
+          "id": "e"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "top:h"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        {
+          "from": "l:top:c",
+          "to": "unified_0"
+        },
+        {
+          "from": "r:top:c",
+          "to": "unified_0"
+        },
+        {
+          "from": "l:top:s",
+          "to": "unified_1"
+        },
+        {
+          "from": "r:top:s",
+          "to": "unified_1"
+        }
+      ],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 1,
+        "abstractSupport": 2,
+        "strategy": 2
+      },
+      "name": "both",
+      "location": {
+        "line": 19,
+        "column": 9,
+        "source": "hooks.jd"
+      },
+      "usedBy": [{
+        "name": "twice",
+        "location": {
+          "line": 41,
+          "column": 14,
+          "source": "hooks.jd"
+        }
+      }],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "unified_0"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 5,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "unified_1"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 12,
+            "column": 13,
+            "source": "hooks.jd"
+          },
+          "id": "l:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 16,
+            "column": 13,
+            "source": "hooks.jd"
+          },
+          "id": "r:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "l:top:h"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "r:top:h"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "p",
+      "location": {
+        "line": 25,
+        "column": 14,
+        "source": "hooks.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 26,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 27,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 28,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "f"
+        }
+      ]
+    },
+    {
+      "implements": "both",
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 1,
+        "abstractSupport": 2,
+        "strategy": 3
+      },
+      "name": "twice",
+      "location": {
+        "line": 41,
+        "column": 14,
+        "source": "hooks.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "both:assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "both:unified_0"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 5,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "both:unified_1"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "both:assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 42,
+            "column": 13,
+            "source": "hooks.jd"
+          },
+          "id": "top:h"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 12,
+            "column": 13,
+            "source": "hooks.jd"
+          },
+          "id": "l:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 16,
+            "column": 13,
+            "source": "hooks.jd"
+          },
+          "id": "r:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "l:top:h"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "r:top:h"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        {
+          "from": "both:l:e",
+          "to": "hook"
+        },
+        {
+          "from": "p:c",
+          "to": "hook"
+        },
+        {
+          "from": "both:l:top:c",
+          "to": "both:unified_0"
+        },
+        {
+          "from": "both:r:top:c",
+          "to": "both:unified_0"
+        },
+        {
+          "from": "both:l:top:s",
+          "to": "both:unified_1"
+        },
+        {
+          "from": "both:r:top:s",
+          "to": "both:unified_1"
+        },
+        {
+          "from": "both:l:top:h",
+          "to": "unified_0"
+        },
+        {
+          "from": "both:r:top:h",
+          "to": "unified_0"
+        }
+      ],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 2,
+        "abstractSupport": 1,
+        "strategy": 3
+      },
+      "name": "y",
+      "location": {
+        "line": 37,
+        "column": 9,
+        "source": "hooks.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "both:assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "both:unified_0"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 5,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "both:unified_1"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "both:assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 27,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "p:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 16,
+            "column": 13,
+            "source": "hooks.jd"
+          },
+          "id": "both:r:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 28,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "p:f"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "hooks.jd"
+          },
+          "id": "unified_0"
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "invalid-operator-call",
+      "line": 34,
+      "column": 14,
+      "source": "hooks.jd",
+      "message": "'refine' for 'x': ambiguous hook 'top:h' in 'both': it names 'l:top:h', 'r:top:h'; write the qualified id"
+    },
+    {
+      "severity": "error",
+      "source": "hooks.jd",
+      "message": "model construction failed \u2014 see errors above"
+    },
+    {
+      "severity": "error",
+      "code": "strategy-supported",
+      "line": 42,
+      "column": 13,
+      "source": "hooks.jd",
+      "message": "Strategy 'top:h' in model 'twice' has no supporting element"
+    },
+    {
+      "severity": "error",
+      "code": "no-abstract-support",
+      "line": 6,
+      "column": 15,
+      "source": "hooks.jd",
+      "message": "Abstract support 'l:top:h' in justification 'twice' was not overridden"
+    },
+    {
+      "severity": "error",
+      "code": "no-abstract-support",
+      "line": 6,
+      "column": 15,
+      "source": "hooks.jd",
+      "message": "Abstract support 'r:top:h' in justification 'twice' was not overridden"
+    }
+  ],
+  "schemaVersion": 1,
+  "stats": {
+    "deferrals": 14,
+    "commands": {
+      "total": 24,
+      "macros": 3
+    }
+  },
+  "source": "hooks.jd",
+  "actions": [
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 1,
+      "description": "create_template('top')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 2,
+      "description": "create_conclusion('top', 'c', 'A top conclusion')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 3,
+      "description": "create_strategy('top', 's', 'A top strategy')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 4,
+      "description": "create_abstract_support('top', 'h', 'A top abstract support')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 5,
+      "description": "support('top', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 6,
+      "description": "support('top', 's', 'h')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 7,
+      "description": "create_template('l')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 8,
+      "description": "implements('l', 'top')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 9,
+      "description": "create_evidence('l', 'e', 'A left evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 10,
+      "description": "create_template('r')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 11,
+      "description": "implements('r', 'top')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 12,
+      "description": "create_evidence('r', 'e', 'A right evidence')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 13,
+      "description": "applyOperator('both', 'assemble', [l, r])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 14,
+      "description": "create_template('both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 15,
+      "description": "create_sub_conclusion('both', 'unified_0', 'A top conclusion')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 16,
+      "description": "create_strategy('both', 'unified_1', 'A top strategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 17,
+      "description": "create_abstract_support('both', 'l:top:h', 'A top abstract support')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 18,
+      "description": "create_evidence('both', 'l:e', 'A left evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 19,
+      "description": "create_abstract_support('both', 'r:top:h', 'A top abstract support')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 20,
+      "description": "create_evidence('both', 'r:e', 'A right evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 21,
+      "description": "create_strategy('both', 'assembleStrategy', 'Both strategies')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 22,
+      "description": "create_conclusion('both', 'assembleConclusion', 'Both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 23,
+      "description": "registerAlias('both', 'l:top:c' -> 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 24,
+      "description": "registerAlias('both', 'r:top:c' -> 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 25,
+      "description": "registerAlias('both', 'l:top:s' -> 'unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 26,
+      "description": "registerAlias('both', 'r:top:s' -> 'unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 27,
+      "description": "markUnified('both', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 28,
+      "description": "markUnified('both', 'unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 29,
+      "description": "recordComposition('both', 'assemble', [l, r])."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 30,
+      "description": "create_justification('p')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 31,
+      "description": "create_conclusion('p', 'c', 'A refinement')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 32,
+      "description": "create_strategy('p', 's', 'Its strategy')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 33,
+      "description": "create_evidence('p', 'f', 'Its evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 34,
+      "description": "support('p', 's', 'f')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 35,
+      "description": "support('p', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 36,
+      "description": "create_justification('twice')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 37,
+      "description": "create_strategy('twice', 'top:h', 'Not an override')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 38,
+      "description": "support('both', 'unified_0', 'unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 39,
+      "description": "support('both', 'unified_1', 'l:top:h')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 40,
+      "description": "support('both', 'unified_1', 'r:top:h')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 41,
+      "description": "support('both', 'assembleStrategy', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 42,
+      "description": "support('both', 'assembleConclusion', 'assembleStrategy')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 43,
+      "description": "applyOperator('y', 'refine', [both, p])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 44,
+      "description": "create_template('y')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 45,
+      "description": "create_conclusion('y', 'both:assembleConclusion', 'Both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 46,
+      "description": "create_sub_conclusion('y', 'both:unified_0', 'A top conclusion')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 47,
+      "description": "create_strategy('y', 'both:unified_1', 'A top strategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 48,
+      "description": "create_abstract_support('y', 'unified_0', 'A top abstract support')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 49,
+      "description": "create_sub_conclusion('y', 'hook', 'A refinement')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 50,
+      "description": "create_evidence('y', 'both:r:e', 'A right evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 51,
+      "description": "create_strategy('y', 'both:assembleStrategy', 'Both strategies')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 52,
+      "description": "create_strategy('y', 'p:s', 'Its strategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 53,
+      "description": "create_evidence('y', 'p:f', 'Its evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 54,
+      "description": "registerAlias('y', 'both:l:e' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 55,
+      "description": "registerAlias('y', 'p:c' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 56,
+      "description": "registerAlias('y', 'both:l:top:c' -> 'both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 57,
+      "description": "registerAlias('y', 'both:r:top:c' -> 'both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 58,
+      "description": "registerAlias('y', 'both:l:top:s' -> 'both:unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 59,
+      "description": "registerAlias('y', 'both:r:top:s' -> 'both:unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 60,
+      "description": "markUnified('y', 'both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 61,
+      "description": "markUnified('y', 'both:unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 62,
+      "description": "registerAlias('y', 'both:l:top:h' -> 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 63,
+      "description": "registerAlias('y', 'both:r:top:h' -> 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 64,
+      "description": "markUnified('y', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 65,
+      "description": "recordComposition('y', 'refine', [both, p])."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 66,
+      "description": "implements('twice', 'both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 67,
+      "description": "support('y', 'both:assembleConclusion', 'both:assembleStrategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 68,
+      "description": "support('y', 'both:unified_0', 'both:unified_1')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 69,
+      "description": "support('y', 'both:unified_1', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 70,
+      "description": "support('y', 'both:assembleStrategy', 'both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 71,
+      "description": "support('y', 'hook', 'p:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 72,
+      "description": "support('y', 'p:s', 'p:f')."
+    }
+  ],
+  "status": "errors"
+}

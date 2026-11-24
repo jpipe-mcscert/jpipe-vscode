@@ -1,0 +1,2968 @@
+{
+  "models": [
+    {
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 0,
+        "subConclusion": 0,
+        "abstractSupport": 2,
+        "strategy": 1
+      },
+      "name": "pattern",
+      "location": {
+        "line": 9,
+        "column": 9,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 10,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 11,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 12,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "abs1"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 13,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "abs2"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "first_part",
+      "location": {
+        "line": 19,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 20,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 21,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 22,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "e"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        {
+          "from": "pattern:abs1",
+          "to": "hook"
+        },
+        {
+          "from": "first_part:c",
+          "to": "hook"
+        }
+      ],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 1,
+        "abstractSupport": 1,
+        "strategy": 2
+      },
+      "name": "refined_pattern",
+      "location": {
+        "line": 27,
+        "column": 9,
+        "source": "refine.jd"
+      },
+      "usedBy": [
+        {
+          "name": "ready",
+          "location": {
+            "line": 31,
+            "column": 14,
+            "source": "refine.jd"
+          }
+        },
+        {
+          "name": "unready",
+          "location": {
+            "line": 115,
+            "column": 14,
+            "source": "refine.jd"
+          }
+        },
+        {
+          "name": "by_suffix",
+          "location": {
+            "line": 119,
+            "column": 14,
+            "source": "refine.jd"
+          }
+        }
+      ],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 10,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pattern:c"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 11,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pattern:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 21,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 22,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 13,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pattern:abs2"
+        }
+      ]
+    },
+    {
+      "implements": "refined_pattern",
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 1,
+        "abstractSupport": 0,
+        "strategy": 2
+      },
+      "name": "ready",
+      "location": {
+        "line": 31,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 10,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pattern:c"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "refined_pattern:hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 11,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pattern:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 21,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 22,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 32,
+            "column": 13,
+            "source": "refine.jd"
+          },
+          "id": "pattern:abs2"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "a",
+      "location": {
+        "line": 37,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 38,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 39,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 40,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "e"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "b",
+      "location": {
+        "line": 45,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 46,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 47,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 48,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "e"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "d",
+      "location": {
+        "line": 53,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 54,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 55,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 56,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "e"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        {
+          "from": "a:e",
+          "to": "unified_0"
+        },
+        {
+          "from": "b:e",
+          "to": "unified_0"
+        }
+      ],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 2,
+        "abstractSupport": 0,
+        "strategy": 3
+      },
+      "name": "both",
+      "location": {
+        "line": 61,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 38,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "a:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 46,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "b:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 39,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "a:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 47,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "b:s"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 40,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "unified_0"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "p",
+      "location": {
+        "line": 77,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 78,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 79,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 80,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "x"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "q",
+      "location": {
+        "line": 85,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 86,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 87,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 88,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "y"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "r",
+      "location": {
+        "line": 93,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 94,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 95,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 96,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "x"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 2,
+        "abstractSupport": 0,
+        "strategy": 3
+      },
+      "name": "pq",
+      "location": {
+        "line": 101,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 78,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "p:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 86,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "q:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 79,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "p:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 87,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "q:s"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 80,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "p:x"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 88,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "q:y"
+        }
+      ]
+    },
+    {
+      "implements": "refined_pattern",
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 1,
+        "abstractSupport": 1,
+        "strategy": 2
+      },
+      "name": "unready",
+      "location": {
+        "line": 115,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 10,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pattern:c"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "refined_pattern:hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 11,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pattern:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 21,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 22,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 116,
+            "column": 13,
+            "source": "refine.jd"
+          },
+          "id": "other"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 13,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pattern:abs2"
+        }
+      ]
+    },
+    {
+      "implements": "refined_pattern",
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 3,
+        "subConclusion": 1,
+        "abstractSupport": 0,
+        "strategy": 2
+      },
+      "name": "by_suffix",
+      "location": {
+        "line": 119,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 10,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pattern:c"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "refined_pattern:hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 11,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pattern:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 21,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 22,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 120,
+            "column": 13,
+            "source": "refine.jd"
+          },
+          "id": "abs2"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 121,
+            "column": 13,
+            "source": "refine.jd"
+          },
+          "id": "pattern:abs2"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        {
+          "from": "both:a:e",
+          "to": "both:unified_0"
+        },
+        {
+          "from": "both:b:e",
+          "to": "both:unified_0"
+        },
+        {
+          "from": "both:unified_0",
+          "to": "unified_0"
+        },
+        {
+          "from": "d:e",
+          "to": "unified_0"
+        }
+      ],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 4,
+        "abstractSupport": 0,
+        "strategy": 5
+      },
+      "name": "all",
+      "location": {
+        "line": 66,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "assembleConclusion"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "both:assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 38,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "both:a:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 46,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "both:b:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 54,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "d:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 39,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "both:a:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 47,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "both:b:s"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "both:assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 55,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "d:s"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 40,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "unified_0"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 3,
+        "subConclusion": 4,
+        "abstractSupport": 0,
+        "strategy": 5
+      },
+      "name": "pqr",
+      "location": {
+        "line": 106,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "assembleConclusion"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "pq:assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 78,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pq:p:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 86,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pq:q:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 94,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "r:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 79,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pq:p:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 87,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pq:q:s"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "pq:assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 95,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "r:s"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 80,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pq:p:x"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 88,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "pq:q:y"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 96,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "r:x"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        {
+          "from": "both:unified_0",
+          "to": "hook"
+        },
+        {
+          "from": "first_part:c",
+          "to": "hook"
+        },
+        {
+          "from": "both:a:e",
+          "to": "hook"
+        },
+        {
+          "from": "both:b:e",
+          "to": "hook"
+        }
+      ],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 3,
+        "abstractSupport": 0,
+        "strategy": 4
+      },
+      "name": "through_alias",
+      "location": {
+        "line": 124,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "both:assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 38,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "both:a:c"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 46,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "both:b:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 39,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "both:a:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 47,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "both:b:s"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "both:assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 21,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 22,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:e"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        {
+          "from": "all:unified_0",
+          "to": "hook"
+        },
+        {
+          "from": "first_part:c",
+          "to": "hook"
+        },
+        {
+          "from": "all:both:a:e",
+          "to": "all:both:unified_0"
+        },
+        {
+          "from": "all:both:b:e",
+          "to": "all:both:unified_0"
+        },
+        {
+          "from": "all:both:unified_0",
+          "to": "hook"
+        },
+        {
+          "from": "all:d:e",
+          "to": "hook"
+        }
+      ],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 5,
+        "abstractSupport": 0,
+        "strategy": 6
+      },
+      "name": "detailed",
+      "location": {
+        "line": 71,
+        "column": 14,
+        "source": "refine.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": true,
+          "kind": "conclusion",
+          "id": "all:assembleConclusion"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "all:both:assembleConclusion"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 38,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "all:both:a:c"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 46,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "all:both:b:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "sub-conclusion",
+          "location": {
+            "line": 54,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "all:d:c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 39,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "all:both:a:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 47,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "all:both:b:s"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "all:both:assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 55,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "all:d:s"
+        },
+        {
+          "synthesized": true,
+          "kind": "strategy",
+          "id": "all:assembleStrategy"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 21,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 22,
+            "column": 15,
+            "source": "refine.jd"
+          },
+          "id": "first_part:e"
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "invalid-operator-call",
+      "line": 128,
+      "column": 14,
+      "source": "refine.jd",
+      "message": "'refine' for 'nowhere': hook element 'nope' not found in base model 'all'"
+    },
+    {
+      "severity": "error",
+      "source": "refine.jd",
+      "message": "model construction failed \u2014 see errors above"
+    },
+    {
+      "severity": "error",
+      "code": "no-abstract-support",
+      "line": 13,
+      "column": 15,
+      "source": "refine.jd",
+      "message": "Abstract support 'pattern:abs2' in justification 'unready' was not overridden"
+    }
+  ],
+  "schemaVersion": 1,
+  "stats": {
+    "deferrals": 78,
+    "commands": {
+      "total": 68,
+      "macros": 10
+    }
+  },
+  "source": "refine.jd",
+  "actions": [
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 1,
+      "description": "create_template('pattern')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 2,
+      "description": "create_conclusion('pattern', 'c', 'The system is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 3,
+      "description": "create_strategy('pattern', 's', 'Check every part')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 4,
+      "description": "create_abstract_support('pattern', 'abs1', 'The first part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 5,
+      "description": "create_abstract_support('pattern', 'abs2', 'The second part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 6,
+      "description": "support('pattern', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 7,
+      "description": "support('pattern', 's', 'abs1')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 8,
+      "description": "support('pattern', 's', 'abs2')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 9,
+      "description": "create_justification('first_part')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 10,
+      "description": "create_conclusion('first_part', 'c', 'The first part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 11,
+      "description": "create_strategy('first_part', 's', 'Run its tests')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 12,
+      "description": "create_evidence('first_part', 'e', 'Test report')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 13,
+      "description": "support('first_part', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 14,
+      "description": "support('first_part', 's', 'e')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 15,
+      "description": "applyOperator('refined_pattern', 'refine', [pattern, first_part])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 16,
+      "description": "create_template('refined_pattern')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 17,
+      "description": "create_conclusion('refined_pattern', 'pattern:c', 'The system is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 18,
+      "description": "create_strategy('refined_pattern', 'pattern:s', 'Check every part')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 19,
+      "description": "create_sub_conclusion('refined_pattern', 'hook', 'The first part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 20,
+      "description": "create_abstract_support('refined_pattern', 'pattern:abs2', 'The second part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 21,
+      "description": "create_strategy('refined_pattern', 'first_part:s', 'Run its tests')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 22,
+      "description": "create_evidence('refined_pattern', 'first_part:e', 'Test report')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 23,
+      "description": "registerAlias('refined_pattern', 'pattern:abs1' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 24,
+      "description": "registerAlias('refined_pattern', 'first_part:c' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 25,
+      "description": "recordComposition('refined_pattern', 'refine', [pattern, first_part])."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 26,
+      "description": "create_justification('ready')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 27,
+      "description": "create_justification('a')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 28,
+      "description": "create_conclusion('a', 'c', 'A holds')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 29,
+      "description": "create_strategy('a', 's', 'Check A')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 30,
+      "description": "create_evidence('a', 'e', 'Shared evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 31,
+      "description": "support('a', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 32,
+      "description": "support('a', 's', 'e')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 33,
+      "description": "create_justification('b')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 34,
+      "description": "create_conclusion('b', 'c', 'B holds')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 35,
+      "description": "create_strategy('b', 's', 'Check B')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 36,
+      "description": "create_evidence('b', 'e', 'Shared evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 37,
+      "description": "support('b', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 38,
+      "description": "support('b', 's', 'e')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 39,
+      "description": "create_justification('d')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 40,
+      "description": "create_conclusion('d', 'c', 'D holds')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 41,
+      "description": "create_strategy('d', 's', 'Check D')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 42,
+      "description": "create_evidence('d', 'e', 'Shared evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 43,
+      "description": "support('d', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 44,
+      "description": "support('d', 's', 'e')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 45,
+      "description": "applyOperator('both', 'assemble', [a, b])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 46,
+      "description": "create_justification('both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 47,
+      "description": "create_sub_conclusion('both', 'a:c', 'A holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 48,
+      "description": "create_strategy('both', 'a:s', 'Check A')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 49,
+      "description": "create_evidence('both', 'unified_0', 'Shared evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 50,
+      "description": "create_sub_conclusion('both', 'b:c', 'B holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 51,
+      "description": "create_strategy('both', 'b:s', 'Check B')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 52,
+      "description": "create_strategy('both', 'assembleStrategy', 'Check both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 53,
+      "description": "create_conclusion('both', 'assembleConclusion', 'A and B hold')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 54,
+      "description": "registerAlias('both', 'a:e' -> 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 55,
+      "description": "registerAlias('both', 'b:e' -> 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 56,
+      "description": "markUnified('both', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 57,
+      "description": "recordComposition('both', 'assemble', [a, b])."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 58,
+      "description": "create_justification('p')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 59,
+      "description": "create_conclusion('p', 'c', 'P holds')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 60,
+      "description": "create_strategy('p', 's', 'Check P')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 61,
+      "description": "create_evidence('p', 'x', 'Common evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 62,
+      "description": "support('p', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 63,
+      "description": "support('p', 's', 'x')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 64,
+      "description": "create_justification('q')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 65,
+      "description": "create_conclusion('q', 'c', 'Q holds')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 66,
+      "description": "create_strategy('q', 's', 'Check Q')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 67,
+      "description": "create_evidence('q', 'y', 'Evidence for Q')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 68,
+      "description": "support('q', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 69,
+      "description": "support('q', 's', 'y')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 70,
+      "description": "create_justification('r')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 71,
+      "description": "create_conclusion('r', 'c', 'R holds')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 72,
+      "description": "create_strategy('r', 's', 'Check R')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 73,
+      "description": "create_evidence('r', 'x', 'Common evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 74,
+      "description": "support('r', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 75,
+      "description": "support('r', 's', 'x')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 76,
+      "description": "applyOperator('pq', 'assemble', [p, q])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 77,
+      "description": "create_justification('pq')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 78,
+      "description": "create_sub_conclusion('pq', 'p:c', 'P holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 79,
+      "description": "create_strategy('pq', 'p:s', 'Check P')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 80,
+      "description": "create_evidence('pq', 'p:x', 'Common evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 81,
+      "description": "create_sub_conclusion('pq', 'q:c', 'Q holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 82,
+      "description": "create_strategy('pq', 'q:s', 'Check Q')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 83,
+      "description": "create_evidence('pq', 'q:y', 'Evidence for Q')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 84,
+      "description": "create_strategy('pq', 'assembleStrategy', 'Check P and Q')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 85,
+      "description": "create_conclusion('pq', 'assembleConclusion', 'P and Q hold')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 86,
+      "description": "recordComposition('pq', 'assemble', [p, q])."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 87,
+      "description": "create_justification('unready')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 88,
+      "description": "create_evidence('unready', 'other', 'Unrelated evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 89,
+      "description": "create_justification('by_suffix')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 90,
+      "description": "create_evidence('by_suffix', 'abs2', 'Not an override: a plain id declares a new element')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 91,
+      "description": "support('refined_pattern', 'pattern:c', 'pattern:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 92,
+      "description": "support('refined_pattern', 'pattern:s', 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 93,
+      "description": "support('refined_pattern', 'pattern:s', 'pattern:abs2')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 94,
+      "description": "support('refined_pattern', 'hook', 'first_part:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 95,
+      "description": "support('refined_pattern', 'first_part:s', 'first_part:e')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 96,
+      "description": "implements('ready', 'refined_pattern')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 97,
+      "description": "override('ready', 'pattern:abs2', evidence, 'Second part checklist')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 98,
+      "description": "remove('ready', 'pattern:abs2')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 99,
+      "description": "add('ready', Evidence[id=pattern:abs2, label=Second part checklist])"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 100,
+      "description": "rewire('ready', 'pattern:s', 'pattern:abs2'[AbstractSupport] -> 'pattern:abs2'[Evidence])"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 101,
+      "description": "support('both', 'a:c', 'a:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 102,
+      "description": "support('both', 'a:s', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 103,
+      "description": "support('both', 'b:c', 'b:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 104,
+      "description": "support('both', 'b:s', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 105,
+      "description": "support('both', 'assembleStrategy', 'a:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 106,
+      "description": "support('both', 'assembleStrategy', 'b:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 107,
+      "description": "support('both', 'assembleConclusion', 'assembleStrategy')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 108,
+      "description": "applyOperator('all', 'assemble', [both, d])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 109,
+      "description": "create_justification('all')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 110,
+      "description": "create_sub_conclusion('all', 'both:assembleConclusion', 'A and B hold')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 111,
+      "description": "create_sub_conclusion('all', 'both:a:c', 'A holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 112,
+      "description": "create_strategy('all', 'both:a:s', 'Check A')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 113,
+      "description": "create_evidence('all', 'unified_0', 'Shared evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 114,
+      "description": "create_sub_conclusion('all', 'both:b:c', 'B holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 115,
+      "description": "create_strategy('all', 'both:b:s', 'Check B')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 116,
+      "description": "create_strategy('all', 'both:assembleStrategy', 'Check both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 117,
+      "description": "create_sub_conclusion('all', 'd:c', 'D holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 118,
+      "description": "create_strategy('all', 'd:s', 'Check D')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 119,
+      "description": "registerAlias('all', 'both:a:e' -> 'both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 120,
+      "description": "registerAlias('all', 'both:b:e' -> 'both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 121,
+      "description": "markUnified('all', 'both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 122,
+      "description": "create_strategy('all', 'assembleStrategy', 'Check all')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 123,
+      "description": "create_conclusion('all', 'assembleConclusion', 'A, B and D hold')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 124,
+      "description": "registerAlias('all', 'both:unified_0' -> 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 125,
+      "description": "registerAlias('all', 'd:e' -> 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 126,
+      "description": "markUnified('all', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 127,
+      "description": "recordComposition('all', 'assemble', [both, d])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 128,
+      "description": "support('pq', 'p:c', 'p:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 129,
+      "description": "support('pq', 'p:s', 'p:x')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 130,
+      "description": "support('pq', 'q:c', 'q:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 131,
+      "description": "support('pq', 'q:s', 'q:y')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 132,
+      "description": "support('pq', 'assembleStrategy', 'p:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 133,
+      "description": "support('pq', 'assembleStrategy', 'q:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 134,
+      "description": "support('pq', 'assembleConclusion', 'assembleStrategy')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 135,
+      "description": "applyOperator('pqr', 'assemble', [pq, r])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 136,
+      "description": "create_justification('pqr')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 137,
+      "description": "create_sub_conclusion('pqr', 'pq:assembleConclusion', 'P and Q hold')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 138,
+      "description": "create_sub_conclusion('pqr', 'pq:p:c', 'P holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 139,
+      "description": "create_strategy('pqr', 'pq:p:s', 'Check P')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 140,
+      "description": "create_evidence('pqr', 'pq:p:x', 'Common evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 141,
+      "description": "create_sub_conclusion('pqr', 'pq:q:c', 'Q holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 142,
+      "description": "create_strategy('pqr', 'pq:q:s', 'Check Q')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 143,
+      "description": "create_evidence('pqr', 'pq:q:y', 'Evidence for Q')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 144,
+      "description": "create_strategy('pqr', 'pq:assembleStrategy', 'Check P and Q')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 145,
+      "description": "create_sub_conclusion('pqr', 'r:c', 'R holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 146,
+      "description": "create_strategy('pqr', 'r:s', 'Check R')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 147,
+      "description": "create_evidence('pqr', 'r:x', 'Common evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 148,
+      "description": "create_strategy('pqr', 'assembleStrategy', 'Check P, Q and R')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 149,
+      "description": "create_conclusion('pqr', 'assembleConclusion', 'P, Q and R hold')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 150,
+      "description": "recordComposition('pqr', 'assemble', [pq, r])."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 151,
+      "description": "implements('unready', 'refined_pattern')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 152,
+      "description": "implements('by_suffix', 'refined_pattern')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 153,
+      "description": "override('by_suffix', 'pattern:abs2', evidence, 'The override')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 154,
+      "description": "remove('by_suffix', 'pattern:abs2')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 155,
+      "description": "add('by_suffix', Evidence[id=pattern:abs2, label=The override])"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 156,
+      "description": "rewire('by_suffix', 'pattern:s', 'pattern:abs2'[AbstractSupport] -> 'pattern:abs2'[Evidence])"
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 157,
+      "description": "applyOperator('through_alias', 'refine', [both, first_part])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 158,
+      "description": "create_justification('through_alias')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 159,
+      "description": "create_conclusion('through_alias', 'both:assembleConclusion', 'A and B hold')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 160,
+      "description": "create_sub_conclusion('through_alias', 'both:a:c', 'A holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 161,
+      "description": "create_strategy('through_alias', 'both:a:s', 'Check A')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 162,
+      "description": "create_sub_conclusion('through_alias', 'hook', 'The first part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 163,
+      "description": "create_sub_conclusion('through_alias', 'both:b:c', 'B holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 164,
+      "description": "create_strategy('through_alias', 'both:b:s', 'Check B')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 165,
+      "description": "create_strategy('through_alias', 'both:assembleStrategy', 'Check both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 166,
+      "description": "create_strategy('through_alias', 'first_part:s', 'Run its tests')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 167,
+      "description": "create_evidence('through_alias', 'first_part:e', 'Test report')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 168,
+      "description": "registerAlias('through_alias', 'both:unified_0' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 169,
+      "description": "registerAlias('through_alias', 'first_part:c' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 170,
+      "description": "registerAlias('through_alias', 'both:a:e' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 171,
+      "description": "registerAlias('through_alias', 'both:b:e' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 172,
+      "description": "markUnified('through_alias', 'both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 173,
+      "description": "recordComposition('through_alias', 'refine', [both, first_part])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 174,
+      "description": "support('all', 'both:assembleConclusion', 'both:assembleStrategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 175,
+      "description": "support('all', 'both:a:c', 'both:a:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 176,
+      "description": "support('all', 'both:b:c', 'both:b:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 177,
+      "description": "support('all', 'both:a:s', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 178,
+      "description": "support('all', 'both:b:s', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 179,
+      "description": "support('all', 'both:assembleStrategy', 'both:a:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 180,
+      "description": "support('all', 'both:assembleStrategy', 'both:b:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 181,
+      "description": "support('all', 'd:c', 'd:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 182,
+      "description": "support('all', 'd:s', 'unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 183,
+      "description": "support('all', 'assembleStrategy', 'both:assembleConclusion')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 184,
+      "description": "support('all', 'assembleStrategy', 'd:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 185,
+      "description": "support('all', 'assembleConclusion', 'assembleStrategy')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 186,
+      "description": "applyOperator('detailed', 'refine', [all, first_part])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 187,
+      "description": "create_justification('detailed')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 188,
+      "description": "create_conclusion('detailed', 'all:assembleConclusion', 'A, B and D hold')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 189,
+      "description": "create_sub_conclusion('detailed', 'all:both:assembleConclusion', 'A and B hold')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 190,
+      "description": "create_sub_conclusion('detailed', 'all:both:a:c', 'A holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 191,
+      "description": "create_strategy('detailed', 'all:both:a:s', 'Check A')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 192,
+      "description": "create_sub_conclusion('detailed', 'hook', 'The first part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 193,
+      "description": "create_sub_conclusion('detailed', 'all:both:b:c', 'B holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 194,
+      "description": "create_strategy('detailed', 'all:both:b:s', 'Check B')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 195,
+      "description": "create_strategy('detailed', 'all:both:assembleStrategy', 'Check both')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 196,
+      "description": "create_sub_conclusion('detailed', 'all:d:c', 'D holds')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 197,
+      "description": "create_strategy('detailed', 'all:d:s', 'Check D')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 198,
+      "description": "create_strategy('detailed', 'all:assembleStrategy', 'Check all')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 199,
+      "description": "create_strategy('detailed', 'first_part:s', 'Run its tests')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 200,
+      "description": "create_evidence('detailed', 'first_part:e', 'Test report')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 201,
+      "description": "registerAlias('detailed', 'all:unified_0' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 202,
+      "description": "registerAlias('detailed', 'first_part:c' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 203,
+      "description": "registerAlias('detailed', 'all:both:a:e' -> 'all:both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 204,
+      "description": "registerAlias('detailed', 'all:both:b:e' -> 'all:both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 205,
+      "description": "registerAlias('detailed', 'all:both:unified_0' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 206,
+      "description": "registerAlias('detailed', 'all:d:e' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 207,
+      "description": "markUnified('detailed', 'all:both:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 208,
+      "description": "markUnified('detailed', 'all:unified_0')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 209,
+      "description": "recordComposition('detailed', 'refine', [all, first_part])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 210,
+      "description": "support('pqr', 'pq:assembleConclusion', 'pq:assembleStrategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 211,
+      "description": "support('pqr', 'pq:p:c', 'pq:p:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 212,
+      "description": "support('pqr', 'pq:q:c', 'pq:q:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 213,
+      "description": "support('pqr', 'pq:p:s', 'pq:p:x')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 214,
+      "description": "support('pqr', 'pq:q:s', 'pq:q:y')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 215,
+      "description": "support('pqr', 'pq:assembleStrategy', 'pq:p:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 216,
+      "description": "support('pqr', 'pq:assembleStrategy', 'pq:q:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 217,
+      "description": "support('pqr', 'r:c', 'r:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 218,
+      "description": "support('pqr', 'r:s', 'r:x')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 219,
+      "description": "support('pqr', 'assembleStrategy', 'pq:assembleConclusion')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 220,
+      "description": "support('pqr', 'assembleStrategy', 'r:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 221,
+      "description": "support('pqr', 'assembleConclusion', 'assembleStrategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 222,
+      "description": "support('through_alias', 'both:assembleConclusion', 'both:assembleStrategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 223,
+      "description": "support('through_alias', 'both:a:c', 'both:a:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 224,
+      "description": "support('through_alias', 'both:b:c', 'both:b:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 225,
+      "description": "support('through_alias', 'both:a:s', 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 226,
+      "description": "support('through_alias', 'both:b:s', 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 227,
+      "description": "support('through_alias', 'both:assembleStrategy', 'both:a:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 228,
+      "description": "support('through_alias', 'both:assembleStrategy', 'both:b:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 229,
+      "description": "support('through_alias', 'hook', 'first_part:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 230,
+      "description": "support('through_alias', 'first_part:s', 'first_part:e')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 231,
+      "description": "support('detailed', 'all:assembleConclusion', 'all:assembleStrategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 232,
+      "description": "support('detailed', 'all:both:assembleConclusion', 'all:both:assembleStrategy')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 233,
+      "description": "support('detailed', 'all:both:a:c', 'all:both:a:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 234,
+      "description": "support('detailed', 'all:both:b:c', 'all:both:b:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 235,
+      "description": "support('detailed', 'all:d:c', 'all:d:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 236,
+      "description": "support('detailed', 'all:both:a:s', 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 237,
+      "description": "support('detailed', 'all:both:b:s', 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 238,
+      "description": "support('detailed', 'all:both:assembleStrategy', 'all:both:a:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 239,
+      "description": "support('detailed', 'all:both:assembleStrategy', 'all:both:b:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 240,
+      "description": "support('detailed', 'all:d:s', 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 241,
+      "description": "support('detailed', 'all:assembleStrategy', 'all:both:assembleConclusion')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 242,
+      "description": "support('detailed', 'all:assembleStrategy', 'all:d:c')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 243,
+      "description": "support('detailed', 'hook', 'first_part:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 244,
+      "description": "support('detailed', 'first_part:s', 'first_part:e')."
+    }
+  ],
+  "status": "errors"
+}
