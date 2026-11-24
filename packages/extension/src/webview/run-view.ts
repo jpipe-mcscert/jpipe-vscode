@@ -144,7 +144,7 @@ export class RunPage {
         const running = state.phase === 'running';
         this.body.dataset.phase = state.phase;
         // A run whose own drawing is on show is watched as it goes, not waited for.
-        this.body.classList.toggle('busy', running && !state.progress?.statuses);
+        this.body.classList.toggle('busy', running && !state.colouring);
         byId<HTMLButtonElement>(this.doc, 'run-button').disabled = running;
         byId<HTMLButtonElement>(this.doc, 'check-button').disabled = running;
         byId<HTMLButtonElement>(this.doc, 'stop-button').disabled = !running;
@@ -174,7 +174,7 @@ export class RunPage {
             byId(this.doc, 'verdict-label').textContent = running ? `${state.name}, under way` : '';
             when.textContent = '';
             when.title = '';
-            const progress = running ? state.progress : null;
+            const progress = state.progress;
             this.showCounts(counts, progress && { caption: progress.decided, counts: progress.counts });
             if (progress) this.showRunning(progress, when);
             return;
@@ -274,9 +274,8 @@ export class RunPage {
 
     /** The drawing to show: the run's own, coloured with what it decided so far, or as it was given. */
     private colouredDrawing(state: RunPanelState): string | null {
-        const statuses = state.progress?.statuses;
-        if (state.dataflow === null || !statuses) return state.dataflow;
-        const observed = state.progress?.observed ?? [];
+        if (state.dataflow === null || !state.colouring) return state.dataflow;
+        const { statuses, observed } = state.colouring;
         const key = JSON.stringify([statuses, observed]);
         if (this.coloured?.source !== state.dataflow || this.coloured.key !== key) {
             this.coloured = { source: state.dataflow, key, svg: colourRun(state.dataflow, statuses, observed) };
@@ -290,7 +289,8 @@ export class RunPage {
      */
     private applyMarks(): void {
         const svg = this.canvas.svg;
-        const progress = this.state?.phase === 'running' && this.state.progress?.statuses ? this.state.progress : null;
+        // Its own drawing, under way: a drawing of another run, or of one that ended, has no such marks.
+        const progress = this.state?.colouring ? this.state.progress : null;
         if (svg) markProgress(svg, { underway: progress?.underway ?? [], pending: progress?.pending ?? [] });
         this.applySelection(false);
     }

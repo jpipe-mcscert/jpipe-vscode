@@ -6,10 +6,19 @@
  * it, what Results says while it has no report, when it stops saying what a run would, and where an
  * element of the report is written.
  */
-import type { LiveStatus, Notice, Progress, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
+import type { Colouring, LiveStatus, Notice, Progress, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
 import { kindOf, underWay } from '../../shared/run-kind.js';
 import type { RunProgress } from './run-events.js';
 import { outcomeLinks, progressRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport } from './run-report.js';
+
+/**
+ * The drawing of a run: the one the runner made before its first step, which the page colours as
+ * elements are decided (`live`, ADR-VSC-0033), or the one it ends with (`final`); or why a run that
+ * ended has none.
+ */
+export type Drawing =
+    | { kind: 'live' | 'final'; svg: string }
+    | { kind: 'missing'; reason: string };
 
 /** The run the panel and the Results view show. */
 export interface ShownRun {
@@ -26,14 +35,8 @@ export interface ShownRun {
     progress: RunProgress | null;
     /** Each element's label in the compiled model, by id: what names it before it is decided. */
     labels: Labels;
-    /** The runner's SVG of the run's dataflow. */
-    dataflow: string | null;
-    /**
-     * Whether `dataflow` is the drawing the runner made of this run before its first step, which
-     * the page colours as elements are decided (ADR-VSC-0033), rather than one it drew at the end.
-     */
-    live: boolean;
-    drawingMissing: string | null;
+    /** The runner's drawing of the run's dataflow, or why there is none; null while there is none yet. */
+    drawing: Drawing | null;
     /** The libraries it loaded: their paths, to tell when they change, and how the workspace names them. */
     libraries: { path: string; display: string }[];
     /** When it ended. */
@@ -49,9 +52,7 @@ export interface ShownRun {
  */
 export function startedRun(name: string, uri: string, check: boolean, libraries: ShownRun['libraries']): ShownRun {
     return {
-        name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(), live: false,
-        dataflow: null,
-        drawingMissing: null,
+        name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(), drawing: null,
         libraries, endedAt: null, notice: null, outOfDate: null
     };
 }
@@ -87,12 +88,11 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
             at: run.endedAt ? clockTime(run.endedAt) : null,
             libraries: run.libraries.map(library => library.display)
         },
-        progress: run.progress && (run.phase === 'running' || (run.live && run.phase !== 'done'))
-            ? progressOf(run.progress, run.labels, run.live, run.phase === 'running')
-            : null,
+        progress: run.progress && run.phase === 'running' ? progressOf(run.progress, run.labels) : null,
+        colouring: run.progress && run.drawing?.kind === 'live' ? colouringOf(run.progress) : null,
         notice: run.notice,
-        dataflow: run.dataflow,
-        drawingMissing: run.drawingMissing,
+        dataflow: drawingOf(run),
+        drawingMissing: run.drawing?.kind === 'missing' ? run.drawing.reason : null,
         // The report's, once there is one; before it, the events', so that the drawing of a run
         // under way, or stopped short of its report, selects and opens its elements too.
         elements: report?.elements.map(e => e.id) ?? [...(run.progress?.elements ?? [])],
@@ -103,27 +103,38 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
 /** `3 of 12 decided`. */
 const decidedOf = (progress: RunProgress): string => `${progress.decided.size} of ${progress.elements.length} decided`;
 
+/** The SVG of the run's drawing, whichever it is, or null when it has none. */
+export function drawingOf(run: ShownRun): string | null {
+    return run.drawing && run.drawing.kind !== 'missing' ? run.drawing.svg : null;
+}
+
 /**
- * How far a run under way is, for the panel: its verdict bar names the steps running by their labels,
- * and, when the drawing on show is the run's own (`live`), its elements are coloured as decided,
- * and those not decided yet marked, running or waiting. A run that ended without its report keeps
- * its colours, but nothing runs or waits any more (`underWay` false).
+ * How far a run under way is, for the panel: its verdict bar names the steps running by their
+ * labels, and, on its own drawing, those not decided yet are marked, running or waiting.
  */
-export function progressOf(progress: RunProgress, labels: Labels = new Map(), live = false, underWay = true): Progress {
-    const running = underWay ? [...progress.running.keys()] : [];
-    const decided = [...progress.decided.values()].map(d => d.element);
+export function progressOf(progress: RunProgress, labels: Labels = new Map()): Progress {
+    const running = [...progress.running.keys()];
     return {
         decided: decidedOf(progress),
-        counts: outcomeLinks(decided),
+        counts: outcomeLinks([...progress.decided.values()].map(d => d.element)),
         running: running.map(id => labels.get(id) ?? id),
-        statuses: live ? decided.flatMap((e): LiveStatus[] => e.status === null ? [] : [{
+        underway: running,
+        pending: progress.elements.filter(id => !progress.decided.has(id) && !progress.running.has(id))
+    };
+}
+
+/**
+ * What a run decided, to colour the drawing it made of itself as the runner will colour it when it
+ * ends. A run that ended without its report keeps these colours: they are its only results.
+ */
+export function colouringOf(progress: RunProgress): Colouring {
+    return {
+        statuses: [...progress.decided.values()].flatMap(({ element: e }): LiveStatus[] => e.status === null ? [] : [{
             id: e.id, status: e.status, reason: e.reason, rootCause: e.status === 'skip' && e.blockedBy.length === 0,
             produced: e.produced.map(([name]) => name),
             unreachable: e.artifacts.filter(a => !a.reachable).map(a => a.declared)
-        }]) : null,
-        observed: live ? [...progress.observed].map(([source, reachable]) => ({ source, reachable })) : [],
-        underway: running,
-        pending: underWay ? progress.elements.filter(id => !progress.decided.has(id) && !progress.running.has(id)) : []
+        }]),
+        observed: [...progress.observed].map(([source, reachable]) => ({ source, reachable }))
     };
 }
 

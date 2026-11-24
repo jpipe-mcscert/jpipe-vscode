@@ -331,7 +331,7 @@ async function showPreview(
         deps.logger.debug(`${taskName}: the drawing made before the first step was gone before it was read`);
         return;
     }
-    if (followed() && deps.session.running) deps.session.update(token, { dataflow: svg, live: true, drawingMissing: null });
+    if (followed() && deps.session.running) deps.session.update(token, { drawing: { kind: 'live', svg } });
 }
 
 /** The jobs setting as last noted in the log, so that what is said about it is said once. */
@@ -460,9 +460,7 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
     const shown = deps.session.update(token, {
         phase: 'done',
         report,
-        dataflow,
-        live: false,
-        drawingMissing: dataflow ? null : NO_DRAWING,
+        drawing: dataflow ? { kind: 'final', svg: dataflow } : { kind: 'missing', reason: NO_DRAWING },
         endedAt: new Date(),
         notice: null
     });

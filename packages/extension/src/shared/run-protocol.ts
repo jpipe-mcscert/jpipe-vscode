@@ -73,17 +73,18 @@ export interface Progress {
     counts: VerdictCount[];
     /** The steps under way, by their elements' labels, in the order they started; empty between steps. */
     running: string[];
-    /**
-     * The elements decided so far, to draw over the drawing, when the drawing is the run's own,
-     * drawn before its first step; null otherwise, and the run is waited for under the busy overlay.
-     */
-    statuses: LiveStatus[] | null;
-    /** The sources observed so far, to mark ✔ or ⚠ in the drawing; empty unless `statuses` is sent. */
-    observed: ObservedSource[];
-    /** The ids of the elements whose step runs, to mark with a spinner in the drawing, as in Results. */
+    /** The ids of the elements whose step runs, to mark with a spinner on its own drawing, as in Results. */
     underway: string[];
-    /** The ids of the elements neither decided nor running yet, to mark with a clock in the drawing, as in Results. */
+    /** The ids of the elements neither decided nor running yet, to mark with a clock on its own drawing, as in Results. */
     pending: string[];
+}
+
+/** What a run decided, drawn over the drawing it made of itself before its first step (ADR-VSC-0033). */
+export interface Colouring {
+    /** The elements decided so far. */
+    statuses: LiveStatus[];
+    /** The sources observed so far, to mark ✔ or ⚠. */
+    observed: ObservedSource[];
 }
 
 /** Everything the page shows. */
@@ -98,6 +99,12 @@ export interface RunPanelState {
     verdict: Verdict | null;
     /** How far the run is, while it is under way and its events are read; null otherwise. */
     progress: Progress | null;
+    /**
+     * What the run decided, while the drawing on show is the one it made of itself before its first
+     * step and its events are read, under way or ended without its report; null otherwise, and a
+     * run under way is waited for under the busy overlay.
+     */
+    colouring: Colouring | null;
     notice: Notice | null;
     /**
      * The runner's SVG of the run's dataflow, its argument with the files and values its steps
