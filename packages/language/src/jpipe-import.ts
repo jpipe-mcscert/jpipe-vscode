@@ -490,7 +490,8 @@ export class JpipeImportService {
      *
      * This is a BFS over the import graph, bounded by a visited set.
      */
-    private getTransitiveImportedDocuments(unit: Unit, currentDoc: LangiumDocument): LangiumDocument[] {
+    /** The documents `unit` loads, directly or through another file, each once. */
+    getTransitiveImportedDocuments(unit: Unit, currentDoc: LangiumDocument): LangiumDocument[] {
         const out: LangiumDocument[] = [];
         const visited = new Set<string>();
 

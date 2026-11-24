@@ -221,14 +221,26 @@ export class CompilerReports {
     }
 
     /**
+     * Whether `document`, and every file it loads in turn, reads as saved through its last
+     * `load`: which file a model a report names comes from, and under which namespace, is decided
+     * there.
+     */
+    loadsReadAsSaved(document: LangiumDocument): boolean {
+        const unit = document.parseResult.value as Unit | undefined;
+        if (!unit) return false;
+        return [document, ...this.importService.getTransitiveImportedDocuments(unit, document)]
+            .every(loaded => this.readsAsSaved(loaded, endOfLoads(loaded)));
+    }
+
+    /**
      * The files `uris` changed on disk, or every file when `uris` is empty, for a change of
-     * compiler: forgets what they may have changed, and checks again every document whose report
-     * is forgotten.
+     * compiler: forgets what they may have changed, reads again those of them the workspace holds
+     * that are not open in the editor, and checks again every document whose report is forgotten.
      */
     async inputsChanged(uris: ReadonlySet<string>): Promise<void> {
         if (uris.size === 0) this.saved.clear();
         for (const uri of uris) this.saved.delete(fileKey(fsPathOf(URI.parse(uri))));
-        await this.recheck(this.forget(uris));
+        await this.recheck(this.forget(uris), [...uris].map(uri => URI.parse(uri)));
     }
 
     /**
@@ -247,18 +259,23 @@ export class CompilerReports {
     }
 
     /**
-     * Checks the documents of `keys` again. Under the workspace lock, as every build is: a write
-     * cancels the one running, and `update` then builds again whatever that one left unfinished.
+     * Checks the documents of `keys` again, and reads again the files of `changed` the workspace
+     * holds: the client sends the server no file events, so a file changed on disk outside the
+     * editor would keep the text it was first read with. Langium reads an open one from its
+     * buffer, so an unsaved edit is kept. Under the workspace lock, as every build is: a write
+     * cancels the one running, and `update` then builds again whatever that one left unfinished,
+     * and links again whatever refers to a file read again.
      */
-    private async recheck(keys: readonly string[]): Promise<void> {
+    private async recheck(keys: readonly string[], changed: readonly URI[] = []): Promise<void> {
         const workspace = this.services.shared.workspace;
         const documents = keys
             .map(key => workspace.LangiumDocuments.getDocument(URI.parse(key)))
             .filter(document => document !== undefined);
-        if (documents.length === 0) return;
+        const reread = changed.filter(uri => workspace.LangiumDocuments.hasDocument(uri) && fs.existsSync(fsPathOf(uri)));
+        if (documents.length === 0 && reread.length === 0) return;
         await workspace.WorkspaceLock.write(async token => {
             for (const document of documents) workspace.DocumentBuilder.resetToState(document, DocumentState.IndexedReferences);
-            await workspace.DocumentBuilder.update([], [], token);
+            await workspace.DocumentBuilder.update(reread, [], token);
         });
     }
 
@@ -269,6 +286,12 @@ export class CompilerReports {
         const unit = document.parseResult.value as Unit | undefined;
         return !unit || this.importService.loadsAnyOf(unit, document, uris);
     }
+}
+
+/** The offset just past `document`'s last `load`, `0` when it has none. */
+function endOfLoads(document: LangiumDocument): number {
+    const imports = (document.parseResult.value as Unit | undefined)?.imports ?? [];
+    return Math.max(0, ...imports.map(load => load.$cstNode?.end ?? 0));
 }
 
 function readSaved(file: string): string | undefined {

@@ -296,10 +296,13 @@ export class ImageGenerator {
         } catch {
             return null;
         }
-        const verdict = await this.verdictFor(resolved, config);
-        if (verdict.kind !== 'supported' || !compilerHas(verdict.version, 'composed')) return null;
-        const run = await this.reportRuns.run(() => this.runDiagnostic(resolved, path.normalize(fsPath), config, true));
-        return run.unknownOption ? null : this.parseReport(run.stdout);
+        // The version is asked under the limit too: on a cold start, every file would ask it at once.
+        return this.reportRuns.run(async () => {
+            const verdict = await this.verdictFor(resolved, config);
+            if (verdict.kind !== 'supported' || !compilerHas(verdict.version, 'composed')) return null;
+            const run = await this.runDiagnostic(resolved, path.normalize(fsPath), config, true);
+            return run.unknownOption ? null : this.parseReport(run.stdout);
+        });
     }
 
     /**

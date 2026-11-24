@@ -1,8 +1,10 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as url from 'node:url';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { EmptyFileSystem, URI, type LangiumDocument } from 'langium';
+import { NodeFileSystem } from 'langium/node';
 import { clearDocuments, parseHelper } from 'langium/test';
 import { Diagnostic } from 'vscode-languageserver-types';
 import type { Justification, Template, Unit } from 'jpipe-language';
@@ -175,6 +177,16 @@ describe('a model built on a composition', () => {
         expect(errors(below)).toEqual(['115:no-abstract-support', '129:unknown-hook']);
     });
 
+    test('cannot tell while the asking file reads otherwise than saved, through its loads', async () => {
+        // Its loads decide which file `lib:pattern` is: the report knows the saved ones only.
+        const above = await open('main.jd', { text: `// not saved\n${saved('main.jd')}` });
+        expect(errors(above)).toEqual([]);
+        await clearDocuments(services.shared, documents);
+        documents = [];
+        const below = await open('main.jd', { text: `${saved('main.jd')}\n// not saved\n` });
+        expect(errors(below)).toEqual(['12:no-abstract-support']);
+    });
+
     test('does not wait for its report, and is checked again once it arrives', async () => {
         let deliver!: () => void;
         const arrived = new Promise<void>(resolve => { deliver = resolve; });
@@ -226,6 +238,23 @@ describe('completion on a model built on a composition', () => {
 });
 
 describe('the compiler\'s reports', () => {
+
+    test('read again a closed file changed on disk', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-reports-'));
+        try {
+            const file = path.join(dir, 'closed.jd');
+            fs.writeFileSync(file, 'justification J {\n    conclusion c is "Before"\n}\n');
+            const disk = createJpipeServices(NodeFileSystem);
+            const document = await disk.shared.workspace.LangiumDocuments.getOrCreateDocument(URI.file(file));
+            await disk.shared.workspace.DocumentBuilder.build([document], { validation: true });
+            fs.writeFileSync(file, 'justification J {\n    conclusion c is "After"\n}\n');
+            await disk.Jpipe.references.CompilerReports.inputsChanged(new Set([URI.file(file).toString()]));
+            const reread = disk.shared.workspace.LangiumDocuments.getDocument(URI.file(file))!;
+            expect(reread.textDocument.getText()).toContain('After');
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
 
     test('are asked once for a file, however many models ask', async () => {
         const document = await open('refine.jd');

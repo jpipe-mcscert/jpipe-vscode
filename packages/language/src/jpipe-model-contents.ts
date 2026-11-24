@@ -90,7 +90,8 @@ export class DeclaredContents implements ContentsSource {
  * from. A model the compiler failed to build is still in the report, as far as it got, and its
  * elements are missing whatever came after the failure. It is read only while the files of those
  * models read as saved up to the last of them, too: the report places elements and errors where
- * the saved file has them. *Cannot tell* is the answer otherwise, and whenever there is no report:
+ * the saved file has them. So must the asking file and those it loads, through their loads, which
+ * decide what the model the report names is. *Cannot tell* is the answer otherwise, and whenever there is no report:
  * no compiler, one too old, a run that failed, or one still on its way.
  */
 export class CompiledContents implements ContentsSource {
@@ -110,7 +111,9 @@ export class CompiledContents implements ContentsSource {
         const document = from ?? AstUtils.getDocument(model);
         const report = this.reports.reportOf(document);
         const built = report?.models.find(candidate => candidate.name === qualify(linkNamespace, base.id));
-        if (!report || !built || !this.readsAsSaved(base) || !builtWhole(report, base, document)) return cannotTell(model, namespace);
+        if (!report || !built || !this.reports.loadsReadAsSaved(document) || !this.readsAsSaved(base) || !builtWhole(report, base, document)) {
+            return cannotTell(model, namespace);
+        }
 
         const elements = expandedOnto(model, namespace, base, elementsOf(built, base, report, document));
         return model === base
