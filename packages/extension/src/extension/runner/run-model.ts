@@ -457,13 +457,7 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
     const dataflow = report.dataflow === null ? null : await readFileText(files.dataflow);
     // The events, if the runner wrote them, are kept: only they say how long each step took.
     const progress = deps.session.run?.progress;
-    const shown = deps.session.update(token, {
-        phase: 'done',
-        report,
-        drawing: dataflow ? { kind: 'final', svg: dataflow } : { kind: 'missing', reason: NO_DRAWING },
-        endedAt: new Date(),
-        notice: null
-    });
+    const shown = deps.session.finish(token, report, dataflow);
     // A newer run may have started while the drawing was read: Results stays with it, as the panel does.
     if (!shown) return;
     await deps.results.show({
@@ -471,9 +465,6 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
         durations: progress ? durationsOf(progress) : undefined
     });
 }
-
-/** Why a run has no drawing: the runner could not draw, which is most often Graphviz missing. */
-const NO_DRAWING = 'jpipe-runner could not draw this run. Drawing needs Graphviz\'s dot command, as the preview does: run Check jPipe Installation to see whether it is installed.';
 
 /** The text of `file`, or null if it cannot be read. */
 async function readFileText(file: vscode.Uri): Promise<string | null> {

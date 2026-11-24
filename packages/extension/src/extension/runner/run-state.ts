@@ -66,6 +66,21 @@ export function endedWithout(run: ShownRun, phase: 'blocked' | 'stopped', notice
     return { ...run, phase, notice, endedAt: at };
 }
 
+/** Why a run has no drawing: the runner could not draw, which is most often Graphviz missing. */
+export const NO_DRAWING = 'jpipe-runner could not draw this run. Drawing needs Graphviz\'s dot command, as the preview does: run Check jPipe Installation to see whether it is installed.';
+
+/**
+ * A run that ended with its report, and the drawing the runner ended it with (`svg`), or none. This
+ * is the only way a run becomes `done`, and it always replaces the drawing the run was coloured on
+ * as it went: the runner's own drawing of the end puts every node where that one had it.
+ */
+export function endedWithReport(run: ShownRun, report: RunReport, svg: string | null, at: Date): ShownRun {
+    return {
+        ...run, phase: 'done', report, notice: null, endedAt: at,
+        drawing: svg ? { kind: 'final', svg } : { kind: 'missing', reason: NO_DRAWING }
+    };
+}
+
 /** `14:02`, in the hours and minutes of the run's own clock. */
 export function clockTime(date: Date): string {
     const two = (n: number) => String(n).padStart(2, '0');
@@ -110,7 +125,8 @@ export function drawingOf(run: ShownRun): string | null {
 
 /**
  * How far a run under way is, for the panel: its verdict bar names the steps running by their
- * labels, and, on its own drawing, those not decided yet are marked, running or waiting.
+ * labels. The elements not decided yet are always listed, running or waiting; the page marks them
+ * only on the run's own drawing, when it is sent a `colouring` too.
  */
 export function progressOf(progress: RunProgress, labels: Labels = new Map()): Progress {
     const running = [...progress.running.keys()];

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { parseReport, type RunReport } from '../src/extension/runner/run-report.js';
 import {
-    clockTime, elementCandidates, endedWithout, outOfDateReason, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
+    clockTime, elementCandidates, endedWithReport, endedWithout, outOfDateReason, NO_DRAWING, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
     type ShownRun
 } from '../src/extension/runner/run-state.js';
 import { kindOf, underWay } from '../src/shared/run-kind.js';
@@ -247,15 +247,20 @@ describe('a run under way whose events are read', () => {
         expect(progressOf(reading({ event: 'run.started', schema_version: '1.0', elements: ['j:a'] })).running).toEqual([]);
     });
 
-    test('none is running once the run is no longer under way', () => {
+    test('a run no longer under way says nothing of how far it is, even with steps it left running', () => {
         const one = reading({ event: 'run.started', schema_version: '1.0', elements: ['j:a'] }, { event: 'element.started', id: 'j:a' });
         const stopped = endedWithout({ ...running, progress: one }, 'stopped', { text: 'stopped', action: null }, new Date());
         expect(panelState(stopped, 4).progress).toBeNull();
     });
 
-    test('ended with no drawing, says why', () => {
-        const ended = done({ drawing: { kind: 'missing', reason: 'Drawing needs Graphviz.' } });
-        expect(panelState(ended, 4)).toMatchObject({ dataflow: null, drawingMissing: 'Drawing needs Graphviz.', colouring: null });
+    test('ended with its report, the drawing it was coloured on gives way to the one it ended with, or to why it has none', () => {
+        const live: ShownRun = { ...running, drawing: { kind: 'live', svg: '<svg>own</svg>' } };
+        const at = new Date(2026, 10, 24, 9, 30);
+        const drawn = endedWithReport(live, report({}), '<svg>final</svg>', at);
+        expect(drawn).toMatchObject({ phase: 'done', drawing: { kind: 'final', svg: '<svg>final</svg>' }, notice: null, endedAt: at });
+        expect(panelState(drawn, 4)).toMatchObject({ dataflow: '<svg>final</svg>', colouring: null, progress: null });
+        const undrawn = endedWithReport(live, report({}), null, at);
+        expect(panelState(undrawn, 4)).toMatchObject({ dataflow: null, drawingMissing: NO_DRAWING, colouring: null });
     });
 
     test('once it ended, the verdict says the rest', () => {

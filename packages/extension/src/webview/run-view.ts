@@ -244,9 +244,9 @@ export class RunPage {
     }
 
     /**
-     * Draw the run's dataflow, or say why there is nothing to draw. A run under way whose own
-     * drawing is on show has its decided elements coloured over it, as the runner will colour them
-     * when it ends, and its steps under way marked.
+     * Draw the run's dataflow, or say why there is nothing to draw. A run whose own drawing is on
+     * show, under way or ended without its report, has its decided elements coloured over it, as the
+     * runner colours them when it ends; under way, its steps running or waiting are marked too.
      */
     private showDrawing(state: RunPanelState): void {
         const svg = this.colouredDrawing(state);
