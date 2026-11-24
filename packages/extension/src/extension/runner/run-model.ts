@@ -79,7 +79,7 @@ async function compile(
             compiled,
             report: vscode.Uri.joinPath(folder, `${name}.report.json`),
             dataflow: vscode.Uri.joinPath(folder, `${name}-dataflow.svg`),
-            events: vscode.Uri.joinPath(folder, `${name}.events.jsonl`)
+            events: attempt => vscode.Uri.joinPath(folder, `${name}.${attempt}.events.jsonl`)
         };
     } catch (err: unknown) {
         deps.logger.warn(`${name} could not be compiled: ${messageOf(err)}`);
@@ -102,8 +102,11 @@ interface RunFiles {
     report: vscode.Uri;
     /** The drawing of the run's dataflow (jpipe-runner ADR-0022). */
     dataflow: vscode.Uri;
-    /** The events the runner writes as the run goes (jpipe-runner ADR-0030). */
-    events: vscode.Uri;
+    /**
+     * The events the runner writes as the run goes (jpipe-runner ADR-0030), a file for each launch:
+     * a launch again never reads an earlier one's lines.
+     */
+    events: (attempt: number) => vscode.Uri;
 }
 
 /**
@@ -167,10 +170,27 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
     const files = await compile(deps, token, document, name);
     if (!files) return;
     try {
-        await launch(deps, token, { document, name, check, libraries: libraries.map(library => library.uri.fsPath), steps }, files,
-            { draw: true, stream: true, jobs: true });
+        await launchUntilDone(deps, token, { document, name, check, libraries: libraries.map(library => library.uri.fsPath), steps }, files);
     } finally {
         await discard(files.folder);
+    }
+}
+
+/**
+ * Launch the runner on a compiled model, and once more each time it refuses what it was asked for
+ * besides its report (`endedWithoutReport`), without it. Each launch has a token of its own
+ * (`RunSession.relaunch`), so what an earlier one writes late is dropped, as a run that another has
+ * taken the place of is. Each launch asks for less than the one before, so they are few.
+ */
+async function launchUntilDone(deps: RunDeps, token: number, run: Run, files: RunFiles): Promise<void> {
+    let launched: number | undefined = token;
+    let asked: Asked | undefined = { draw: true, stream: true, jobs: true };
+    let attempt = 0;
+    while (launched !== undefined && asked) {
+        attempt++;
+        // Sequential by nature, hence the await in a loop: each launch asks for what the one before did not refuse.
+        asked = await launch(deps, launched, run, files, asked, attempt); // NOSONAR
+        if (asked) launched = deps.session.relaunch(launched);
     }
 }
 
@@ -195,7 +215,9 @@ interface Asked {
 }
 
 /**
- * Start the runner on a compiled model, wait for it, and show what its report says.
+ * Start the runner on a compiled model, wait for it, and show what its report says. What to ask of
+ * the next launch, when the runner refused something this one asked for and is to be launched once
+ * more without it.
  *
  * With `draw`, the runner draws the run's dataflow as well. A drawing needs Graphviz, and a
  * runner that cannot draw stops before any step runs, writing no report; so when a run asked to
@@ -210,15 +232,15 @@ interface Asked {
  * With `jobs`, an execution by a runner that can runs as many steps at a time as the jobs setting
  * says (`jobsArguments`); a runner that refuses the option is launched once more without it.
  */
-async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, asked: Asked): Promise<void> {
+async function launch(
+    deps: RunDeps, token: number, run: Run, files: RunFiles, asked: Asked, attempt: number
+): Promise<Asked | undefined> {
     const { document, name, check } = run;
     const { draw } = asked;
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
-    // A launch again starts from nothing: what an earlier one's events said, or drew, is not this one's.
-    deps.session.update(token, { progress: null, live: false, dataflow: null });
     const eventsFor = (release: string | undefined): string | undefined =>
-        asked.stream && !check && streamsEvents(release) ? files.events.fsPath : undefined;
+        asked.stream && !check && streamsEvents(release) ? files.events(attempt).fsPath : undefined;
     const jobsFor = (release: string | undefined): boolean => asked.jobs && runsJobs(release, check);
     const argsFor = (release: string | undefined): string[] => [
         ...(jobsFor(release) ? jobsOption(deps, folder) : []),
@@ -228,25 +250,23 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
             eventsFor(release))
     ];
     const invocation = await chooseInvocation(deps, token, { folder, cwd, askRelease: draw || !check }, argsFor);
-    if (!invocation) return;
+    if (!invocation) return undefined;
     const events = eventsFor(invocation.release);
     const jobs = jobsFor(invocation.release);
     if (events) {
         // What names an element still running or waiting, before its event carries its label.
         deps.session.update(token, { labels: compiledLabels(await readFileText(files.compiled) ?? '') });
-        // A launch again writes the file anew, and the first launch's lines must not be read as its own.
-        await quietlyDelete(files.events);
     }
     // Compiling, finding the environment and preparing to follow take time, in which another run
     // may have started, or this one been stopped: a run no longer on show is never launched, where
     // no ■ could reach it. Nothing is awaited from here until its task starts.
     if (!deps.session.isCurrent(token)) {
         deps.logger.info(`${name}: not launched, a newer run has taken its place`);
-        return;
+        return undefined;
     }
     if (deps.session.stopped(token)) {
         deps.session.endWith(token, 'stopped', { text: `${name} was stopped before it started.`, action: null });
-        return;
+        return undefined;
     }
     deps.logger.info(`${underWay(name, check)} with ${invocation.program} ${invocation.args.join(' ')} (in ${cwd})`);
 
@@ -261,7 +281,7 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
             () => executed(task, execution => deps.session.attach(token, execution, showOutput)));
     } catch (err: unknown) {
         deps.session.endWith(token, 'blocked', { text: `Could not start jpipe-runner: ${messageOf(err)}`, action: null });
-        return;
+        return undefined;
     } finally {
         // What the runner wrote last is read before the report: the two then agree.
         await follower?.stop();
@@ -269,35 +289,26 @@ async function launch(deps: RunDeps, token: number, run: Run, files: RunFiles, a
 
     const read = await readReport(files.report);
     const ended: Ended = { taskName: task.name, exitCode, cwd, showOutput, release: invocation.release };
-    if ('problem' in read) {
-        await endedWithoutReport(deps, token, run, files, { draw, stream: events !== undefined, jobs }, ended, read.problem);
-    } else {
-        await showReport(deps, token, run, files, ended, read.report);
-    }
+    if ('problem' in read) return endedWithoutReport(deps, token, run, { draw, stream: events !== undefined, jobs }, ended, read.problem);
+    await showReport(deps, token, run, files, ended, read.report);
+    return undefined;
 }
 
 /**
- * Follow the events a run writes to `file`, into what the session shows of run `token`; and show
+ * Follow the events launch `token` writes to `file`, into what the session shows of it; and show
  * the drawing the runner announces before the first step, as soon as it does.
  */
 function follow(deps: RunDeps, token: number, taskName: string, file: string): EventFollower {
     deps.logger.debug(`${taskName}: following the run's events in ${file}`);
-    // By path: the runner draws each run in a directory of its own, so a new path is a new drawing,
-    // even in a file a runner emptied and started again.
-    let previewed: string | null = null;
-    // A drawing still being read when this launch ends is not shown: a launch again, of the same
-    // run, has a drawing of its own or none.
+    // A drawing still being read when this launch ends is not shown. Its token cannot say so: until
+    // its report is shown, or the run launched again, the launch that has ended is still the latest.
     let following = true;
-    const follower = followEvents(
-        file,
-        progress => {
-            deps.session.update(token, { progress });
-            if (progress.preview && progress.preview !== previewed) {
-                previewed = progress.preview;
-                void showPreview(deps, token, taskName, progress.preview, () => following);
-            }
-        },
-        problem => deps.logger.warn(`${taskName}: ${problem}, so the run is shown when it ends`));
+    const follower = followEvents(file, {
+        onProgress: progress => deps.session.update(token, { progress }),
+        onDrawn: drawing => void showPreview(deps, token, taskName, drawing, () => following).catch((err: unknown) =>
+            deps.logger.debug(`${taskName}: the drawing made before the first step could not be shown: ${messageOf(err)}`)),
+        onProblem: problem => deps.logger.warn(`${taskName}: ${problem}, so the run is shown when it ends`)
+    });
     return {
         async stop(): Promise<void> {
             await follower.stop();
@@ -307,10 +318,10 @@ function follow(deps: RunDeps, token: number, taskName: string, file: string): E
 }
 
 /**
- * Show the drawing the runner made of run `token` before its first step, which the page colours as
- * its elements are decided (jpipe-runner ADR-0032, jpipe-vscode ADR-VSC-0033). The runner deletes
- * it once the run has ended, so it is read at once; one already gone, or a run already over, is
- * left to the drawing the run ends with.
+ * Show the drawing the runner made of launch `token` before its first step, which the page colours
+ * as its elements are decided (jpipe-runner ADR-0032, jpipe-vscode ADR-VSC-0033). The runner
+ * deletes it once the run has ended, so it is read at once; one already gone, or read once the
+ * launch is no longer `followed`, is left to the drawing the run ends with.
  */
 async function showPreview(
     deps: RunDeps, token: number, taskName: string, file: string, followed: () => boolean
@@ -320,9 +331,7 @@ async function showPreview(
         deps.logger.debug(`${taskName}: the drawing made before the first step was gone before it was read`);
         return;
     }
-    if (followed() && deps.session.isCurrent(token) && deps.session.running) {
-        deps.session.update(token, { dataflow: svg, live: true, drawingMissing: null });
-    }
+    if (followed() && deps.session.running) deps.session.update(token, { dataflow: svg, live: true, drawingMissing: null });
 }
 
 /** The jobs setting as last noted in the log, so that what is said about it is said once. */
@@ -393,21 +402,22 @@ function runTask(
 }
 
 /**
- * Say why a run ended without a report: a usage error, a file that could not be read, a runner
+ * Say why a launch ended without a report: a usage error, a file that could not be read, a runner
  * that did not start — or one that refused what it was asked for besides its report, which is
- * launched once more without it: a drawing it could not make, or events it does not know.
+ * launched once more without it: a drawing it could not make, or an option it does not know. What
+ * to ask of that launch, in that last case.
  */
-async function endedWithoutReport(
-    deps: RunDeps, token: number, run: Run, files: RunFiles, asked: Asked, ended: Ended, problem: string
-): Promise<void> {
+function endedWithoutReport(
+    deps: RunDeps, token: number, run: Run, asked: Asked, ended: Ended, problem: string
+): Asked | undefined {
     const { name, check } = run;
     deps.logger.warn(`${ended.taskName} ended with exit code ${ended.exitCode ?? '(none)'}: ${problem}`);
     // A run another has taken the place of says nothing more: no second launch, no terminal
     // brought over the one the panel now speaks for.
-    if (!deps.session.isCurrent(token)) return;
+    if (!deps.session.isCurrent(token)) return undefined;
     if (deps.session.stopped(token)) {
         deps.session.endWith(token, 'stopped', { text: `${name} was stopped.`, action: { label: 'Show Output', id: 'showOutput' } });
-        return;
+        return undefined;
     }
     // An option is put down for a usage error only when the build may not know it.
     const without = relaunchWithout(ended.exitCode, {
@@ -417,24 +427,22 @@ async function endedWithoutReport(
     });
     if (without === 'drawing') {
         deps.logger.warn(`${ended.taskName}: launched again without the drawing, which may need Graphviz`);
-        await launch(deps, token, run, files, { ...asked, draw: false });
-        return;
+        return { ...asked, draw: false };
     }
     if (without === 'jobs') {
         deps.logger.warn(`${ended.taskName}: launched again without --jobs, which this jpipe-runner build may not know`);
-        await launch(deps, token, run, files, { ...asked, jobs: false });
-        return;
+        return { ...asked, jobs: false };
     }
     if (without === 'events') {
         deps.logger.warn(`${ended.taskName}: launched again without --events, which this jpipe-runner build may not know`);
-        await launch(deps, token, run, files, { ...asked, stream: false });
-        return;
+        return { ...asked, stream: false };
     }
     ended.showOutput();
     deps.session.endWith(token, 'blocked', {
         text: `${name} was not ${check ? 'checked' : 'run'}: ${problem}. What jpipe-runner printed is in the terminal.`,
         action: { label: 'Show Output', id: 'showOutput' }
     });
+    return undefined;
 }
 
 /** Show a run's report and its drawing, in the panel and in Results, unless a newer run has taken its place. */
@@ -653,15 +661,13 @@ async function runFolder(context: vscode.ExtensionContext): Promise<vscode.Uri> 
     return folder;
 }
 
-/** Remove a run's folder. What is left behind if it cannot be is a few small files in the extension's storage. */
+/**
+ * Remove a run's folder, if it is there: nothing depends on its going. What is left behind if it
+ * cannot be is a few small files in the extension's storage.
+ */
 async function discard(folder: vscode.Uri): Promise<void> {
-    await quietlyDelete(folder);
-}
-
-/** Remove a file or a folder, if it is there: nothing depends on its going. */
-async function quietlyDelete(uri: vscode.Uri): Promise<void> {
     try {
-        await vscode.workspace.fs.delete(uri, { recursive: true });
+        await vscode.workspace.fs.delete(folder, { recursive: true });
     } catch {
         // There was none, or it cannot go: nothing to do about either.
     }

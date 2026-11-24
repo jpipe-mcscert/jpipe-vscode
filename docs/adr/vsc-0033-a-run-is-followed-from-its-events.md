@@ -37,7 +37,7 @@ asks for that file, is in the extension's storage, outside the workspace.
 An execution is followed from its events whenever the runner can write them, and the report
 replaces what they said when the run ends.
 
-- **Asked for from 4.1.** `--events <run folder>/<name>.events.jsonl` is passed to a runner whose
+- **Asked for from 4.1.** `--events <run folder>/<name>.<n>.events.jsonl` is passed to a runner whose
   release, asked of it as it is launched (ADR-VSC-0031), is at least the one that brought the
   option (`RUNNER_FEATURES.events` in `requirements.ts`, ADR-VSC-0032), development builds included
   (`streamsEvents` in `runner/runner-invocation.ts`). A runner whose release is unknown
@@ -46,12 +46,15 @@ replaces what they said when the run ends.
   it, and refuses it with a usage error and no report: a run asked for its events that ends so is
   launched once more without them, as a run that cannot draw is launched again without its drawing
   (ADR-VSC-0031). Nothing ran either time, so this costs one start of the runner (`relaunchWithout`).
-  Each launch starts from no progress, so a launch again never shows the first one's.
+  Each launch is the session's own, with a token of its own (`RunSession.relaunch`), and starts from
+  no progress: what an earlier launch writes late is dropped, as a run's is once another has taken
+  its place, so a launch again never shows the first one's.
 - **The file is polled**, every 150 ms while the task runs and once more after it ends, reading
   from where the last read stopped. Only lines that end with `\n` are read, and UTF-8 is decoded
   across reads. A file not written yet is waited for; one that shrinks was emptied by a runner
-  starting over, and is read again from its start. The file is removed before each launch, so a
-  run launched again without its drawing never reads the first launch's lines.
+  starting over, and is read again from its start. Each launch writes a file of its own, the `n`
+  in its name counting the launches of the run, so a run launched again never reads the first
+  launch's lines.
 - **Versioned as the report is.** Major version `1` is read; events and fields it does not know are
   ignored. A stream of another major version is not read, which the log says, and the run is shown
   when it ends, as before.
@@ -79,8 +82,9 @@ replaces what they said when the run ends.
   same framing; it puts every node where the coloured one had it. A drawing gone before it could be
   read, in a run that short, leaves the run under the busy overlay until its end, as before. A run
   stopped, or ended without its report, keeps its drawing with what it decided, and no element
-  marked running or waiting: those are its only results. A drawing read by a launch that has since
-  ended is not shown, so a run launched again, without its drawing, never shows the first launch's.
+  marked running or waiting: those are its only results. A drawing read once the launch that
+  announced it has ended is not shown, so a run launched again, without its drawing, never shows
+  the first launch's.
   Saving the drawing saves it as it is shown, coloured.
 - **The report replaces it** when the run ends, and is the only thing read for the verdict, the
   counts and the rows. What the report cannot say, how long each step took, is kept from the

@@ -46,12 +46,6 @@ export interface RunProgress {
     observed: ReadonlyMap<string, boolean>;
     /** What validation reported, once it is over. */
     validation: { passed: boolean; diagnostics: ReportDiagnostic[] } | null;
-    /**
-     * Where the runner drew the run's dataflow before its first step, every element without a
-     * status (`diagram.drawn`, jpipe-runner ADR-0032): a temporary file, deleted once the run has
-     * ended, so read as soon as it is announced. Null until then, and for a run that drew none.
-     */
-    preview: string | null;
     /** Whether the run has ended: its report is then written. */
     ended: boolean;
 }
@@ -69,7 +63,7 @@ function startedRun(event: Record<string, unknown>): RunProgress | StreamProblem
     }
     return {
         elements: texts(event.elements), running: new Map(), decided: new Map(), observed: new Map(),
-        validation: null, preview: null, ended: false
+        validation: null, ended: false
     };
 }
 
@@ -112,15 +106,26 @@ function eventOn(line: string): Record<string, unknown> | undefined {
  */
 export function nextProgress(progress: RunProgress | null, line: string): RunProgress | null | StreamProblem {
     const event = eventOn(line);
-    if (!event) return progress;
+    return event ? afterEvent(progress, event) : progress;
+}
+
+/**
+ * Where the runner drew the run's dataflow before its first step, if `event` announces it
+ * (`diagram.drawn`, jpipe-runner ADR-0032). The drawing is an event, not a state of the run: a
+ * temporary file, deleted once the run has ended, so read as soon as it is announced.
+ */
+function drawnBy(event: Record<string, unknown>): string | undefined {
+    return event.event === 'diagram.drawn' && typeof event.path === 'string' && event.path ? event.path : undefined;
+}
+
+/** `nextProgress`, for an event already parsed. */
+function afterEvent(progress: RunProgress | null, event: Record<string, unknown>): RunProgress | null | StreamProblem {
     if (event.event === 'run.started') return startedRun(event);
     if (!progress) return progress;
     const at = typeof event.elapsed_ms === 'number' ? event.elapsed_ms : 0;
     switch (event.event) {
         case 'validation.ended':
             return { ...progress, validation: { passed: event.passed === true, diagnostics: parseDiagnostics(event.diagnostics) } };
-        case 'diagram.drawn':
-            return typeof event.path === 'string' && event.path ? { ...progress, preview: event.path } : progress;
         case 'element.started':
             return typeof event.id === 'string' ? { ...progress, running: new Map(progress.running).set(event.id, at) } : progress;
         case 'source.observed':
@@ -134,12 +139,17 @@ export function nextProgress(progress: RunProgress | null, line: string): RunPro
     }
 }
 
-/** Reads a stream of events as its bytes arrive, a few at a time. */
+/**
+ * Reads a stream of events as its bytes arrive, a few at a time, telling `onDrawn` where the
+ * runner drew the run before its first step, once for each drawing announced after `run.started`.
+ */
 export class RunEventReader {
     private readonly decoder = new TextDecoder('utf-8');
     private pending = '';
     private current: RunProgress | null = null;
     private refused: string | null = null;
+
+    constructor(private readonly onDrawn: (path: string) => void = () => undefined) {}
 
     /** What the events have said so far; null before `run.started`. */
     get progress(): RunProgress | null {
@@ -160,7 +170,11 @@ export class RunEventReader {
         this.pending = lines.pop() ?? '';
         let changed = false;
         for (const line of lines) {
-            const next = nextProgress(this.current, line);
+            const event = eventOn(line);
+            if (!event) continue;
+            const drawn = this.current ? drawnBy(event) : undefined;
+            if (drawn) this.onDrawn(drawn);
+            const next = afterEvent(this.current, event);
             if (next !== null && 'problem' in next) {
                 this.refused = next.problem;
                 return changed;
@@ -183,22 +197,27 @@ export interface EventFollower {
 /** How much of the file one read takes at most. */
 const CHUNK = 1 << 20;
 
+/** What a follower tells of the events it reads. */
+export interface EventListener {
+    /** The events said something new. */
+    onProgress(progress: RunProgress): void;
+    /** The runner drew the run before its first step, in the file at `path`. */
+    onDrawn(path: string): void;
+    /** The stream is in a version this does not read: said once. */
+    onProblem(problem: string): void;
+}
+
 /**
- * Follow the events written to the file at `path`, telling `onProgress` each time they say
- * something new, and `onProblem` once if the stream is in a version this does not read.
+ * Follow the events written to the file at `path`, telling `listener` what they say.
  *
  * The file is polled every `intervalMs`: it is in the extension's storage, outside the workspace,
  * where VS Code's file watcher does not look. A file not written yet is waited for; one that
  * shrinks was emptied by a runner starting over, and is read again from its start. Polling is also
  * what limits how often a fast run changes what is shown.
  */
-export function followEvents(
-    path: string,
-    onProgress: (progress: RunProgress) => void,
-    onProblem: (problem: string) => void,
-    intervalMs = 150
-): EventFollower {
-    let reader = new RunEventReader();
+export function followEvents(path: string, listener: EventListener, intervalMs = 150): EventFollower {
+    const newReader = (): RunEventReader => new RunEventReader(drawing => listener.onDrawn(drawing));
+    let reader = newReader();
     let offset = 0;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -215,7 +234,7 @@ export function followEvents(
         try {
             const { size } = await handle.stat();
             if (size < offset) {
-                reader = new RunEventReader();
+                reader = newReader();
                 offset = 0;
             }
             let changed = false;
@@ -227,8 +246,8 @@ export function followEvents(
                 if (reader.read(buffer.subarray(0, bytesRead))) changed = true;
             }
             const progress = reader.progress;
-            if (changed && progress) onProgress(progress);
-            if (reader.problem !== null) onProblem(reader.problem);
+            if (changed && progress) listener.onProgress(progress);
+            if (reader.problem !== null) listener.onProblem(reader.problem);
         } catch {
             // A read that failed is tried again at the next poll.
         } finally {
