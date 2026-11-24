@@ -115,7 +115,7 @@ export function activate(context: vscode.ExtensionContext): void {
     runnerEnvironment.start();
     librariesView.start();
     const runSession = new RunSession(librariesView);
-    const resultsView = new ResultsView(runSession);
+    const resultsView = new ResultsView(runSession, logger);
     const runPanel = new RunPanel(context, logger, runSession, resultsView, modelsView, (method, params) => client.sendRequest(method, params));
     context.subscriptions.push(modelsView, runnerEnvironment, librariesView, resultsView, runSession, runPanel, new ElementsView(client, modelsView, librariesView, logger));
     // Hides the palette commands that need models to act on until this workspace is known to be
@@ -123,7 +123,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // opening it is one of the things that activates the extension.
     void vscode.commands.executeCommand('setContext', 'jpipe.activated', true);
 
-    registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView, runSession, runPanel });
+    registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, runSession, runPanel });
 }
 
 /** The settings that choose which compiler runs, and how long it may take: so what it reports. */

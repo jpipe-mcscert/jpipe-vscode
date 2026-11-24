@@ -17,9 +17,8 @@ import {
 } from './runner-invocation.js';
 import type { RunnerEnvironment } from './environment.js';
 import { fixLabel, moduleInvocation, runnablePython, statusMessage, type Command } from './python-environment.js';
-import type { ResultsView } from './results-view.js';
 import type { LibraryStep } from './step-binding.js';
-import { compiledLabels, durationsOf, parseReport, verdictSentence, withReport, type RunReport } from './run-report.js';
+import { compiledLabels, parseReport, verdictSentence, withReport, type RunReport } from './run-report.js';
 import { followEvents, type EventFollower } from './run-events.js';
 import type { RunSession } from './run-session.js';
 import type { RunPanel } from './run-panel.js';
@@ -32,7 +31,6 @@ export interface RunDeps {
     libraries: LibrariesView;
     models: ModelsView;
     environment: RunnerEnvironment;
-    results: ResultsView;
     session: RunSession;
     panel: RunPanel;
 }
@@ -239,6 +237,8 @@ async function launch(
     const { draw } = asked;
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     const cwd = folder?.uri.fsPath ?? path.dirname(document.uri.fsPath);
+    // What the rows of Results open, as soon as there are rows: from the run's events, or its report.
+    deps.session.update(token, { cwd, steps: run.steps });
     const eventsFor = (release: string | undefined): string | undefined =>
         asked.stream && !check && streamsEvents(release) ? files.events(attempt).fsPath : undefined;
     const jobsFor = (release: string | undefined): boolean => asked.jobs && runsJobs(release, check);
@@ -272,7 +272,6 @@ async function launch(
 
     const task = runTask(run, folder, cwd, invocation);
     const showOutput = (): void => terminalOf(task)?.show();
-    deps.results.attach({ cwd, steps: run.steps });
     const follower = events ? follow(deps, token, task.name, events) : undefined;
     let exitCode: number | undefined;
     try {
@@ -288,7 +287,7 @@ async function launch(
     }
 
     const read = await readReport(files.report);
-    const ended: Ended = { taskName: task.name, exitCode, cwd, showOutput, release: invocation.release };
+    const ended: Ended = { taskName: task.name, exitCode, release: invocation.release };
     if ('problem' in read) return endedWithoutReport(deps, token, run, { draw, stream: events !== undefined, jobs }, ended, read.problem);
     await showReport(deps, token, run, files, ended, read.report);
     return undefined;
@@ -369,10 +368,6 @@ function flagFor(deps: RunDeps, release: string | undefined): DataflowFlag {
 interface Ended {
     taskName: string;
     exitCode: number | undefined;
-    /** Where it ran: the report's paths are relative to it. */
-    cwd: string;
-    /** Bring its terminal forward. */
-    showOutput: () => void;
     /** The runner release it ran, as it reported it. */
     release: string | undefined;
 }
@@ -437,7 +432,7 @@ function endedWithoutReport(
         deps.logger.warn(`${ended.taskName}: launched again without --events, which this jpipe-runner build may not know`);
         return { ...asked, stream: false };
     }
-    ended.showOutput();
+    deps.session.showOutput();
     deps.session.endWith(token, 'blocked', {
         text: `${name} was not ${check ? 'checked' : 'run'}: ${problem}. What jpipe-runner printed is in the terminal.`,
         action: { label: 'Show Output', id: 'showOutput' }
@@ -445,9 +440,12 @@ function endedWithoutReport(
     return undefined;
 }
 
-/** Show a run's report and its drawing, in the panel and in Results, unless a newer run has taken its place. */
+/**
+ * Show a run's report and its drawing, unless a newer run has taken its place. The session holds
+ * them, and the panel and Results both show what it holds (ADR-VSC-0031).
+ */
 async function showReport(deps: RunDeps, token: number, run: Run, files: RunFiles, ended: Ended, report: RunReport): Promise<void> {
-    const { name, check, steps } = run;
+    const { name, check } = run;
     deps.logger.info(`${ended.taskName}: ${verdictSentence(report, name, check)}`);
     if (!deps.session.isCurrent(token)) {
         deps.logger.info(`${ended.taskName}: not shown, a newer run has taken its place`);
@@ -455,15 +453,8 @@ async function showReport(deps: RunDeps, token: number, run: Run, files: RunFile
     }
     // The SVG the runner drew, when its report says it drew one.
     const dataflow = report.dataflow === null ? null : await readFileText(files.dataflow);
-    // The events, if the runner wrote them, are kept: only they say how long each step took.
-    const progress = deps.session.run?.progress;
-    const shown = deps.session.finish(token, report, dataflow);
-    // A newer run may have started while the drawing was read: Results stays with it, as the panel does.
-    if (!shown) return;
-    await deps.results.show({
-        report, name, check, cwd: ended.cwd, steps, showOutput: ended.showOutput,
-        durations: progress ? durationsOf(progress) : undefined
-    });
+    // A newer run may have started while the drawing was read: then this one is not shown.
+    deps.session.finish(token, report, dataflow);
 }
 
 /** The text of `file`, or null if it cannot be read. */

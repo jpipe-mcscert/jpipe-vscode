@@ -126,7 +126,7 @@ export class RunPanel implements vscode.Disposable {
                 await this.results.reveal(msg.row);
                 break;
             case 'output':
-                if (!this.session.showOutput()) this.results.showOutput();
+                this.session.showOutput();
                 break;
             case 'select':
                 // Clearing the panel's selection leaves Results as it is: it lists the run, and

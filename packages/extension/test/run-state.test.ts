@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { parseReport, type RunReport } from '../src/extension/runner/run-report.js';
 import {
-    clockTime, elementCandidates, endedWithReport, endedWithout, outOfDateReason, NO_DRAWING, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
+    clockTime, elementCandidates, endedWithReport, endedWithout, outOfDateReason, NO_DRAWING, resultsOf, panelState, progressOf, rowsWithoutReport, startedRun, statusRow,
     type ShownRun
 } from '../src/extension/runner/run-state.js';
 import { kindOf, underWay } from '../src/shared/run-kind.js';
@@ -266,6 +266,21 @@ describe('a run under way whose events are read', () => {
     test('once it ended, the verdict says the rest', () => {
         expect(panelState({ ...done(), progress }, 4).progress).toBeNull();
         expect(panelState(startedRun('release', 'file:///w/release.jd', false, LIBRARIES), 1).progress).toBeNull();
+    });
+
+    test('Results lists the report once it arrives, under the justification it names, with how long each step took', () => {
+        const timed = reading(
+            { event: 'run.started', schema_version: '1.0', elements: ['release:e1'] },
+            { event: 'element.started', id: 'release:e1', elapsed_ms: 100 },
+            { event: 'element.decided', element: { id: 'release:e1', status: 'fail' }, diagnostics: [], elapsed_ms: 1100 });
+        const ended = endedWithReport({ ...running, progress: timed }, report({ verdict: 'fail', elements: [{ id: 'release:e1', status: 'fail' }] }), null, new Date());
+        const results = resultsOf(ended)!;
+        expect(results.title).toBe('release');
+        expect(results.rows.find(r => r.id === 'group/Failed')!.children[0].description).toContain('1.0 s');
+        // Before its report, the events say what there is; a run with nothing to say leaves the rows as they are.
+        expect(resultsOf(running)).toMatchObject({ title: 'release', rows: [{ id: 'status' }, {}, {}, {}] });
+        expect(resultsOf(endedWithout(running, 'stopped', { text: 'stopped', action: null }, new Date()))!.rows).toHaveLength(1);
+        expect(resultsOf({ ...ended, report: null, phase: 'done' })).toBeUndefined();
     });
 
     test('Results lists its elements below the row that says it is under way', () => {

@@ -148,10 +148,9 @@ export class RunSession implements vscode.Disposable {
         this.execution?.terminate();
     }
 
-    /** Bring forward the terminal the run on show printed in, if it had one. */
-    showOutput(): boolean {
+    /** Bring forward the terminal the run on show printed in, if it had one: the only one there is. */
+    showOutput(): void {
         this.output?.();
-        return this.output !== undefined;
     }
 
     private changed(change: Change): void {

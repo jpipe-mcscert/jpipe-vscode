@@ -9,7 +9,10 @@
 import type { Colouring, LiveStatus, Notice, Progress, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
 import { kindOf, underWay } from '../../shared/run-kind.js';
 import type { RunProgress } from './run-events.js';
-import { outcomeLinks, progressRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport } from './run-report.js';
+import type { LibraryStep } from './step-binding.js';
+import {
+    durationsOf, outcomeLinks, progressRows, resultRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport
+} from './run-report.js';
 
 /**
  * The drawing of a run: the one the runner made before its first step, which the page colours as
@@ -37,6 +40,10 @@ export interface ShownRun {
     labels: Labels;
     /** The runner's drawing of the run's dataflow, or why there is none; null while there is none yet. */
     drawing: Drawing | null;
+    /** Where it runs, once it is launched: the paths its report and events name are relative to it. */
+    cwd: string | null;
+    /** The steps of the libraries it loads, as they were when it was launched: where a step's row leads. */
+    steps: LibraryStep[];
     /** The libraries it loaded: their paths, to tell when they change, and how the workspace names them. */
     libraries: { path: string; display: string }[];
     /** When it ended. */
@@ -53,7 +60,7 @@ export interface ShownRun {
 export function startedRun(name: string, uri: string, check: boolean, libraries: ShownRun['libraries']): ShownRun {
     return {
         name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(), drawing: null,
-        libraries, endedAt: null, notice: null, outOfDate: null
+        cwd: null, steps: [], libraries, endedAt: null, notice: null, outOfDate: null
     };
 }
 
@@ -171,6 +178,20 @@ export function statusRow(run: ShownRun): ResultRow | undefined {
         icon: run.phase === 'stopped' ? 'stopped' : 'error',
         children: []
     };
+}
+
+/**
+ * What the Results view lists for `run`, and under what title: the report's rows once it has one,
+ * with how long each step took when its events said, which only they say; before it,
+ * `rowsWithoutReport`. Undefined when the run has nothing to list, and the rows on show stay.
+ */
+export function resultsOf(run: ShownRun): { rows: ResultRow[]; title: string } | undefined {
+    if (run.report) {
+        const durations = run.progress ? durationsOf(run.progress) : undefined;
+        return { rows: resultRows(run.report, run.name, run.check, durations), title: run.report.justification ?? run.name };
+    }
+    const rows = rowsWithoutReport(run);
+    return rows.length > 0 ? { rows, title: run.name } : undefined;
 }
 
 /**
