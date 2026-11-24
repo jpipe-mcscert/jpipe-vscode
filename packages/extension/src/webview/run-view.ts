@@ -1,9 +1,8 @@
 import type { HostToRunPanel, Progress, RunKind, RunPanelState, RunPanelToHost, Tone, VerdictCount } from '../shared/run-protocol.js';
 import { kindOf, underWay } from '../shared/run-kind.js';
-import { DiagramCanvas } from './canvas.js';
+import { DiagramCanvas, type SavedFraming } from './canvas.js';
 import { applyFocus, downstream, elementOf, nameOf, nodeNamed } from './flow.js';
 import { colourRun, markProgress } from './run-colours.js';
-import type { Box } from './viewbox.js';
 
 /**
  * The run panel's page: the last run's dataflow on the shared canvas, its verdict, and what can be
@@ -17,7 +16,7 @@ import type { Box } from './viewbox.js';
 
 /** What survives a webview content reload. */
 export interface PersistedRunState {
-    vb?: Box;
+    framing?: SavedFraming;
 }
 
 /** How the verdict reads, besides its words and hue: a different shape for each. */
@@ -77,12 +76,6 @@ export class RunPage {
      */
     private coloured: { source: string; key: string; svg: string } | null = null;
     /**
-     * The justification whose drawing the canvas was last framed on: kept when a new run clears
-     * the canvas, so that the drawing it makes of the same justification opens as the reader left
-     * the last one.
-     */
-    private framed: string | null = null;
-    /**
      * The node selected, by the name Graphviz gave it, which is the element's id for an element:
      * kept across a redraw, where the node itself is replaced.
      */
@@ -109,13 +102,13 @@ export class RunPage {
             {
                 isShowing: () => this.body.dataset.mode === 'diagram',
                 isChrome: target => target instanceof Element && target.closest('#toolbar, #banners, #minimap') !== null,
-                onViewChange: () => this.persist({ vb: this.canvas.view ?? undefined }),
+                onViewChange: () => this.persist({ framing: this.canvas.framing ?? undefined }),
                 onRebuilt: () => this.applyMarks(),
                 onNodeClick: (node, twice) => this.nodeClicked(node, twice),
                 onBackgroundClick: () => this.select(null)
             }
         );
-        if (restored.vb) this.canvas.restoreView(restored.vb);
+        if (restored.framing) this.canvas.restoreFraming(restored.framing);
         this.bindControls();
     }
 
@@ -263,12 +256,11 @@ export class RunPage {
             this.applyMarks();
             return;
         }
-        // The same justification keeps its framing from one run to the next, and from the drawing
-        // a run is coloured on to the one it ends with, which puts every node in the same place.
-        const keep = this.framed === state.name;
-        this.canvas.show(svg, { documentPath: null, diagramName: `${state.name} (dataflow)` }, keep);
+        // The same justification keeps its framing from one run to the next, cleared between them,
+        // and from the drawing a run is coloured on to the one it ends with, which puts every node
+        // in the same place: the canvas tells them by the caption, which names the justification.
+        this.canvas.show(svg, { documentPath: null, diagramName: `${state.name} (dataflow)` });
         this.drawn = svg;
-        this.framed = state.name;
         this.applyMarks();
     }
 

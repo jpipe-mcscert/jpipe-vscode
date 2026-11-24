@@ -142,6 +142,23 @@ describe('a run that ended', () => {
         expect(sameView(view(), framed)).toBe(false);
     });
 
+    test('a reloaded page comes back framed as the reader left it, for the same justification', () => {
+        const first = newPage();
+        first.apply(state());
+        button('zoom-in').click();
+        const viewBox = (): number[] => byId('svg-wrapper').querySelector('svg')!.getAttribute('viewBox')!.split(' ').map(Number);
+        const framed = viewBox();
+        const saved = persist.mock.calls.at(-1)![0];
+        expect(saved.framing).toBeDefined();
+        // The page is built again, in a document of its own, and the host replays its state.
+        mountShell();
+        vi.spyOn(byId('container'), 'getBoundingClientRect').mockReturnValue({
+            left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({})
+        } as DOMRect);
+        newPage(saved).apply(state());
+        viewBox().forEach((n, i) => expect(n).toBeCloseTo(framed[i], 6));
+    });
+
     test('with no drawing, says why', () => {
         newPage().apply(state({ dataflow: null, drawingMissing: 'Drawing needs Graphviz.' }));
         expect(document.body.dataset.mode).toBe('empty');

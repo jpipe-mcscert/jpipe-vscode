@@ -2,8 +2,7 @@ import type { HostToWebview, RenderMessage, ViewMode, WebviewToHost } from '../s
 import { renderFailureNotice, showsFailureNotice } from '../shared/render-failure.js';
 import { DiagnosticView, type DiagnosticViewState } from './diagnostic-view.js';
 import { applyDimming, findElement } from './highlight.js';
-import { DiagramCanvas } from './canvas.js';
-import type { Box } from './viewbox.js';
+import { DiagramCanvas, type SavedFraming } from './canvas.js';
 
 /**
  * The preview panel's page: the diagram of the model under the cursor, or its diagnostic report.
@@ -19,9 +18,7 @@ import type { Box } from './viewbox.js';
  * back framed the way the user left it, which is the whole point of the exercise.
  */
 interface PersistedState {
-    vb?: Box;
-    documentUri?: string | null;
-    diagramName?: string | null;
+    framing?: SavedFraming;
     highlightEnabled?: boolean;
     /**
      * Where the reader was in the diagnostic view: which tab, what they had filtered, which
@@ -80,8 +77,6 @@ const diagnosticView = new DiagnosticView(
 let lastRevision = -1;
 /** The diagnostic path is just as async as the render one, and drops stale results the same way. */
 let lastDiagnosticRevision = -1;
-let lastDocumentUri: string | null = null;
-let lastDiagramName: string | null = null;
 let diagramName: string | null = null;
 
 let highlightEnabled = false;
@@ -120,9 +115,7 @@ const canvas = new DiagramCanvas(
 
 function persist(): void {
     vscode.setState({
-        vb: canvas.view ?? undefined,
-        documentUri: lastDocumentUri,
-        diagramName: lastDiagramName,
+        framing: canvas.framing ?? undefined,
         highlightEnabled,
         diag: diagnosticView.getState()
     });
@@ -216,18 +209,17 @@ function applyRender(msg: RenderMessage): void {
     if (msg.revision < lastRevision) return;
     lastRevision = msg.revision;
 
-    const sameDiagram = msg.documentUri === lastDocumentUri && msg.diagramName === lastDiagramName;
     diagramName = msg.diagramName;
     lastMatched = null;
 
     setMode('diagram');
-    canvas.show(msg.svg, { documentPath: msg.documentPath, diagramName: msg.diagramName }, sameDiagram);
+    // A diagram is its model in its document: the framing is kept while both stay the same.
+    canvas.show(msg.svg, { documentPath: msg.documentPath, diagramName: msg.diagramName },
+        JSON.stringify([msg.documentUri, msg.diagramName]));
     setRenderFailure(msg.error);
     setUnsaved(msg.unsaved);
     setBusy(false);
 
-    lastDocumentUri = msg.documentUri;
-    lastDiagramName = msg.diagramName;
     applyHighlight(msg.highlight, msg.diagramName);
 }
 
@@ -404,11 +396,9 @@ if (restored) {
         highlightToggle.classList.add('active');
         highlightToggle.setAttribute('aria-pressed', 'true');
     }
-    // Seed the view so the replayed render counts as "the same diagram" and keeps this frame
-    // rather than re-fitting.
-    if (restored.vb) canvas.restoreView(restored.vb);
-    lastDocumentUri = restored.documentUri ?? null;
-    lastDiagramName = restored.diagramName ?? null;
+    // Seed the framing, so that the replayed render is the same diagram and keeps it rather than
+    // re-fitting.
+    if (restored.framing) canvas.restoreFraming(restored.framing);
     // Recorded now, applied when the replayed report arrives.
     diagnosticView.restoreState(restored.diag);
 }

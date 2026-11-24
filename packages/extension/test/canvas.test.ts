@@ -140,7 +140,7 @@ describe('showing a diagram', () => {
 
     test('installs the SVG, strips its caption, and opens on the initial view', () => {
         const canvas = newCanvas();
-        expect(canvas.show(SVG, { documentPath: '/work/release.jd', diagramName: 'release' }, false)).toBe(true);
+        expect(canvas.show(SVG, { documentPath: '/work/release.jd', diagramName: 'release' })).toBe(true);
         expect(page.wrapper.querySelector('svg')).toBe(canvas.svg);
         expect(page.wrapper.textContent).not.toContain('/work/release.jd');
         expect(canvas.svg?.querySelector('title')?.textContent).not.toBe('release');
@@ -150,36 +150,68 @@ describe('showing a diagram', () => {
         expect(hooks.onViewChange).toHaveBeenCalled();
     });
 
-    test('keeps the reader\'s framing when the same diagram is shown again', () => {
+    test('keeps the reader\'s framing when the same diagram is shown again, and opens another on its own', () => {
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        const release = { documentPath: '/w/release.jd', diagramName: 'release' };
+        canvas.show(SVG, release);
         canvas.zoomStep('in');
         const framed = canvas.view;
-        canvas.show(SVG, { documentPath: null, diagramName: null }, true);
+        canvas.show(SVG, release);
         expectBox(canvas.view, framed);
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: '/w/release.jd', diagramName: 'other' });
         expectBox(canvas.view, initialBox(FRAME));
     });
 
-    test('a restored view is kept by the replay that follows it', () => {
+    test('tells diagrams by the identity it is given, when the page gives one', () => {
         const canvas = newCanvas();
-        const restored = { x: 10, y: 20, w: 200, h: 150 };
-        canvas.restoreView(restored);
-        canvas.show(SVG, { documentPath: null, diagramName: null }, true);
-        expectBox(canvas.view, restored);
+        const caption = { documentPath: null, diagramName: 'release' };
+        canvas.show(SVG, caption, 'file:///w/a.jd');
+        canvas.zoomStep('in');
+        canvas.show(SVG, caption, 'file:///w/b.jd');
+        expectBox(canvas.view, initialBox(FRAME));
+    });
+
+    test('keeps the framing across a clear, for the same diagram drawn again', () => {
+        const canvas = newCanvas();
+        const caption = { documentPath: null, diagramName: 'release (dataflow)' };
+        canvas.show(SVG, caption);
+        canvas.zoomStep('in');
+        const framed = canvas.view;
+        canvas.clear();
+        canvas.show(SVG, caption);
+        expectBox(canvas.view, framed);
+    });
+
+    test('a restored framing is kept by the replay of its diagram, and only of its diagram', () => {
+        const caption = { documentPath: '/w/release.jd', diagramName: 'release' };
+        const shown = newCanvas();
+        shown.show(SVG, caption);
+        shown.zoomStep('in');
+        const saved = shown.framing!;
+        expect(saved.on).toBeTruthy();
+
+        const reloaded = newCanvas();
+        reloaded.restoreFraming(saved);
+        reloaded.show(SVG, caption);
+        expectBox(reloaded.view, saved.vb);
+
+        const other = newCanvas();
+        other.restoreFraming(saved);
+        other.show(SVG, { ...caption, diagramName: 'other' });
+        expectBox(other.view, initialBox(FRAME));
     });
 
     test('text that is not an SVG leaves the canvas empty', () => {
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
-        expect(canvas.show('<html>not a diagram', { documentPath: null, diagramName: null }, false)).toBe(false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
+        expect(canvas.show('<html>not a diagram', { documentPath: null, diagramName: null })).toBe(false);
         expect(canvas.svg).toBeNull();
         expect(page.wrapper.childElementCount).toBe(0);
     });
 
     test('clear takes the diagram away', () => {
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         canvas.clear();
         expect(canvas.svg).toBeNull();
         expect(page.wrapper.childElementCount).toBe(0);
@@ -193,7 +225,7 @@ describe('showing a diagram', () => {
     test('on a dark theme the white sheet goes, and a theme switch rebuilds the diagram', async () => {
         document.body.classList.add('vscode-dark');
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         expect(canvas.svg?.querySelector('polygon[fill="white"]')).toBeNull();
 
         document.body.classList.remove('vscode-dark');
@@ -205,7 +237,7 @@ describe('showing a diagram', () => {
     test('the minimap follows the canvas, and hides on request', () => {
         const canvas = newCanvas();
         const minimap = document.getElementById('minimap') as HTMLElement;
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         for (let i = 0; i < 6; i++) canvas.zoomStep('in');
         expect(minimap.hidden).toBe(false);
         canvas.hideMinimap();
@@ -219,7 +251,7 @@ describe('the controls', () => {
 
     test('zoom in and out, fit, and 100%', () => {
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         const opening = canvas.view!;
 
         page.zoomIn.click();
@@ -237,7 +269,7 @@ describe('the controls', () => {
 
     test('keys zoom and pan while the canvas is on show, and only then', () => {
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         const key = (k: string, init: KeyboardEventInit = {}) =>
             document.dispatchEvent(new KeyboardEvent('keydown', { key: k, cancelable: true, ...init }));
 
@@ -265,7 +297,7 @@ describe('the controls', () => {
 
     test('the wheel zooms, and leaves the chrome alone', () => {
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         vi.spyOn(canvas.svg!, 'getBoundingClientRect').mockReturnValue(rect(0, 0, PANEL.width, PANEL.height));
         const opening = canvas.view!;
 
@@ -281,7 +313,7 @@ describe('the pointer', () => {
 
     test('a press closes the page\'s menus, and a drag pans', () => {
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         vi.spyOn(canvas.svg!, 'getBoundingClientRect').mockReturnValue(rect(0, 0, PANEL.width, PANEL.height));
         canvas.zoomStep('in');
         canvas.zoomStep('in');
@@ -298,7 +330,7 @@ describe('the pointer', () => {
 
     test('a click on a node reaches the page, once or twice; a drag from a node does not', () => {
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         const node = canvas.svg!.querySelector('g.node text')!;
 
         pointer(node, 'pointerdown', 10, 10);
@@ -322,7 +354,7 @@ describe('the pointer', () => {
         const canvas = new DiagramCanvas(
             { container: page.container, wrapper: page.wrapper, zoomValue: page.zoomValue, minimap: document.getElementById('minimap') as HTMLElement },
             { ...hooks, onBackgroundClick });
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         pointer(page.container, 'pointerdown', 10, 10);
         page.container.dispatchEvent(new MouseEvent('click', { detail: 1, bubbles: true }));
         expect(hooks.onNodeClick).not.toHaveBeenCalled();
@@ -331,7 +363,7 @@ describe('the pointer', () => {
 
     test('a press on the chrome is left alone', () => {
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         pointer(page.toolbar, 'pointerdown', 10, 10);
         expect(hooks.onPress).not.toHaveBeenCalled();
     });
@@ -344,7 +376,7 @@ describe('revealing an element', () => {
         // is made, as the page does.
         vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList);
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         vi.spyOn(canvas.svg!, 'getBoundingClientRect').mockReturnValue(rect(0, 0, PANEL.width, PANEL.height));
         const node = canvas.svg!.querySelector('g.node')!;
 
@@ -364,7 +396,7 @@ describe('revealing an element', () => {
 
     test('an element with no size is not revealed', () => {
         const canvas = newCanvas();
-        canvas.show(SVG, { documentPath: null, diagramName: null }, false);
+        canvas.show(SVG, { documentPath: null, diagramName: null });
         const before = canvas.view;
         canvas.reveal(canvas.svg!.querySelector('g.node')!);
         expect(canvas.view).toEqual(before);
