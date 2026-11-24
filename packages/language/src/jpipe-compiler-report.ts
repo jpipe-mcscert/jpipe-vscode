@@ -81,7 +81,7 @@ function readSymbol(value: unknown): ReportSymbol | undefined {
 function readModel(value: unknown): ReportModel | undefined {
     if (!isObject(value) || !isString(value.name) || !Array.isArray(value.symbols) || !Array.isArray(value.aliases)) return undefined;
     const symbols = value.symbols.map(readSymbol);
-    if (symbols.some(symbol => symbol === undefined)) return undefined;
+    if (symbols.includes(undefined)) return undefined;
     const aliases = value.aliases.filter((alias): alias is { from: string; to: string } =>
         isObject(alias) && isString(alias.from) && isString(alias.to));
     if (aliases.length !== value.aliases.length) return undefined;
@@ -105,7 +105,7 @@ export function readReport(value: unknown): CompilerReport | undefined {
     if (!Array.isArray(value.models) || !Array.isArray(value.diagnostics)) return undefined;
     const models = value.models.map(readModel);
     const diagnostics = value.diagnostics.map(readDiagnostic);
-    if (models.some(model => model === undefined) || diagnostics.some(diagnostic => diagnostic === undefined)) return undefined;
+    if (models.includes(undefined) || diagnostics.includes(undefined)) return undefined;
     return { source: value.source, models: models as ReportModel[], diagnostics: diagnostics as ReportDiagnostic[] };
 }
 
@@ -203,7 +203,10 @@ export class CompilerReports {
 
     /** Resolves once no report is on its way, and every document one arrived for is checked again. */
     async idle(): Promise<void> {
-        while (this.inFlight.size > 0) await Promise.all([...this.inFlight]);
+        if (this.inFlight.size === 0) return;
+        await Promise.all(this.inFlight);
+        // An arrival may have asked for another report meanwhile.
+        return this.idle();
     }
 
     /**
@@ -214,8 +217,7 @@ export class CompilerReports {
         const file = fsPathOf(document.uri);
         const key = fileKey(file);
         if (!this.saved.has(key)) this.saved.set(key, readSaved(file));
-        const saved = this.saved.get(key);
-        return saved !== undefined && document.textDocument.getText().slice(0, end) === saved.slice(0, end);
+        return this.saved.get(key)?.slice(0, end) === document.textDocument.getText().slice(0, end);
     }
 
     /**
@@ -236,7 +238,7 @@ export class CompilerReports {
      */
     forget(uris: ReadonlySet<string>): string[] {
         const forgotten: string[] = [];
-        for (const key of [...this.entries.keys()]) {
+        for (const key of this.entries.keys()) {
             if (uris.size > 0 && !uris.has(key) && !this.loadsAny(key, uris)) continue;
             this.entries.delete(key);
             forgotten.push(key);

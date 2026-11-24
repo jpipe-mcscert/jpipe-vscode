@@ -345,15 +345,20 @@ function expand(
     if (seen.has(model)) return [];
     seen.add(model);
     const parent = model.parent?.ref;
-    let inherited: ModelElement[] = [];
-    if (parent) {
-        const parentNamespace = qualify(namespace, writtenNamespace(model.parent?.$refText, parent.id));
-        const parentName = qualify(parentNamespace, parent.id);
-        inherited = expand(parent, parentNamespace, seen, base, baseElements)
-            .map(entry => ({ ...entry, id: inheritedId(parentName, entry.id) }));
-    }
-    // An override is bound as the compiler binds it, and takes the id of the `@support` it
-    // names: `evidence T:a` replaces `lib:T:a`. One naming several replaces none.
+    if (!parent) return overlay(model, namespace, []);
+    const parentNamespace = qualify(namespace, writtenNamespace(model.parent?.$refText, parent.id));
+    const parentName = qualify(parentNamespace, parent.id);
+    const inherited = expand(parent, parentNamespace, seen, base, baseElements)
+        .map(entry => ({ ...entry, id: inheritedId(parentName, entry.id) }));
+    return overlay(model, namespace, inherited);
+}
+
+/**
+ * What `model` declares, under `namespace`, laid over the elements it `inherited`. An override is
+ * bound as the compiler binds it, and takes the id of the `@support` it names: `evidence T:a`
+ * replaces `lib:T:a`. One naming several replaces none, and marks them `contested`.
+ */
+function overlay(model: Justification | Template, namespace: string, inherited: readonly ModelElement[]): ModelElement[] {
     let kept = inherited;
     const contested = new Set<ModelElement>();
     const local: ModelElement[] = [];

@@ -41,7 +41,7 @@ import {
     type ModelElement
 } from './jpipe-utils.js';
 import { bindHook, listedIn, type ModelContents } from './jpipe-model-contents.js';
-import { bind, inheritedElements } from './jpipe-overrides.js';
+import { bind, inheritedElements, type Binding } from './jpipe-overrides.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { byCodeUnit } from './jpipe-text.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
@@ -319,7 +319,7 @@ export class JpipeValidator {
         } else if (binding.kind === 'ambiguous') {
             const candidates = binding.candidates.map(candidate => candidate.id);
             report(accept, JpipeIssue.AmbiguousHook,
-                   `ambiguous hook '${actual}' in '${modelId}': it names ${candidates.map(id => `'${id}'`).join(', ')}; write the qualified id`,
+                   `ambiguous hook '${actual}' in '${modelId}': it names ${quoted(candidates)}; write the qualified id`,
                    at, { actual, modelId, candidates });
         } else {
             const candidates = listedIn(contents)
@@ -615,62 +615,8 @@ export class JpipeValidator {
         this.logger.debug(`Checking overrides for '${model.id}'`);
         const inheritance = await inheritedElements(model, this.contents);
         if (!inheritance) return;
-        const inherited = inheritance.elements;
-
-        // Each inherited element an override names, with the override naming it.
-        const named = new Map<ModelElement, JustificationElement>();
-        for (const element of getLocalElements(model)) {
-            const id = qualifiedIdText(element.id);
-            if (!id.includes(':') || isDiscardedConclusion(element)) continue;
-            // Only an evidence or a sub-conclusion overrides, and is bound as the compiler binds
-            // it. Another kind names a `@support` only by its exact id, as the wrong kind to stand
-            // for it: by a suffix, the compiler takes it for an element of its own.
-            const leaf = isEvidence(element) || isSubConclusion(element);
-            const exact = inherited.find(entry => entry.id === id);
-            const binding = leaf ? bind(inherited, id) : exact ? { kind: 'found' as const, element: exact } : { kind: 'missing' as const };
-            if (binding.kind === 'found') {
-                if (!named.has(binding.element)) named.set(binding.element, element);
-            } else if (binding.kind === 'ambiguous') {
-                binding.candidates.forEach(candidate => named.set(candidate, element));
-                if (inheritance.whole) {
-                    const candidates = binding.candidates.map(candidate => candidate.id);
-                    report(accept, JpipeIssue.AmbiguousId,
-                           `ambiguous id '${id}' in model '${model.id}': it names ${candidates.map(c => `'${c}'`).join(', ')}; write the qualified id`,
-                           { node: element, property: 'id' }, { id, modelId: model.id, candidates });
-                }
-            }
-        }
-        if (!isJustification(model)) return;
-
-        // A `@support` an ancestor's override named ambiguously was reported there, once.
-        const required = inherited.filter(entry => entry.kind === 'abstract-support' && !entry.contested);
-        const allMissing = required
-            .filter(entry => !named.has(entry))
-            .map(entry => ({ expectedKey: entry.id, supportLabel: labelOf(entry) }));
-        for (const entry of required) {
-            const supportId = entry.element ? qualifiedIdText(entry.element.id) : entry.id.split(':').at(-1) ?? entry.id;
-            const sourceTemplateId = declaringModel(entry.element)?.id ?? template.id;
-            const override = named.get(entry);
-            if (!override) {
-                report(accept, JpipeIssue.NoAbstractSupport, `Justification '${model.id}' must override '@support ${supportId}' from template '${sourceTemplateId}'. Expected element with id '${entry.id}'.`,
-                       { node: model, property: 'id' }, {
-                          expectedKey: entry.id,
-                          supportLabel: labelOf(entry),
-                          supportId,
-                          sourceTemplateId,
-                          allMissing
-                      });
-                continue;
-            }
-            const elemType = concreteKeywordFor(override);
-            if (elemType && elemType !== 'evidence' && elemType !== 'sub-conclusion') {
-                report(accept, JpipeIssue.SupportOverrideType, `Cannot override '@support ${supportId}' with type '${elemType}' in justification '${model.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
-                       { node: override, property: 'id' }, {
-                          actualKeyword: elemType,
-                          allowedKeywords: ['evidence', 'sub-conclusion']
-                      });
-            }
-        }
+        const named = namedByOverrides(model, inheritance, accept);
+        if (isJustification(model)) checkRequiredOverrides(model, template, inheritance.elements, named, accept);
     }
 
 }
@@ -683,6 +629,94 @@ function labelOf(entry: ModelElement): string {
 /** The model that declares `element`. */
 function declaringModel(element: JustificationElement | undefined): Justification | Template | undefined {
     return element?.$container?.$container;
+}
+
+/** `ids` as the compiler lists them in a message: `'a', 'b'`. */
+function quoted(ids: readonly string[]): string {
+    return ids.map(id => "'" + id + "'").join(', ');
+}
+
+/**
+ * What `element`, written in a model inheriting `inherited`, overrides there. Only an evidence or
+ * a sub-conclusion overrides, and is bound as the compiler binds it. Another kind names a
+ * `@support` only by its exact id, as the wrong kind to stand for it: by a suffix, the compiler
+ * takes it for an element of its own.
+ */
+function overrideBinding(element: JustificationElement, id: string, inherited: readonly ModelElement[]): Binding {
+    if (isEvidence(element) || isSubConclusion(element)) return bind(inherited, id);
+    const exact = inherited.find(entry => entry.id === id);
+    return exact ? { kind: 'found', element: exact } : { kind: 'missing' };
+}
+
+/**
+ * Each inherited element an override of `model` names, with the override naming it. An override
+ * naming several is reported as `ambiguous-id` when `inheritance` is whole, and named with each.
+ */
+function namedByOverrides(
+    model: Justification | Template,
+    inheritance: { elements: readonly ModelElement[]; whole: boolean },
+    accept: ValidationAcceptor
+): Map<ModelElement, JustificationElement> {
+    const named = new Map<ModelElement, JustificationElement>();
+    for (const element of getLocalElements(model)) {
+        const id = qualifiedIdText(element.id);
+        if (!id.includes(':') || isDiscardedConclusion(element)) continue;
+        const binding = overrideBinding(element, id, inheritance.elements);
+        if (binding.kind === 'found') {
+            if (!named.has(binding.element)) named.set(binding.element, element);
+            continue;
+        }
+        if (binding.kind !== 'ambiguous') continue;
+        binding.candidates.forEach(candidate => named.set(candidate, element));
+        if (!inheritance.whole) continue;
+        const candidates = binding.candidates.map(candidate => candidate.id);
+        report(accept, JpipeIssue.AmbiguousId,
+               `ambiguous id '${id}' in model '${model.id}': it names ${quoted(candidates)}; write the qualified id`,
+               { node: element, property: 'id' }, { id, modelId: model.id, candidates });
+    }
+    return named;
+}
+
+/**
+ * Reports each `@support` among `inherited` that `justification` leaves without an override
+ * (`no-abstract-support`), or overrides with the wrong kind (`support-override-type`). A `@support`
+ * an ancestor's override named ambiguously was reported there, once.
+ */
+function checkRequiredOverrides(
+    justification: Justification,
+    template: Template,
+    inherited: readonly ModelElement[],
+    named: ReadonlyMap<ModelElement, JustificationElement>,
+    accept: ValidationAcceptor
+): void {
+    const required = inherited.filter(entry => entry.kind === 'abstract-support' && !entry.contested);
+    const allMissing = required
+        .filter(entry => !named.has(entry))
+        .map(entry => ({ expectedKey: entry.id, supportLabel: labelOf(entry) }));
+    for (const entry of required) {
+        const supportId = entry.element ? qualifiedIdText(entry.element.id) : entry.id.split(':').at(-1) ?? entry.id;
+        const sourceTemplateId = declaringModel(entry.element)?.id ?? template.id;
+        const override = named.get(entry);
+        if (!override) {
+            report(accept, JpipeIssue.NoAbstractSupport, `Justification '${justification.id}' must override '@support ${supportId}' from template '${sourceTemplateId}'. Expected element with id '${entry.id}'.`,
+                   { node: justification, property: 'id' }, {
+                      expectedKey: entry.id,
+                      supportLabel: labelOf(entry),
+                      supportId,
+                      sourceTemplateId,
+                      allMissing
+                  });
+            continue;
+        }
+        const elemType = concreteKeywordFor(override);
+        if (elemType && elemType !== 'evidence' && elemType !== 'sub-conclusion') {
+            report(accept, JpipeIssue.SupportOverrideType, `Cannot override '@support ${supportId}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
+                   { node: override, property: 'id' }, {
+                      actualKeyword: elemType,
+                      allowedKeywords: ['evidence', 'sub-conclusion']
+                  });
+        }
+    }
 }
 
 /**
