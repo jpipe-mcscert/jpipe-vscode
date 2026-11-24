@@ -10,7 +10,9 @@ import type { Colouring, LiveStatus, Notice, Progress, RunPanelState, RunPhase }
 import { kindOf, underWay } from '../../shared/run-kind.js';
 import type { RunProgress } from './run-events.js';
 import type { LibraryStep } from './step-binding.js';
-import { outcomeLinks, progressRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport } from './run-report.js';
+import {
+    durationsOf, outcomeLinks, progressRows, resultRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport
+} from './run-report.js';
 
 /**
  * The drawing of a run: the one the runner made before its first step, which the page colours as
@@ -176,6 +178,20 @@ export function statusRow(run: ShownRun): ResultRow | undefined {
         icon: run.phase === 'stopped' ? 'stopped' : 'error',
         children: []
     };
+}
+
+/**
+ * What the Results view lists for `run`, and under what title: the report's rows once it has one,
+ * with how long each step took when its events said, which only they say; before it,
+ * `rowsWithoutReport`. Undefined when the run has nothing to list, and the rows on show stay.
+ */
+export function resultsOf(run: ShownRun): { rows: ResultRow[]; title: string } | undefined {
+    if (run.report) {
+        const durations = run.progress ? durationsOf(run.progress) : undefined;
+        return { rows: resultRows(run.report, run.name, run.check, durations), title: run.report.justification ?? run.name };
+    }
+    const rows = rowsWithoutReport(run);
+    return rows.length > 0 ? { rows, title: run.name } : undefined;
 }
 
 /**

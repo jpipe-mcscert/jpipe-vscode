@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { durationsOf, resultRows, stepLocation, type ResultRow, type RowIcon, type RunReport } from './run-report.js';
+import type { JpipeLogger } from '../logger.js';
+import { messageOf } from '../../shared/errors.js';
+import { stepLocation, type ResultRow, type RowIcon } from './run-report.js';
 import type { RunSession } from './run-session.js';
 import { kindOf } from '../../shared/run-kind.js';
-import { rowsWithoutReport } from './run-state.js';
+import { resultsOf, type ShownRun } from './run-state.js';
 
 export const RESULTS_VIEW_ID = 'jpipe.results';
 /** Set once a run has a report, which is when the panel has something to show. */
@@ -56,13 +58,13 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
 
     private readonly view: vscode.TreeView<ResultRow>;
     private readonly disposables: vscode.Disposable[] = [];
-    /** The report the rows were last built from: a report's rows never change. */
-    private reported: RunReport | undefined;
+    /** The run the rows on show were built from: what their files and steps are resolved against. */
+    private listed: ShownRun | undefined;
     private rows: ResultRow[] = [];
     private readonly parents = new Map<ResultRow, ResultRow | undefined>();
     private readonly byId = new Map<string, ResultRow>();
 
-    constructor(private readonly session: RunSession) {
+    constructor(private readonly session: RunSession, private readonly logger: JpipeLogger) {
         this.view = vscode.window.createTreeView(RESULTS_VIEW_ID, { treeDataProvider: this });
         this.disposables.push(
             session.onDidChange(() => this.followSession()),
@@ -91,19 +93,16 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
      */
     private followSession(): void {
         const run = this.session.run;
-        if (!run) return;
+        // A report's rows never change: they are built once.
+        if (!run || (run.report && run.report === this.listed?.report)) return;
+        const results = resultsOf(run);
+        if (!results) return;
+        this.listed = run;
+        this.setRows(results.rows, results.title, run.check);
         if (run.report) {
-            if (run.report === this.reported) return;
-            this.reported = run.report;
-            // The events, if the runner wrote them, are kept: only they say how long each step took.
-            const durations = run.progress ? durationsOf(run.progress) : undefined;
-            this.setRows(resultRows(run.report, run.name, run.check, durations), run.report.justification ?? run.name, run.check);
-            void this.bringForward();
-            return;
+            this.bringForward().catch((err: unknown) =>
+                this.logger.warn(`The Results view could not be brought forward: ${messageOf(err)}`));
         }
-        this.reported = undefined;
-        const rows = rowsWithoutReport(run);
-        if (rows.length > 0) this.setRows(rows, run.name, run.check);
     }
 
     private setRows(rows: ResultRow[], name: string, check: boolean): void {
@@ -152,7 +151,7 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
             const [codicon, colour] = ICONS[row.icon];
             item.iconPath = new vscode.ThemeIcon(codicon, colour ? new vscode.ThemeColor(colour) : undefined);
         }
-        const cwd = this.session.run?.cwd;
+        const cwd = this.listed?.cwd;
         if (row.open && cwd) {
             const file = vscode.Uri.file(path.resolve(cwd, row.open.path));
             const line = (row.open.line ?? 1) - 1;
@@ -174,7 +173,7 @@ export class ResultsView implements vscode.TreeDataProvider<ResultRow>, vscode.D
 
     private async activate(id: string): Promise<void> {
         const row = this.byId.get(id);
-        const run = this.session.run;
+        const run = this.listed;
         if (!row || !run) return;
         if (row.goTo) {
             const target = this.byId.get(row.goTo);
