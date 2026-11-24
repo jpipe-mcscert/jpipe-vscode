@@ -72,12 +72,13 @@ export class RunSession implements vscode.Disposable {
     /**
      * Launch the run of `token` once more, and give that launch a token of its own: undefined, and
      * nothing changes, when another run has taken over. The launch starts from nothing shown, as the
-     * run did (ADR-VSC-0033); what it is of, whether it is out of date, and a stop asked for stay.
+     * run did (ADR-VSC-0033); what it is of, whether it is out of date, what was said about it and
+     * a stop asked for stay.
      */
     relaunch(token: number): number | undefined {
         if (!this.isCurrent(token) || !this.shown) return undefined;
-        const { name, uri, check, libraries, outOfDate } = this.shown;
-        return this.launched({ ...startedRun(name, uri, check, libraries), outOfDate });
+        const { name, uri, check, libraries, outOfDate, notice } = this.shown;
+        return this.launched({ ...startedRun(name, uri, check, libraries), outOfDate, notice });
     }
 
     private launched(run: ShownRun): number {

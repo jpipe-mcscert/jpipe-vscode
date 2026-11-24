@@ -293,30 +293,24 @@ async function launch(
 
 /**
  * Follow the events launch `token` writes to `file`, into what the session shows of it; and show
- * the drawing the runner announces before the first step, as soon as it does. Stopping waits for
- * that drawing to be read: nothing of a launch is shown once it has ended.
+ * the drawing the runner announces before the first step, as soon as it does.
  */
 function follow(deps: RunDeps, token: number, taskName: string, file: string): EventFollower {
     deps.logger.debug(`${taskName}: following the run's events in ${file}`);
-    const drawings: Promise<void>[] = [];
-    const follower = followEvents(file, {
+    return followEvents(file, {
         onProgress: progress => deps.session.update(token, { progress }),
-        onDrawn: drawing => drawings.push(showPreview(deps, token, taskName, drawing)),
+        onDrawn: drawing => void showPreview(deps, token, taskName, drawing).catch((err: unknown) =>
+            deps.logger.debug(`${taskName}: the drawing made before the first step could not be shown: ${messageOf(err)}`)),
         onProblem: problem => deps.logger.warn(`${taskName}: ${problem}, so the run is shown when it ends`)
     });
-    return {
-        async stop(): Promise<void> {
-            await follower.stop();
-            await Promise.all(drawings);
-        }
-    };
 }
 
 /**
  * Show the drawing the runner made of launch `token` before its first step, which the page colours
  * as its elements are decided (jpipe-runner ADR-0032, jpipe-vscode ADR-VSC-0033). The runner
- * deletes it once the run has ended, so it is read at once; one already gone is left to the drawing
- * the run ends with.
+ * deletes it once the run has ended, so it is read at once; one already gone, or read once the run
+ * has ended, is left to the drawing the run ends with, and one read once another launch has taken
+ * the place of this one is dropped with everything else this launch writes late.
  */
 async function showPreview(deps: RunDeps, token: number, taskName: string, file: string): Promise<void> {
     const svg = await readFileText(vscode.Uri.file(file));
@@ -324,7 +318,7 @@ async function showPreview(deps: RunDeps, token: number, taskName: string, file:
         deps.logger.debug(`${taskName}: the drawing made before the first step was gone before it was read`);
         return;
     }
-    deps.session.update(token, { dataflow: svg, live: true, drawingMissing: null });
+    if (deps.session.running) deps.session.update(token, { dataflow: svg, live: true, drawingMissing: null });
 }
 
 /** The jobs setting as last noted in the log, so that what is said about it is said once. */

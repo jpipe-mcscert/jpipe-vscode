@@ -82,9 +82,9 @@ replaces what they said when the run ends.
   same framing; it puts every node where the coloured one had it. A drawing gone before it could be
   read, in a run that short, leaves the run under the busy overlay until its end, as before. A run
   stopped, or ended without its report, keeps its drawing with what it decided, and no element
-  marked running or waiting: those are its only results. A launch ends once the drawing it announced
-  has been read, so nothing of it is shown after its end, and a run launched again, without its
-  drawing, never shows the first launch's.
+  marked running or waiting: those are its only results. A drawing read once the run has ended, or
+  once another launch has taken the place of the one that announced it, is not shown, so a run
+  launched again, without its drawing, never shows the first launch's.
   Saving the drawing saves it as it is shown, coloured.
 - **The report replaces it** when the run ends, and is the only thing read for the verdict, the
   counts and the rows. What the report cannot say, how long each step took, is kept from the
