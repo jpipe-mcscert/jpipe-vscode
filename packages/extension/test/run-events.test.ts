@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { RunEventReader, followEvents, nextProgress, type RunProgress } from '../src/extension/runner/run-events.js';
+import { RunEventReader, followEvents, nextProgress, type EventListener, type RunProgress } from '../src/extension/runner/run-events.js';
 
 /**
  * Reading a run's events as jpipe-runner writes them (`--events PATH`, jpipe-runner ADR-0030;
@@ -43,9 +43,13 @@ describe('the release example, as it went', () => {
         expect(after(LINES.slice(0, 2))!.validation).toEqual({ passed: true, diagnostics: [] });
     });
 
-    test('says where the drawing made before the first step is', () => {
-        expect(after(LINES.slice(0, 2))!.preview).toBeNull();
-        expect(after(LINES.slice(0, 3))!.preview).toBe('/tmp/jpipe-runner-i7ba5753/diagram.svg');
+    test('says where the drawing made before the first step is, once, as it is announced', () => {
+        const drawn = vi.fn();
+        const reader = new RunEventReader(drawn);
+        for (const line of LINES.slice(0, 2)) reader.read(bytes(`${line}\n`));
+        expect(drawn).not.toHaveBeenCalled();
+        for (const line of LINES.slice(2)) reader.read(bytes(`${line}\n`));
+        expect(drawn.mock.calls).toEqual([['/tmp/jpipe-runner-i7ba5753/diagram.svg']]);
     });
 
     test('a source is observed, and reached, while its element still runs', () => {
@@ -128,10 +132,19 @@ describe('one event at a time', () => {
         expect(nextProgress(progress, '{"event":"source.observed","seq":4,"elapsed_ms":0,"id":"j:e","source":"x"}')).toBe(progress);
     });
 
-    test('a drawing announced without a path is none', () => {
+    test('a drawing is an event, not a state of the run', () => {
         const progress = nextProgress(null, started(['j:e'])) as RunProgress;
-        expect(nextProgress(progress, '{"event":"diagram.drawn","seq":1,"elapsed_ms":0,"path":""}')).toBe(progress);
-        expect(nextProgress(progress, '{"event":"diagram.drawn","seq":1,"elapsed_ms":0}')).toBe(progress);
+        expect(nextProgress(progress, '{"event":"diagram.drawn","seq":1,"elapsed_ms":0,"path":"/tmp/d.svg"}')).toBe(progress);
+    });
+
+    test('a drawing announced without a path, or before the run starts, is none', () => {
+        const drawn = vi.fn();
+        const reader = new RunEventReader(drawn);
+        reader.read(bytes('{"event":"diagram.drawn","seq":0,"elapsed_ms":0,"path":"/tmp/early.svg"}\n'));
+        reader.read(bytes(`${started(['j:e'])}\n`));
+        reader.read(bytes('{"event":"diagram.drawn","seq":1,"elapsed_ms":0,"path":""}\n'));
+        reader.read(bytes('{"event":"diagram.drawn","seq":2,"elapsed_ms":0}\n'));
+        expect(drawn).not.toHaveBeenCalled();
     });
 
     test('nothing counts before the run starts', () => {
@@ -179,6 +192,10 @@ describe('reading the bytes as they arrive', () => {
 });
 
 describe('following the file', () => {
+    /** A listener that ignores what `over` does not listen for. */
+    const listener = (over: Partial<EventListener>): EventListener => ({
+        onProgress: () => undefined, onDrawn: () => undefined, onProblem: () => undefined, ...over
+    });
     let folder: string;
     let file: string;
 
@@ -191,7 +208,8 @@ describe('following the file', () => {
 
     test('reads what is written while it follows, and what is left when it stops', async () => {
         const seen: RunProgress[] = [];
-        const follower = followEvents(file, progress => seen.push(progress), () => undefined, 5);
+        const drawn = vi.fn();
+        const follower = followEvents(file, listener({ onProgress: progress => seen.push(progress), onDrawn: drawn }), 5);
         writeFileSync(file, `${LINES[0]}\n`);
         await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0));
         appendFileSync(file, LINES.slice(1).join('\n') + '\n');
@@ -199,12 +217,13 @@ describe('following the file', () => {
         const last = seen.at(-1)!;
         expect(last.ended).toBe(true);
         expect(last.decided.size).toBe(4);
+        expect(drawn.mock.calls).toEqual([['/tmp/jpipe-runner-i7ba5753/diagram.svg']]);
     });
 
     test('waits for a file not written yet, and says nothing about it', async () => {
         const onProgress = vi.fn();
         const onProblem = vi.fn();
-        const follower = followEvents(file, onProgress, onProblem, 5);
+        const follower = followEvents(file, listener({ onProgress, onProblem }), 5);
         await new Promise(resolve => setTimeout(resolve, 20));
         await follower.stop();
         expect(onProgress).not.toHaveBeenCalled();
@@ -214,7 +233,7 @@ describe('following the file', () => {
     test('a file emptied and written again is read from its start', async () => {
         const seen: RunProgress[] = [];
         writeFileSync(file, LINES.join('\n') + '\n');
-        const follower = followEvents(file, progress => seen.push(progress), () => undefined, 5);
+        const follower = followEvents(file, listener({ onProgress: progress => seen.push(progress) }), 5);
         await vi.waitFor(() => expect(seen.at(-1)?.ended).toBe(true));
         writeFileSync(file, `${started(['j:e'])}\n`);
         await follower.stop();
@@ -224,7 +243,7 @@ describe('following the file', () => {
     test('says once that a stream is in a version it does not read', async () => {
         const onProblem = vi.fn();
         writeFileSync(file, `${started(['j:e'], { schema_version: '2.0' })}\n`);
-        const follower = followEvents(file, () => undefined, onProblem, 5);
+        const follower = followEvents(file, listener({ onProblem }), 5);
         await vi.waitFor(() => expect(onProblem).toHaveBeenCalled());
         await follower.stop();
         expect(onProblem).toHaveBeenCalledTimes(1);
