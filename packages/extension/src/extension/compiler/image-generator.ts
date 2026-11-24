@@ -299,10 +299,29 @@ export class ImageGenerator {
         // The version is asked under the limit too: on a cold start, every file would ask it at once.
         return this.reportRuns.run(async () => {
             const verdict = await this.verdictFor(resolved, config);
-            if (verdict.kind !== 'supported' || !compilerHas(verdict.version, 'composed')) return null;
-            const run = await this.runDiagnostic(resolved, path.normalize(fsPath), config, true);
+            if (verdict.kind !== 'supported') return null;
+            if (!compilerHas(verdict.version, 'composed')) {
+                this.askAgainLater(execKeyOf(resolved));
+                return null;
+            }
+            const run = await this.runDiagnostic(resolved, path.normalize(fsPath), config, true, 'debug');
             return run.unknownOption ? null : this.parseReport(run.stdout);
         });
+    }
+
+    /** When each compiler too old for composed models was last set to be asked its version again. */
+    private readonly askedAgain = new Map<string, number>();
+
+    /**
+     * Have the compiler at `execKey` asked its version again, at most once a minute: one usable
+     * but too old for composed models is what its user updates next, often in place under the same
+     * command, and the version it gave is otherwise kept for the session.
+     */
+    private askAgainLater(execKey: string): void {
+        const now = Date.now();
+        if (now - (this.askedAgain.get(execKey) ?? Number.NEGATIVE_INFINITY) < 60_000) return;
+        this.askedAgain.set(execKey, now);
+        this.verdicts.forget(execKey);
     }
 
     /**
@@ -410,7 +429,9 @@ export class ImageGenerator {
         resolved: { file: string; args: string[] },
         inputFile: string,
         config: vscode.WorkspaceConfiguration,
-        asJson: boolean
+        asJson: boolean,
+        /** `debug` for a run nobody asked for, the language server's: one per file, at every save. */
+        log: 'info' | 'debug' = 'info'
     ): Promise<{ raw: string; stdout: string; exitCode: number | undefined; unknownOption: boolean }> {
         // `--headless` suppresses the compiler's logo banner, which this command used to print
         // above every report.
@@ -422,7 +443,7 @@ export class ImageGenerator {
             '-i',
             inputFile
         ];
-        this.logger.info(`Executing: ${resolved.file} ${argv.join(' ')}`);
+        this.logger[log](`Executing: ${resolved.file} ${argv.join(' ')}`);
 
         const combine = (stdout: string, stderr: string): string =>
             [stdout, stderr].map(s => s.trim()).filter(Boolean).join('\n') || '(no output)';

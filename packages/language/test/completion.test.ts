@@ -841,12 +841,12 @@ justification gamma { conclusion c is "C" }`;
 
 describe('Hook value completion', () => {
 
-    // `hook` is a plain string in the grammar: nothing links it, nothing validates it, and until
-    // now nothing offered it, so the only way to find a legal value was to read the model.
+    // `hook` is a plain string in the grammar: nothing links it, and until now nothing offered
+    // it, so the only way to find a legal value was to read the model.
     // `refine` replaces the hooked element with a sub-conclusion carrying the refinement's whole
     // argument. That makes sense done to a leaf and not to anything else, so only evidence is
-    // offered — the compiler resolves the hook by id and does not check its type, so this narrows
-    // the suggestion rather than the rule.
+    // offered, and a @support, which is a leaf still to be argued for: the compiler refuses
+    // anything else as a hook (`hook-not-leaf`).
     test('offers the evidence of the first source model, and nothing else', async () => {
         await checkCompletion({
             text: `
@@ -870,6 +870,29 @@ describe('Hook value completion', () => {
                 expect(labels).not.toContain('sc');
                 // The hook names an element of the first source, not the second.
                 expect(labels).not.toContain('rc');
+            }
+        });
+    });
+
+    test('offers the @support elements of a template being refined, which are leaves too', async () => {
+        await checkCompletion({
+            text: `
+                template Base {
+                    conclusion c is "C"
+                    strategy s is "S"
+                    @support a is "A"
+                    a supports s
+                    s supports c
+                }
+                justification Ref { conclusion rc is "RC" }
+                template Composed is refine(Base, Ref) { hook: "<|>" }
+            `,
+            index: 0,
+            assert: (completions) => {
+                const item = completions.items.find(i => i.label === 'a');
+                expect(item, completions.items.map(i => i.label).join(', ')).toBeDefined();
+                expect(item?.detail).toBe('@support in Base');
+                expect(completions.items.map(i => i.label)).not.toContain('s');
             }
         });
     });

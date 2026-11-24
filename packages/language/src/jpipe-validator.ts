@@ -326,8 +326,8 @@ export class JpipeValidator {
                 .filter(element => element.kind === 'evidence' || element.kind === 'abstract-support')
                 .map(element => element.id);
             report(accept, JpipeIssue.UnknownHook,
-                   `Hook element '${actual}' not found in base model '${base.id}'`,
-                   at, { actual, modelId: base.id, candidates });
+                   `Hook element '${actual}' not found in base model '${modelId}'`,
+                   at, { actual, modelId, candidates });
         }
     }
 

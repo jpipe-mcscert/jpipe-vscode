@@ -212,12 +212,17 @@ export class CompilerReports {
     /**
      * Whether `document` reads, up to `end` (an offset), as its file was saved: whether what a
      * report places before `end` is where the document has it.
+     *
+     * A byte-order mark is no text: VS Code drops it from an open document, and a closed one read
+     * from disk keeps it, so it is left out of both sides.
      */
     readsAsSaved(document: LangiumDocument, end: number): boolean {
         const file = fsPathOf(document.uri);
         const key = fileKey(file);
-        if (!this.saved.has(key)) this.saved.set(key, readSaved(file));
-        return this.saved.get(key)?.slice(0, end) === document.textDocument.getText().slice(0, end);
+        if (!this.saved.has(key)) this.saved.set(key, withoutBom(readSaved(file)));
+        const text = document.textDocument.getText();
+        const bom = text.startsWith(BOM) ? BOM.length : 0;
+        return this.saved.get(key)?.slice(0, end - bom) === text.slice(bom, end);
     }
 
     /**
@@ -292,6 +297,12 @@ export class CompilerReports {
 function endOfLoads(document: LangiumDocument): number {
     const imports = (document.parseResult.value as Unit | undefined)?.imports ?? [];
     return Math.max(0, ...imports.map(load => load.$cstNode?.end ?? 0));
+}
+
+const BOM = '\uFEFF';
+
+function withoutBom(text: string | undefined): string | undefined {
+    return text?.startsWith(BOM) ? text.slice(BOM.length) : text;
 }
 
 function readSaved(file: string): string | undefined {

@@ -256,6 +256,28 @@ describe('the compiler\'s reports', () => {
         }
     });
 
+    // Windows editors such as Notepad save one: VS Code drops it from an open document's text, and
+    // a closed document read from disk keeps it.
+    test('read a file saved with a byte-order mark as saved, open or not', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-reports-'));
+        try {
+            const file = path.join(dir, 'bom.jd');
+            const text = 'justification J {\n    conclusion c is "C"\n}\n';
+            fs.writeFileSync(file, `\uFEFF${text}`);
+            const reports = services.Jpipe.references.CompilerReports;
+            for (const shown of [text, `\uFEFF${text}`]) {
+                const document = await parseHelper<Unit>(services.Jpipe)(shown, { documentUri: url.pathToFileURL(file).toString() });
+                documents.push(document);
+                expect(reports.readsAsSaved(document, shown.length), JSON.stringify(shown.slice(0, 1))).toBe(true);
+                expect(reports.readsAsSaved(document, shown.indexOf('}'))).toBe(true);
+                await clearDocuments(services.shared, documents);
+                documents = [];
+            }
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('are asked once for a file, however many models ask', async () => {
         const document = await open('refine.jd');
         await services.shared.workspace.DocumentBuilder.build([document], { validation: true });

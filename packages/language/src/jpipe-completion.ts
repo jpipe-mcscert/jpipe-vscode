@@ -525,11 +525,10 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
      * model being refined. Offered as ids because that is what the compiler resolves against,
      * showing each element's label alongside, since an id like `e` says nothing on its own.
      *
-     * Only evidence is offered. `refine` replaces the hooked element with a sub-conclusion
-     * carrying the refinement's whole argument, which is a sensible thing to do to a leaf and not
-     * to anything else — hooking a strategy or a conclusion would graft an argument into the
-     * middle of one. The compiler resolves the hook by id and does not check its type, so this
-     * narrows what is suggested rather than what is permitted.
+     * Only evidence and `@support` elements are offered, which is what the compiler accepts as a
+     * hook (`hook-not-leaf`): `refine` replaces the hooked element with a sub-conclusion carrying
+     * the refinement's whole argument, a sensible thing to do to a leaf and not to anything else.
+     * A `@support` is only left in a template, where it is a leaf still to be argued for.
      *
      * Read from the model's contents, whole or not: an element this can see is worth offering even
      * where others are hidden from it.
@@ -553,14 +552,15 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         // element of the base can be seen.
         const contents = await this.services.references.ModelContents.contentsOf(base, writtenNamespace(firstParam, base.id), document);
         return listedIn(contents)
-            .flatMap(({ element, kind, id }) => element && kind === 'evidence' && id.length > 0 ? [{ element, id }] : [])
+            .flatMap(({ element, kind, id }) =>
+                element && (kind === 'evidence' || kind === 'abstract-support') && id.length > 0 ? [{ element, kind, id }] : [])
             .filter(({ id }) => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, id))
-            .map(({ element, id }) => ({
+            .map(({ element, kind, id }) => ({
                 label: id,
                 kind: CompletionItemKind.Value,
                 // The id is what gets inserted; the label is what makes it recognisable.
                 labelDetails: { detail: `  "${element.name}"` },
-                detail: `evidence in ${firstParam}`,
+                detail: `${kind === 'evidence' ? 'evidence' : '@support'} in ${firstParam}`,
                 documentation: element.name,
                 sortText: `0_hook_${id}`,
                 // Replaces what has been typed so far inside the quotes, and nothing else.
