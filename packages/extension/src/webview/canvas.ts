@@ -81,6 +81,24 @@ export interface Caption {
     diagramName: string | null;
 }
 
+/**
+ * What a page persists of the canvas, for a reloaded page to come back framed as the reader left
+ * it: the view on screen, and which diagram it frames, so that the replay of that diagram keeps it.
+ */
+export interface SavedFraming {
+    vb: Box;
+    /** The diagram's identity, as `show` was given it. */
+    on: string;
+}
+
+/**
+ * A diagram's identity, as `show` takes it: the model `name` in the document `document`. Two
+ * diagrams are the same diagram, drawn again, when their identities are equal.
+ */
+export function diagramIdentity(document: string | null, name: string | null): string {
+    return JSON.stringify([document, name]);
+}
+
 /** Arrow keys, in client pixels per press. Shift moves a screenful at a time. */
 const PAN_KEYS: Record<string, [number, number]> = {
     ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]
@@ -132,6 +150,12 @@ export class DiagramCanvas {
      * away the canvas Graphviz painted and cannot be reversed in place.
      */
     private source: { svg: string; caption: Caption } | null = null;
+    /**
+     * The identity of the diagram the view frames: what tells the same diagram, drawn again, from
+     * another. Kept when the canvas is cleared, so that a diagram gone for a while, the drawing of a
+     * run between two runs say, comes back framed as it was.
+     */
+    private framedOn: string | null = null;
     private readonly minimap: Minimap;
     private readonly reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -147,18 +171,24 @@ export class DiagramCanvas {
         return this.svgEl;
     }
 
-    /** What is on screen, for the page to persist. */
+    /** What is on screen. A page persists `framing`, which says which diagram it frames, not this. */
     get view(): Box | null {
         return this.vb;
     }
 
+    /** What is on screen, and which diagram it frames: what the page persists. */
+    get framing(): SavedFraming | null {
+        return this.vb && this.framedOn !== null ? { vb: this.vb, on: this.framedOn } : null;
+    }
+
     /**
-     * Seed the view a reloaded page was showing, so the diagram replayed into it comes back framed
-     * as the reader left it. A restored view is someone's deliberate framing, not one we chose:
-     * left `initial`, the first resize after the replay would throw it away.
+     * Seed the framing a reloaded page was showing, so the diagram replayed into it comes back
+     * framed as the reader left it. A restored view is someone's deliberate framing, not one we
+     * chose: left `initial`, the first resize after the replay would throw it away.
      */
-    restoreView(view: Box): void {
-        this.vb = view;
+    restoreFraming(saved: SavedFraming): void {
+        this.vb = saved.vb;
+        this.framedOn = saved.on;
         this.viewOrigin = 'custom';
     }
 
@@ -167,11 +197,11 @@ export class DiagramCanvas {
     }
 
     /**
-     * Show `svgText`, keeping the current framing when `keepView` (the same diagram, redrawn) and
-     * opening on the initial view otherwise. False when the text is no diagram, which leaves the
-     * canvas empty.
+     * Show `svgText`, keeping the current framing when it is the diagram framed last, redrawn, and
+     * opening on the initial view otherwise. The diagram is told by `identity`, or else by what its
+     * caption names. False when the text is no diagram, which leaves the canvas empty.
      */
-    show(svgText: string, caption: Caption, keepView: boolean): boolean {
+    show(svgText: string, caption: Caption, identity = diagramIdentity(caption.documentPath, caption.diagramName)): boolean {
         const previous = this.vb;
         this.source = { svg: svgText, caption };
         this.install();
@@ -184,7 +214,10 @@ export class DiagramCanvas {
         // The panel may have been resized while the diagram was produced, so a preserved view
         // still has to be re-fitted to the current aspect ratio.
         const f = { content, viewport: this.panelSize(), baseScale: this.baseScale };
-        const keep = keepView && previous !== null;
+        const keep = identity === this.framedOn && previous !== null;
+        // Named once its view is set: a diagram that could not be shown leaves the view, and what
+        // it frames, as they were.
+        this.framedOn = identity;
         this.setViewBox(keep ? clampTranslation(normalizeAspect(previous, f.viewport), content) : initialBox(f));
         if (!keep) this.viewOrigin = 'initial';
         return true;

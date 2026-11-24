@@ -100,6 +100,7 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
     return {
         revision,
         name: run.name,
+        uri: run.uri,
         check: run.check,
         phase: run.phase,
         verdict: report && {
