@@ -185,8 +185,11 @@ export async function runModel(deps: RunDeps, target?: Model, check = false): Pr
 async function launchUntilDone(deps: RunDeps, token: number, run: Run, files: RunFiles): Promise<void> {
     let launched: number | undefined = token;
     let asked: Asked | undefined = { draw: true, stream: true, jobs: true };
-    for (let attempt = 1; launched !== undefined && asked; attempt++) {
-        asked = await launch(deps, launched, run, files, asked, attempt);
+    let attempt = 0;
+    while (launched !== undefined && asked) {
+        attempt++;
+        // Sequential by nature, hence the await in a loop: each launch asks for what the one before did not refuse.
+        asked = await launch(deps, launched, run, files, asked, attempt); // NOSONAR
         if (asked) launched = deps.session.relaunch(launched);
     }
 }
