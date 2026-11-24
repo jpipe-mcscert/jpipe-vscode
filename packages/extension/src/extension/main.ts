@@ -123,7 +123,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // opening it is one of the things that activates the extension.
     void vscode.commands.executeCommand('setContext', 'jpipe.activated', true);
 
-    registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView, runSession, runPanel });
+    registerCommands({ context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, runSession, runPanel });
 }
 
 /** The settings that choose which compiler runs, and how long it may take: so what it reports. */

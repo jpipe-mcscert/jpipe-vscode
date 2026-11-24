@@ -9,6 +9,7 @@
 import type { Colouring, LiveStatus, Notice, Progress, RunPanelState, RunPhase } from '../../shared/run-protocol.js';
 import { kindOf, underWay } from '../../shared/run-kind.js';
 import type { RunProgress } from './run-events.js';
+import type { LibraryStep } from './step-binding.js';
 import { outcomeLinks, progressRows, verdictLabel, verdictLinks, type Labels, type ResultRow, type RunReport } from './run-report.js';
 
 /**
@@ -37,6 +38,10 @@ export interface ShownRun {
     labels: Labels;
     /** The runner's drawing of the run's dataflow, or why there is none; null while there is none yet. */
     drawing: Drawing | null;
+    /** Where it runs, once it is launched: the paths its report and events name are relative to it. */
+    cwd: string | null;
+    /** The steps of the libraries it loads, as they were when it was launched: where a step's row leads. */
+    steps: LibraryStep[];
     /** The libraries it loaded: their paths, to tell when they change, and how the workspace names them. */
     libraries: { path: string; display: string }[];
     /** When it ended. */
@@ -53,7 +58,7 @@ export interface ShownRun {
 export function startedRun(name: string, uri: string, check: boolean, libraries: ShownRun['libraries']): ShownRun {
     return {
         name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(), drawing: null,
-        libraries, endedAt: null, notice: null, outOfDate: null
+        cwd: null, steps: [], libraries, endedAt: null, notice: null, outOfDate: null
     };
 }
 
