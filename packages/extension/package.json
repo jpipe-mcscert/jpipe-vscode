@@ -301,6 +301,12 @@
                 "icon": "$(check)"
             },
             {
+                "command": "jpipe.openSettings",
+                "title": "Open Settings",
+                "category": "jPipe",
+                "icon": "$(gear)"
+            },
+            {
                 "command": "jpipe.installFromRelease",
                 "title": "Install Compiler from GitHub Release",
                 "category": "jPipe",
@@ -644,6 +650,11 @@
                     "command": "jpipe.models.refresh",
                     "when": "view == jpipe.models",
                     "group": "navigation@1"
+                },
+                {
+                    "command": "jpipe.openSettings",
+                    "when": "view == jpipe.models",
+                    "group": "navigation@9"
                 },
                 {
                     "command": "jpipe.libraries.checkAll",

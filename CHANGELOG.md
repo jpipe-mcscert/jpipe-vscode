@@ -1,5 +1,10 @@
 ## Changelog
 
+### v2.2.0 (Unreleased)
+- Leader: Sébastien Mosser
+  - Features:
+    - **Settings one click away.** A gear at the top of the jPipe activity, on the Models view, opens jPipe's settings, already filtered to the extension's own, so you no longer go through VS Code's menus and search for them. It shows when you hover the Models view, and stays in sight in a workspace with no model yet. The palette offers the same as jPipe: Open Settings
+
 ### v2.1.0 (2026-11-24)
 - Leader: Sébastien Mosser
   - Features:

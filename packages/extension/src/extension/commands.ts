@@ -232,6 +232,12 @@ export function registerCommands(deps: CommandDeps): void {
         vscode.commands.registerCommand('jpipe.selectJarFile', () => selectJarFile(logger)),
 
         vscode.commands.registerCommand('jpipe.checkInstallation', () =>
-            checkInstallation({ logger, imageGenerator, releaseManager, runnerEnvironment, librariesView }))
+            checkInstallation({ logger, imageGenerator, releaseManager, runnerEnvironment, librariesView })),
+
+        // The gear on the jPipe activity, and the preview's settings button. The `@ext:` query is
+        // how the Settings UI filters to one extension; it is taken from the extension rather than
+        // written out, so it cannot drift from the manifest.
+        vscode.commands.registerCommand('jpipe.openSettings', () =>
+            vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${context.extension.id}`))
     );
 }

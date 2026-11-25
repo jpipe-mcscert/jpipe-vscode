@@ -92,3 +92,18 @@ describe('right-clicking a model', () => {
         }
     });
 });
+
+describe('the jPipe activity', () => {
+
+    test('ends the Models title with the gear that opens the settings, shown with no model too', () => {
+        // VS Code lets no extension put an action on an activity's own title bar
+        // (`viewContainer/title` is proposed, and restricted to Debug), so the gear sits on the
+        // first view's. With no model Models is the activity's only view, and VS Code merges its
+        // actions into the activity's bar; a `when` that hid it there would undo that.
+        const order = (e: MenuEntry) => Number(e.group?.split('@')[1]);
+        const title = menus['view/title'].filter(e => e.when === 'view == jpipe.models' && e.group?.startsWith('navigation@'))
+            .sort((a, b) => order(a) - order(b));
+        expect(title.at(-1)?.command).toBe('jpipe.openSettings');
+        expect(manifest.contributes.commands.find(c => c.command === 'jpipe.openSettings')?.icon).toBe('$(gear)');
+    });
+});
