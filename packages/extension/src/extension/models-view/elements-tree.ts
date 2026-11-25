@@ -1,38 +1,18 @@
 /**
- * What the Outline view shows for one model: its own elements, then the ones it inherits, as the
- * language server lists them.
+ * What the Outline view shows for one model: its elements, as the language server lists them.
  *
- * The data is `textDocument/documentSymbol`, the request behind the Explorer's Outline, for the
- * model and for each template up its `implements` chain, which `typeHierarchy/supertypes` walks —
- * so the view needs nothing the server does not already provide. Everything with a decision in
- * it — which symbol is the model, which of its children count, which inherited elements are
- * still visible, how a row reads — is here, away from `vscode`, where it can be tested
- * (jpipe-vscode ADR-VSC-0004).
+ * The list is the server's answer to `jpipe/modelContents`: `ModelContents.contentsOf`, the
+ * question every rule asks (jpipe-vscode ADR-VSC-0034). So the elements of a model built on a
+ * composition are the ones the compiler builds, under the ids it gives them, and those a model
+ * inherits are the ones the compiler keeps once overrides are bound: none of it is worked out
+ * here. What is decided here — how the answer becomes rows, how a row reads, which element the
+ * cursor is in, what an empty or partial view says — stays away from `vscode`, where it can be
+ * tested (jpipe-vscode ADR-VSC-0004).
  */
+import type { ContentsRow, ModelContentsAnswer, ModelContentsParams } from 'jpipe-language';
+import { MODEL_CONTENTS } from '../../shared/lsp-protocol.js';
 import { rangeContains } from '../preview/document-symbols.js';
-import {
-    SYMBOL_KIND_CLASS,
-    SYMBOL_KIND_INTERFACE,
-    TYPE_HIERARCHY_SUPERTYPES_REQUEST,
-    keyOf,
-    type Model,
-    type Position,
-    type Range,
-    type RequestFn,
-    type WireTypeHierarchyItem
-} from './models-tree.js';
-
-export const DOCUMENT_SYMBOL_REQUEST = 'textDocument/documentSymbol';
-
-/** The part of an LSP `DocumentSymbol` this needs. */
-export interface WireDocumentSymbol {
-    name: string;
-    kind: number;
-    detail?: string;
-    range: Range;
-    selectionRange: Range;
-    children?: WireDocumentSymbol[];
-}
+import type { Model, Position, Range, RequestFn } from './models-tree.js';
 
 /** What `templateReach` reads of a symbol, which the editor's own `DocumentSymbol` also has. */
 export interface NamedSymbol {
@@ -43,64 +23,60 @@ export interface NamedSymbol {
 
 export type ElementKind = 'conclusion' | 'strategy' | 'evidence' | 'sub-conclusion' | 'support';
 
-/**
- * The `SymbolKind` the server gives each kind of element (`elementKind` in jpipe-language's
- * `jpipe-symbol-provider.ts`): Constructor, Method, Field, Variable and TypeParameter.
- */
-const ELEMENT_KINDS: Readonly<Record<number, ElementKind>> = {
-    9: 'conclusion',
-    6: 'strategy',
-    8: 'evidence',
-    13: 'sub-conclusion',
-    26: 'support'
-};
-
-/** The prefix the server gives an element a model inherits from its template. */
-const INHERITED_PREFIX = '(inherited) ';
-
 /** The `(default)` namespace, under which a file's own models are listed. */
 const DEFAULT_NAMESPACE = '(default)';
 
 /** One element of the model, as a row. */
 export interface Element {
+    /** The id the compiler gives it in the model: `T:e1` for `e1` inherited from `T`. */
     id: string;
     label?: string;
     kind: ElementKind;
-    /** The whole declaration, to tell which element the cursor is in. */
-    range: Range;
-    /** The id, where the cursor goes when the row is clicked. */
-    selection: Range;
-    /** For an inherited element, the template declaring it; its ranges are in that file. */
-    inheritedFrom?: { template: string; uri: string };
+    /**
+     * Where it is declared: the whole declaration, to tell which element the cursor is in, and its
+     * id, where the cursor goes when the row is clicked. Absent for an element an operator made up.
+     */
+    location?: { uri: string; range: Range; selection: Range };
+    /** The model declaring it, when that is not the model shown: a template it inherits, or a model it is built from. */
+    declaredIn?: string;
+    /** Merged by an operator from several elements; `location` is one of theirs. */
+    merged?: boolean;
+}
+
+/** A model's elements, and whether they are all of them. */
+export interface ElementList {
+    /**
+     * `false` when the server cannot tell: the compiler has not built a composition the model is
+     * built on, as its files stand, or its `implements` chain loops or does not resolve. The list
+     * then holds what the files declare, and an element missing from it may still be there.
+     */
+    complete: boolean;
+    /** The model's own elements in the order written, then the others in the compiler's order. */
+    elements: Element[];
+}
+
+/** The server's kinds are the compiler's, which call a `@support` an `abstract-support`. */
+function elementOf(row: ContentsRow): Element {
+    return {
+        id: row.id,
+        ...(row.label === undefined ? {} : { label: row.label }),
+        kind: row.kind === 'abstract-support' ? 'support' : row.kind,
+        ...(row.location ? { location: { uri: row.location.uri, range: row.location.range, selection: row.location.selection } } : {}),
+        ...(row.declaredIn === undefined ? {} : { declaredIn: row.declaredIn }),
+        ...(row.merged ? { merged: true } : {})
+    };
 }
 
 /**
- * The elements `model` itself declares, in the order written, or `undefined` if the file's
- * symbols do not include the model — it was renamed or deleted since it was selected.
- *
- * A file's outline also lists the models it loads, under the same `(default)` namespace and
- * possibly under the same name, so the model is the one whose range contains its own name. What
- * it inherits is left out here, because the server places those symbols on the model itself;
- * `fetchElements` reads them from the templates declaring them, where they have a place.
+ * `model`'s elements, as the server lists them, or `undefined` if the model is not in its file
+ * any more. The model is named by its file and name, and by where its name is, since a file may
+ * load another model of that name.
  */
-export function elementsOf(symbols: readonly WireDocumentSymbol[], model: Model): Element[] | undefined {
-    const namespace = symbols.find(s => s.name === DEFAULT_NAMESPACE);
-    const symbol = namespace?.children?.find(s =>
-        s.name === model.name && rangeContains(s.range, model.selection.start.line, model.selection.start.character));
-    if (!symbol) return undefined;
-    const elements: Element[] = [];
-    for (const child of symbol.children ?? []) {
-        const kind = ELEMENT_KINDS[child.kind];
-        if (!kind || child.name.startsWith(INHERITED_PREFIX)) continue;
-        elements.push({
-            id: child.name,
-            ...(child.detail !== undefined ? { label: child.detail } : {}),
-            kind,
-            range: child.range,
-            selection: child.selectionRange
-        });
-    }
-    return elements;
+export async function fetchElements(request: RequestFn, model: Model): Promise<ElementList | undefined> {
+    const params: ModelContentsParams = { uri: model.uri, name: model.name, position: model.selection.start };
+    const answer = await request(MODEL_CONTENTS, params) as ModelContentsAnswer | null;
+    if (!answer) return undefined;
+    return { complete: answer.complete, elements: answer.elements.map(elementOf) };
 }
 
 /**
@@ -127,72 +103,16 @@ export function templateReach(
     return alias === undefined ? undefined : { alias };
 }
 
-/** Whether `id`, declared nearer the model, is an override of `element` of `template`. */
-const overrides = (id: string, template: string, element: string): boolean =>
-    id === `${template}:${element}` || id.endsWith(`:${template}:${element}`);
-
-/**
- * `model`'s elements: its own, then those it inherits, nearest template first, each under the id
- * the model refers to it by, as the compiler qualifies it (jpipe-compiler ADR-0012): `T:e1` for
- * `e1` of template `T`, `lib:T:e1` when `T` comes from a `load … as lib`. `undefined` if the
- * model is not in its file any more.
- *
- * An inherited element that has been overridden is not listed: `evidence T:slot` in the model,
- * or in a template between the model and `T`, is what `T:slot` now is, and it is already a row.
- * A template the server cannot place, or whose file cannot be read, ends the chain there rather
- * than failing the view: what was found is still true.
- */
-export async function fetchElements(request: RequestFn, model: Model): Promise<Element[] | undefined> {
-    const symbolsOf = async (uri: string) =>
-        (await request(DOCUMENT_SYMBOL_REQUEST, { textDocument: { uri } }) ?? []) as WireDocumentSymbol[];
-
-    const symbols = await symbolsOf(model.uri);
-    const elements = elementsOf(symbols, model);
-    if (!elements) return undefined;
-
-    /** Ids as written by the model and by each template walked so far: what can override. */
-    const nearer = elements.map(e => e.id);
-    const visited = new Set<string>([model.key]);
-    let item: WireTypeHierarchyItem = {
-        name: model.name,
-        kind: model.kind === 'template' ? SYMBOL_KIND_INTERFACE : SYMBOL_KIND_CLASS,
-        uri: model.uri,
-        range: model.selection,
-        selectionRange: model.selection
-    };
-    for (;;) {
-        let parent: WireTypeHierarchyItem | undefined;
-        let declared: Element[] | undefined;
-        try {
-            parent = ((await request(TYPE_HIERARCHY_SUPERTYPES_REQUEST, { item }) ?? []) as WireTypeHierarchyItem[])[0];
-            if (!parent) break;
-            const key = keyOf(parent.uri, parent.name);
-            if (visited.has(key)) break;
-            visited.add(key);
-            declared = elementsOf(await symbolsOf(parent.uri), {
-                key, name: parent.name, kind: 'template', uri: parent.uri, selection: parent.selectionRange
-            });
-        } catch {
-            break;
-        }
-        if (!declared) break;
-        const template = parent.name;
-        const alias = templateReach(symbols, template, SYMBOL_KIND_INTERFACE)?.alias;
-        const inheritedFrom = { template, uri: parent.uri };
-        const qualifier = alias ? `${alias}:${template}` : template;
-        elements.push(...declared
-            .filter(element => !nearer.some(id => overrides(id, template, element.id)))
-            .map(element => ({ ...element, id: `${qualifier}:${element.id}`, inheritedFrom })));
-        nearer.push(...declared.map(e => e.id));
-        // Placed by its name, as `fetchModels` places a template: that is where the server looks.
-        item = { ...parent, range: parent.selectionRange };
-    }
-    return elements;
-}
-
 /** How a row reads: `e1 • Tests pass`, or the id alone for an element with no label yet. */
 export function elementLabel(element: Element): string {
     return element.label ? `${element.id} • ${element.label}` : element.id;
+}
+
+/** What a row's tooltip says of an element, beyond its kind, id and label: where it comes from. */
+export function elementOrigin(element: Element): string | undefined {
+    if (!element.location) return 'Made by the composition';
+    if (element.merged) return `Merged by the composition from several elements, one declared in ${element.declaredIn ?? 'this model'}`;
+    return element.declaredIn === undefined ? undefined : `Declared in ${element.declaredIn}`;
 }
 
 /** The icon of each kind of element. */
@@ -224,20 +144,26 @@ export const ELEMENT_COLORS: Readonly<Record<ElementKind, string>> = {
 };
 
 /**
- * The element the cursor is in, if any. Elements never nest, so at most one contains it. An
- * inherited element is in another file, or elsewhere in this one, and is never the answer.
+ * The element the cursor is in, if any, the cursor being in the model's file. Elements never
+ * nest, so at most one contains it. Only the model's own elements are declared there: one it
+ * inherits or is built from is declared in another model, and is never the answer.
  */
 export function elementAt(elements: readonly Element[], position: Position): Element | undefined {
-    return elements.find(e => !e.inheritedFrom && rangeContains(e.range, position.line, position.character));
+    return elements.find(e => e.declaredIn === undefined && e.location !== undefined &&
+        rangeContains(e.location.range, position.line, position.character));
 }
 
-/** Why the view is empty, or `undefined` when it has rows to show. */
-export function emptyMessage(model: Model | undefined, elements: readonly Element[] | undefined): string | undefined {
+/**
+ * What the view says above its rows, or `undefined` when its rows say it all: why it is empty, or
+ * that the list may be missing elements.
+ */
+export function viewMessage(model: Model | undefined, list: ElementList | undefined): string | undefined {
     if (!model) return 'Select a model in Models to see its elements.';
-    if (model.operator) {
-        return `${model.name} is composed by ${model.operator}. Its elements only exist once the compiler runs it.`;
+    if (list === undefined) return `${model.name} could not be found in its file.`;
+    if (!list.complete) {
+        return `Some elements of ${model.name} may be missing: only those its files declare are listed. ` +
+            'A model built on a composition is listed whole once the compiler has built its saved files.';
     }
-    if (elements === undefined) return `${model.name} could not be found in its file.`;
-    if (elements.length === 0) return `${model.name} has no elements.`;
+    if (list.elements.length === 0) return `${model.name} has no elements.`;
     return undefined;
 }

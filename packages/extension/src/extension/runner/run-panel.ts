@@ -199,9 +199,10 @@ export class RunPanel implements vscode.Disposable {
             const model = modelNamed(candidate.model);
             if (!model) continue;
             fallback ??= model;
-            const found = (await fetchElements(this.request, model))?.find(e => e.id === candidate.element);
+            const found = (await fetchElements(this.request, model))?.elements.find(e => e.id === candidate.element);
             if (found) {
-                await this.openAt(vscode.Uri.parse(found.inheritedFrom?.uri ?? model.uri), found.selection);
+                // One an operator made up has no declaration: the model it is in stands for it.
+                await this.openAt(vscode.Uri.parse(found.location?.uri ?? model.uri), found.location?.selection ?? model.selection);
                 return;
             }
         }

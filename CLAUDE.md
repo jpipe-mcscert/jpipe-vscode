@@ -43,6 +43,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
         jpipe-utils.ts          ← getAllElements / getLocalElements (AST helpers)
         jpipe-model-contents.ts ← a model's elements, for every rule and provider: declared or compiled, or *cannot tell* (ADR-VSC-0034)
         jpipe-compiler-report.ts ← the compiler's `diagnostic -f json` report, asked of the client, never waited for (its file is checked again on arrival), cached per file until a save (ADR-VSC-0034)
+        jpipe-contents-request.ts ← `jpipe/modelContents`: `contentsOf` as rows, what the Outline and the Run panel list and open (ADR-VSC-0034)
         jpipe-overrides.ts      ← what an override names among inherited elements, bound as the compiler binds ids
         jpipe-glob.ts           ← Java-NIO glob matcher for `load` patterns (ADR-VSC-0007)
         code-actions/           ← one module per quick-fix/refactoring, aggregated by index.ts
@@ -103,7 +104,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             new-model.ts        ← New Justification/Template decisions, vscode-free (tested)
             new-model-flow.ts   ← the name input box and the edits it makes
             elements-view.ts    ← the activity's Outline: elements of the model selected in Models
-            elements-tree.ts    ← that model's own and inherited elements, vscode-free (tested)
+            elements-tree.ts    ← that model's elements as the server lists them (`jpipe/modelContents`), as rows, vscode-free (tested)
             tree-loader.ts      ← when Models and the Outline ask the server again: now, when shown, after a pause (tested)
         webview/                ← browser code. DOM only — no `vscode`, no node: (ADR-VSC-0003)
           preview.ts            ← preview page: modes, banners, highlight, message dispatch
@@ -261,7 +262,7 @@ packaging, so a red suite blocks the VSIX.
 
 ### `packages/language/test/`
 
-30 files, integration-style: they import `'jpipe-language'`, which resolves through the package's
+31 files, integration-style: they import `'jpipe-language'`, which resolves through the package's
 `exports` map to the **built** `out/index.js`, and drive the LSP through Langium's test helpers.
 `parsing.test.ts`, `linking.test.ts` and `validating.test.ts` are the core three; the rest cover
 completion, code actions, renaming, globs, layout, hovering, symbols and semantic tokens.
@@ -360,4 +361,4 @@ missing, exit 4, no report) is launched once more without the drawing (ADR-VSC-0
 - The extension bundle is CJS (esbuild converts it); the language server stays ESM.
 - Langium services are wired via constructor injection; access shared services through the injected `JpipeServices` handle, not via global imports.
 - AST node type guards (`isJustification`, `isTemplate`, etc.) come from `./generated/ast.js` — use them instead of `instanceof` or `.$type` comparisons.
-- A rule or provider that needs a model's whole element list asks `ModelContents.contentsOf`, never `getAllElements` or `expandedElements` (ADR-VSC-0034, held by `test/model-contents.test.ts`). `getLocalElements` is for what a model declares itself.
+- A rule or provider that needs a model's whole element list asks `ModelContents.contentsOf`, never `getAllElements` or `expandedElements` (ADR-VSC-0034, held by `test/model-contents.test.ts`). `getLocalElements` is for what a model declares itself. The client asks the server the same question, `jpipe/modelContents`; it never walks `implements` or binds overrides itself.

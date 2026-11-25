@@ -1,9 +1,9 @@
 import { startLanguageServer } from 'langium/lsp';
 import { NodeFileSystem } from 'langium/node';
 import { createConnection, ProposedFeatures } from 'vscode-languageserver/node';
-import { createJpipeServices } from 'jpipe-language';
-import type { LogLevel } from 'jpipe-language';
-import { COMPILER_INPUTS_CHANGED, COMPILER_REPORT, SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
+import { createJpipeServices, answerModelContents } from 'jpipe-language';
+import type { LogLevel, ModelContentsParams } from 'jpipe-language';
+import { COMPILER_INPUTS_CHANGED, COMPILER_REPORT, MODEL_CONTENTS, SET_EXCLUDED_PATHS, SET_UNIFICATION_METHODS } from '../shared/lsp-protocol.js';
 
 // Create a connection to the client
 const connection = createConnection(ProposedFeatures.all);
@@ -64,6 +64,10 @@ connection.onNotification(SET_UNIFICATION_METHODS, async (methods: unknown) => {
 Jpipe.references.CompilerReports.connect(uri => connection.sendRequest(COMPILER_REPORT, { uri }));
 connection.onNotification(COMPILER_INPUTS_CHANGED, (uris: unknown) =>
     Jpipe.references.CompilerReports.inputsChanged(new Set(toStringArray(uris) ?? [])));
+
+// A model's elements, as the activity's Outline and the Run panel show them: whatever kind of model
+// it is, through the one service every rule asks (jpipe-vscode ADR-VSC-0034).
+connection.onRequest(MODEL_CONTENTS, (params: ModelContentsParams, token) => answerModelContents(Jpipe, params, token));
 
 // Start the language server with the shared services
 startLanguageServer(shared);

@@ -49,8 +49,9 @@ holds:
 - **One question, one answer type.** A consumer asks for a model's contents
   (`ModelContents.contentsOf`, in `jpipe-model-contents.ts`) and receives either its effective
   elements, under the ids the compiler gives them, with the kind each has there, or *cannot
-  tell*. Validation rules, completion, rename and definition all ask this question, as will hover
-  once it shows a model's elements. None of them reads an element list around it:
+  tell*. Validation rules, completion, rename and definition all ask this question, and so do the
+  client's views of a model's elements, the activity's Outline and the Run panel (below), as will
+  hover once it shows a model's elements. None of them reads an element list around it:
   `getAllElements` and `expandedElements` are imported only by the declared implementation and by
   linking (below), which `test/model-contents.test.ts` holds.
 - ***Cannot tell* lists what it can see.** It carries the elements the bodies show, and which of
@@ -92,10 +93,19 @@ holds:
   language server therefore sends the client a request and receives the report; it never starts
   a compiler itself. This keeps the language package free of the editor's settings and of any
   process launching.
+- **The client lists a model's elements by asking the server.** No standard LSP request carries
+  them: `textDocument/documentSymbol` places symbols in one file, and a model's elements are
+  declared in several. The client asks `jpipe/modelContents` with the model's file and name, and
+  the server answers from `contentsOf` (`jpipe-contents-request.ts`): each element under its id,
+  with its kind and label, where it is declared and by which model, whether an operator merged it,
+  and whether the list is whole. The activity's Outline lists those rows, and the Run panel opens an
+  element where its row says. Neither reads an `implements` chain or binds an override itself, and
+  a partial list is asked for again when its file is checked again, which a report arriving causes.
 - ***Cannot tell* is the answer whenever the compiler cannot give one:** no compiler, one older
   than 4.0.0, a model it did not build whole, a file edited since, a request that fails, or a
-  report still on its way. A consumer given that
-  answer stays silent, exactly as every rule did on a composed model before. The declared
+  report still on its way. A rule given that
+  answer stays silent, exactly as every rule did on a composed model before; a view lists what the
+  bodies show and says that elements may be missing from it. The declared
   implementation gives the same answer for a chain that does not resolve (#129), so consumers
   handle one case, not two.
 - **Linking reads the declarations itself.** Langium resolves references synchronously while it
@@ -161,6 +171,14 @@ holds:
   report, so a relation naming such an element is reported as unresolved. The compiler refuses it
   too, as `reference-into-template`: a model implementing a template may reference only the
   template's `@support` elements, which it overrides.
+- **The Outline lists every kind of model.** A composed model's elements, and those a model
+  inherits through one, are listed under the compiler's ids, which are also the ids jpipe-runner
+  binds steps to, so the Outline's step bindings hold for them too. An element an operator made
+  up, such as `assemble`'s conclusion, has no declaration, and is listed by its id alone. While a
+  file is edited above a composition the list is partial and says so, until it is saved.
+- **One custom request joins the protocol.** The Models view still uses standard requests only;
+  the Outline and the Run panel depend on `jpipe/modelContents`, declared with the other
+  messages in `lsp-protocol.ts`.
 - **No feature may reach around the API.** Reading `contents.body`, or calling `getAllElements` or
   `expandedElements` from a rule or a provider, is the bypass this record forbids. Those helpers
   become details of the declared implementation.

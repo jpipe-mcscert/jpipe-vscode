@@ -11,9 +11,11 @@ import {
     ELEMENT_ICONS,
     elementAt,
     elementLabel,
-    emptyMessage,
+    elementOrigin,
     fetchElements,
-    type Element
+    viewMessage,
+    type Element,
+    type ElementList
 } from './elements-tree.js';
 import { TreeLoader } from './tree-loader.js';
 
@@ -36,8 +38,11 @@ const isStep = (row: Row): row is StepRow => 'step' in row;
  * file — and since Models follows the editor, it follows the editor too. Within the model, it
  * selects the element the cursor is in, as the Explorer's Outline does.
  *
- * Its rows are the model's own elements in the order written, then the ones it inherits under
- * their qualified ids (`T:e1`); `elements-tree.ts` decides which they are and how they read. Once a
+ * Its rows are the model's elements as the language server lists them, for every kind of model: its
+ * own in the order written, then those it inherits or is built from, under the ids the compiler
+ * gives them (`T:e1`, `P:b`); `elements-tree.ts` says how they read. A list the server cannot vouch
+ * for whole, as for a model built on a composition the compiler has not built yet, says so, and is
+ * asked for again when its file is checked again, which a compiler report arriving does. Once a
  * library is checked, each element has under it the steps implementing it, as `step-binding.ts`
  * works them out.
  */
@@ -48,7 +53,7 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
     private readonly view: vscode.TreeView<Row>;
     private readonly disposables: vscode.Disposable[] = [];
     private model: Model | undefined;
-    private elements: Element[] | undefined;
+    private list: ElementList | undefined;
     /** Loaded as the Models view is: long enough to let a name be typed, short enough to look live. */
     private readonly loader = new TreeLoader(
         () => this.load(),
@@ -86,6 +91,11 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
             vscode.workspace.onDidChangeTextDocument(e => {
                 if (this.isShown(e.document.uri) && e.contentChanges.length > 0) this.loader.scheduleRefresh();
             }),
+            // A partial list may be whole once the compiler's report arrives, and the server then
+            // checks the model's file again, which publishes its diagnostics.
+            vscode.languages.onDidChangeDiagnostics(e => {
+                if (this.list && !this.list.complete && e.uris.some(uri => this.isModelFile(uri))) this.loader.scheduleRefresh();
+            }),
             this.view.onDidChangeSelection(e => {
                 // A step counts as its element, so moving the cursor within that element leaves it selected.
                 const row = e.selection[0];
@@ -104,10 +114,10 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
         return this.model !== undefined && sameFile(this.model.uri, uri);
     }
 
-    /** Whether `uri` holds something on show: the model, or a template it inherits elements from. */
+    /** Whether `uri` holds something on show: the model, or a model it inherits or is built from. */
     private isShown(uri: vscode.Uri): boolean {
-        return this.isModelFile(uri) || (this.elements ?? []).some(e =>
-            e.inheritedFrom !== undefined && sameFile(e.inheritedFrom.uri, uri));
+        return this.isModelFile(uri) || (this.list?.elements ?? []).some(e =>
+            e.location !== undefined && sameFile(e.location.uri, uri));
     }
 
     refresh(): void {
@@ -122,22 +132,26 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
         if (selected !== this.model) return;
         this.model = model;
         this.view.description = model?.name;
-        if (!model || model.operator) {
-            this.elements = [];
-        } else {
+        if (model) {
             try {
                 await this.client.start();
-                const elements = await fetchElements((method, params) => this.client.sendRequest(method, params), model);
+                const list = await fetchElements((method, params) => this.client.sendRequest(method, params), model);
                 // The selection may have moved on while the server was answering.
                 if (model !== this.model) return;
-                this.elements = elements;
+                this.list = list;
             } catch (err: unknown) {
                 this.logger.error(`Could not list the elements of ${model.name}: ${messageOf(err)}`);
-                this.elements = undefined;
+                this.list = undefined;
             }
+        } else {
+            this.list = { complete: true, elements: [] };
         }
-        this.view.message = emptyMessage(model, this.elements);
+        this.view.message = viewMessage(model, this.list);
         this.bind();
+    }
+
+    private get elements(): Element[] | undefined {
+        return this.list?.elements;
     }
 
     private bind(): void {
@@ -190,18 +204,18 @@ export class ElementsView implements vscode.TreeDataProvider<Row>, vscode.Dispos
         item.iconPath = new vscode.ThemeIcon(ELEMENT_ICONS[element.kind], new vscode.ThemeColor(ELEMENT_COLORS[element.kind]));
         // In grey, only what is wrong: a required element no step implements, or one with several.
         item.description = stepNote(element.kind, steps, this.anyChecked);
+        const origin = elementOrigin(element);
         item.tooltip = `${element.kind === 'support' ? '@support' : element.kind} ${element.id}` +
             (element.label ? `\n${element.label}` : '') +
-            (element.inheritedFrom ? `\nInherited from ${element.inheritedFrom.template}` : '');
+            (origin ? `\n${origin}` : '');
         if (this.model) {
+            // An element opens where it is declared, which may be another model's file; one an
+            // operator made up has no declaration, and opens the model.
+            const at = element.location ?? { uri: this.model.uri, selection: this.model.selection };
             item.command = {
                 command: 'vscode.open',
                 title: 'Open',
-                arguments: [
-                    // An inherited element opens where it is declared, in its template.
-                    vscode.Uri.parse(element.inheritedFrom?.uri ?? this.model.uri),
-                    { selection: editorRange(cursorAt(element.selection)) }
-                ]
+                arguments: [vscode.Uri.parse(at.uri), { selection: editorRange(cursorAt(at.selection)) }]
             };
         }
         return item;

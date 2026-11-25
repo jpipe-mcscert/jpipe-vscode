@@ -1,5 +1,5 @@
 /**
- * The custom notifications the extension sends to its language server.
+ * The custom notifications and requests between the extension and its language server.
  *
  * Types and constants only — this module is imported by both the extension-host bundle and the
  * language-server bundle, so it must pull in neither `vscode` nor the DOM. See
@@ -58,3 +58,16 @@ export const COMPILER_REPORT = 'jpipe/compilerReport';
  * again the documents that read them.
  */
 export const COMPILER_INPUTS_CHANGED = 'jpipe/compilerInputsChanged';
+
+/**
+ * The client asks for a model's elements, as the activity's Outline and the Run panel show them:
+ * `ModelContents.contentsOf` (jpipe-vscode ADR-VSC-0034), whatever kind of model it is.
+ *
+ * A request, client to server. Params: `{ uri, name, position? }`, the URI string of the model's
+ * file as the server gave it, its name, and a position in its name, which tells it from another
+ * model of that name in the file. Result: `{ complete, elements }`, or `null` when the file or the
+ * model is not in the workspace. `complete` is false when the server cannot tell: `elements` then
+ * holds what the files declare, and an element missing from it may still be there. The shapes are
+ * `ModelContentsParams` and `ModelContentsAnswer` in jpipe-language.
+ */
+export const MODEL_CONTENTS = 'jpipe/modelContents';
