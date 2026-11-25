@@ -189,6 +189,8 @@ export class RunnerEnvironment implements vscode.Disposable {
     private requirement = runnerRequirement(undefined);
     /** What the last check found, for the report. */
     private facts: EnvironmentFacts = { environment: {} };
+    /** The interpreter the editor had selected when the last check looked at it; absent until a check has. */
+    private selectionSeen: { python: string | undefined } | undefined;
 
     constructor(private readonly context: vscode.ExtensionContext, private readonly logger: JpipeLogger) {
         this.disposables.push(
@@ -502,17 +504,32 @@ export class RunnerEnvironment implements vscode.Disposable {
         const envs = await this.activate<Partial<PythonEnvsApi>>(PYTHON_ENVS_EXTENSION);
         if (envs && typeof envs.setEnvironment === 'function' && typeof envs.getEnvironment === 'function' && typeof envs.resolveEnvironment === 'function') {
             this.envs = envs as PythonEnvsApi;
-            if (this.envs.onDidChangeEnvironment) this.disposables.push(this.envs.onDidChangeEnvironment(() => this.recheck()));
+            if (this.envs.onDidChangeEnvironment) this.disposables.push(this.envs.onDidChangeEnvironment(() => void this.interpreterChanged()));
             this.logger.info('The editor\'s interpreter is selected through the Python Environments extension.');
             return;
         }
         this.api = (await this.activate<{ environments?: PythonEnvironmentsApi }>(PYTHON_EXTENSION))?.environments;
         if (this.api) {
-            this.disposables.push(this.api.onDidChangeActiveEnvironmentPath(() => this.recheck()));
+            this.disposables.push(this.api.onDidChangeActiveEnvironmentPath(() => void this.interpreterChanged()));
             this.logger.info('The editor\'s interpreter is selected through the Python extension.');
         } else {
             this.logger.info('No Python extension to select an interpreter with; the editor cannot be pointed at the workspace\'s environment.');
         }
+    }
+
+    /**
+     * The Python extensions say the editor's interpreter changed. They also say so while they are
+     * still discovering environments as the window opens, with the selection where it was: look
+     * again only if it moved from the one the last check saw, once any check under way is done.
+     */
+    private async interpreterChanged(): Promise<void> {
+        await this.settled();
+        const seen = this.selectionSeen;
+        if (seen && seen.python === await this.selectedPython(this.folder)) {
+            this.logger.debug('The Python extensions announced an interpreter change, but the editor still uses the one the last check saw.');
+            return;
+        }
+        this.recheck();
     }
 
     /** What an extension exports, activating it if need be; `undefined` when it is not installed or fails. */
@@ -590,6 +607,8 @@ export class RunnerEnvironment implements vscode.Disposable {
     }
 
     private async check(): Promise<void> {
+        // Forgotten until this check reads the selection: one that ends early, or fails, never did.
+        this.selectionSeen = undefined;
         const folder = this.folder;
         if (this.mode === 'command') {
             this.conclude({ kind: 'external' },
@@ -627,6 +646,7 @@ export class RunnerEnvironment implements vscode.Disposable {
         const probe = environment.python ? await this.probe({ program: environment.python, args: [] }, folder) : undefined;
         // The editor follows an environment that answers; one that does not is left alone.
         const { selected, editor } = await this.editorSelection(probe ? environment.python : undefined, folder);
+        this.selectionSeen = { python: selected };
         const declaredLocal = localSource && !localBranch ? this.declaredLocal(localSource) : undefined;
         const local: LocalRunner | undefined = localSource
             ? { path: localSource, ...(declaredLocal ? { declared: declaredLocal } : {}), ...(localBranch ? { branch: localBranch } : {}), ...(head ? { head } : {}) }

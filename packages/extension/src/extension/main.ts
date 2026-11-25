@@ -1,7 +1,7 @@
 import type { LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { LanguageClient, TransportKind, Trace, RevealOutputChannelOn } from 'vscode-languageclient/node';
+import { LanguageClient, TransportKind, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { ImageGenerator } from './compiler/image-generator.js';
 import { PreviewProvider } from './preview/preview-provider.js';
 import { ReleaseManager } from './compiler/release-manager.js';
@@ -233,9 +233,7 @@ function startLanguageClient(context: vscode.ExtensionContext, logger: JpipeLogg
         vscode.window.showErrorMessage(`Failed to start language server: ${msg}`);
     });
 
-    // Bring back protocol tracing (shows requests/notifications in trace channel).
-    // Note: We intentionally don't await this; the client will apply it once connected.
-    void client.setTrace(Trace.Verbose);
-
+    // Protocol tracing follows the trace channel's log level: set "jPipe Language Server (Trace)"
+    // to Trace in the Output panel to see every request (`jpipe.trace.server` picks the detail).
     return client;
 }

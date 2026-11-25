@@ -81,6 +81,10 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
      * window would move the selection off the row just clicked.
      */
     private selectedKey: string | undefined;
+    /** When this view was made, as the extension activated: what the first listing is timed from. */
+    private readonly createdAt = performance.now();
+    /** Whether the models have been listed once: only the first listing is timed at info. */
+    private listedOnce = false;
     private readonly loader = new TreeLoader(
         () => this.load(),
         () => this.view.visible,
@@ -143,8 +147,11 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
 
     private async load(): Promise<void> {
         try {
+            const started = performance.now();
             await this.client.start();
+            const asked = performance.now();
             this.models = await fetchModels((method, params) => this.client.sendRequest(method, params));
+            this.logTiming(started, asked);
             this.ambiguous = ambiguousNames(this.models);
             // The model on show may have moved in its file: keep it as the server now places it.
             const key = this.current?.key;
@@ -158,6 +165,21 @@ export class ModelsView implements vscode.TreeDataProvider<TreeNode>, vscode.Dis
             this.logger.error(`Could not list the workspace's models: ${messageOf(err)}`);
             this.view.message = 'Could not list the models — see the jPipe output channel.';
         }
+    }
+
+    /**
+     * How long listing the models took, split between waiting for the language server to start and
+     * waiting for its answers: the first time at info, since it is what the window opens with.
+     */
+    private logTiming(started: number, asked: number): void {
+        const now = performance.now();
+        const split = `${Math.round(asked - started)} ms waiting for the language server, ${Math.round(now - asked)} ms for its answers`;
+        if (this.listedOnce) {
+            this.logger.debug(`Models: ${this.models.length} listed (${split}).`);
+            return;
+        }
+        this.listedOnce = true;
+        this.logger.info(`Models: ${this.models.length} listed ${Math.round(now - this.createdAt)} ms after the extension activated (${split}).`);
     }
 
     /**
