@@ -36,7 +36,8 @@ import {
     type JustificationElement,
     type AbstractSupport
 } from './generated/ast.js';
-import { fsPathOf, getAllElements, getLocalElements, qualifiedIdText } from './jpipe-utils.js';
+import { fsPathOf, getLocalElements, qualifiedIdText, writtenNamespace } from './jpipe-utils.js';
+import { listedIn } from './jpipe-model-contents.js';
 import { messageOf } from './jpipe-errors.js';
 
 const WORD_CHARACTER = /\w/;
@@ -485,7 +486,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         // Inside a config value only that value is completed. Most values are free text, where
         // nothing applies — certainly not the key names, which is what used to be offered here.
         if (cursor?.at === 'value') {
-            return { ...result, items: this.getConfigValueCompletions(document, cursor, pos) };
+            return { ...result, items: await this.getConfigValueCompletions(document, cursor, pos) };
         }
 
         if (cursor?.at === 'operator') {
@@ -505,7 +506,7 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
         const contexts = Array.from(this.buildContexts(document, params.position));
         if (contexts.length > 0) {
-            const templateCompletions = this.getTemplateElementCompletions(contexts[0]);
+            const templateCompletions = await this.getTemplateElementCompletions(contexts[0]);
             if (templateCompletions.length > 0) {
                 items = [...templateCompletions, ...items];
             }
@@ -524,13 +525,17 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
      * model being refined. Offered as ids because that is what the compiler resolves against,
      * showing each element's label alongside, since an id like `e` says nothing on its own.
      *
-     * Only evidence is offered. `refine` replaces the hooked element with a sub-conclusion
-     * carrying the refinement's whole argument, which is a sensible thing to do to a leaf and not
-     * to anything else — hooking a strategy or a conclusion would graft an argument into the
-     * middle of one. The compiler resolves the hook by id and does not check its type, so this
-     * narrows what is suggested rather than what is permitted.
+     * Only evidence and `@support` elements are offered, which is what the compiler accepts as a
+     * hook (`hook-not-leaf`): `refine` replaces the hooked element with a sub-conclusion carrying
+     * the refinement's whole argument, a sensible thing to do to a leaf and not to anything else.
+     * A `@support` is only left in a template, where it is a leaf still to be argued for.
+     *
+     * Read from the model's contents, whole or not: an element this can see is worth offering even
+     * where others are hidden from it.
      */
-    private getHookValueCompletions(document: LangiumDocument, firstParam: string | undefined, partial: string, position: Position): CompletionItem[] {
+    private async getHookValueCompletions(
+        document: LangiumDocument, firstParam: string | undefined, partial: string, position: Position
+    ): Promise<CompletionItem[]> {
         if (!firstParam) return [];
 
         const unit = document.parseResult.value as Unit | undefined;
@@ -542,24 +547,25 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
             document.textDocument.offsetAt(position) - partial.length
         );
 
-        return getAllElements(base)
-            .filter(element => isEvidence(element))
-            .filter(element => qualifiedIdText(element.id).length > 0)
-            .filter(element => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, qualifiedIdText(element.id)))
-            .map(element => {
-                const id = qualifiedIdText(element.id);
-                return {
-                    label: id,
-                    kind: CompletionItemKind.Value,
-                    // The id is what gets inserted; the label is what makes it recognisable.
-                    labelDetails: { detail: `  "${element.name}"` },
-                    detail: `evidence in ${firstParam}`,
-                    documentation: element.name,
-                    sortText: `0_hook_${id}`,
-                    // Replaces what has been typed so far inside the quotes, and nothing else.
-                    textEdit: { range: { start, end: position }, newText: id }
-                };
-            });
+        // Under the id the compiler gives each element in the base, which is what a hook is looked
+        // up by: `T:e` for an `e` the base inherits from T, which names it whether or not every
+        // element of the base can be seen.
+        const contents = await this.services.references.ModelContents.contentsOf(base, writtenNamespace(firstParam, base.id), document);
+        return listedIn(contents)
+            .flatMap(({ element, kind, id }) =>
+                element && (kind === 'evidence' || kind === 'abstract-support') && id.length > 0 ? [{ element, kind, id }] : [])
+            .filter(({ id }) => !partial || this.services.shared.lsp.FuzzyMatcher.match(partial, id))
+            .map(({ element, kind, id }) => ({
+                label: id,
+                kind: CompletionItemKind.Value,
+                // The id is what gets inserted; the label is what makes it recognisable.
+                labelDetails: { detail: `  "${element.name}"` },
+                detail: `${kind === 'evidence' ? 'evidence' : '@support'} in ${firstParam}`,
+                documentation: element.name,
+                sortText: `0_hook_${id}`,
+                // Replaces what has been typed so far inside the quotes, and nothing else.
+                textEdit: { range: { start, end: position }, newText: id }
+            }));
     }
 
     /**
@@ -594,11 +600,11 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
     }
 
     /** The values worth offering for a config key: only `hook` and `unifyBy` have a known set. */
-    private getConfigValueCompletions(
+    private async getConfigValueCompletions(
         document: LangiumDocument,
         cursor: Extract<CompositionCursor, { at: 'value' }>,
         position: Position
-    ): CompletionItem[] {
+    ): Promise<CompletionItem[]> {
         if (cursor.key === 'hook' && cursor.operator === 'refine') {
             return this.getHookValueCompletions(document, cursor.sources[0], cursor.partial, position);
         }
@@ -829,7 +835,13 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
         };
     }
 
-    private getTemplateElementCompletions(context: CompletionContext): CompletionItem[] {
+    /**
+     * The `@support` elements a justification has still to override, each under the id the
+     * override is written with: those its contents still list, since an override, in it or in a
+     * template between, replaces the `@support` of that id. Read from its contents whole or not,
+     * since a `@support` this can see is worth offering even where others are hidden.
+     */
+    private async getTemplateElementCompletions(context: CompletionContext): Promise<CompletionItem[]> {
         if (this.logger.shouldLog('debug')) this.logger.debug(`Completion request at line ${context.position.line}:${context.position.character}`);
         try {
             const currentNode = context.node;
@@ -843,19 +855,15 @@ export class JpipeCompletionProvider extends DefaultCompletionProvider {
 
             if (!justification.parent?.ref) return [];
 
-            const doc = context.document;
-            const unit = doc.parseResult.value as Unit | undefined;
-            if (!unit) return [];
-
-            // Use namespace-qualified keys so snippets match the qualified-ID scheme.
-            const inheritedEntries = this.importService.getInheritedElementsWithKeys(justification, unit, doc);
-            const existingIds = new Set(getLocalElements(justification).map(el => qualifiedIdText(el.id)));
+            const contents = await this.services.references.ModelContents.contentsOf(justification);
+            const own = new Set<JustificationElement>(getLocalElements(justification));
             const suggestedIds = new Set<string>();
 
             const completions: CompletionItem[] = [];
-            for (const { element, key } of inheritedEntries) {
-                if (!isAbstractSupport(element)) continue; // only @support elements require explicit override
-                if (existingIds.has(key) || suggestedIds.has(key)) continue;
+            for (const { element, kind, id: key } of listedIn(contents)) {
+                // Only an inherited @support requires an explicit override.
+                if (kind !== 'abstract-support' || !element || own.has(element)) continue;
+                if (suggestedIds.has(key)) continue;
                 const completion = this.createTemplateElementCompletion(element, key, context);
                 if (completion) {
                     suggestedIds.add(key);

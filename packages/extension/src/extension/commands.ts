@@ -17,7 +17,6 @@ import type { LibrariesView } from './runner/libraries-view.js';
 import { runModel, runSelectedModel, runShownAgain, type RunDeps } from './runner/run-model.js';
 import { newLibrary, scaffoldLibrary } from './runner/new-library-flow.js';
 import type { RunnerEnvironment } from './runner/environment.js';
-import type { ResultsView } from './runner/results-view.js';
 import type { RunSession } from './runner/run-session.js';
 import type { RunPanel } from './runner/run-panel.js';
 import { installFromRelease } from './compiler/managed-install.js';
@@ -53,7 +52,6 @@ export interface CommandDeps {
     modelsView: ModelsView;
     librariesView: LibrariesView;
     runnerEnvironment: RunnerEnvironment;
-    resultsView: ResultsView;
     runSession: RunSession;
     runPanel: RunPanel;
 }
@@ -93,10 +91,10 @@ const CODE_ACTION_COMMANDS: ReadonlyArray<readonly [command: string, kind: strin
 ];
 
 export function registerCommands(deps: CommandDeps): void {
-    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, resultsView, runSession, runPanel } = deps;
+    const { context, logger, exclusions, imageGenerator, previewProvider, releaseManager, modelsView, librariesView, runnerEnvironment, runSession, runPanel } = deps;
     const runDeps: RunDeps = {
         context, logger, imageGenerator, libraries: librariesView, models: modelsView, environment: runnerEnvironment,
-        results: resultsView, session: runSession, panel: runPanel
+        session: runSession, panel: runPanel
     };
     // The run panel's own ▶ and ✓: the justification it shows, again.
     context.subscriptions.push(runPanel.onDidRequestRun(check => runShownAgain(runDeps, check)));
@@ -195,7 +193,7 @@ export function registerCommands(deps: CommandDeps): void {
         // On a checked library's own ▶ menu: the model selected in Models, with every checked library.
         vscode.commands.registerCommand('jpipe.runLibrary', () => runSelectedModel(runDeps, false)),
         vscode.commands.registerCommand('jpipe.checkLibrary', () => runSelectedModel(runDeps, true)),
-        vscode.commands.registerCommand('jpipe.results.showOutput', () => resultsView.showOutput()),
+        vscode.commands.registerCommand('jpipe.results.showOutput', () => runSession.showOutput()),
         vscode.commands.registerCommand('jpipe.libraries.checkAll', () => librariesView.checkAll()),
         vscode.commands.registerCommand('jpipe.libraries.uncheckAll', () => librariesView.uncheckAll()),
         vscode.commands.registerCommand('jpipe.libraries.refresh', () => librariesView.rescanAll()),

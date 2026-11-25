@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { Notice } from '../../shared/run-protocol.js';
-import { endedWithout, outOfDateReason, startedRun, type Change, type ShownRun } from './run-state.js';
+import type { RunReport } from './run-report.js';
+import { endedWithReport, endedWithout, outOfDateReason, startedRun, type Change, type ShownRun } from './run-state.js';
 
 /** What the session needs to know about the Libraries view: which libraries are checked, and when that changes. */
 export interface CheckedLibraries {
@@ -12,9 +13,11 @@ export interface CheckedLibraries {
  * The last run: the one the run panel draws and the Results view lists (jpipe-vscode
  * ADR-VSC-0031). There is one, so the two views can never show different runs.
  *
- * Each run is given a token when it starts, and only the latest may change what is shown. A run
+ * Each launch of a run is given a token, and only the latest may change what is shown. A run
  * started while another is under way takes over the views, and the earlier one's result is dropped
- * when it arrives, as the preview drops a late render; its terminal stays.
+ * when it arrives, as the preview drops a late render; its terminal stays. A run launched once more
+ * (`relaunch`) is told apart from its earlier launch the same way, so what that launch writes late
+ * is dropped too.
  */
 export class RunSession implements vscode.Disposable {
     private readonly changeEmitter = new vscode.EventEmitter<void>();
@@ -60,27 +63,43 @@ export class RunSession implements vscode.Disposable {
         return this.shown?.phase === 'running';
     }
 
-    /** Show a run of `name` starting, and give it its token. */
+    /** Show a run of `name` starting, and give its first launch its token. */
     begin(name: string, uri: string, check: boolean, libraries: ShownRun['libraries']): number {
-        this.latest++;
-        this.execution = undefined;
         this.stopRequested = false;
         this.output = undefined;
-        this.show(startedRun(name, uri, check, libraries));
+        return this.launched(startedRun(name, uri, check, libraries));
+    }
+
+    /**
+     * Launch the run of `token` once more, and give that launch a token of its own: undefined, and
+     * nothing changes, when another run has taken over. The launch starts from nothing shown, as the
+     * run did (ADR-VSC-0033); what it is of, whether it is out of date, what was said about it and
+     * a stop asked for stay.
+     */
+    relaunch(token: number): number | undefined {
+        if (!this.isCurrent(token) || !this.shown) return undefined;
+        const { name, uri, check, libraries, outOfDate, notice } = this.shown;
+        return this.launched({ ...startedRun(name, uri, check, libraries), outOfDate, notice });
+    }
+
+    private launched(run: ShownRun): number {
+        this.latest++;
+        this.execution = undefined;
+        this.show(run);
         return this.latest;
     }
 
-    /** The token of the run on show. */
+    /** The token of the launch on show. */
     get current(): number {
         return this.latest;
     }
 
-    /** Whether `token` is the run on show: what an ending run asks before saying anything. */
+    /** Whether `token` is the launch on show: what an ending launch asks before saying anything. */
     isCurrent(token: number): boolean {
         return token === this.latest;
     }
 
-    /** Change what is shown of run `token`. False, and nothing changes, when another run has taken over. */
+    /** Change what is shown of launch `token`. False, and nothing changes, when another launch has taken over. */
     update(token: number, change: Partial<ShownRun>): boolean {
         if (!this.isCurrent(token) || !this.shown) return false;
         this.show({ ...this.shown, ...change });
@@ -92,13 +111,23 @@ export class RunSession implements vscode.Disposable {
         if (this.shown) this.show({ ...this.shown, notice });
     }
 
-    /** End run `token` without a report, saying why (`endedWithout`). */
+    /**
+     * End the run of launch `token` with its report and the drawing it ended with, if any
+     * (`endedWithReport`). False, and nothing changes, when another launch has taken over.
+     */
+    finish(token: number, report: RunReport, svg: string | null): boolean {
+        if (!this.isCurrent(token) || !this.shown) return false;
+        this.show(endedWithReport(this.shown, report, svg, new Date()));
+        return true;
+    }
+
+    /** End the run of launch `token` without a report, saying why (`endedWithout`). */
     endWith(token: number, phase: 'blocked' | 'stopped', notice: Notice): void {
         if (!this.isCurrent(token) || !this.shown) return;
         this.show(endedWithout(this.shown, phase, notice, new Date()));
     }
 
-    /** The task run `token` is executing in, so that it can be stopped. */
+    /** The task launch `token` is executing in, so that it can be stopped. */
     attach(token: number, execution: vscode.TaskExecution, showOutput: () => void): void {
         if (!this.isCurrent(token)) return;
         this.execution = execution;
@@ -107,7 +136,7 @@ export class RunSession implements vscode.Disposable {
         if (this.stopRequested) execution.terminate();
     }
 
-    /** Whether the user stopped run `token`. */
+    /** Whether the user stopped the run of launch `token`. */
     stopped(token: number): boolean {
         return this.isCurrent(token) && this.stopRequested;
     }
@@ -119,10 +148,9 @@ export class RunSession implements vscode.Disposable {
         this.execution?.terminate();
     }
 
-    /** Bring forward the terminal the run on show printed in, if it had one. */
-    showOutput(): boolean {
+    /** Bring forward the terminal the run on show printed in, if it had one: the only one there is. */
+    showOutput(): void {
         this.output?.();
-        return this.output !== undefined;
     }
 
     private changed(change: Change): void {

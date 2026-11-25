@@ -24,7 +24,8 @@ import {
     type Template,
     type Unit,
 } from './generated/ast.js';
-import { getAllElements, localName } from './jpipe-utils.js';
+import { localName } from './jpipe-utils.js';
+import { listedIn, type ModelContents } from './jpipe-model-contents.js';
 import { isGlobPattern } from './jpipe-glob.js';
 
 function asJustificationElement(node: AstNode): JustificationElement | undefined {
@@ -35,10 +36,12 @@ function asJustificationElement(node: AstNode): JustificationElement | undefined
 
 export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
     private readonly importService: JpipeImportService;
+    private readonly contents: ModelContents;
 
     constructor(services: JpipeServices) {
         super(services);
         this.importService = services.references.JpipeImportService;
+        this.contents = services.references.ModelContents;
     }
 
     protected override collectLocationLinks(
@@ -90,7 +93,7 @@ export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
         return [LocationLink.create(targetDoc.textDocument.uri, fileStart, fileStart, sourceRange)];
     }
 
-    private overrideTargetLink(sourceCstNode: CstNode): LocationLink[] | undefined {
+    private async overrideTargetLink(sourceCstNode: CstNode): Promise<LocationLink[] | undefined> {
         // Walk up from the CST node to find the containing JustificationElement.
         let node: AstNode | undefined = sourceCstNode.astNode;
         let element: JustificationElement | undefined;
@@ -117,7 +120,12 @@ export class JpipeDefinitionProvider extends DefaultDefinitionProvider {
         const template = this.resolveTemplate(templatePath, unit, ownerDoc);
         if (!template) return undefined;
 
-        const targetElement = getAllElements(template).find(e => localName(e.id) === elementName);
+        // `T:a` names the element whose id is `a` in T: one T declares, or one it inherits under a
+        // qualifier of its own (`U:a`, which `a` names by suffix). Whole contents or not, since a
+        // declaration it can see is the one to go to. Its own come last in the contents.
+        const listed = listedIn(await this.contents.contentsOf(template, templatePath.slice(0, -1).join(':'), ownerDoc));
+        const targetElement = (listed.find(entry => entry.id === elementName)
+            ?? [...listed].reverse().find(entry => entry.element && localName(entry.element.id) === elementName))?.element;
         if (!targetElement?.$cstNode) return undefined;
 
         const targetDoc = this.getDocument(targetElement);

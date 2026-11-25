@@ -22,6 +22,8 @@ import { JpipeExclusionService } from './jpipe-exclusions.js';
 import { JpipeUnificationService } from './jpipe-unification.js';
 import { JpipeParserErrorMessageProvider } from './jpipe-parser-errors.js';
 import { JpipeDocumentBuilder } from './jpipe-document-builder.js';
+import { CompiledContents, DeclaredContents, ModelContents } from './jpipe-model-contents.js';
+import { CompilerReports } from './jpipe-compiler-report.js';
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -31,7 +33,14 @@ export type JpipeAddedServices = {
         JpipeValidator: JpipeValidator
     },
     references: {
-        JpipeImportService: JpipeImportService
+        JpipeImportService: JpipeImportService,
+        /** A model's elements, for every rule and provider (jpipe-vscode ADR-VSC-0034). */
+        ModelContents: ModelContents,
+        /**
+         * The compiler's reports, which compiled contents read. The language server connects it
+         * to its client; until then, there is none, and a composed model's contents cannot tell.
+         */
+        CompilerReports: CompilerReports
     },
     logger: JpipeServerLogger,
     exclusions: JpipeExclusionService,
@@ -79,6 +88,11 @@ function buildJpipeModule(
         references: {
             ScopeProvider: (services) => new JpipeScopeProvider(services),
             JpipeImportService: (services) => new JpipeImportService(services),
+            CompilerReports: (services) => new CompilerReports(services),
+            ModelContents: (services) => new ModelContents(
+                new DeclaredContents(),
+                new CompiledContents(services.references.CompilerReports)
+            ),
             NameProvider: () => new JpipeNameProvider()
         },
         lsp: {

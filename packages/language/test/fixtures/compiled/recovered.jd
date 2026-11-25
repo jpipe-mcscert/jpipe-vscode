@@ -1,0 +1,29 @@
+// 'l' declares a conclusion it inherits from 'top': the compiler drops it, and
+// builds 'l', and 'both' from it, whole all the same. 'k' is then told about
+// the @support elements it should override.
+template top {
+    conclusion c is "A top conclusion"
+    strategy   s is "A top strategy"
+    @support   h is "A top abstract support"
+    s supports c
+    h supports s
+}
+
+template l implements top {
+    evidence e is "A left evidence"
+    conclusion c is "Dropped"
+}
+
+template r implements top {
+    evidence e is "A right evidence"
+}
+
+template both is assemble(l, r) {
+    conclusionLabel: "Both"
+    strategyLabel:   "Both strategies"
+    unifyExclude:    "l:top:h,r:top:h"
+}
+
+justification k implements both {
+    evidence e2 is "An unrelated evidence"
+}

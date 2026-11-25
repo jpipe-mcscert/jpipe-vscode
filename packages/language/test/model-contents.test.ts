@@ -1,0 +1,249 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import * as url from 'node:url';
+import { afterEach, beforeAll, describe, expect, test } from 'vitest';
+import { EmptyFileSystem, type LangiumDocument } from 'langium';
+import { clearDocuments, parseHelper } from 'langium/test';
+import { Diagnostic } from 'vscode-languageserver-types';
+import type { Justification, Template, Unit } from 'jpipe-language';
+import { createJpipeServices } from 'jpipe-language';
+import {
+    hookTarget, listedIn, ModelContents, type Contents, type ContentsSource
+} from '../src/jpipe-model-contents.js';
+
+/**
+ * The one question every rule and provider asks of a model's elements (jpipe-vscode ADR-VSC-0034,
+ * #131): which implementation answers it, and what a consumer may conclude from each answer.
+ */
+
+const here = path.dirname(url.fileURLToPath(import.meta.url));
+
+let services: ReturnType<typeof createJpipeServices>;
+let doParse: ReturnType<typeof parseHelper<Unit>>;
+let parse: (input: string) => Promise<Unit>;
+
+beforeAll(() => {
+    services = createJpipeServices(EmptyFileSystem);
+    doParse = parseHelper<Unit>(services.Jpipe);
+    parse = async (input: string) => (await doParse(input)).parseResult.value;
+});
+
+const modelNamed = (unit: Unit, name: string): Justification | Template =>
+    unit.body.find(model => model.id === name)!;
+
+const ids = (contents: Contents): string[] => listedIn(contents).map(entry => entry.id);
+
+const TEMPLATE = `template T {
+    conclusion c is "C"
+    strategy s is "S"
+    @support a is "A"
+    a supports s
+    s supports c
+}`;
+
+/** A compiled source that records what it was asked, and answers with whole contents. */
+class Recording implements ContentsSource {
+    readonly asked: string[] = [];
+    async contentsOf(model: Justification | Template): Promise<Contents> {
+        this.asked.push(model.id);
+        return { kind: 'elements', elements: [] };
+    }
+}
+
+describe('the contents of a model', () => {
+
+    test('of a plain chain are its declared elements, under the ids the compiler gives them', async () => {
+        const unit = await parse(`${TEMPLATE}
+justification J implements T { evidence T:a is "Done" }`);
+        const contents = await new ModelContents().contentsOf(modelNamed(unit, 'J'));
+        expect(contents.kind).toBe('elements');
+        expect(ids(contents)).toEqual(['T:c', 'T:s', 'T:a']);
+        // The override replaces the @support it overrides.
+        expect(listedIn(contents).find(entry => entry.id === 'T:a')!.element!.$type).toBe('Evidence');
+    });
+
+    test('of a chain reaching a composition are asked of the compiled implementation, and of no other', async () => {
+        const unit = await parse(`${TEMPLATE}
+justification P { conclusion c is "C" strategy s is "S" evidence e is "E" e supports s s supports c }
+template R is refine(T, P) { hook: "a" }
+justification K implements R { evidence extra is "X" }`);
+        const declared = new Recording();
+        const compiled = new Recording();
+        const contents = new ModelContents(declared, compiled);
+        await contents.contentsOf(modelNamed(unit, 'K'));
+        await contents.contentsOf(modelNamed(unit, 'R'));
+        await contents.contentsOf(modelNamed(unit, 'T'));
+        expect(compiled.asked).toEqual(['K', 'R']);
+        expect(declared.asked).toEqual(['T']);
+    });
+
+    // Until the compiler is asked (#132), compiled contents cannot tell, and show what the bodies do.
+    test('of a chain reaching a composition cannot tell, for now, and list what the bodies show', async () => {
+        const unit = await parse(`${TEMPLATE}
+justification P { conclusion c is "C" strategy s is "S" evidence e is "E" e supports s s supports c }
+template R is refine(T, P) { hook: "a" }
+justification K implements R { evidence extra is "X" }`);
+        const contents = await new ModelContents().contentsOf(modelNamed(unit, 'K'));
+        expect(contents.kind).toBe('cannot-tell');
+        expect(ids(contents)).toEqual(['extra']);
+    });
+
+    test('of a chain that does not resolve cannot tell', async () => {
+        const unit = await parse('justification J implements Missing { evidence e is "E" }');
+        const contents = await new ModelContents(new Recording(), new Recording()).contentsOf(modelNamed(unit, 'J'));
+        expect(contents.kind).toBe('cannot-tell');
+        expect(ids(contents)).toEqual(['e']);
+    });
+
+    test('of a chain that loops cannot tell, and is asked of neither implementation', async () => {
+        const unit = await parse(`template A implements B { @support a is "A" }
+template B implements A { @support b is "B" }`);
+        const declared = new Recording();
+        const compiled = new Recording();
+        const contents = await new ModelContents(declared, compiled).contentsOf(modelNamed(unit, 'A'));
+        expect(contents.kind).toBe('cannot-tell');
+        expect([...declared.asked, ...compiled.asked]).toEqual([]);
+    });
+});
+
+/**
+ * A file loaded under a namespace names everything in it with that namespace, in the compiler: a
+ * template `T` of `load "lib.jd" as lib` is `lib:T`, the element `a` it hands down `lib:T:a`, and an
+ * override written `U:x` inside it `lib:U:x`. Cases checked against jPipe 4.1.0 (`diagnostic`, and
+ * `process -f json` for the ids).
+ */
+describe('the contents of a model implementing a template of a file loaded under a namespace', () => {
+
+    let dir: string | undefined;
+    let documents: LangiumDocument<Unit>[] = [];
+
+    afterEach(async () => {
+        await clearDocuments(services.shared, documents);
+        documents = [];
+        if (dir) fs.rmSync(dir, { recursive: true, force: true });
+        dir = undefined;
+    });
+
+    const LIB = `template U {
+    conclusion c is "C"
+    strategy s is "S"
+    @support x is "X"
+    evidence u is "U"
+    x supports s
+    u supports s
+    s supports c
+}
+template T implements U {
+    @support a is "A"
+    evidence U:x is "X done"
+    evidence e is "E"
+}`;
+
+    async function root(text: string): Promise<LangiumDocument<Unit>> {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-contents-'));
+        fs.writeFileSync(path.join(dir, 'lib.jd'), LIB);
+        const document = await doParse(text, { documentUri: url.pathToFileURL(path.join(dir, 'main.jd')).toString(), validation: true });
+        documents.push(document);
+        return document;
+    }
+
+    const errors = (document: LangiumDocument) => (document.diagnostics ?? [])
+        .filter(d => d.severity === 1).map(d => Diagnostic.getMessageString(d));
+
+    test('are named under the namespace, two templates deep, as the compiler names them', async () => {
+        const document = await root('load "lib.jd" as lib\njustification J implements lib:T { evidence lib:T:a is "Done" }');
+        const contents = await services.Jpipe.references.ModelContents.contentsOf(modelNamed(document.parseResult.value, 'J'));
+        expect(ids(contents).sort()).toEqual(['lib:T:a', 'lib:T:e', 'lib:U:c', 'lib:U:s', 'lib:U:u', 'lib:U:x']);
+    });
+
+    test('lose a @support its override names with the namespace', async () => {
+        const document = await root('load "lib.jd" as lib\ntemplate T2 implements lib:T { evidence lib:T:a is "Now concrete" }');
+        expect(errors(document)).toContain("Template 'T2' declares no abstract supports");
+    });
+
+    test('answer a hook written with the namespace', async () => {
+        const document = await root(`load "lib.jd" as lib
+justification J implements lib:T { evidence lib:T:a is "Done" }
+justification P { conclusion pc is "P" strategy ps is "PS" evidence pe is "PE" pe supports ps ps supports pc }
+justification R is refine(J, P) { hook: "lib:T:e" }`);
+        expect(errors(document).filter(m => m.startsWith('Hook element'))).toEqual([]);
+    });
+});
+
+describe('a refine hook, read on contents', () => {
+
+    const element = (id: string) => ({ $type: 'Evidence', id: { parts: id.split(':') } }) as never;
+    const whole = (...list: string[]): Contents =>
+        ({ kind: 'elements', elements: list.map(id => ({ id, kind: 'evidence', element: element(id) })) });
+    const entries = (list: string[]) => list.map(id => ({ id, kind: 'evidence' as const, element: element(id) }));
+    const partial = (declared: string[], inherited: string[] = []): Contents =>
+        ({ kind: 'cannot-tell', visible: [...entries(inherited), ...entries(declared)], declared: entries(declared) });
+
+    test('names an element by its exact id, or by its last segments when the contents are whole', () => {
+        expect(hookTarget(whole('T:a', 'e'), 'T:a')).toBeDefined();
+        expect(hookTarget(whole('T:a', 'e'), 'a')).toBeDefined();
+        expect(hookTarget(whole('T:a', 'e'), 'b')).toBeUndefined();
+    });
+
+    // A hidden element may end the same way, and the compiler scans those first.
+    test('names one only by its exact id when the contents cannot tell', () => {
+        expect(hookTarget(partial(['T:a']), 'T:a')).toBeDefined();
+        expect(hookTarget(partial(['T:a']), 'a')).toBeUndefined();
+    });
+
+    // An inherited element may share its id with a hidden one, which the compiler finds first.
+    test('names only an element the base declares when the contents cannot tell', () => {
+        expect(hookTarget(partial([], ['T:e']), 'T:e')).toBeUndefined();
+    });
+
+    test('on a base whose chain does not resolve, names what the base declares and nothing it inherits', async () => {
+        const unit = await parse(`template T implements Missing { evidence e is "E" }
+justification B implements T { evidence own is "O" }`);
+        const contents = await new ModelContents().contentsOf(modelNamed(unit, 'B'));
+        expect(ids(contents)).toEqual(['T:e', 'own']);
+        expect(hookTarget(contents, 'own')).toBeDefined();
+        expect(hookTarget(contents, 'T:e')).toBeUndefined();
+    });
+});
+
+/**
+ * No rule or provider reads a model's element list around the contents API: that is the bypass
+ * jpipe-vscode ADR-VSC-0034 forbids, and the one that let rules judge composed models they could
+ * not see (#126). The helpers stay for the declared implementation, and for linking, which
+ * Langium runs synchronously while it builds documents, before any answer could be awaited.
+ */
+describe('the element helpers', () => {
+
+    // Any mention, so that a namespace import (`utils.getAllElements`) counts as much as a named one.
+    const HELPERS = /\b(?:getAllElements|expandedElements|expandedOnto)\b/;
+    const ALLOWED: Record<string, string> = {
+        'jpipe-utils.ts': 'defines them',
+        'jpipe-model-contents.ts': 'is the declared implementation',
+        'jpipe-scope.ts': 'links references, synchronously',
+        'jpipe-import.ts': 'gives the scope its inherited elements, synchronously'
+    };
+    const src = path.join(here, '..', 'src');
+
+    function sources(dir: string): string[] {
+        return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) return entry.name === 'generated' ? [] : sources(full);
+            return entry.name.endsWith('.ts') ? [path.relative(src, full).split(path.sep).join('/')] : [];
+        });
+    }
+
+    /** The source of `file` without its comments, which may name the helpers to explain them. */
+    const code = (file: string): string => fs.readFileSync(path.join(src, file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+
+    test('are used by no rule or provider', () => {
+        const using = sources(src).filter(file => !(file in ALLOWED) && HELPERS.test(code(file)));
+        expect(using, 'read the model through ModelContents instead').toEqual([]);
+    });
+
+    test('are allowed only in files that exist, by their path', () => {
+        for (const file of Object.keys(ALLOWED)) expect(fs.existsSync(path.join(src, file)), file).toBe(true);
+    });
+});

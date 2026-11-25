@@ -17,6 +17,11 @@ import {
     RECOMMENDED,
     releaseNumbers,
     REQUIREMENTS,
+    RUNNER_FEATURES,
+    runnerHas,
+    COMPILER_FEATURES,
+    compilerHas,
+    runnerMayLack,
     type InstallationFacts
 } from '../src/extension/requirements.js';
 
@@ -96,6 +101,26 @@ describe('what a user is told about the compiler', () => {
         expect(compilerLine({ kind: 'too-old', version: '2.5.0' })).toBe(`Compiler: 2.5.0, too old (needs ${minimum} or newer)`);
         expect(compilerLine({ kind: 'unknown' })).toContain(`needs ${minimum} or newer`);
     });
+
+    // Below the recommended release, what upgrading brings, as for jpipe-runner.
+    test('the report line of a supported compiler says what a newer one brings', () => {
+        expect(compilerLine({ kind: 'supported', version: '3.2.0' })).toBe('Compiler: 3.2.0\n  4.0.0 or newer checks composed models');
+        expect(compilerLine({ kind: 'supported', version: '4.1.0' })).toBe('Compiler: 4.1.0');
+    });
+
+    test('a compiler has a feature from the release that brought it, its development builds included', () => {
+        expect(compilerHas('4.0.0', 'composed')).toBe(true);
+        expect(compilerHas('4.0.0-SNAPSHOT', 'composed')).toBe(true);
+        expect(compilerHas('3.9.2', 'composed')).toBe(false);
+        expect(compilerHas(undefined, 'composed')).toBe(false);
+    });
+
+    test('the recommended compiler is the one that brought the newest feature used', () => {
+        const releases = Object.values(COMPILER_FEATURES).map(feature => feature.since);
+        const newest = releases.reduce((a, b) => (meetsMinimum(a, b) ? a : b));
+        expect(RECOMMENDED.compiler).toEqual(newest);
+        for (const since of releases) expect(meetsMinimum(since, REQUIREMENTS.compiler)).toBe(true);
+    });
 });
 
 describe('installationSummary', () => {
@@ -170,6 +195,38 @@ describe('the release numbers a version starts with', () => {
     test('the recommended jpipe-runner is no older than the one required', () => {
         expect(meetsMinimum(RECOMMENDED.runner, REQUIREMENTS.runner)).toBe(true);
     });
+
+    // The oldest release that has everything this release uses: the newest feature's.
+    test('the recommended jpipe-runner is the one that brought the newest feature used', () => {
+        const releases = Object.values(RUNNER_FEATURES).map(feature => feature.since);
+        const newest = releases.reduce((a, b) => (meetsMinimum(a, b) ? a : b));
+        expect(RECOMMENDED.runner).toEqual(newest);
+        for (const since of releases) expect(meetsMinimum(since, REQUIREMENTS.runner)).toBe(true);
+    });
+
+    test('a jpipe-runner has a feature from the release that brought it, its development builds included', () => {
+        expect(runnerHas('4.1.0', 'events')).toBe(true);
+        expect(runnerHas('4.1.0.dev0', 'events')).toBe(true);
+        expect(runnerHas('4.0.3', 'events')).toBe(false);
+        expect(runnerHas('4.3.0', 'jobs')).toBe(false);
+        expect(runnerHas('4.4.0.dev0', 'jobs')).toBe(true);
+        expect(runnerHas('5.0.0rc1', 'jobs')).toBe(true);
+        expect(runnerHas(undefined, 'events')).toBe(false);
+        expect(runnerHas('installed', 'jobs')).toBe(false);
+    });
+
+    // What tells a refused option from the user's own usage error, which is not launched again.
+    test('only a pre-release of the release that brought a feature may lack it', () => {
+        for (const version of ['4.4.0.dev0', '4.4.0rc1', '4.4.dev3']) expect(runnerMayLack(version, 'jobs'), version).toBe(true);
+        for (const version of ['4.4.0', '4.4', '4.4.0.post1', '4.4.0.post1.dev0', '4.4.0+local', '4.4.1.dev0', '4.5.0', '4.3.0.dev0', 'installed', undefined]) {
+            expect(runnerMayLack(version, 'jobs'), String(version)).toBe(false);
+        }
+        expect(runnerMayLack('4.1.0.dev0', 'events')).toBe(true);
+        expect(runnerMayLack('4.4.0.dev0', 'events')).toBe(false);
+        expect(runnerMayLack('4.1.0.post1', 'events')).toBe(false);
+        expect(runnerMayLack('4.4.0a1', 'jobs')).toBe(true);
+        expect(runnerMayLack('4.4.0b2', 'jobs')).toBe(true);
+    });
 });
 
 describe('the Marketplace page states the same requirements', () => {
@@ -180,6 +237,10 @@ describe('the Marketplace page states the same requirements', () => {
         expect(readme).toContain(`version ${formatRelease(REQUIREMENTS.compiler)} or newer`);
         expect(readme).toContain(`${formatRelease(REQUIREMENTS.runner)} or newer`);
         expect(readme).toContain(`Python ${formatRelease(REQUIREMENTS.python)} or`);
+    });
+
+    test('so is the recommended compiler, which checks composed models', () => {
+        expect(readme).toContain(`compiler ${formatRelease(RECOMMENDED.compiler)} or newer, the recommended release`);
     });
 
     test('so is the recommended jpipe-runner, which follows a run as it goes', () => {

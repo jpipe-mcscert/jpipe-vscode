@@ -1,9 +1,8 @@
 import type { HostToRunPanel, Progress, RunKind, RunPanelState, RunPanelToHost, Tone, VerdictCount } from '../shared/run-protocol.js';
 import { kindOf, underWay } from '../shared/run-kind.js';
-import { DiagramCanvas } from './canvas.js';
+import { DiagramCanvas, diagramIdentity, type SavedFraming } from './canvas.js';
 import { applyFocus, downstream, elementOf, nameOf, nodeNamed } from './flow.js';
 import { colourRun, markProgress } from './run-colours.js';
-import type { Box } from './viewbox.js';
 
 /**
  * The run panel's page: the last run's dataflow on the shared canvas, its verdict, and what can be
@@ -17,7 +16,7 @@ import type { Box } from './viewbox.js';
 
 /** What survives a webview content reload. */
 export interface PersistedRunState {
-    vb?: Box;
+    framing?: SavedFraming;
 }
 
 /** How the verdict reads, besides its words and hue: a different shape for each. */
@@ -44,6 +43,19 @@ export function isRunPanelMessage(value: unknown): value is HostToRunPanel {
         && HOST_MESSAGE_TYPES.has((value as { type?: unknown }).type as string);
 }
 
+/**
+ * What the verdict bar says of the steps under way, `running`, by their labels: one named, several
+ * counted, since a label is a sentence and the bar one line. Its tooltip names them all, one a line.
+ */
+export function runningText(running: readonly string[]): { text: string; title: string } {
+    if (running.length === 0) return { text: '', title: '' };
+    if (running.length === 1) return { text: `running ${running[0]}`, title: 'The step under way' };
+    return {
+        text: `running ${running.length} steps`,
+        title: ['The steps under way:', ...running.map(label => `• ${label}`)].join('\n')
+    };
+}
+
 const byId = <T extends HTMLElement = HTMLElement>(doc: Document, id: string): T => doc.getElementById(id) as T;
 
 export class RunPage {
@@ -57,18 +69,14 @@ export class RunPage {
     private countsShown: string | null = null;
     /** What is on the canvas, so a state that changes something else does not redraw it. */
     private drawn: string | null = null;
+    /** The identity of the justification `drawn` is the drawing of: the same text may draw two. */
+    private drawnOf: string | null = null;
     /**
      * The last drawing coloured: what it was coloured from and with, and the result. A run under
      * way sends its state at every step started, which changes no colour, and colouring parses and
      * writes the whole SVG.
      */
     private coloured: { source: string; key: string; svg: string } | null = null;
-    /**
-     * The justification whose drawing the canvas was last framed on: kept when a new run clears
-     * the canvas, so that the drawing it makes of the same justification opens as the reader left
-     * the last one.
-     */
-    private framed: string | null = null;
     /**
      * The node selected, by the name Graphviz gave it, which is the element's id for an element:
      * kept across a redraw, where the node itself is replaced.
@@ -96,13 +104,13 @@ export class RunPage {
             {
                 isShowing: () => this.body.dataset.mode === 'diagram',
                 isChrome: target => target instanceof Element && target.closest('#toolbar, #banners, #minimap') !== null,
-                onViewChange: () => this.persist({ vb: this.canvas.view ?? undefined }),
+                onViewChange: () => this.persist({ framing: this.canvas.framing ?? undefined }),
                 onRebuilt: () => this.applyMarks(),
                 onNodeClick: (node, twice) => this.nodeClicked(node, twice),
                 onBackgroundClick: () => this.select(null)
             }
         );
-        if (restored.vb) this.canvas.restoreView(restored.vb);
+        if (restored.framing) this.canvas.restoreFraming(restored.framing);
         this.bindControls();
     }
 
@@ -131,7 +139,7 @@ export class RunPage {
         const running = state.phase === 'running';
         this.body.dataset.phase = state.phase;
         // A run whose own drawing is on show is watched as it goes, not waited for.
-        this.body.classList.toggle('busy', running && !state.progress?.statuses);
+        this.body.classList.toggle('busy', running && !state.colouring);
         byId<HTMLButtonElement>(this.doc, 'run-button').disabled = running;
         byId<HTMLButtonElement>(this.doc, 'check-button').disabled = running;
         byId<HTMLButtonElement>(this.doc, 'stop-button').disabled = !running;
@@ -161,7 +169,7 @@ export class RunPage {
             byId(this.doc, 'verdict-label').textContent = running ? `${state.name}, under way` : '';
             when.textContent = '';
             when.title = '';
-            const progress = running ? state.progress : null;
+            const progress = state.progress;
             this.showCounts(counts, progress && { caption: progress.decided, counts: progress.counts });
             if (progress) this.showRunning(progress, when);
             return;
@@ -194,10 +202,11 @@ export class RunPage {
         counts.append(...shown.counts.map(count => this.countLink(count)));
     }
 
-    /** The step a run under way is running, from its events. */
+    /** The steps a run under way is running, from its events (`runningText`). */
     private showRunning(progress: Progress, when: HTMLElement): void {
-        when.textContent = progress.running ? `running ${progress.running}` : '';
-        when.title = progress.running ? 'The step under way' : '';
+        const { text, title } = runningText(progress.running);
+        when.textContent = text;
+        when.title = title;
     }
 
     /** A count of the verdict bar: a button that opens what it counts in Results. */
@@ -230,9 +239,9 @@ export class RunPage {
     }
 
     /**
-     * Draw the run's dataflow, or say why there is nothing to draw. A run under way whose own
-     * drawing is on show has its decided elements coloured over it, as the runner will colour them
-     * when it ends, and its steps under way marked.
+     * Draw the run's dataflow, or say why there is nothing to draw. A run whose own drawing is on
+     * show, under way or ended without its report, has its decided elements coloured over it, as the
+     * runner colours them when it ends; under way, its steps running or waiting are marked too.
      */
     private showDrawing(state: RunPanelState): void {
         const svg = this.colouredDrawing(state);
@@ -244,25 +253,26 @@ export class RunPage {
             return;
         }
         this.body.dataset.mode = 'diagram';
-        if (this.drawn === svg) {
+        const identity = diagramIdentity(state.uri, state.name);
+        if (this.drawn === svg && this.drawnOf === identity) {
             this.canvas.refreshMinimap();
             this.applyMarks();
             return;
         }
-        // The same justification keeps its framing from one run to the next, and from the drawing
-        // a run is coloured on to the one it ends with, which puts every node in the same place.
-        const keep = this.framed === state.name;
-        this.canvas.show(svg, { documentPath: null, diagramName: `${state.name} (dataflow)` }, keep);
+        // The same justification keeps its framing from one run to the next, cleared between them,
+        // and from the drawing a run is coloured on to the one it ends with, which puts every node
+        // in the same place. A justification is its name in its document: another of that name,
+        // in another file, opens on its own.
+        this.canvas.show(svg, { documentPath: null, diagramName: `${state.name} (dataflow)` }, identity);
         this.drawn = svg;
-        this.framed = state.name;
+        this.drawnOf = identity;
         this.applyMarks();
     }
 
     /** The drawing to show: the run's own, coloured with what it decided so far, or as it was given. */
     private colouredDrawing(state: RunPanelState): string | null {
-        const statuses = state.progress?.statuses;
-        if (state.dataflow === null || !statuses) return state.dataflow;
-        const observed = state.progress?.observed ?? [];
+        if (state.dataflow === null || !state.colouring) return state.dataflow;
+        const { statuses, observed } = state.colouring;
         const key = JSON.stringify([statuses, observed]);
         if (this.coloured?.source !== state.dataflow || this.coloured.key !== key) {
             this.coloured = { source: state.dataflow, key, svg: colourRun(state.dataflow, statuses, observed) };
@@ -276,7 +286,8 @@ export class RunPage {
      */
     private applyMarks(): void {
         const svg = this.canvas.svg;
-        const progress = this.state?.phase === 'running' && this.state.progress?.statuses ? this.state.progress : null;
+        // Its own drawing, under way: a drawing of another run, or of one that ended, has no such marks.
+        const progress = this.state?.colouring ? this.state.progress : null;
         if (svg) markProgress(svg, { underway: progress?.underway ?? [], pending: progress?.pending ?? [] });
         this.applySelection(false);
     }

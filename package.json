@@ -1,7 +1,7 @@
 {
     "name": "jpipe-workspace",
     "description": "Base workspace package",
-    "version": "2.0.3",
+    "version": "2.1.0",
     "type": "module",
     "private": true,
     "scripts": {
@@ -17,7 +17,7 @@
     },
     "devDependencies": {
         "@types/node": "~22.20.5",
-        "@vitest/coverage-v8": "~5.1.0",
+        "@vitest/coverage-v8": "~5.1.1",
         "shx": "~0.4.0",
         "typescript": "~5.9.3",
         "vitest": "~5.1.0"

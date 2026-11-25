@@ -22,6 +22,8 @@ computer:
   - [https://www.jpipe.org/tutorials/install/](https://www.jpipe.org/tutorials/install/)
 
 An older compiler is not used: the plugin says which version it found and offers to update it.
+With compiler 4.0.0 or newer, the recommended release, the editor also checks models built by
+`refine` or `assemble`, and those that implement them, against what the compiler builds.
 
 You can provide the compiler in three ways, selected via the `jpipe.executionMode` setting:
 
@@ -36,8 +38,9 @@ You can provide the compiler in three ways, selected via the `jpipe.executionMod
 
 Running models (the ▶ button) also needs, in the workspace's Python environment,
 [jpipe-runner](https://github.com/jpipe-mcscert/jpipe-runner) 4.0.0 or newer on Python 3.11 or
-newer; the plugin offers to set that environment up. With jpipe-runner 4.1.0 or newer, the recommended release, a run's
-drawing and results fill in as each step finishes rather than when the run ends. [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance)
+newer; the plugin offers to set that environment up. With jpipe-runner 4.1.0 or newer, a run's
+drawing and results fill in as each step finishes rather than when the run ends. With
+jpipe-runner 4.4.0 or newer, the recommended release, steps that do not depend on each other run at the same time. [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance)
 is recommended for writing step libraries, and offered, but not required.
 
 **jPipe: Check jPipe Installation** reports all of it at once, with a button for the first

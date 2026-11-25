@@ -1,0 +1,751 @@
+{
+  "models": [
+    {
+      "aliases": [],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 0,
+        "subConclusion": 0,
+        "abstractSupport": 2,
+        "strategy": 1
+      },
+      "name": "lib:pattern",
+      "location": {
+        "line": 2,
+        "column": 9,
+        "source": "lib.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 3,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 5,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "abs1"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "abs2"
+        }
+      ]
+    },
+    {
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 0,
+        "abstractSupport": 0,
+        "strategy": 1
+      },
+      "name": "lib:first_part",
+      "location": {
+        "line": 12,
+        "column": 14,
+        "source": "lib.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 13,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "c"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 14,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 15,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "e"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        {
+          "from": "lib:pattern:abs1",
+          "to": "hook"
+        },
+        {
+          "from": "lib:first_part:c",
+          "to": "hook"
+        }
+      ],
+      "kind": "template",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 1,
+        "subConclusion": 1,
+        "abstractSupport": 1,
+        "strategy": 2
+      },
+      "name": "lib:refined",
+      "location": {
+        "line": 20,
+        "column": 9,
+        "source": "lib.jd"
+      },
+      "usedBy": [
+        {
+          "name": "done",
+          "location": {
+            "line": 4,
+            "column": 14,
+            "source": "main.jd"
+          }
+        },
+        {
+          "name": "short",
+          "location": {
+            "line": 8,
+            "column": 14,
+            "source": "main.jd"
+          }
+        },
+        {
+          "name": "missing",
+          "location": {
+            "line": 12,
+            "column": 14,
+            "source": "main.jd"
+          }
+        }
+      ],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 3,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:pattern:c"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:pattern:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 14,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:first_part:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 15,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:first_part:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:pattern:abs2"
+        }
+      ]
+    },
+    {
+      "implements": "lib:refined",
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 1,
+        "abstractSupport": 0,
+        "strategy": 2
+      },
+      "name": "done",
+      "location": {
+        "line": 4,
+        "column": 14,
+        "source": "main.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 3,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:pattern:c"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "lib:refined:hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:pattern:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 14,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:first_part:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 15,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:first_part:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 5,
+            "column": 13,
+            "source": "main.jd"
+          },
+          "id": "lib:pattern:abs2"
+        }
+      ]
+    },
+    {
+      "implements": "lib:refined",
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 1,
+        "abstractSupport": 0,
+        "strategy": 2
+      },
+      "name": "short",
+      "location": {
+        "line": 8,
+        "column": 14,
+        "source": "main.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 3,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:pattern:c"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "lib:refined:hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:pattern:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 14,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:first_part:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 15,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:first_part:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 9,
+            "column": 13,
+            "source": "main.jd"
+          },
+          "id": "lib:pattern:abs2"
+        }
+      ]
+    },
+    {
+      "implements": "lib:refined",
+      "aliases": [],
+      "kind": "justification",
+      "elements": {
+        "conclusion": 1,
+        "evidence": 2,
+        "subConclusion": 1,
+        "abstractSupport": 1,
+        "strategy": 2
+      },
+      "name": "missing",
+      "location": {
+        "line": 12,
+        "column": 14,
+        "source": "main.jd"
+      },
+      "usedBy": [],
+      "symbols": [
+        {
+          "synthesized": false,
+          "kind": "conclusion",
+          "location": {
+            "line": 3,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:pattern:c"
+        },
+        {
+          "synthesized": true,
+          "kind": "sub-conclusion",
+          "id": "lib:refined:hook"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 4,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:pattern:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "strategy",
+          "location": {
+            "line": 14,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:first_part:s"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 15,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:first_part:e"
+        },
+        {
+          "synthesized": false,
+          "kind": "evidence",
+          "location": {
+            "line": 13,
+            "column": 13,
+            "source": "main.jd"
+          },
+          "id": "other"
+        },
+        {
+          "synthesized": false,
+          "kind": "abstract-support",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "source": "lib.jd"
+          },
+          "id": "lib:pattern:abs2"
+        }
+      ]
+    }
+  ],
+  "diagnostics": [{
+    "severity": "error",
+    "code": "no-abstract-support",
+    "line": 6,
+    "column": 15,
+    "source": "lib.jd",
+    "message": "Abstract support 'lib:pattern:abs2' in justification 'missing' was not overridden"
+  }],
+  "schemaVersion": 1,
+  "stats": {
+    "deferrals": 10,
+    "commands": {
+      "total": 24,
+      "macros": 3
+    }
+  },
+  "source": "main.jd",
+  "actions": [
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 1,
+      "description": "create_template('lib:pattern')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 2,
+      "description": "create_conclusion('lib:pattern', 'c', 'The system is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 3,
+      "description": "create_strategy('lib:pattern', 's', 'Check every part')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 4,
+      "description": "create_abstract_support('lib:pattern', 'abs1', 'The first part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 5,
+      "description": "create_abstract_support('lib:pattern', 'abs2', 'The second part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 6,
+      "description": "support('lib:pattern', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 7,
+      "description": "support('lib:pattern', 's', 'abs1')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 8,
+      "description": "support('lib:pattern', 's', 'abs2')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 9,
+      "description": "create_justification('lib:first_part')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 10,
+      "description": "create_conclusion('lib:first_part', 'c', 'The first part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 11,
+      "description": "create_strategy('lib:first_part', 's', 'Run its tests')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 12,
+      "description": "create_evidence('lib:first_part', 'e', 'Test report')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 13,
+      "description": "support('lib:first_part', 'c', 's')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 14,
+      "description": "support('lib:first_part', 's', 'e')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 15,
+      "description": "applyOperator('lib:refined', 'refine', [lib:pattern, lib:first_part])."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 16,
+      "description": "create_template('lib:refined')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 17,
+      "description": "create_conclusion('lib:refined', 'lib:pattern:c', 'The system is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 18,
+      "description": "create_strategy('lib:refined', 'lib:pattern:s', 'Check every part')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 19,
+      "description": "create_sub_conclusion('lib:refined', 'hook', 'The first part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 20,
+      "description": "create_abstract_support('lib:refined', 'lib:pattern:abs2', 'The second part is ready')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 21,
+      "description": "create_strategy('lib:refined', 'lib:first_part:s', 'Run its tests')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 22,
+      "description": "create_evidence('lib:refined', 'lib:first_part:e', 'Test report')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 23,
+      "description": "registerAlias('lib:refined', 'lib:pattern:abs1' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 24,
+      "description": "registerAlias('lib:refined', 'lib:first_part:c' -> 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 25,
+      "description": "recordComposition('lib:refined', 'refine', [lib:pattern, lib:first_part])."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 26,
+      "description": "create_justification('done')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 27,
+      "description": "create_justification('short')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 28,
+      "description": "create_justification('missing')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 29,
+      "description": "create_evidence('missing', 'other', 'Unrelated evidence')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 30,
+      "description": "support('lib:refined', 'lib:pattern:c', 'lib:pattern:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 31,
+      "description": "support('lib:refined', 'lib:pattern:s', 'hook')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 32,
+      "description": "support('lib:refined', 'lib:pattern:s', 'lib:pattern:abs2')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 33,
+      "description": "support('lib:refined', 'hook', 'lib:first_part:s')."
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 34,
+      "description": "support('lib:refined', 'lib:first_part:s', 'lib:first_part:e')."
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 35,
+      "description": "implements('done', 'lib:refined')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 36,
+      "description": "override('done', 'lib:pattern:abs2', evidence, 'Second part checklist')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 37,
+      "description": "remove('done', 'lib:pattern:abs2')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 38,
+      "description": "add('done', Evidence[id=lib:pattern:abs2, label=Second part checklist])"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 39,
+      "description": "rewire('done', 'lib:pattern:s', 'lib:pattern:abs2'[AbstractSupport] -> 'lib:pattern:abs2'[Evidence])"
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 40,
+      "description": "implements('short', 'lib:refined')."
+    },
+    {
+      "macro": true,
+      "depth": 0,
+      "index": 41,
+      "description": "override('short', 'pattern:abs2', evidence, 'Written by its suffix')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 42,
+      "description": "remove('short', 'lib:pattern:abs2')"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 43,
+      "description": "add('short', Evidence[id=lib:pattern:abs2, label=Written by its suffix])"
+    },
+    {
+      "macro": false,
+      "depth": 1,
+      "index": 44,
+      "description": "rewire('short', 'lib:pattern:s', 'lib:pattern:abs2'[AbstractSupport] -> 'lib:pattern:abs2'[Evidence])"
+    },
+    {
+      "macro": false,
+      "depth": 0,
+      "index": 45,
+      "description": "implements('missing', 'lib:refined')."
+    }
+  ],
+  "status": "errors"
+}

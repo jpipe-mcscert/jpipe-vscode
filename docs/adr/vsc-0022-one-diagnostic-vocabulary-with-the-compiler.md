@@ -54,10 +54,11 @@ jpipe-compiler checkout, and `scripts/release.sh preflight` runs it.
 | `strategy-supported` | exact |
 | `invalid-support` | **a subset**: the compiler covers every ill-typed support pair, the editor only the strategy side |
 | `conclusion-supported` | one code over two checks — see below |
-| `conclusion-present` | inherited conclusions count; a model whose `implements` chain reaches a composition or does not resolve is skipped — see below |
+| `conclusion-present` | inherited conclusions count; a model built on a composition is judged on what the compiler built, and skipped where that cannot be told, as is one whose `implements` does not resolve — see below |
 | `single-conclusion` | exact, down to the anchor column |
 | `inherited-conclusion` | exact, on every conclusion a model with an `implements` declares, whether or not the template resolves |
 | `cyclic-implements` | exact: one diagnostic per cycle, in the compiler's words, on the same `implements` |
+| `ambiguous-id` | exact in words, for an override naming several inherited `@support` elements, wherever the editor knows every element it could name (jpipe-vscode ADR-VSC-0034) |
 
 **Coined by the extension**, for one of three reasons. The distinction matters when the compiler
 next gains a rule, and `jpipe-compiler-codes.ts` keeps each code under its reason:
@@ -68,8 +69,9 @@ next gains a rule, and `jpipe-compiler-codes.ts` keeps each code under its reaso
   and a quick fix finds its diagnostic by code (the modules of `code-actions/`), so the editor
   keeps a code per problem rather than adopting the compiler's one:
   `unknown-operator`, `operator-arity`, `duplicate-source`, `missing-config-key`,
-  `unknown-config-key`, `unknown-unification-method`, `unknown-hook`. Their messages are the
-  editor's own, except `duplicate-source`, which is worded as the compiler words it.
+  `unknown-config-key`, `unknown-unification-method`, `unknown-hook`, `ambiguous-hook`,
+  `hook-not-leaf`. Their messages are the editor's own, except `duplicate-source`,
+  `ambiguous-hook` and `hook-not-leaf`, which are worded as the compiler words them.
 - *The compiler reports it as `FATAL`, and a fatal carries no code by policy*
   (jpipe-compiler ADR-0016): the whole `load-*` family, `cyclic-load`, and `no-empty-unit`. There
   is nothing upstream to adopt for these, by policy rather than by omission.
@@ -96,13 +98,14 @@ No other pair is collapsed. `load-unresolved` and `load-no-match` stay distinct:
 forces them together, and `fix-load-path.ts` registers only the first, since offering a corrected
 path is meaningless for a glob that matched nothing.
 
-**`conclusion-present` reads `getAllElements`**, because the compiler checks completeness after
-`implements` has inlined the parent's elements. **It skips composed models**:
-`justification K is assemble(J, T) { … }` has no body, its elements exist only once the operator
-has run, and `assemble` synthesises a conclusion from `conclusionLabel`. The compiler judges the
-result, and so cannot be predicted from the source text. A model whose `implements` does not
-resolve is skipped for the same reason: its conclusion would come from a template the editor cannot
-read, and the compiler reports only the unknown template. No quick fix is offered — writing a
+**`conclusion-present` reads the model's contents**, because the compiler checks completeness
+after `implements` has inlined the parent's elements. A composed model,
+`justification K is assemble(J, T) { … }`, has no body: its elements exist only once the operator
+has run, and `assemble` synthesises a conclusion from `conclusionLabel`. They are read from the
+compiler's report (jpipe-vscode ADR-VSC-0034), never predicted from the source text, and the
+model is skipped when the report cannot tell. A model whose `implements` does not resolve is
+skipped for the same reason: its conclusion would come from a template the editor cannot read,
+and the compiler reports only the unknown template. No quick fix is offered — writing a
 conclusion means writing the claim the argument exists to make, which the editor cannot guess.
 
 **`single-conclusion` fires on every conclusion after the first**, anchored on the extra one's
@@ -139,8 +142,8 @@ needs the model's elements, the overrides among them, stays silent there.
 
 **Rules the editor does not check.** The compiler reports, and the editor is silent on:
 `sub-conclusion-supported`, `acyclic-support`, `acyclic-implements`, `unresolved-override`,
-`implements-error`, `reference-into-template`, `incompatible-unification`, `ambiguous-id`, and
-`invalid-support` beyond strategies. `unknown-model` and `unknown-element` *are* covered, but
+`implements-error`, `reference-into-template`, `incompatible-unification`, and `invalid-support`
+beyond strategies. `unknown-model` and `unknown-element` *are* covered, but
 under Langium's own `linking-error`, a vocabulary this repository does not own — the seam
 `add-missing-load.ts` keys on.
 
@@ -189,9 +192,10 @@ vendored to be filed, and its entry in `COMPILER_CODES` says so.
   justification is that the compiler's model does not contain the element the statement is about.
   Reporting it answers "you have written two conclusions" with a remark about an element that was
   never going to exist.
-- **Skipping composed models trades a miss for a false alarm, deliberately.** A composition whose
-  result lacks a conclusion is caught by the compiler and not the editor; judging the source text
-  would instead report an error on a model that builds. Silence about a real problem beats noise
+- **Skipping what cannot be told trades a miss for a false alarm, deliberately.** A composition
+  whose result lacks a conclusion, read when the compiler cannot report it, is caught by the
+  compiler and not the editor; judging the source text would instead report an error on a model
+  that builds. Silence about a real problem beats noise
   about one that is not — the same trade jpipe-vscode ADR-VSC-0007 makes for globs.
 - **The vocabulary check runs at release, not in CI and not in `npm test`.** CI builds this
   repository alone, so a CI gate could never run, and a gate that never runs gets deleted. In

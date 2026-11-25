@@ -38,3 +38,23 @@ export const SET_EXCLUDED_PATHS = 'jpipe/setExcludedPaths';
  * relations this build understands beyond the one jPipe ships.
  */
 export const SET_UNIFICATION_METHODS = 'jpipe/setUnificationMethods';
+
+/**
+ * The language server asks for the compiler's report on a file: `jpipe diagnostic -f json`, which
+ * compiled contents read a composed model's elements from (jpipe-vscode ADR-VSC-0034).
+ *
+ * A request, server to client. Params: `{ uri }`, the file's **URI string**. Result: the report,
+ * or `null` when there is none to be had — no compiler, one too old to name composed elements as
+ * the editor reads them, or a run that failed. The client runs the compiler the user configured,
+ * so the server never starts a process itself.
+ */
+export const COMPILER_REPORT = 'jpipe/compilerReport';
+
+/**
+ * Files the compiler reads may have changed on disk: saved, or changed outside the editor.
+ *
+ * Payload: `string[]` of URI strings; empty when every report may have changed, as when the
+ * compiler the user configured changes. The server forgets the reports they can change and checks
+ * again the documents that read them.
+ */
+export const COMPILER_INPUTS_CHANGED = 'jpipe/compilerInputsChanged';

@@ -1,7 +1,10 @@
 import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { bindSteps, designates, stepLabel, stepNote, type LibraryStep } from '../src/extension/runner/step-binding.js';
-import { DEFAULT_RUNNER, cannotRun, dataflowFlag, relaunchWithout, resolveRunner, runnerArguments, streamsEvents } from '../src/extension/runner/runner-invocation.js';
+import {
+    DEFAULT_RUNNER, cannotRun, dataflowFlag, jobsArguments, readJobs, relaunchWithout, resolveRunner, runnerArguments, runsJobs, streamsEvents
+} from '../src/extension/runner/runner-invocation.js';
+import manifest from '../package.json' with { type: 'json' };
 
 /**
  * Preparing a run: which step implements which element, and how the runner is launched.
@@ -147,25 +150,91 @@ describe('launching the runner', () => {
         expect(streamsEvents('4')).toBe(false);
     });
 
+    const asked = (drew: boolean, streamed: boolean, jobs = false) => ({ drew, streamed, jobs });
+
     test('a runner that refuses --events is launched again without it: a 4.1 build from before the option', () => {
-        expect(relaunchWithout(2, true, true)).toBe('events');
-        expect(relaunchWithout(2, false, true)).toBe('events');
+        expect(relaunchWithout(2, asked(true, true))).toBe('events');
+        expect(relaunchWithout(2, asked(false, true))).toBe('events');
         // Not asked for the events, a usage error is the user's to read.
-        expect(relaunchWithout(2, true, false)).toBeUndefined();
+        expect(relaunchWithout(2, asked(true, false))).toBeUndefined();
+    });
+
+    // Only a 4.4 build is asked for --jobs, and every 4.4 build knows --events: what it refused is --jobs.
+    test('a runner that refuses --jobs is launched again without it: a 4.4 build from before the option', () => {
+        expect(relaunchWithout(2, asked(true, true, true))).toBe('jobs');
+        expect(relaunchWithout(2, asked(false, false, true))).toBe('jobs');
+        expect(relaunchWithout(4, asked(false, true, true))).toBeUndefined();
     });
 
     test('a runner that cannot draw is launched again without the drawing', () => {
-        expect(relaunchWithout(4, true, true)).toBe('drawing');
-        expect(relaunchWithout(4, false, true)).toBeUndefined();
+        expect(relaunchWithout(4, asked(true, true))).toBe('drawing');
+        expect(relaunchWithout(4, asked(true, true, true))).toBe('drawing');
+        expect(relaunchWithout(4, asked(false, true))).toBeUndefined();
     });
 
     test('any other end is not launched again', () => {
-        for (const code of [0, 1, 3, 42, undefined]) expect(relaunchWithout(code, true, true)).toBeUndefined();
+        for (const code of [0, 1, 3, 42, undefined]) expect(relaunchWithout(code, asked(true, true, true))).toBeUndefined();
     });
 
     test('a template cannot be run', () => {
         expect(cannotRun('template', 'Signoff')).toContain('abstract');
         expect(cannotRun('justification', 'Release')).toBeUndefined();
         expect(cannotRun(undefined, 'Release')).toBeUndefined();
+    });
+});
+
+describe('the jobs setting (#136)', () => {
+
+    test('4.4 and the releases after it run several steps at once, development builds included', () => {
+        for (const release of ['4.4.0', '4.4.0.dev0', '4.5.1', '5.0.0rc1']) expect(runsJobs(release), release).toBe(true);
+    });
+
+    test('older releases, and a runner whose release is unknown, are not asked: the option would stop them', () => {
+        for (const release of ['4.3.0', '4.1.0', '4.0.3', '4', '', 'installed', undefined]) expect(runsJobs(release), String(release)).toBe(false);
+    });
+
+    test('a check calls no step, so it is not asked either', () => {
+        expect(runsJobs('4.4.0', true)).toBe(false);
+    });
+
+    test('is auto unless it says otherwise', () => {
+        expect(readJobs(undefined)).toEqual({ jobs: 'auto', invalid: false });
+        expect(readJobs(null)).toEqual({ jobs: 'auto', invalid: false });
+        expect(readJobs('auto')).toEqual({ jobs: 'auto', invalid: false });
+    });
+
+    test('is a whole number of at least 1, written as a number or as text', () => {
+        expect(readJobs(4)).toEqual({ jobs: 4, invalid: false });
+        expect(readJobs('4')).toEqual({ jobs: 4, invalid: false });
+        expect(readJobs('12')).toEqual({ jobs: 12, invalid: false });
+        expect(readJobs(1)).toEqual({ jobs: 1, invalid: false });
+    });
+
+    test('runs as auto when it is anything else, and says it is', () => {
+        for (const value of [0, -2, 2.5, '0', '04', ' 4', 'two', '4 jobs', 'AUTO', '', true, {}]) {
+            expect(readJobs(value), JSON.stringify(value)).toEqual({ jobs: 'auto', invalid: true });
+        }
+    });
+
+    test('is accepted by the Settings editor exactly when it is read as written', () => {
+        const property = manifest.contributes.configuration
+            .flatMap(group => Object.entries(group.properties))
+            .find(([id]) => id === 'jpipe.runner.jobs')![1] as { default: string; pattern: string };
+        expect(property.default).toBe('auto');
+        const pattern = new RegExp(property.pattern);
+        for (const value of ['auto', '1', '4', '64', '0', '04', ' 4', '-1', '2.5', 'two', 'AUTO', '']) {
+            expect(pattern.test(value), value).toBe(!readJobs(value).invalid);
+        }
+    });
+
+    test('is passed to the runner as it is, auto counting the processors itself', () => {
+        expect(jobsArguments('auto', 8)).toEqual({ args: ['--jobs', 'auto'] });
+        expect(jobsArguments(1, 8)).toEqual({ args: ['--jobs', '1'] });
+        expect(jobsArguments(8, 8)).toEqual({ args: ['--jobs', '8'] });
+    });
+
+    test('is lowered to the processors there are, saying from what', () => {
+        expect(jobsArguments(32, 8)).toEqual({ args: ['--jobs', '8'], loweredFrom: 32 });
+        expect(jobsArguments(2, 0)).toEqual({ args: ['--jobs', '1'], loweredFrom: 2 });
     });
 });

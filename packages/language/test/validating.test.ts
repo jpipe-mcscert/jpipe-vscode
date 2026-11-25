@@ -127,6 +127,46 @@ describe('Validation tests', () => {
         expect(diagnostic?.severity).toBe(DiagnosticSeverity.Error);
     });
 
+    // The compiler counts a template's @support once `implements` is expanded: one it overrides
+    // with an evidence is gone. Checked against jPipe 4.1.0's `diagnostic`, which reports
+    // `has-abstract-support` on T2 and nothing on T1.
+    test('a template whose every inherited @support it overrides declares none', async () => {
+        const doc = await parse(`
+            template T1 {
+                conclusion c is "C"
+                strategy s is "S"
+                @support a is "A"
+                a supports s
+                s supports c
+            }
+            template T2 implements T1 {
+                evidence T1:a is "Now concrete"
+            }
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).filter(m => m.includes('declares no abstract supports')))
+            .toEqual(["Template 'T2' declares no abstract supports"]);
+    });
+
+    test('a template that overrides some inherited @support and keeps another still declares one', async () => {
+        const doc = await parse(`
+            template T1 {
+                conclusion c is "C"
+                strategy s is "S"
+                @support a is "A"
+                @support b is "B"
+                a supports s
+                b supports s
+                s supports c
+            }
+            template T2 implements T1 {
+                evidence T1:a is "Now concrete"
+            }
+        `);
+        assertNoParseErrors(doc);
+        expect(diagnosticMessages(doc).filter(m => m.includes('declares no abstract supports'))).toEqual([]);
+    });
+
     test('@support not overridden triggers error', async () => {
         const doc = await parse(`
             template T {
@@ -419,6 +459,12 @@ describe('Refine hook', () => {
         return diagnosticMessages(doc).filter(m => m.startsWith('Hook element'));
     }
 
+    /** The messages saying a hook names an element that is not a leaf. */
+    async function notLeaf(source: string): Promise<string[]> {
+        const doc = await parse(source);
+        return diagnosticMessages(doc).filter(m => m.endsWith('only an evidence or a @support can be refined'));
+    }
+
     test('a hook naming nothing is reported in the compiler\'s words', async () => {
         const messages = await hookErrors(
             `${BASE}\n${REF}\njustification R is refine(Base, Ref) { hook: "nope" }`);
@@ -484,13 +530,17 @@ ${REF}`;
             expect(await inherited('e')).toEqual([]);
         });
 
-        // The compiler's suffix pass skips the conclusion, so only the full id reaches it.
-        test('an inherited conclusion answers only to its qualified id', async () => {
-            expect(await inherited('T:c')).toEqual([]);
-            expect(await inherited('c')).toEqual(["Hook element 'c' not found in base model 'Base'"]);
+        // The compiler's suffix pass reaches the conclusion last, and refuses it as one: only a
+        // leaf can be refined (compiler 4.0.0, its #181; run through 4.1.0).
+        test('an inherited conclusion is found by either id, and refused as a conclusion', async () => {
+            expect(await notLeaf(`${INHERITED}\njustification R is refine(Base, Ref) { hook: "T:c" }`))
+                .toEqual(["hook 'T:c' is a conclusion of 'Base': only an evidence or a @support can be refined"]);
+            expect(await notLeaf(`${INHERITED}\njustification R is refine(Base, Ref) { hook: "c" }`))
+                .toEqual(["hook 'c' is a conclusion of 'Base': only an evidence or a @support can be refined"]);
+            expect(await inherited('c')).toEqual([]);
         });
 
-        test('a conclusion declared qualified is not reached by a suffix', async () => {
+        test('a conclusion declared qualified is reached by a suffix, and refused as a conclusion', async () => {
             const source = `justification P {
  conclusion T:c is "C"
  strategy s is "S"
@@ -500,7 +550,8 @@ ${REF}`;
 }
 ${REF}
 justification R is refine(P, Ref) { hook: "c" }`;
-            expect(await hookErrors(source)).toEqual(["Hook element 'c' not found in base model 'P'"]);
+            expect(await hookErrors(source)).toEqual([]);
+            expect(await notLeaf(source)).toEqual(["hook 'c' is a conclusion of 'P': only an evidence or a @support can be refined"]);
         });
 
         const NESTED = `template U {

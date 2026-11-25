@@ -36,13 +36,86 @@ export const REQUIREMENTS = {
  * upgrading brings (jpipe-vscode ADR-VSC-0032). Raising one is a user-facing change too.
  */
 export const RECOMMENDED = {
-    /**
-     * jpipe-runner 4.1 writes a run's events as it goes (`--events`), draws the run before its
-     * first step, and says when each source is observed: what the Run panel and Results follow a
-     * run with (ADR-VSC-0033). An older runner's runs are shown when they end.
-     */
-    runner: [4, 1, 0]
+    /** The newest release in `COMPILER_FEATURES`: 4.0, whose results the editor reads composed models from. */
+    compiler: [4, 0, 0],
+    /** The newest release in `RUNNER_FEATURES`: 4.4, which runs independent steps together. */
+    runner: [4, 4, 0]
 } as const satisfies Record<string, ReleaseNumbers>;
+
+/**
+ * What compiler releases after the minimum add that this release uses, each from the release that
+ * brought it, as `RUNNER_FEATURES` has it for jpipe-runner; `brings` is what Check jPipe
+ * Installation says upgrading to it brings.
+ */
+export const COMPILER_FEATURES = {
+    /**
+     * The elements of a model built by an operator, under the ids 4.0 gives them, which the
+     * editor checks composed models against (jpipe-vscode ADR-VSC-0034). An older compiler names
+     * them otherwise, and its report is not asked: those models are left alone, as before.
+     */
+    composed: { since: [4, 0, 0], brings: 'checks composed models' }
+} as const satisfies Record<string, { since: ReleaseNumbers; brings: string }>;
+
+export type CompilerFeature = keyof typeof COMPILER_FEATURES;
+
+/**
+ * Whether the compiler release `version`, as a verdict shows it (`4.0.0`, `4.0.0-SNAPSHOT`), has
+ * `feature`, development builds of the release that brought it included. An unknown one has none.
+ */
+export function compilerHas(version: string | undefined, feature: CompilerFeature): boolean {
+    const numbers = releaseNumbers(version);
+    return numbers !== undefined && meetsMinimum(numbers, COMPILER_FEATURES[feature].since);
+}
+
+/**
+ * What jpipe-runner releases after the minimum add that this release uses, each from the release
+ * that brought it. Each is asked only of a runner known to have it, since a runner refuses an
+ * option it does not know and runs nothing; `brings` is what Check jPipe Installation says
+ * upgrading to it brings.
+ */
+export const RUNNER_FEATURES = {
+    /**
+     * `--events`: the run's events, written as it goes, which the Run panel and Results follow it
+     * with; the drawing made before the first step, and when each source is observed
+     * (ADR-VSC-0033). An older runner's runs are shown when they end.
+     */
+    events: { since: [4, 1, 0], brings: 'shows runs as they go' },
+    /**
+     * `--jobs`: up to that many steps at a time, when the argument does not order them
+     * (jpipe-runner ADR-0038). An older runner runs one step at a time.
+     */
+    jobs: { since: [4, 4, 0], brings: 'runs steps together' }
+} as const satisfies Record<string, { since: ReleaseNumbers; brings: string }>;
+
+export type RunnerFeature = keyof typeof RUNNER_FEATURES;
+
+/**
+ * Whether the jpipe-runner release `version` (`4.1.0`, `4.1.0.dev0`, `5.0.0rc1`) has `feature`,
+ * development builds of the release that brought it included. An unknown release has none.
+ */
+export function runnerHas(version: string | undefined, feature: RunnerFeature): boolean {
+    const numbers = releaseNumbers(version);
+    return numbers !== undefined && meetsMinimum(numbers, RUNNER_FEATURES[feature].since);
+}
+
+/**
+ * A pre-release, as PEP 440 writes one after the release numbers: alpha, beta, release candidate,
+ * development (`a1`, `b2`, `rc1`, `.dev0`, with their long spellings). A post-release (`.post1`)
+ * comes after its release, and is not one.
+ */
+const PRE_RELEASE = /^[-_.]?(?:a|alpha|b|beta|c|rc|pre|preview|dev)\d*(?:$|[-_.+])/i;
+
+/**
+ * Whether the jpipe-runner release `version` may lack `feature` though it reports a release that
+ * has it: a pre-release of the very release that brought it (`4.4.0.dev0`, `4.4.0rc1`), which may
+ * predate the change. A release, a post-release of it (`4.4.0.post1`), or any later version has it.
+ */
+export function runnerMayLack(version: string | undefined, feature: RunnerFeature): boolean {
+    const numbers = releaseNumbers(version);
+    if (version === undefined || numbers === undefined || !runnerHas(version, feature)) return false;
+    const rest = version.slice(formatRelease(numbers).length);
+    return meetsMinimum(RUNNER_FEATURES[feature].since, numbers) && PRE_RELEASE.test(rest);
+}
 
 /**
  * The release numbers a version starts with — `4.1.0.dev0` → `[4, 1, 0]`, `5.0.0rc1` →
@@ -194,11 +267,19 @@ export function installationSummary(facts: InstallationFacts): {
     return { severity: 'info', title: `jPipe is ready${runs}.` };
 }
 
-/** The report's line about the compiler's version. */
+/**
+ * The report's line about the compiler's version, and below a supported one older than the
+ * recommended release, what upgrading brings.
+ */
 export function compilerLine(verdict: CompilerVerdict): string {
     const needed = `needs ${formatRelease(REQUIREMENTS.compiler)} or newer`;
     switch (verdict.kind) {
-        case 'supported': return `Compiler: ${verdict.version}`;
+        case 'supported': return [
+            `Compiler: ${verdict.version}`,
+            ...Object.entries(COMPILER_FEATURES)
+                .filter(([feature]) => !compilerHas(verdict.version, feature as CompilerFeature))
+                .map(([, { since, brings }]) => `  ${formatRelease(since)} or newer ${brings}`)
+        ].join('\n');
         case 'too-old': return `Compiler: ${verdict.version ?? 'an older release'}, too old (${needed})`;
         case 'unknown': return `Compiler: version not reported (${needed})`;
     }

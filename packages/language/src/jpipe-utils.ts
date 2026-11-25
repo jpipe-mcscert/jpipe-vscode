@@ -1,9 +1,10 @@
 import { type AstNode, type CstNode, GrammarUtils, URI } from 'langium';
 import { DefaultNameProvider } from 'langium';
 import {
-    type AbstractSupport,
     isAbstractSupport,
     isConclusion,
+    isEvidence,
+    isSubConclusion,
     type Justification,
     type Template,
     type JustificationElement,
@@ -138,31 +139,6 @@ export function getLocalElements(node: Justification | Template): JustificationE
     return (node.contents?.body ?? []) as JustificationElement[];
 }
 
-/**
- * Whether some of `model`'s elements are in no body this can read: whether its `implements` chain
- * reaches a composed model or a template that does not resolve, or loops back on itself.
- *
- * A composed model — `template T is refine(P, Q) { hook: "a" }` — has no body. Its elements are the
- * ones the operator builds from its sources, under ids such as `P:b` that no `.jd` file declares,
- * and `implements` hands them down to every model below it. An `implements` that does not resolve
- * hides elements the same way: the chain stops there, and the inherited half of the list with it.
- * `getAllElements` and `expandedElements` read bodies only, so in both cases the list they return
- * is short without saying so, and anything asking "is there a conclusion / a `@support` / an
- * element with this id?" hears a confident no about a model the compiler builds (its example 028),
- * or one whose only problem is the `implements` line (#129). That line is already reported as an
- * unresolved reference, which points the user at the one thing to fix. A chain that loops has no
- * element list at all: the compiler reports `cyclic-implements` there and judges nothing else, so
- * neither may this (`implementsCycle` finds the cycle to report).
- *
- * Such a model is left alone by every rule that needs its whole element list: a missing element
- * there is a fact about what this can read, not about the model. The operators are never ported:
- * a composition's elements are to be read from the compiler (jpipe-vscode ADR-VSC-0034).
- */
-export function cannotSeeAllElements(model: Justification | Template): boolean {
-    return implementsLoops(model) || implementsChain(model).some(link =>
-        link.composition !== undefined || (link.parent !== undefined && !link.parent.ref));
-}
-
 /** Whether `model`'s `implements` chain comes back to a model already on it (`cyclic-implements`). */
 export function implementsLoops(model: Justification | Template): boolean {
     // The walk stops at a link with no parent, or at one whose parent it has already visited.
@@ -247,10 +223,68 @@ export function implementsChain(model: Justification | Template): Array<Justific
     return chain;
 }
 
-/** An element of a model, under the id the compiler gives it once `implements` is expanded. */
-export interface ExpandedElement {
-    readonly element: JustificationElement;
+/**
+ * The namespace a reference to the model `id` is written with: `lib` for `lib:T`, empty for `T`.
+ * A reference that does not end with the model's id, being edited say, is read as having none.
+ */
+export function writtenNamespace(refText: string | undefined, id: string): string {
+    const written = (refText ?? '').replaceAll(/\s+/g, '');
+    return written.endsWith(`:${id}`) ? written.slice(0, -(id.length + 1)) : '';
+}
+
+/** `name` under `namespace`: `lib:T`, or `T` under none. */
+export function qualify(namespace: string, name: string): string {
+    if (!namespace) return name;
+    return name ? `${namespace}:${name}` : namespace;
+}
+
+/**
+ * The id an element of template `parentName` has in a model implementing it: a plain id is
+ * copied as `T:id`, and an id already qualified keeps its qualifier (`JustificationModel.inline`).
+ */
+export function inheritedId(parentName: string, id: string): string {
+    return id.includes(':') ? id : `${parentName}:${id}`;
+}
+
+/** An element's kind, in the compiler's words (`type` in its exports, `kind` in its report). */
+export type ElementKind = 'conclusion' | 'sub-conclusion' | 'strategy' | 'evidence' | 'abstract-support';
+
+/** The kind `element` declares. */
+export function kindOf(element: JustificationElement): ElementKind {
+    switch (element.$type) {
+        case 'Conclusion': return 'conclusion';
+        case 'SubConclusion': return 'sub-conclusion';
+        case 'Strategy': return 'strategy';
+        case 'Evidence': return 'evidence';
+        default: return 'abstract-support';
+    }
+}
+
+/**
+ * An element of a model, under the id the compiler gives it once `implements` is expanded and
+ * every operator has run, with the kind it has there.
+ *
+ * `element` is its declaration, when there is one this can read. An element an operator makes up,
+ * such as `assemble`'s conclusion, has none. One into which an operator merged several, as
+ * unification does or `refine` does with its hook, is `merged`: `element` is then the declaration
+ * of one of them, which is enough to go to but not to say which of them a name means. The kind is
+ * the element's own, not always its declaration's: a refined `@support` is a sub-conclusion.
+ */
+export interface ModelElement {
     readonly id: string;
+    readonly kind: ElementKind;
+    readonly element?: JustificationElement;
+    readonly merged?: boolean;
+    /**
+     * A `@support` an override named among others, ambiguously: the compiler reports that
+     * override, where it is, and requires no other override of the `@support` elements it named.
+     */
+    readonly contested?: boolean;
+}
+
+/** An element some body declares: its declaration is always there. */
+export interface ExpandedElement extends ModelElement {
+    readonly element: JustificationElement;
 }
 
 /**
@@ -261,9 +295,18 @@ export interface ExpandedElement {
  * is the template that declared it, and an id already qualified keeps its qualifier — so an element
  * `U` declares is `U:e` in a model two `implements` below it, never `T:U:e`. A local element keeps
  * the id it is written with, and replaces the inherited one it shares an id with: that is how
- * `evidence T:a` overrides `@support a`. A conclusion written in a model that `implements` a
+ * `evidence T:a` overrides `@support a`. An override with no element of its id is bound as the
+ * compiler binds it (`bind`): it replaces the one `@support` its id ends, under that `@support`'s
+ * id, and an override naming several replaces none and marks them `contested`. A conclusion written in a model that `implements` a
  * template is left out: the compiler reports it as `inherited-conclusion` and discards it, so the
  * model keeps the conclusion it inherits, and a hook or an override answers to that one.
+ *
+ * `namespace` is the one `model` is seen under, from the file the question is asked in: `lib` for a
+ * model of a file loaded `as lib`, empty for one of that file. The compiler names everything of a
+ * file loaded under a namespace with it, models and the qualified ids written there alike, so a
+ * template `T` of that file is `lib:T`, an element `a` it hands down is `lib:T:a`, and an override
+ * written `U:x` in it is `lib:U:x`. Namespaces compose along nested loads, so each `implements`
+ * adds the one its reference is written with (`writtenNamespace`).
  *
  * Inherited elements come first and local ones after, which is the compiler's order and the one a
  * suffix match is first-found in. The AST node is the declaration, so identity survives the
@@ -271,51 +314,110 @@ export interface ExpandedElement {
  */
 export function expandedElements(
     model: Justification | Template,
+    namespace = '',
     seen: Set<Justification | Template> = new Set()
 ): ExpandedElement[] {
-    if (seen.has(model)) return [];
-    seen.add(model);
-    const parent = model.parent?.ref;
-    const inherited = parent
-        ? expandedElements(parent, seen).map(({ element, id }) =>
-            ({ element, id: id.includes(':') ? id : `${parent.id}:${id}` }))
-        : [];
-    const local = getLocalElements(model)
-        .filter(element => !isDiscardedConclusion(element))
-        .map(element => ({ element, id: qualifiedIdText(element.id) }));
-    const replaced = new Set(local.map(entry => entry.id));
-    return [...inherited.filter(entry => !replaced.has(entry.id)), ...local];
+    return expand(model, namespace, seen) as ExpandedElement[];
 }
 
 /**
- * The element a `refine` hook names in `base`, or `undefined` if it names none.
- *
- * A port of the compiler's `JustificationModel.findById`, and it must stay one: this decides both
- * whether a hook is reported as unknown and whether renaming an element rewrites it, so a rule
- * stricter than the compiler's invents errors and a looser one misses them.
- *
- * It matches against effective ids (`expandedElements`), so `hook: "T:e"` names an `e` that `Base`
- * inherits from `T` without overriding it. Two ways to match, in the compiler's order. An **exact**
- * id, and failing that a **suffix**: an id ending in `':' + hook`, which is what lets `hook: "a"`
- * name `T:a`. The suffix pass skips the conclusion, as the compiler's does, so an inherited
- * conclusion answers only to its full `T:c`.
- *
- * On a base for which `cannotSeeAllElements` holds, some elements are hidden from this, and the
- * compiler scans them first. An exact id stays reliable there — what the base declares itself
- * replaces any inherited element of that id — but a suffix match does not, since a hidden element
- * may end the same way. Only the exact pass runs on such a base, so `undefined` means "not found"
- * on a fully visible base and "cannot tell" on the other kind; callers must not report the latter.
+ * Every element of `model`, as `expandedElements` gives them, except that the elements of `base`
+ * are `elements`: those the compiler built for it, which is how a model is read on top of a
+ * composed template. `namespace` is as there; `elements` carry theirs already.
  */
-export function hookTarget(
+export function expandedOnto(
+    model: Justification | Template,
+    namespace: string,
     base: Justification | Template,
-    hook: string
-): JustificationElement | undefined {
-    const elements = expandedElements(base);
-    const exact = elements.find(entry => entry.id === hook);
-    if (exact) return exact.element;
-    if (cannotSeeAllElements(base)) return undefined;
-    const suffix = `:${hook}`;
-    return elements.find(entry => !isConclusion(entry.element) && entry.id.endsWith(suffix))?.element;
+    elements: readonly ModelElement[]
+): ModelElement[] {
+    return expand(model, namespace, new Set(), base, elements);
+}
+
+function expand(
+    model: Justification | Template,
+    namespace: string,
+    seen: Set<Justification | Template>,
+    base?: Justification | Template,
+    baseElements: readonly ModelElement[] = []
+): ModelElement[] {
+    if (model === base) return [...baseElements];
+    if (seen.has(model)) return [];
+    seen.add(model);
+    const parent = model.parent?.ref;
+    if (!parent) return overlay(model, namespace, []);
+    const parentNamespace = qualify(namespace, writtenNamespace(model.parent?.$refText, parent.id));
+    const parentName = qualify(parentNamespace, parent.id);
+    const inherited = expand(parent, parentNamespace, seen, base, baseElements)
+        .map(entry => ({ ...entry, id: inheritedId(parentName, entry.id) }));
+    return overlay(model, namespace, inherited);
+}
+
+/**
+ * What `entry` overrides among `inherited`, bound as the compiler binds it, or `undefined` when it
+ * is no override to bind: not an evidence or a sub-conclusion, an unqualified id, or the exact id
+ * of an inherited element, which replaces it by that id alone.
+ */
+function overrideOf(entry: ModelElement & { element: JustificationElement }, inherited: readonly ModelElement[]): Binding | undefined {
+    const leaf = isEvidence(entry.element) || isSubConclusion(entry.element);
+    if (!leaf || !entry.id.includes(':') || inherited.some(candidate => candidate.id === entry.id)) return undefined;
+    return bind(inherited, entry.id);
+}
+
+/**
+ * What `model` declares, under `namespace`, laid over the elements it `inherited`. An override is
+ * bound as the compiler binds it, and takes the id of the `@support` it names: `evidence T:a`
+ * replaces `lib:T:a`. One naming several replaces none, and marks them `contested`.
+ */
+function overlay(model: Justification | Template, namespace: string, inherited: readonly ModelElement[]): ModelElement[] {
+    let kept = inherited;
+    const contested = new Set<ModelElement>();
+    const local: ModelElement[] = [];
+    for (const element of getLocalElements(model)) {
+        if (isDiscardedConclusion(element)) continue;
+        const written = qualifiedIdText(element.id);
+        const entry = { element, kind: kindOf(element), id: written.includes(':') ? qualify(namespace, written) : written };
+        const binding = overrideOf(entry, kept);
+        if (binding?.kind === 'ambiguous') {
+            binding.candidates.forEach(candidate => contested.add(candidate));
+        } else if (binding?.kind === 'found' && binding.element.kind === 'abstract-support') {
+            const support = binding.element;
+            kept = kept.filter(candidate => candidate !== support);
+            local.push({ ...entry, id: support.id });
+        } else {
+            local.push(entry);
+        }
+    }
+    const replaced = new Set(local.map(entry => entry.id));
+    return [
+        ...kept.filter(entry => !replaced.has(entry.id)).map(entry => contested.has(entry) ? { ...entry, contested: true } : entry),
+        ...local
+    ];
+}
+
+/** What an id names: one element, several, or none. */
+export type Binding =
+    | { readonly kind: 'found'; readonly element: ModelElement }
+    | { readonly kind: 'ambiguous'; readonly candidates: readonly ModelElement[] }
+    | { readonly kind: 'missing' };
+
+/**
+ * What `id`, as the source writes it, names among `elements`: a port of the compiler's
+ * `JustificationModel.bind`. The element with exactly that id; failing that, the elements whose id
+ * ends with `':' + id`, the conclusion last, which are an ambiguity when there are several
+ * (`ambiguous-id`, jpipe-compiler ADR-0012).
+ */
+export function bind(elements: readonly ModelElement[], id: string): Binding {
+    const exact = elements.find(entry => entry.id === id);
+    if (exact) return { kind: 'found', element: exact };
+    const suffix = `:${id}`;
+    const matching = elements.filter(entry => entry.id.endsWith(suffix));
+    const candidates = [
+        ...matching.filter(entry => entry.kind !== 'conclusion'),
+        ...matching.filter(entry => entry.kind === 'conclusion')
+    ];
+    if (candidates.length > 1) return { kind: 'ambiguous', candidates };
+    return candidates.length === 1 ? { kind: 'found', element: candidates[0] } : { kind: 'missing' };
 }
 
 /**
@@ -330,58 +432,4 @@ export function hookTarget(
  */
 export function isDiscardedConclusion(element: AstNode | undefined): boolean {
     return isConclusion(element) && element.$container?.$container?.parent !== undefined;
-}
-
-/** A `@support` a justification must override, and the id the override has to be written with. */
-export interface RequiredOverride {
-    readonly support: AbstractSupport;
-    readonly expectedKey: string;
-    readonly sourceTemplateId: string;
-}
-
-/**
- * The `@support` elements a justification implementing `template` must override.
- *
- * `seen` guards the `implements` walk: a template may point back at itself, which the
- * compiler reports as `cyclic-implements`, and the model sits in that state while it is being
- * edited. Recursing through such a chain would exhaust the stack and abort validation for the
- * whole document.
- */
-export function requiredOverrides(
-    template: Template,
-    refText: string,
-    seen: Set<Template> = new Set()
-): RequiredOverride[] {
-    if (seen.has(template)) return [];
-    seen.add(template);
-    const local = template.contents?.body ?? [];
-    // Keys of non-abstract elements defined directly in this template (these override parent abstracts)
-    const localOverrideKeys = new Set(
-        local.filter(e => !isAbstractSupport(e) && !isDiscardedConclusion(e)).map(e => qualifiedIdText(e.id))
-    );
-    const result: RequiredOverride[] = [];
-
-    // Abstract supports declared directly in this template
-    for (const elem of local) {
-        if (isAbstractSupport(elem)) {
-            result.push({
-                support: elem,
-                expectedKey: `${refText}:${qualifiedIdText(elem.id)}`,
-                sourceTemplateId: template.id
-            });
-        }
-    }
-
-    // Propagate unresolved abstract supports from the parent chain
-    if (template.parent?.ref) {
-        const parentRefText = template.parent.$refText ?? template.parent.ref.id;
-        for (const req of requiredOverrides(template.parent.ref, parentRefText, seen)) {
-            // Skip if this template already provides a non-abstract override for it
-            if (!localOverrideKeys.has(req.expectedKey)) {
-                result.push(req);
-            }
-        }
-    }
-
-    return result;
 }

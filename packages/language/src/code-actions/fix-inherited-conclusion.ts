@@ -13,12 +13,13 @@
  * qualified id, such as the template's own conclusion `T:c`, gets no fix: no keyword makes it
  * valid, and offering one would trade this error for another.
  */
-import type { Reference } from 'langium';
 import type { CodeAction } from 'vscode-languageserver';
-import { isConclusion, isTemplate, type Template } from '../generated/ast.js';
+import { isConclusion, type Justification, type Template } from '../generated/ast.js';
 import { nodeForDiagnostic } from '../jpipe-ast-context.js';
 import { JpipeIssue } from '../jpipe-diagnostic-codes.js';
-import { qualifiedIdText, requiredOverrides } from '../jpipe-utils.js';
+import type { ModelContents } from '../jpipe-model-contents.js';
+import { bind, inheritedElements } from '../jpipe-overrides.js';
+import { qualifiedIdText } from '../jpipe-utils.js';
 import { quickFix } from './types.js';
 
 const KEYWORD = 'conclusion';
@@ -27,15 +28,15 @@ export const fixInheritedConclusion = quickFix<typeof JpipeIssue.InheritedConclu
     id: 'fix-inherited-conclusion',
     codes: [JpipeIssue.InheritedConclusion],
 
-    create(context, diagnostic): CodeAction[] {
+    async create(context, diagnostic): Promise<CodeAction[]> {
         // The diagnostic is anchored on the conclusion's `id`, a QualifiedId, so the conclusion is
         // its container.
         const node = nodeForDiagnostic(context.document, diagnostic);
         const conclusion = node && isConclusion(node) ? node : node?.$container;
         // Re-checked against the document, which may have moved on since the diagnostic was made.
         if (!conclusion || !isConclusion(conclusion)) return [];
-        const parent = conclusion.$container?.$container?.parent;
-        if (!parent) return [];
+        const model = conclusion.$container?.$container;
+        if (!model?.parent) return [];
 
         const declaration = conclusion.$cstNode;
         if (!declaration?.text.startsWith(KEYWORD)) return [];
@@ -45,7 +46,8 @@ export const fixInheritedConclusion = quickFix<typeof JpipeIssue.InheritedConclu
             end: { line: start.line, character: start.character + KEYWORD.length }
         };
 
-        const keywords = keywordsFor(conclusion.id?.parts.length ?? 0, qualifiedIdText(conclusion.id), parent);
+        const keywords = await keywordsFor(conclusion.id?.parts.length ?? 0, qualifiedIdText(conclusion.id), model,
+                                           context.services.references.ModelContents);
         return keywords.map((keyword, index) => ({
             title: `Change '${KEYWORD}' to '${keyword}'`,
             isPreferred: index === 0,
@@ -58,13 +60,19 @@ export const fixInheritedConclusion = quickFix<typeof JpipeIssue.InheritedConclu
     }
 });
 
-/** The keywords that make the conclusion valid: none when its qualified id names no `@support`. */
-function keywordsFor(parts: number, id: string, parent: Reference<Template>): string[] {
+/**
+ * The keywords that make the conclusion valid: none when its qualified id names no `@support` the
+ * model inherits, as the compiler binds it, or when that cannot be told.
+ *
+ * Below a composition the compiler has not built, the elements inherited are only those its
+ * bodies show (`whole` false). The id the conclusion has exactly is one of them or none, whatever
+ * is hidden; a suffix naming one of them may name hidden ones too, and the override it would
+ * become could be ambiguous, so it is offered nothing.
+ */
+async function keywordsFor(parts: number, id: string, model: Justification | Template, contents: ModelContents): Promise<string[]> {
     if (parts <= 1) return ['sub-conclusion'];
-    const template = parent.ref;
-    if (!isTemplate(template)) return [];
-    const refText = parent.$refText ?? template.id;
-    return requiredOverrides(template, refText).some(required => required.expectedKey === id)
-        ? ['evidence', 'sub-conclusion']
-        : [];
+    const inherited = await inheritedElements(model, contents);
+    const binding = inherited && bind(inherited.elements, id);
+    if (!inherited || binding?.kind !== 'found' || binding.element.kind !== 'abstract-support') return [];
+    return inherited.whole || binding.element.id === id ? ['evidence', 'sub-conclusion'] : [];
 }

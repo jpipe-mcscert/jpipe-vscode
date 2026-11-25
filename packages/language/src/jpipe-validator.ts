@@ -12,11 +12,13 @@ import {
     type AbstractSupport,
     type Template,
     type Justification,
+    type JustificationElement,
     type Load,
     type Relation,
     isAbstractSupport,
     isConclusion,
     isEvidence,
+    isJustification,
     isStrategy,
     isSubConclusion
 } from './generated/ast.js';
@@ -35,9 +37,11 @@ import {
     requiredConfigKeys
 } from './jpipe-operators.js';
 import {
-    cannotSeeAllElements, expandedElements, fsPathOf, getAllElements, getLocalElements, buildsOnCycle, hookTarget,
-    implementsCycle, isDiscardedConclusion, qualifiedIdText, requiredOverrides
+    fsPathOf, getLocalElements, buildsOnCycle, implementsCycle, isDiscardedConclusion, qualifiedIdText, writtenNamespace,
+    type ModelElement
 } from './jpipe-utils.js';
+import { bindHook, listedIn, type ModelContents } from './jpipe-model-contents.js';
+import { bind, inheritedElements, type Binding } from './jpipe-overrides.js';
 import { JpipeIssue, report } from './jpipe-diagnostic-codes.js';
 import { byCodeUnit } from './jpipe-text.js';
 import { concreteKeywordFor, keywordFor } from './jpipe-render.js';
@@ -50,8 +54,8 @@ export function registerValidationChecks(services: JpipeServices) {
         Unit:           [validator.checkUnitNotEmpty, validator.checkDuplicateModels],
         Load:           validator.checkLoadResolves,
         Composition:    [validator.checkOperatorName, validator.checkOperatorArity, validator.checkDuplicateSources, validator.checkConfigKeys, validator.checkUnificationMethod, validator.checkRefineHook],
-        Template:       [validator.checkCyclicImplements, validator.checkTemplateHasSupport, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
-        Justification:  [validator.checkCyclicImplements, validator.checkJustificationOverride, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
+        Template:       [validator.checkCyclicImplements, validator.checkTemplateHasSupport, validator.checkOverrides, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
+        Justification:  [validator.checkCyclicImplements, validator.checkOverrides, validator.checkDuplicateElementIds, validator.checkModelHasConclusion, validator.checkSingleConclusion],
         Evidence:       validator.checkLabelNotEmpty,
         Strategy:       [validator.checkLabelNotEmpty, validator.checkStrategyIncomingSupport],
         Conclusion:     [validator.checkLabelNotEmpty, validator.checkInheritedConclusion, validator.checkConclusionIncomingFromStrategy],
@@ -65,11 +69,13 @@ export class JpipeValidator {
     private readonly logger: JpipeServerLogger;
     private readonly importService: JpipeImportService;
     private readonly unification: JpipeUnificationService;
+    private readonly contents: ModelContents;
 
     constructor(services: JpipeServices) {
         this.logger = services.logger;
         this.importService = services.references.JpipeImportService;
         this.unification = services.unification;
+        this.contents = services.references.ModelContents;
     }
 
     /**
@@ -261,43 +267,68 @@ export class JpipeValidator {
     }
 
     /**
-     * Flags a `refine` whose `hook` names no element of the model being refined.
+     * Flags a `refine` whose `hook` names no element of the model being refined, several of them,
+     * or one that is not a leaf.
      *
      * `hook` is a string in the grammar, so nothing links it: a typo, or a rename that passed it
      * by, produced a model that looked fine in the editor and died at build time with
      * `hook element 'x' not found in base model 'B'`. That message is borrowed here, because it is
      * the same defect and jpipe-vscode ADR-VSC-0022 says one defect reads one way.
      *
-     * `hookTarget` decides what resolves, and matches the compiler: against the ids template
-     * expansion gives inherited elements, then by its suffix fallback. Two shapes are passed over
-     * instead, each because the editor genuinely cannot answer:
+     * `bindHook` decides what the hook names, and matches the compiler: against the base's
+     * contents, under the ids template expansion and the operators give its elements, through the
+     * aliases of the base's own operator, then bound as the compiler binds an id. A base built on a
+     * composition is read as the compiler built it. A hook naming several elements is
+     * `ambiguous-hook`, and one naming an element that is neither an evidence nor a `@support` is
+     * `hook-not-leaf`, both worded as the compiler words them (#181 there). Two shapes are passed
+     * over instead, each because the editor genuinely cannot answer:
      *
-     * - **A base for which `cannotSeeAllElements` holds**, when the hook matches none of the ids
-     *   this can see: it may name one an operator builds, or one inherited through an `implements`
-     *   that does not resolve. In the second case the visible problem is the `implements`, and
-     *   pointing at the hook would send the user to the wrong line.
+     * - **A base whose contents cannot tell**, when the hook matches none of the ids this can see:
+     *   it may name one an operator builds that the compiler could not report, or one inherited
+     *   through an `implements` that does not resolve. In the second case the visible problem is
+     *   the `implements`, and pointing at the hook would send the user to the wrong line.
      * - **An unresolved first source**, which is a linking error already reported where it is.
      *
      * A missing `hook` is `missing-config-key`'s business and is left alone. An empty one is not:
      * the key is present, so nothing else reports it, and the compiler looks `''` up like any other
      * hook and fails the build on it.
      */
-    checkRefineHook(composition: Composition, accept: ValidationAcceptor): void {
+    async checkRefineHook(composition: Composition, accept: ValidationAcceptor): Promise<void> {
         if (composition.operator !== 'refine') return;
         const entry = composition.config?.entries.find(candidate => candidate.key === HOOK_KEY);
         const actual = entry?.value;
         if (!entry || actual === undefined) return;
 
-        const base = composition.params?.refs[0]?.ref;
+        const source = composition.params?.refs[0];
+        const base = source?.ref;
         if (!base) return;
-        if (hookTarget(base, actual) || cannotSeeAllElements(base)) return;
+        // As the composition's file sees it: `lib:K` is K of a file loaded `as lib`.
+        const contents = await this.contents.contentsOf(base, writtenNamespace(source?.$refText, base.id), AstUtils.getDocument(composition));
+        const binding = bindHook(contents, actual);
+        if (!binding || contents.kind === 'cannot-tell' && binding.kind !== 'found') return;
+        const at = { node: entry, property: 'value' } as const;
+        // The base as this file names it, which is what the compiler calls it here.
+        const modelId = source?.$refText ?? base.id;
 
-        const candidates = expandedElements(base)
-            .map(entry => entry.id)
-            .filter(id => id.length > 0);
-        report(accept, JpipeIssue.UnknownHook,
-               `Hook element '${actual}' not found in base model '${base.id}'`,
-               { node: entry, property: 'value' }, { actual, modelId: base.id, candidates });
+        if (binding.kind === 'found') {
+            const kind = binding.element.kind;
+            if (kind === 'evidence' || kind === 'abstract-support') return;
+            report(accept, JpipeIssue.HookNotLeaf,
+                   `hook '${actual}' is a ${kind} of '${modelId}': only an evidence or a @support can be refined`,
+                   at, { actual, modelId, kind });
+        } else if (binding.kind === 'ambiguous') {
+            const candidates = binding.candidates.map(candidate => candidate.id);
+            report(accept, JpipeIssue.AmbiguousHook,
+                   `ambiguous hook '${actual}' in '${modelId}': it names ${quoted(candidates)}; write the qualified id`,
+                   at, { actual, modelId, candidates });
+        } else {
+            const candidates = listedIn(contents)
+                .filter(element => element.kind === 'evidence' || element.kind === 'abstract-support')
+                .map(element => element.id);
+            report(accept, JpipeIssue.UnknownHook,
+                   `Hook element '${actual}' not found in base model '${modelId}'`,
+                   at, { actual, modelId, candidates });
+        }
     }
 
     checkLabelNotEmpty(element: Evidence | Strategy | Conclusion | SubConclusion | AbstractSupport,
@@ -375,27 +406,27 @@ export class JpipeValidator {
      * justifications, so this one does too. An argument with nothing at its root is not an
      * argument.
      *
-     * Inherited conclusions count, which is why this reads `getAllElements`: the compiler checks
+     * Inherited conclusions count, which is why this reads the model's contents: the compiler checks
      * completeness *after* `implements` has inlined the parent's elements, so a justification
      * whose conclusion comes from its template satisfies the rule there and must here. A conclusion
-     * of its own does not count in a model that `implements` one: the compiler has discarded it.
+     * of its own does not count in a model that `implements` one: the compiler has discarded it,
+     * and so have the contents.
      *
      * The grammar requires a non-empty body, so `justification J { }` is a parse error rather than
      * this; what reaches here is a model with contents that simply do not include a conclusion.
      *
-     * A model for which `cannotSeeAllElements` holds is skipped. One built on a composition —
-     * `justification K is assemble(J, T) { … }`, or one implementing a composed template — has
-     * elements that do not exist until the operator has run; one whose `implements` does not
-     * resolve inherits its conclusion from a template this cannot read, and the unresolved
-     * reference is the one error to report (#129). `assemble` synthesises a conclusion from `conclusionLabel`, so the compiler
-     * checks the *result* and is satisfied; checking the source text here would report an error on
-     * a model that builds. The cost is that a composition whose result genuinely has no conclusion
-     * is caught by the compiler and not by the editor, which is the right way round: silence about
-     * a real problem beats noise about one that is not.
+     * A model built on a composition — `justification K is assemble(J, T) { … }`, or one
+     * implementing a composed template — is read as the compiler built it: `assemble` synthesises
+     * a conclusion from `conclusionLabel`, which no body declares. A model whose contents cannot
+     * tell is skipped. That is one built on a composition the compiler could not report, whose
+     * result the editor cannot know, or one whose `implements` does not resolve, which inherits
+     * its conclusion from a template this cannot read, and the unresolved reference is the one
+     * error to report (#129). Silence about a real problem beats noise about one that is not.
      */
-    checkModelHasConclusion(model: Justification | Template, accept: ValidationAcceptor): void {
-        if (cannotSeeAllElements(model)) return;
-        if (getAllElements(model).some(element => isConclusion(element) && !isDiscardedConclusion(element))) return;
+    async checkModelHasConclusion(model: Justification | Template, accept: ValidationAcceptor): Promise<void> {
+        const contents = await this.contents.contentsOf(model);
+        if (contents.kind === 'cannot-tell') return;
+        if (contents.elements.some(entry => entry.kind === 'conclusion')) return;
 
         report(accept, JpipeIssue.ConclusionPresent, `Model '${model.id}' has no conclusion`,
                { node: model, property: 'id' }, { id: model.id });
@@ -436,15 +467,19 @@ export class JpipeValidator {
      * The compiler's own note for this rule says it best: a template with no abstract supports is
      * a justification in disguise. It refuses to build one, and the message here is its wording.
      *
-     * A template for which `cannotSeeAllElements` holds is left alone: the `@support` elements a
-     * `refine` leaves unrefined, or those of a template that does not resolve, are in no body this
-     * can read. Declaring the wrong kind for an operator's result is a different error in the
-     * compiler, raised once the operator has run.
+     * Read on the template's contents, as the compiler reads it once `implements` is expanded: a
+     * `@support` that the template overrides with an evidence is no longer one, so a template
+     * whose every `@support` is overridden declares none.
+     *
+     * The `@support` elements a `refine` leaves unrefined are read from the compiler's result. A
+     * template whose contents cannot tell is left alone: without that result, or under a template
+     * that does not resolve, they are in no body this can read. Declaring the wrong kind for an
+     * operator's result is a different error in the compiler, raised once the operator has run.
      */
-    checkTemplateHasSupport(template: Template, accept: ValidationAcceptor): void {
-        if (cannotSeeAllElements(template)) return;
-        const allElements = getAllElements(template);
-        const hasSupport = allElements.some(elem => isAbstractSupport(elem));
+    async checkTemplateHasSupport(template: Template, accept: ValidationAcceptor): Promise<void> {
+        const contents = await this.contents.contentsOf(template);
+        if (contents.kind === 'cannot-tell') return;
+        const hasSupport = contents.elements.some(entry => entry.kind === 'abstract-support');
 
         if (!hasSupport) {
             report(accept, JpipeIssue.HasAbstractSupport, `Template '${template.id}' declares no abstract supports`,
@@ -553,51 +588,135 @@ export class JpipeValidator {
         }
     }
 
-    checkJustificationOverride(justification: Justification, accept: ValidationAcceptor): void {
-        this.logger.debug(`Checking overrides for justification '${justification.id}'`);
-        // Below a cycle, the compiler reports the cycle and builds nothing.
-        if (!justification.parent?.ref || buildsOnCycle(justification)) return;
-
-        const template = justification.parent.ref;
-        const parentRefText = justification.parent.$refText ?? template.id;
-        const localElements = getLocalElements(justification);
-        // A conclusion spelled as an override is discarded before overrides are matched, so the
-        // `@support` is still missing, as the compiler says, rather than overridden by the wrong kind.
-        const localById = new Map(localElements
-            .filter(e => !isDiscardedConclusion(e))
-            .map(e => [qualifiedIdText(e.id), e]));
-
-        const required = requiredOverrides(template, parentRefText);
-        // Every gap is listed on each diagnostic, so a single action can close them all at once.
-        const allMissing = required
-            .filter(req => !localById.has(req.expectedKey))
-            .map(req => ({ expectedKey: req.expectedKey, supportLabel: req.support.name }));
-
-        for (const req of required) {
-            const override = localById.get(req.expectedKey);
-            if (!override) {
-                report(accept, JpipeIssue.NoAbstractSupport, `Justification '${justification.id}' must override '@support ${qualifiedIdText(req.support.id)}' from template '${req.sourceTemplateId}'. Expected element with id '${req.expectedKey}'.`,
-                       { node: justification, property: 'id' }, {
-                          expectedKey: req.expectedKey,
-                          supportLabel: req.support.name,
-                          supportId: qualifiedIdText(req.support.id),
-                          sourceTemplateId: req.sourceTemplateId,
-                          allMissing
-                      });
-                continue;
-            }
-            const elemType = concreteKeywordFor(override);
-            if (elemType && elemType !== 'evidence' && elemType !== 'sub-conclusion') {
-                report(accept, JpipeIssue.SupportOverrideType, `Cannot override '@support ${qualifiedIdText(req.support.id)}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
-                       { node: override, property: 'id' }, {
-                          actualKeyword: elemType,
-                          allowedKeywords: ['evidence', 'sub-conclusion']
-                      });
-            }
-        }
+    /**
+     * Checks what a model's overrides name among the elements it inherits, bound as the compiler
+     * binds them (`bind`), on the contents of the template it implements.
+     *
+     * - **An override naming several `@support` elements** is `ambiguous-id`, in the compiler's
+     *   words, in a template as in a justification: `evidence top:h` under a template that
+     *   `assemble` built from two models implementing `top` names both `l:top:h` and `r:top:h`
+     *   (#127). The `@support` elements it names are not reported as missing on top of it: the
+     *   compiler reports the failed override, once, where it is.
+     * - **A justification leaving a `@support` without an override** is `no-abstract-support`.
+     *   Every one still missing is listed on each diagnostic, so a single action can close them
+     *   all at once.
+     * - **An override of the wrong kind** is `support-override-type`: only an evidence or a
+     *   sub-conclusion may stand for a `@support`.
+     *
+     * Under a template whose contents cannot tell, only the `@support` elements its bodies show are
+     * required, and no override is called ambiguous: what is hidden could be named too. A model
+     * below a cycle is left alone, which the compiler reports and builds nothing of. A conclusion spelled as an override is discarded
+     * before overrides are matched, so the `@support` is still missing, as the compiler says,
+     * rather than overridden by the wrong kind.
+     */
+    async checkOverrides(model: Justification | Template, accept: ValidationAcceptor): Promise<void> {
+        const template = model.parent?.ref;
+        if (!template || buildsOnCycle(model)) return;
+        this.logger.debug(`Checking overrides for '${model.id}'`);
+        const inheritance = await inheritedElements(model, this.contents);
+        if (!inheritance) return;
+        const named = namedByOverrides(model, inheritance, accept);
+        if (isJustification(model)) checkRequiredOverrides(model, template, inheritance.elements, named, accept);
     }
 
+}
 
+/** The label of an element's declaration, `''` for an element no declaration stands for. */
+function labelOf(entry: ModelElement): string {
+    return entry.element?.name ?? '';
+}
+
+/** The model that declares `element`. */
+function declaringModel(element: JustificationElement | undefined): Justification | Template | undefined {
+    return element?.$container?.$container;
+}
+
+/** `ids` as the compiler lists them in a message: `'a', 'b'`. */
+function quoted(ids: readonly string[]): string {
+    return ids.map(id => "'" + id + "'").join(', ');
+}
+
+/**
+ * What `element`, written in a model inheriting `inherited`, overrides there. Only an evidence or
+ * a sub-conclusion overrides, and is bound as the compiler binds it. Another kind names a
+ * `@support` only by its exact id, as the wrong kind to stand for it: by a suffix, the compiler
+ * takes it for an element of its own.
+ */
+function overrideBinding(element: JustificationElement, id: string, inherited: readonly ModelElement[]): Binding {
+    if (isEvidence(element) || isSubConclusion(element)) return bind(inherited, id);
+    const exact = inherited.find(entry => entry.id === id);
+    return exact ? { kind: 'found', element: exact } : { kind: 'missing' };
+}
+
+/**
+ * Each inherited element an override of `model` names, with the override naming it. An override
+ * naming several is reported as `ambiguous-id` when `inheritance` is whole, and named with each.
+ */
+function namedByOverrides(
+    model: Justification | Template,
+    inheritance: { elements: readonly ModelElement[]; whole: boolean },
+    accept: ValidationAcceptor
+): Map<ModelElement, JustificationElement> {
+    const named = new Map<ModelElement, JustificationElement>();
+    for (const element of getLocalElements(model)) {
+        const id = qualifiedIdText(element.id);
+        if (!id.includes(':') || isDiscardedConclusion(element)) continue;
+        const binding = overrideBinding(element, id, inheritance.elements);
+        if (binding.kind === 'found') {
+            if (!named.has(binding.element)) named.set(binding.element, element);
+            continue;
+        }
+        if (binding.kind !== 'ambiguous') continue;
+        binding.candidates.forEach(candidate => named.set(candidate, element));
+        if (!inheritance.whole) continue;
+        const candidates = binding.candidates.map(candidate => candidate.id);
+        report(accept, JpipeIssue.AmbiguousId,
+               `ambiguous id '${id}' in model '${model.id}': it names ${quoted(candidates)}; write the qualified id`,
+               { node: element, property: 'id' }, { id, modelId: model.id, candidates });
+    }
+    return named;
+}
+
+/**
+ * Reports each `@support` among `inherited` that `justification` leaves without an override
+ * (`no-abstract-support`), or overrides with the wrong kind (`support-override-type`). A `@support`
+ * an ancestor's override named ambiguously was reported there, once.
+ */
+function checkRequiredOverrides(
+    justification: Justification,
+    template: Template,
+    inherited: readonly ModelElement[],
+    named: ReadonlyMap<ModelElement, JustificationElement>,
+    accept: ValidationAcceptor
+): void {
+    const required = inherited.filter(entry => entry.kind === 'abstract-support' && !entry.contested);
+    const allMissing = required
+        .filter(entry => !named.has(entry))
+        .map(entry => ({ expectedKey: entry.id, supportLabel: labelOf(entry) }));
+    for (const entry of required) {
+        const supportId = entry.element ? qualifiedIdText(entry.element.id) : entry.id.split(':').at(-1) ?? entry.id;
+        const sourceTemplateId = declaringModel(entry.element)?.id ?? template.id;
+        const override = named.get(entry);
+        if (!override) {
+            report(accept, JpipeIssue.NoAbstractSupport, `Justification '${justification.id}' must override '@support ${supportId}' from template '${sourceTemplateId}'. Expected element with id '${entry.id}'.`,
+                   { node: justification, property: 'id' }, {
+                      expectedKey: entry.id,
+                      supportLabel: labelOf(entry),
+                      supportId,
+                      sourceTemplateId,
+                      allMissing
+                  });
+            continue;
+        }
+        const elemType = concreteKeywordFor(override);
+        if (elemType && elemType !== 'evidence' && elemType !== 'sub-conclusion') {
+            report(accept, JpipeIssue.SupportOverrideType, `Cannot override '@support ${supportId}' with type '${elemType}' in justification '${justification.id}'. @support elements can only be refined by 'evidence' or 'sub-conclusion'.`,
+                   { node: override, property: 'id' }, {
+                      actualKeyword: elemType,
+                      allowedKeywords: ['evidence', 'sub-conclusion']
+                  });
+        }
+    }
 }
 
 /**
