@@ -50,6 +50,10 @@ export function getRunShellHtml(webview: vscode.Webview, extensionUri: vscode.Ur
         </div>
     </div>
     <div id="banners">
+        <div class="banner" id="development-banner" role="note">
+            <span class="banner-glyph" aria-hidden="true">⚒</span>
+            <span id="development-text"></span>
+        </div>
         <div class="banner" id="verdict-bar" role="status" aria-live="polite">
             <span class="banner-glyph" id="verdict-glyph" aria-hidden="true"></span>
             <span id="verdict-kind"></span>

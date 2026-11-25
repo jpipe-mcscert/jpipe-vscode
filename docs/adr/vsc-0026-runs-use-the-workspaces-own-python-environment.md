@@ -94,18 +94,20 @@ evidence, strategy` — so an older release counts as none, and the same fix upg
 
 **A jpipe-runner installed on the machine is matched, not used.** One installed with Homebrew,
 apt or pipx is asked its release (`jpipe-runner --version`), and when that is 4.0.0 or newer pip
-installs exactly it into the workspace's environment; otherwise it installs the latest. What a
+installs exactly it into the workspace's environment; otherwise it installs the latest. A release
+chosen in the settings takes precedence over both (ADR-VSC-0036). What a
 project file records is always `jpipe-runner>=4.0.0` — in a requirements file, and in what a
 manager is asked to add: any release from the minimum on works, and a project is not pinned to
 what one machine happened to have. A run never goes through the machine's runner. An environment whose interpreter does not answer is no
 environment, and the same fixes rebuild it.
 
-**A local jpipe-runner can stand in for a release**, for work on the runner itself.
-`jpipe.runner.localSource` names a checkout; the workspace's environment is then expected to run
-it, installed editable (`pip install -e`), so a change to the runner shows in the next run. What
+**A local jpipe-runner can stand in for a release**, for work on the runner itself. In development
+mode, `jpipe.runner.localSource` names a checkout; the workspace's environment is then expected to run
+it, installed editable (`pip install -e`), so a change to the runner shows in the next run, or
+installed from one of its branches (ADR-VSC-0036). What
 the environment runs is read from what pip records of the install, not guessed from a version.
 The fix installs the checkout — into a managed project's environment too, with pip, since the
-project's files must not name a path on one machine — and, once the setting is cleared, removes
+project's files must not name a path on one machine — and, once development mode is off, removes
 it and installs a published release. The minimum release and the match with the machine's runner
 do not apply to a checkout. No project file ever records it, and the Libraries view is marked
 "local jpipe-runner" while runs use one.

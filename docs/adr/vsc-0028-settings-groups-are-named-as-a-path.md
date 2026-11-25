@@ -37,9 +37,9 @@ The groups are:
 | `jPipe › Compiler › Preview` | the diagram preview |
 | `jPipe › Compiler › Validation` | exclusions, extra unification methods |
 | `jPipe › Compiler › Logging` | the log level |
-| `jPipe › Runner › General` | step libraries, the editor's Python environment, setup offers |
-| `jPipe › Runner › Execution` | what runs a model and how: execution environment, runner command, steps at a time |
-| `jPipe › Runner › Development` | a local copy of the runner, for work on the runner itself |
+| `jPipe › Runner › General` | how runs reach the runner: execution environment, release, runner command, steps at a time, step libraries |
+| `jPipe › Runner › Assistance` | what jPipe offers to do: setup suggestions, the editor's Python environment |
+| `jPipe › Runner › Development` | development mode: a local copy of the runner, and its branch, for work on the runner itself (ADR-VSC-0036) |
 
 A new group takes a title of this form under the tool it belongs to. A third tool would add a
 third `<Tool>`. `test/settings.test.ts` holds the manifest to it.

@@ -16,6 +16,7 @@ import { newModel } from './models-view/new-model-flow.js';
 import type { LibrariesView } from './runner/libraries-view.js';
 import { runModel, runSelectedModel, runShownAgain, type RunDeps } from './runner/run-model.js';
 import { newLibrary, scaffoldLibrary } from './runner/new-library-flow.js';
+import { chooseRunnerRelease } from './runner/release-picker.js';
 import type { RunnerEnvironment } from './runner/environment.js';
 import type { RunSession } from './runner/run-session.js';
 import type { RunPanel } from './runner/run-panel.js';
@@ -200,6 +201,7 @@ export function registerCommands(deps: CommandDeps): void {
         vscode.commands.registerCommand('jpipe.libraries.new', () => newLibrary(librariesView, modelsView)),
         vscode.commands.registerCommand('jpipe.runner.fixEnvironment', () => runnerEnvironment.setUp()),
         vscode.commands.registerCommand('jpipe.runner.checkEnvironment', () => runnerEnvironment.report()),
+        vscode.commands.registerCommand('jpipe.runner.selectVersion', () => chooseRunnerRelease(runnerEnvironment, logger)),
         vscode.commands.registerCommand('jpipe.models.newJustification', (node?: TreeNode) =>
             newModel(modelsView.knownModels, { kind: 'justification', contextUri: contextOf(node) })),
         vscode.commands.registerCommand('jpipe.models.newTemplate', (node?: TreeNode) =>

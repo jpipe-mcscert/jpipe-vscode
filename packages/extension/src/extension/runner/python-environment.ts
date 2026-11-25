@@ -9,7 +9,7 @@
  * gathered elsewhere, so it is tested (jpipe-vscode ADR-VSC-0004, ADR-VSC-0026).
  */
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pathKeyOf } from '../process-launcher.js';
 import {
     formatRelease, meetsMinimum, pylanceLine, releaseNumbers, REQUIREMENTS, RUNNER_FEATURES, runnerHas, type RunnerFeature
@@ -50,8 +50,17 @@ export function parseRunnerVersion(stdout: string): string | undefined {
 }
 
 /**
+ * Whether a release written in the version setting can be installed: a published final release
+ * (`4.5.0`), from the minimum on. Anything else is ignored, and the log says so.
+ */
+export function isChosenRelease(release: string): boolean {
+    return /^\d+(\.\d+)*$/.test(release) && isRunnerRecentEnough(release);
+}
+
+/**
  * What pip is asked to install into the workspace's environment.
  *
+ * A release chosen in the settings (`chosen`) is installed exactly.
  * The machine's own jpipe-runner is not what a run uses — it lives in an environment of its own,
  * where the project's packages are out of reach — but it is the release the user has, and the one
  * a terminal runs. So the workspace's environment is given that same release, and a library
@@ -62,7 +71,8 @@ export function parseRunnerVersion(stdout: string): string | undefined {
  * release from the minimum on works with this extension, and a project is not pinned to what one
  * machine happened to have.
  */
-export function runnerRequirement(globalRelease: string | undefined): string {
+export function runnerRequirement(globalRelease: string | undefined, chosen?: string): string {
+    if (chosen !== undefined && isChosenRelease(chosen)) return `jpipe-runner==${chosen}`;
     return globalRelease !== undefined && /^\d+(\.\d+)*$/.test(globalRelease) && isRunnerRecentEnough(globalRelease)
         ? `jpipe-runner==${globalRelease}`
         : RUNNER_REQUIREMENT;
@@ -76,19 +86,28 @@ export const PROBE_SCRIPT = [
     'import importlib.util, json, sys',
     'release = None',
     'local = None',
+    'branch = None',
+    'commit = None',
     'try:',
     '    from importlib.metadata import distribution',
     '    dist = distribution("jpipe-runner")',
     '    release = dist.version',
-    '    direct = json.loads(dist.read_text("direct_url.json") or "null")',
-    '    if direct and direct.get("dir_info", {}).get("editable"):',
+    '    direct = json.loads(dist.read_text("direct_url.json") or "null") or {}',
+    '    vcs = direct.get("vcs_info") or {}',
+    '    if direct.get("dir_info", {}).get("editable"):',
     '        local = direct.get("url")',
+    '    elif vcs.get("vcs") == "git" and str(direct.get("url", "")).startswith("file:"):',
+    '        local = direct.get("url")',
+    '        branch = vcs.get("requested_revision")',
+    '        commit = vcs.get("commit_id")',
     'except Exception:',
     '    pass',
     'print(json.dumps({"version": list(sys.version_info[:3]),',
     ' "runner": importlib.util.find_spec("jpipe_runner") is not None,',
     ' "release": release,',
     ' "local": local,',
+    ' "branch": branch,',
+    ' "commit": commit,',
     ' "venv": sys.prefix != sys.base_prefix}))'
 ].join('\n');
 
@@ -98,10 +117,15 @@ export interface Probe {
     /** The jpipe-runner release installed, when the interpreter knows it as an installed package. */
     runnerVersion?: string;
     /**
-     * The checkout the runner is installed from, when it is an editable install of a local copy
-     * (`pip install -e`): the environment then runs that source as it stands, release or not.
+     * The checkout the runner is installed from, when it is installed from a local copy: editable
+     * (`pip install -e`), so the environment runs that source as it stands, release or not; or from
+     * a branch of it (`git+file:…@branch`), as that branch was when installed.
      */
     localSource?: string;
+    /** The branch of `localSource` it was installed from, when it was installed from one. */
+    localBranch?: string;
+    /** The commit it was installed from, when it was installed from a branch: what tells a branch that moved on. */
+    localCommit?: string;
     /** Whether the interpreter belongs to a virtual environment rather than a system install. */
     isVirtualEnv: boolean;
 }
@@ -110,7 +134,7 @@ export interface Probe {
 export function parseProbe(stdout: string): Probe | undefined {
     try {
         const line = stdout.trim().split(/\r?\n/).pop() ?? '';
-        const data = JSON.parse(line) as { version?: unknown; runner?: unknown; release?: unknown; local?: unknown; venv?: unknown };
+        const data = JSON.parse(line) as { version?: unknown; runner?: unknown; release?: unknown; local?: unknown; branch?: unknown; commit?: unknown; venv?: unknown };
         const version = data.version;
         if (!Array.isArray(version) || version.length < 2 || !version.every(n => typeof n === 'number')) return undefined;
         const localSource = typeof data.local === 'string' ? localPath(data.local) : undefined;
@@ -119,6 +143,8 @@ export function parseProbe(stdout: string): Probe | undefined {
             hasRunner: data.runner === true,
             ...(typeof data.release === 'string' ? { runnerVersion: data.release } : {}),
             ...(localSource ? { localSource } : {}),
+            ...(localSource && typeof data.branch === 'string' ? { localBranch: data.branch } : {}),
+            ...(localSource && typeof data.commit === 'string' ? { localCommit: data.commit } : {}),
             isVirtualEnv: data.venv === true
         };
     } catch {
@@ -205,19 +231,41 @@ export type EnvironmentStatus =
      * With a `manager`, that tool adds it — and makes the environment, when there is no `python` yet.
      */
     | { kind: 'missing-runner'; python?: string; manager?: Manager; outdated?: string }
+    /** The workspace's environment has another jpipe-runner release than the one the settings choose. */
+    | { kind: 'other-release'; python: string; manager?: Manager; installed: string; wanted: string }
     /**
      * The workspace's environment and the settings disagree about a local jpipe-runner: `wanted`
-     * is the checkout the settings name and the environment does not run; `installed` the one the
-     * environment runs while the settings name none. pip puts it right, in the environment only.
+     * is the checkout the settings name (and `branch`, the branch of it) and the environment does
+     * not run; `installed` the one the environment runs while development mode is off. pip puts
+     * it right, in the environment only. `stale` is an editable install whose version moved since;
+     * `behind`, an install of a branch that has had commits since.
      */
-    | { kind: 'runner-source'; python: string; manager?: Manager; wanted?: string; installed?: string; stale?: { recorded: string; declared: string } }
-    /** The settings name a local jpipe-runner that is not a Python project on this machine. */
-    | { kind: 'no-local-source'; path: string }
+    | {
+        kind: 'runner-source'; python: string; manager?: Manager; wanted?: string; branch?: string; installed?: string;
+        stale?: { recorded: string; declared: string }; behind?: { installed: string; head: string };
+    }
+    /**
+     * Development mode names no usable local jpipe-runner: no folder (`path` empty), a folder that
+     * is not a Python project, or a branch the folder does not have.
+     */
+    | { kind: 'no-local-source'; path: string; branch?: string }
     /** The workspace has no environment of its own, and no tool to make one: create `.venv`. */
     | { kind: 'no-environment' };
 
 /** Which Python the editor uses, compared with the workspace's: `none` without the Python extension. */
 export type EditorSelection = 'same' | 'other' | 'none';
+
+/**
+ * The local jpipe-runner development mode runs: a checkout, and optionally one of its branches.
+ * `declared` is the version the checkout's `pyproject.toml` declares now; `head`, the commit the
+ * branch is at now. Each is absent when it could not be read.
+ */
+export interface LocalRunner {
+    path: string;
+    declared?: string;
+    branch?: string;
+    head?: string;
+}
 
 /**
  * What the workspace's own environment means for running step libraries.
@@ -231,9 +279,12 @@ export type EditorSelection = 'same' | 'other' | 'none';
  * lists (`MIN_RUNNER`). An older one is treated as none, and the same fix upgrades it. A runner
  * the interpreter finds but has no release for — a source checkout on its path — is taken as it is.
  *
- * With a local jpipe-runner named in the settings (`localSource`), having the runner means
- * running that checkout, installed editable; without one, an environment that runs a checkout is
- * put back on a published release.
+ * In development mode (`local`), having the runner means running that checkout: installed
+ * editable, or, when the settings name a branch, installed from that branch's latest commit.
+ * Outside it, an environment that runs a checkout is put back on a published release.
+ *
+ * A release chosen in the settings (`release`) is the one to have: an environment with another
+ * is to be given it. Without one, any release from the minimum on will do.
  *
  * An environment that can run libraries while the editor uses another Python is `unselected`: a
  * run goes ahead with the workspace's, and the editor is still to be pointed at it.
@@ -242,8 +293,8 @@ export function environmentStatus(
     environment: WorkspaceEnvironment,
     probe: Probe | undefined,
     editor: EditorSelection,
-    localSource?: string,
-    declaredLocal?: string
+    local?: LocalRunner,
+    release?: string
 ): EnvironmentStatus {
     const { python, manager } = environment;
     const managed = manager ? { manager } : {};
@@ -254,9 +305,9 @@ export function environmentStatus(
     const selected: EnvironmentStatus = { kind: editor === 'other' ? 'unselected' : 'ready', python };
     // A local runner, for working on the runner itself: the checkout is run as it stands, so
     // neither its release nor the machine's has a say.
-    if (localSource !== undefined) {
-        const wanted = { kind: 'runner-source' as const, python, ...managed, wanted: localSource };
-        return localRunnerStatus(probe, localSource, declaredLocal, wanted) ?? selected;
+    if (local !== undefined) {
+        const wanted = { kind: 'runner-source' as const, python, ...managed, wanted: local.path, ...(local.branch ? { branch: local.branch } : {}) };
+        return localRunnerStatus(probe, local, wanted) ?? selected;
     }
     // One installed by hand in a managed project is the user's arrangement with their tool.
     if (probe.localSource !== undefined && !manager) return { kind: 'runner-source', python, installed: probe.localSource };
@@ -264,24 +315,40 @@ export function environmentStatus(
     if (probe.runnerVersion !== undefined && !isRunnerRecentEnough(probe.runnerVersion)) {
         return { kind: 'missing-runner', python, ...managed, outdated: probe.runnerVersion };
     }
+    if (release !== undefined && probe.runnerVersion !== undefined && probe.runnerVersion !== release) {
+        return { kind: 'other-release', python, ...managed, installed: probe.runnerVersion, wanted: release };
+    }
     return selected;
 }
 
 /**
- * What is wrong with an environment asked to run the local copy at `localSource`, as a variation
- * on `wanted`: it runs something else, or an install of the copy that has fallen behind it.
- * `undefined` when it runs the copy as it stands.
+ * What is wrong with an environment asked to run the local copy `local`, as a variation on
+ * `wanted`: it runs something else, or an install of the copy that has fallen behind it.
+ * `undefined` when it runs the copy as asked.
+ *
+ * Without a branch, the copy is to be installed editable, which pip records with no commit. With
+ * one, it is to be installed from that branch, at the commit the branch is at now: a commit made
+ * since is code the environment does not have.
  */
 function localRunnerStatus(
     probe: Probe,
-    localSource: string,
-    declaredLocal: string | undefined,
+    local: LocalRunner,
     wanted: Extract<EnvironmentStatus, { kind: 'runner-source' }>
 ): EnvironmentStatus | undefined {
-    if (probe.localSource === undefined || !sameDirectory(probe.localSource, localSource)) return wanted;
-    const stale = staleInstall(probe.runnerVersion, declaredLocal);
-    return stale ? { ...wanted, stale } : undefined;
+    if (probe.localSource === undefined || !sameDirectory(probe.localSource, local.path)) return wanted;
+    if (local.branch === undefined) {
+        if (probe.localCommit !== undefined) return wanted;
+        const stale = staleInstall(probe.runnerVersion, local.declared);
+        return stale ? { ...wanted, stale } : undefined;
+    }
+    if (probe.localBranch !== local.branch || probe.localCommit === undefined) return wanted;
+    return local.head !== undefined && local.head !== probe.localCommit
+        ? { ...wanted, behind: { installed: probe.localCommit, head: local.head } }
+        : undefined;
 }
+
+/** A commit as people write it: its first seven characters. */
+export const shortCommit = (commit: string): string => commit.slice(0, 7);
 
 /**
  * How a local copy's install has fallen behind the copy, if it has.
@@ -323,10 +390,14 @@ export interface EnvironmentFacts {
     /** Whether the editor's interpreter is the workspace's environment. */
     editorFollows?: boolean;
     machineRunner?: string;
-    /** The local jpipe-runner the settings name, if any. */
+    /** The local jpipe-runner development mode runs, if any. */
     localSource?: string;
+    /** The branch of it development mode runs, if one is named. */
+    localBranch?: string;
     /** The version that local jpipe-runner declares now. */
     declaredLocal?: string;
+    /** The jpipe-runner release the settings choose, if any. */
+    release?: string;
     /** Whether Pylance is installed, when that was looked at. */
     pylance?: boolean;
 }
@@ -361,7 +432,8 @@ export function environmentReport(facts: EnvironmentFacts, places: { folder?: st
         lines.push(
             environment.manager ? `Environment: ${where} (${environment.manager})` : `Environment: ${where}`,
             `Python: ${probe ? probe.version.join('.') : 'does not answer'}`,
-            ...runnerLines(probe, facts.declaredLocal, short)
+            ...runnerLines(probe, facts.declaredLocal, short),
+            ...(facts.release && !facts.localSource ? [`Chosen release: ${facts.release}`] : [])
         );
     } else {
         lines.push(environment.manager ? `Environment: none yet (${environment.manager} project)` : 'Environment: none yet');
@@ -369,8 +441,8 @@ export function environmentReport(facts: EnvironmentFacts, places: { folder?: st
     lines.push(...editorLines(facts, short));
     if (facts.pylance !== undefined) lines.push(pylanceLine(facts.pylance));
     // Only what the lines above do not already say.
-    if (facts.localSource && (!local || !sameDirectory(local, facts.localSource))) {
-        lines.push('Settings ask for a local copy', `  ${short(facts.localSource)}`);
+    if (facts.localSource && (!local || !sameDirectory(local, facts.localSource) || probe?.localBranch !== facts.localBranch)) {
+        lines.push(facts.localBranch ? `Development mode asks for branch ${facts.localBranch} of` : 'Development mode asks for a local copy', `  ${short(facts.localSource)}`);
     }
     if (facts.machineRunner) lines.push(`Also on this computer: ${facts.machineRunner}`);
     return lines.join('\n');
@@ -382,8 +454,9 @@ function runnerLines(probe: Probe | undefined, declaredLocal: string | undefined
     // The version first, always: a local copy has one too, and it is what a report is read for.
     const version = probe.runnerVersion ?? 'installed';
     const local = probe.localSource;
-    const lines = local ? [`jpipe-runner: ${version} (local copy)`, `  ${short(local)}`] : [`jpipe-runner: ${version}`];
-    if (local && declaredLocal && declaredLocal !== probe.runnerVersion) lines.push(`  now ${declaredLocal}: reinstall it`);
+    const from = probe.localBranch ? `branch ${probe.localBranch}${probe.localCommit ? ` at ${shortCommit(probe.localCommit)}` : ''}` : 'local copy';
+    const lines = local ? [`jpipe-runner: ${version} (${from})`, `  ${short(local)}`] : [`jpipe-runner: ${version}`];
+    if (local && probe.localCommit === undefined && declaredLocal && declaredLocal !== probe.runnerVersion) lines.push(`  now ${declaredLocal}: reinstall it`);
     // Below the recommended release, what upgrading brings, each from the release that brings it.
     if (releaseNumbers(probe.runnerVersion) !== undefined) {
         for (const [feature, { since, brings }] of Object.entries(RUNNER_FEATURES)) {
@@ -402,7 +475,9 @@ function editorLines(facts: EnvironmentFacts, short: (file: string) => string): 
 
 /** The interpreter a run can use: the workspace's, once it can run libraries, selected or not. */
 export function runnablePython(status: EnvironmentStatus): string | undefined {
-    // A local runner installed before its version moved still runs, with its current code.
+    // A local runner installed before its version moved still runs, with its current code. One
+    // installed from a branch that moved on since does not: it would run code the branch no longer
+    // is, which is not what a run of the branch is for.
     const stale = status.kind === 'runner-source' && status.stale !== undefined;
     return status.kind === 'ready' || status.kind === 'unselected' || stale ? status.python : undefined;
 }
@@ -453,8 +528,9 @@ export function statusMessage(status: EnvironmentStatus): string | undefined {
         case 'missing-runner': return status.outdated
             ? `This workspace's Python environment has jpipe-runner ${status.outdated}; step libraries need ${MIN_RUNNER.join('.')} or newer.`
             : 'jpipe-runner is not installed in this workspace\'s Python environment.';
+        case 'other-release': return `This workspace's Python environment has jpipe-runner ${status.installed}; the settings choose ${status.wanted}.`;
         case 'runner-source': return runnerSourceMessage(status);
-        case 'no-local-source': return `The local jpipe-runner named in the settings is not a Python project on this computer: ${status.path}`;
+        case 'no-local-source': return noLocalSourceMessage(status);
         case 'no-environment': return 'This workspace has no Python environment of its own.';
     }
 }
@@ -465,9 +541,11 @@ export function fixLabel(status: EnvironmentStatus): string | undefined {
         case 'missing-runner':
             if (status.manager) return `${status.outdated ? 'Upgrade' : 'Add'} jpipe-runner with ${status.manager}`;
             return `${status.outdated ? 'Upgrade' : 'Install'} jpipe-runner`;
+        case 'other-release':
+            return status.manager ? `Switch to jpipe-runner ${status.wanted} with ${status.manager}` : `Install jpipe-runner ${status.wanted}`;
         case 'unselected': return 'Use the Workspace\'s Environment';
         case 'runner-source':
-            if (status.stale) return 'Reinstall the Local jpipe-runner';
+            if (status.stale || status.behind) return 'Reinstall the Local jpipe-runner';
             return status.wanted ? 'Install the Local jpipe-runner' : 'Install the Published jpipe-runner';
         case 'no-environment': return 'Create Environment';
         default: return undefined;
@@ -487,13 +565,26 @@ export interface RequirementChange {
     change: 'create' | 'add' | 'replace';
 }
 
+function noLocalSourceMessage(status: Extract<EnvironmentStatus, { kind: 'no-local-source' }>): string {
+    if (!status.path) return 'Development mode is on, but no folder of jpipe-runner is set in the settings.';
+    if (status.branch) return `jPipe could not find branch ${status.branch} in the local jpipe-runner named in the settings (${status.path}). Is it a branch of that folder, and is git installed?`;
+    return `The local jpipe-runner named in the settings is not a Python project on this computer: ${status.path}`;
+}
+
+/** `branch feat of your local copy (~/jpipe-runner)`, or `your local copy (~/jpipe-runner)`. */
+const localCopy = (status: { wanted?: string; branch?: string }): string =>
+    `${status.branch ? `branch ${status.branch} of ` : ''}your local copy (${status.wanted})`;
+
 function runnerSourceMessage(status: Extract<EnvironmentStatus, { kind: 'runner-source' }>): string {
+    if (status.behind) {
+        return `Branch ${status.branch} of your local jpipe-runner has moved on to ${shortCommit(status.behind.head)}, but this workspace's Python environment has it at ${shortCommit(status.behind.installed)}. Install it again to run the new commits.`;
+    }
     if (status.stale) {
         return `Your local jpipe-runner is now ${status.stale.declared}, but this workspace's Python environment still has it as ${status.stale.recorded}, as it was when installed. Runs use its current code; its version and dependencies are the old ones.`;
     }
     return status.wanted
-        ? `This workspace's Python environment does not run the local jpipe-runner named in the settings (${status.wanted}).`
-        : `This workspace's Python environment runs a local jpipe-runner (${status.installed}), and the settings no longer name one.`;
+        ? `This workspace's Python environment does not run ${localCopy(status)} of jpipe-runner, as development mode asks.`
+        : `This workspace's Python environment runs a local jpipe-runner (${status.installed}), and development mode is off.`;
 }
 
 /**
@@ -502,18 +593,19 @@ function runnerSourceMessage(status: Extract<EnvironmentStatus, { kind: 'runner-
  * last line saying that is all. `undefined` when the fix touches nothing of the project's —
  * pointing the editor at an environment already there.
  */
-export function fixConsequences(status: EnvironmentStatus, requirement?: RequirementChange, nickname?: string, localSource?: string): string | undefined {
+export function fixConsequences(status: EnvironmentStatus, requirement?: RequirementChange, nickname?: string, local?: { path: string; branch?: string }): string | undefined {
     const recorded = recordedStep(requirement);
     switch (status.kind) {
         case 'no-environment': {
             const created = 'Create a Python environment for this workspace, in a new .venv folder';
             return fixPlan([
                 nickname ? `${created}, shown as “${nickname}” in VS Code and in your terminal` : created,
-                localSource ? `Install jpipe-runner in it, from your local copy (${localSource})` : 'Install jpipe-runner in it',
+                local ? `Install jpipe-runner in it, from ${localCopy({ wanted: local.path, branch: local.branch })}` : 'Install jpipe-runner in it',
                 recorded
             ], 'Nothing else in this folder is changed.');
         }
         case 'missing-runner': return addRunnerConsequences(status, recorded);
+        case 'other-release': return otherReleaseConsequences(status);
         case 'runner-source': return runnerSourceConsequences(status);
         default: return undefined;
     }
@@ -532,6 +624,15 @@ function addRunnerConsequences(status: Extract<EnvironmentStatus, { kind: 'missi
     ], recorded ? 'No other file of your project is changed.' : 'None of your project files is changed.');
 }
 
+function otherReleaseConsequences(status: Extract<EnvironmentStatus, { kind: 'other-release' }>): string {
+    if (status.manager) {
+        return fixPlan([`Ask ${status.manager} to set this project's jpipe-runner to ${status.wanted}`],
+            `${status.manager} will update ${MANAGER_FILES[status.manager]}.`);
+    }
+    return fixPlan([`Install jpipe-runner ${status.wanted} in this workspace's Python environment, in place of ${status.installed}`],
+        'None of your project files is changed.');
+}
+
 function runnerSourceConsequences(status: Extract<EnvironmentStatus, { kind: 'runner-source' }>): string {
     if (!status.wanted) {
         return fixPlan([
@@ -542,11 +643,10 @@ function runnerSourceConsequences(status: Extract<EnvironmentStatus, { kind: 'ru
     const overridden = status.manager
         ? ` ${status.manager} does not know about it, and may put its own back the next time it installs.`
         : '';
-    return fixPlan([
-        status.stale
-            ? `Install your local jpipe-runner (${status.wanted}) again in this workspace's Python environment, so that it is ${status.stale.declared} there too, with its current dependencies`
-            : `Install jpipe-runner in this workspace's Python environment, from your local copy (${status.wanted})`
-    ], `None of your project files is changed.${overridden}`);
+    let step = `Install jpipe-runner in this workspace's Python environment, from ${localCopy(status)}`;
+    if (status.stale) step = `Install your local jpipe-runner (${status.wanted}) again in this workspace's Python environment, so that it is ${status.stale.declared} there too, with its current dependencies`;
+    if (status.behind) step = `Install ${localCopy(status)} again in this workspace's Python environment, at its latest commit, ${shortCommit(status.behind.head)}`;
+    return fixPlan([step], `None of your project files is changed.${overridden}`);
 }
 
 /** A fix's plan as the dialog shows it: what jPipe will do, a line per step, then what it leaves alone. */
@@ -602,16 +702,64 @@ export function createEnvironmentCommands(base: Command, folder: string, platfor
 /** Why no environment can be created, when no Python recent enough was found. */
 export const NO_BASE_PYTHON = `Creating an environment needs Python ${MIN_PYTHON.join('.')} or newer, and none was found. Install one (python.org, Homebrew, or your distribution), then try again.`;
 
-/** What pip installs the runner from: a requirement, or a local checkout, installed editable. */
-export type RunnerSource = string | { local: string };
+/** What pip installs the runner from: a requirement, or a local checkout, editable or from one of its branches. */
+export type RunnerSource = string | { local: string; branch?: string };
+
+/** What pip is given to install a branch of a local checkout: `git+file:///…/jpipe-runner@feat`. */
+export function branchUrl(local: string, branch: string): string {
+    return `git+${pathToFileURL(local).href}@${branch}`;
+}
 
 /**
  * The command that installs jpipe-runner into the environment `python` belongs to. A local
  * checkout is installed editable, so the environment runs its source as it stands and a change
- * to the runner shows in the next run, with nothing to reinstall.
+ * to the runner shows in the next run, with nothing to reinstall. A branch of it is installed as
+ * that branch is now, from its commits, leaving the checkout's own files alone.
  */
 export function installRunnerCommand(python: string, runner: RunnerSource = RUNNER_REQUIREMENT): Command {
-    return { program: python, args: ['-m', 'pip', 'install', ...(typeof runner === 'string' ? [runner] : ['-e', runner.local])] };
+    if (typeof runner === 'string') return { program: python, args: ['-m', 'pip', 'install', runner] };
+    return { program: python, args: ['-m', 'pip', 'install', ...(runner.branch ? [branchUrl(runner.local, runner.branch)] : ['-e', runner.local])] };
+}
+
+/**
+ * The steps that install `runner` from a local checkout, whatever the environment has now.
+ *
+ * Editable, one: pip always installs an editable copy again. From a branch, two: pip finds the
+ * same version installed and stops, however many commits the branch had since, so the first step
+ * forces it in, without its dependencies, which would all be installed again; the second, an
+ * ordinary install, adds any dependency the new commits brought.
+ */
+export function installLocalCommands(python: string, runner: { local: string; branch?: string }, verb = 'Install'): FixStep[] {
+    const name = `${verb} the local jpipe-runner`;
+    const install = installRunnerCommand(python, runner);
+    if (!runner.branch) return [{ name, ...install }];
+    return [
+        { name, program: python, args: ['-m', 'pip', 'install', '--force-reinstall', '--no-deps', ...install.args.slice(3)] },
+        { name: 'Install its dependencies', ...install }
+    ];
+}
+
+/** The command that asks a checkout which commit `branch` is at: what tells a branch install it is behind. */
+export function branchHeadCommand(local: string, branch: string): Command {
+    return { program: 'git', args: ['-C', local, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`] };
+}
+
+/** The commit `branchHeadCommand` answered, if it is one. */
+export function parseCommit(stdout: string): string | undefined {
+    const line = stdout.trim();
+    return /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(line) ? line : undefined;
+}
+
+/**
+ * How the development runner a run uses is named in the Run panel: where it is, and which code of
+ * it runs, so that a run is never taken for one of a release.
+ */
+export function developmentRunnerLabel(probe: Pick<Probe, 'localSource' | 'localBranch' | 'localCommit' | 'runnerVersion'>, short: (file: string) => string = file => file): string | undefined {
+    if (probe.localSource === undefined) return undefined;
+    const code = probe.localBranch
+        ? `branch ${probe.localBranch}${probe.localCommit ? ` at ${shortCommit(probe.localCommit)}` : ''}`
+        : 'working copy';
+    return `Development jpipe-runner${probe.runnerVersion ? ` ${probe.runnerVersion}` : ''} · ${short(probe.localSource)} · ${code}`;
 }
 
 /**

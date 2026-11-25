@@ -20,6 +20,13 @@ import {
     overInherited,
     addRunnerCommand,
     basePythonCandidates,
+    branchHeadCommand,
+    developmentRunnerLabel,
+    installLocalCommands,
+    isChosenRelease,
+    parseCommit,
+    shortPath,
+    RUNNER_REQUIREMENT,
     chooseBasePython,
     createEnvironmentCommands,
     detectManager,
@@ -51,12 +58,16 @@ import {
     type EnvironmentFacts,
     type EnvironmentStatus,
     type FixStep,
+    type LocalRunner,
     type Manager,
     type Probe,
     type RequirementChange,
     type WorkspaceEnvironment
 } from './python-environment.js';
-import { ENVIRONMENT_SETTING, LOCAL_SOURCE_SETTING, OFFER_SETUP_SETTING, SELECT_IN_EDITOR_SETTING, type EnvironmentMode } from './runner-invocation.js';
+import {
+    DEVELOPMENT_SETTING, ENVIRONMENT_SETTING, LOCAL_BRANCH_SETTING, LOCAL_SOURCE_SETTING, OFFER_SETUP_SETTING, SELECT_IN_EDITOR_SETTING,
+    VERSION_SETTING, type EnvironmentMode
+} from './runner-invocation.js';
 
 /**
  * The part of the Python extension's API this uses, declared structurally: the extension is an
@@ -111,6 +122,8 @@ const PYTHON_ENVS_EXTENSION = 'ms-python.vscode-python-envs';
 const DECLINED_KEY = 'jpipe.runner.environmentDeclined';
 /** The same, for the offer to install Pylance. */
 const PYLANCE_DECLINED_KEY = 'jpipe.runner.pylanceDeclined';
+/** Set once settings written before development mode had a switch have been given it. */
+const DEVELOPMENT_MIGRATED_KEY = 'jpipe.runner.developmentModeMigrated';
 /** The interpreter last selected for the editor from here, so a later choice of the user's is left alone. */
 const SELECTED_KEY = 'jpipe.runner.selectedEnvironment';
 
@@ -130,7 +143,8 @@ function checkSummary(kind: string, facts: EnvironmentFacts, requirement: string
     if (environment.manager) workspace += ` (${environment.manager})`;
     if (probe) workspace += `, jpipe-runner ${runnerSummary(probe)}`;
     const parts = [workspace];
-    if (facts.localSource) parts.push(`the settings name the local jpipe-runner ${facts.localSource}`);
+    if (facts.localSource) parts.push(`development mode runs ${facts.localBranch ? `branch ${facts.localBranch} of ` : ''}the local jpipe-runner ${facts.localSource}`);
+    if (facts.release) parts.push(`the settings choose jpipe-runner ${facts.release}`);
     // `null` is an editor with no Python extension, which has no interpreter to name.
     if (facts.editorPython !== null) parts.push(`the editor uses ${facts.editorPython ?? 'none'}`);
     parts.push(`this machine's jpipe-runner is ${facts.machineRunner ?? 'not installed'}, so pip installs ${requirement}`);
@@ -140,7 +154,8 @@ function checkSummary(kind: string, facts: EnvironmentFacts, requirement: string
 function runnerSummary(probe: Probe): string {
     if (!probe.hasRunner) return 'not found';
     const version = probe.runnerVersion ?? 'found';
-    return probe.localSource ? `${version} from ${probe.localSource}` : version;
+    if (!probe.localSource) return version;
+    return probe.localBranch ? `${version} from branch ${probe.localBranch} (${probe.localCommit ?? 'no commit'}) of ${probe.localSource}` : `${version} from ${probe.localSource}`;
 }
 
 /** A requirements file as a fix would leave it. */
@@ -282,10 +297,41 @@ export class RunnerEnvironment implements vscode.Disposable {
         }
     }
 
+    /**
+     * Before development mode had a switch, naming a local jpipe-runner was what turned it on. So
+     * wherever one is named and the switch is not set, the switch is turned on, once, in that same
+     * place: a user working on the runner keeps running their copy after upgrading.
+     */
+    private async migrateDevelopmentMode(): Promise<void> {
+        // The user's settings once for this computer, a workspace's once for that workspace: each
+        // is looked at the first time it can be, and never again, so a switch turned off later stays off.
+        const states = [this.context.globalState, this.context.workspaceState];
+        const [userDone, workspaceDone] = states.map(state => state.get<boolean>(DEVELOPMENT_MIGRATED_KEY) === true);
+        if (userDone && workspaceDone) return;
+        const configuration = vscode.workspace.getConfiguration('jpipe', this.folder?.uri);
+        const source = configuration.inspect<string>(LOCAL_SOURCE_SETTING);
+        const mode = configuration.inspect<boolean>(DEVELOPMENT_SETTING);
+        const scopes = [
+            [userDone, source?.globalValue, mode?.globalValue, vscode.ConfigurationTarget.Global],
+            [workspaceDone, source?.workspaceValue, mode?.workspaceValue, vscode.ConfigurationTarget.Workspace],
+            [workspaceDone, source?.workspaceFolderValue, mode?.workspaceFolderValue, vscode.ConfigurationTarget.WorkspaceFolder]
+        ] as const;
+        try {
+            for (const [done, named, switched, target] of scopes) {
+                if (done || typeof named !== 'string' || !named.trim() || switched !== undefined) continue;
+                await configuration.update(DEVELOPMENT_SETTING, true, target);
+                this.logger.info(`Development mode turned on where the local jpipe-runner ${named} was already named (${vscode.ConfigurationTarget[target]} settings).`);
+            }
+            for (const state of states) await state.update(DEVELOPMENT_MIGRATED_KEY, true);
+        } catch (err: unknown) {
+            this.logger.error(`Could not turn development mode on for the local jpipe-runner already named: ${messageOf(err)}`);
+        }
+    }
+
     /** Look at the workspace for the first time. Called once, as the extension activates. */
     start(): void {
         const first = (): Promise<void> => this.checked();
-        this.checking = this.connect().then(first, first);
+        this.checking = this.migrateDevelopmentMode().then(() => this.connect()).then(first, first);
         // The editor may have flagged the import before this extension was listening: Pylance
         // does not wait for us. Look at what is already there once the first check is in.
         void this.checking.then(() => {
@@ -306,6 +352,14 @@ export class RunnerEnvironment implements vscode.Disposable {
         return awaited === this.checking ? this.current : this.settled();
     }
 
+    /**
+     * The status a run goes by. In development mode with a branch, looked at again first: a commit
+     * made since the last check is not otherwise noticed, and the run would use the code before it.
+     */
+    async forRun(): Promise<EnvironmentStatus> {
+        return this.localBranch ? this.lookAgain() : this.settled();
+    }
+
     /** Look at the workspace again, and give the status that check settles on. */
     private async lookAgain(): Promise<EnvironmentStatus> {
         this.recheck();
@@ -320,15 +374,60 @@ export class RunnerEnvironment implements vscode.Disposable {
         return vscode.workspace.getConfiguration('jpipe', this.folder?.uri).get<T>(name, fallback) ?? fallback;
     }
 
-    /** The local jpipe-runner checkout the settings name, as a path, or `undefined` for none. */
+    /** Whether development mode is on: runs then use a local jpipe-runner rather than a release. */
+    get development(): boolean {
+        return this.mode === 'workspace' && this.setting<boolean>(DEVELOPMENT_SETTING, false) === true;
+    }
+
+    /** The local jpipe-runner checkout development mode runs, as a path, or `undefined` outside it or for none. */
     private get localSource(): string | undefined {
+        if (!this.development) return undefined;
         const configured = this.setting<string>(LOCAL_SOURCE_SETTING, '').trim();
         return configured ? path.resolve(expandTilde(configured, os.homedir())) : undefined;
+    }
+
+    /** The branch of it development mode installs, or `undefined` for its working copy. */
+    private get localBranch(): string | undefined {
+        return this.development ? this.setting<string>(LOCAL_BRANCH_SETTING, '').trim() || undefined : undefined;
+    }
+
+    /** What the local runner is installed from: the checkout, and its branch if one is named. */
+    private get localInstall(): { local: string; branch?: string } | undefined {
+        const local = this.localSource;
+        if (!local) return undefined;
+        const branch = this.localBranch;
+        return branch ? { local, branch } : { local };
+    }
+
+    /** What the version setting says, as written. */
+    private get configuredRelease(): string {
+        return this.setting<string>(VERSION_SETTING, '').trim();
+    }
+
+    /**
+     * The jpipe-runner release the settings choose, or `undefined` for any recent enough. One that
+     * cannot be installed is ignored (each check says so in the log); development mode has no use for one.
+     */
+    private get release(): string | undefined {
+        const configured = this.configuredRelease;
+        return configured && !this.development && isChosenRelease(configured) ? configured : undefined;
+    }
+
+    /** The release the workspace's environment has, as the last check found it. */
+    get installedRelease(): string | undefined {
+        return this.facts.probe?.localSource ? undefined : this.facts.probe?.runnerVersion;
     }
 
     /** The local checkout the workspace's environment runs, when it does: shown, so it is not mistaken for a release. */
     get localRunner(): string | undefined {
         return runnablePython(this.current) ? this.facts.probe?.localSource : undefined;
+    }
+
+    /** The development runner runs use, as the Run panel names it, or `undefined` when they use a release. */
+    get developmentLabel(): string | undefined {
+        const probe = this.facts.probe;
+        if (!probe || !runnablePython(this.current)) return undefined;
+        return developmentRunnerLabel(probe, file => shortPath(file, { home: os.homedir() }));
     }
 
     private get mode(): EnvironmentMode {
@@ -498,10 +597,25 @@ export class RunnerEnvironment implements vscode.Disposable {
             return;
         }
         const localSource = this.localSource;
+        const localBranch = this.localBranch;
+        if (this.development && !localSource) {
+            this.conclude({ kind: 'no-local-source', path: '' }, 'Runner environment: development mode is on, but no local jpipe-runner is set.');
+            return;
+        }
         if (localSource && !isPythonProject(existsIn(localSource))) {
             this.conclude({ kind: 'no-local-source', path: localSource },
                 `Runner environment: the local jpipe-runner named in the settings, ${localSource}, is not a Python project.`);
             return;
+        }
+        const head = localSource && localBranch ? await this.branchHead(localSource, localBranch) : undefined;
+        if (localSource && localBranch && !head) {
+            this.conclude({ kind: 'no-local-source', path: localSource, branch: localBranch },
+                `Runner environment: the local jpipe-runner ${localSource} has no branch ${localBranch}.`);
+            return;
+        }
+        const release = this.release;
+        if (!release && !this.development && this.configuredRelease) {
+            this.logger.warn(`The jpipe-runner version setting, "${this.configuredRelease}", is not a release from ${RUNNER_REQUIREMENT.split('>=')[1]} on; any release will do.`);
         }
         // Two programs to start, neither waiting on the other: the workspace's environment, which
         // may ask Pipenv or Poetry, and the jpipe-runner installed on the machine.
@@ -509,12 +623,15 @@ export class RunnerEnvironment implements vscode.Disposable {
             folder ? this.workspaceEnvironment(folder) : Promise.resolve<WorkspaceEnvironment>({}),
             this.machineRunnerRelease(folder)
         ]);
-        this.requirement = runnerRequirement(machineRelease);
+        this.requirement = runnerRequirement(machineRelease, release);
         const probe = environment.python ? await this.probe({ program: environment.python, args: [] }, folder) : undefined;
         // The editor follows an environment that answers; one that does not is left alone.
         const { selected, editor } = await this.editorSelection(probe ? environment.python : undefined, folder);
-        const declaredLocal = localSource ? this.declaredLocal(localSource) : undefined;
-        const status = environmentStatus(environment, probe, editor, localSource, declaredLocal);
+        const declaredLocal = localSource && !localBranch ? this.declaredLocal(localSource) : undefined;
+        const local: LocalRunner | undefined = localSource
+            ? { path: localSource, ...(declaredLocal ? { declared: declaredLocal } : {}), ...(localBranch ? { branch: localBranch } : {}), ...(head ? { head } : {}) }
+            : undefined;
+        const status = environmentStatus(environment, probe, editor, local, release);
         this.facts = {
             environment,
             ...(probe ? { probe } : {}),
@@ -522,7 +639,9 @@ export class RunnerEnvironment implements vscode.Disposable {
             editorFollows: environment.python !== undefined && selected !== undefined && sameInterpreter(environment.python, selected),
             ...(machineRelease ? { machineRunner: machineRelease } : {}),
             ...(localSource ? { localSource } : {}),
-            ...(declaredLocal ? { declaredLocal } : {})
+            ...(localBranch ? { localBranch } : {}),
+            ...(declaredLocal ? { declaredLocal } : {}),
+            ...(release ? { release } : {})
         };
         this.conclude(status, checkSummary(status.kind, this.facts, this.requirement));
     }
@@ -574,9 +693,21 @@ export class RunnerEnvironment implements vscode.Disposable {
      * recorded is the version it had when it was installed.
      */
     async runnerReleaseNow(python: string, where: { cwd: string; env: NodeJS.ProcessEnv }): Promise<string | undefined> {
-        const local = this.facts.probe?.localSource;
+        // An install from a branch recorded the version of the commit it was made from, which is the code it runs.
+        const local = this.facts.probe?.localCommit === undefined ? this.facts.probe?.localSource : undefined;
         const declared = local ? this.declaredLocal(local) : undefined;
         return declared ?? this.releaseOf(moduleInvocation(python, ['--version']), where);
+    }
+
+    /** The commit `branch` of the checkout at `local` is at now, or `undefined` when it has no such branch. */
+    private async branchHead(local: string, branch: string): Promise<string | undefined> {
+        try {
+            const { stdout } = await this.execute(branchHeadCommand(local, branch), undefined);
+            return parseCommit(stdout);
+        } catch (err: unknown) {
+            this.logger.debug(`git found no branch ${branch} in ${local}: ${messageOf(err)}`);
+            return undefined;
+        }
     }
 
     /** The release of the jpipe-runner installed on the machine, outside any environment, if there is one. */
@@ -728,7 +859,9 @@ export class RunnerEnvironment implements vscode.Disposable {
         }
         const folder = this.folder;
         const requirement = this.requirementEdit(status, folder);
-        const consequences = fixConsequences(status, requirement, folder ? environmentNickname(folder.name) : undefined, this.localSource);
+        const install = this.localInstall;
+        const consequences = fixConsequences(status, requirement, folder ? environmentNickname(folder.name) : undefined,
+            install ? { path: install.local, ...(install.branch ? { branch: install.branch } : {}) } : undefined);
         if (consequences) {
             const answer = await vscode.window.showWarningMessage(`${label}?`, { modal: true, detail: consequences }, label);
             this.logger.info(`${label}: ${answer === label ? 'accepted' : 'refused'}. ${consequences}`);
@@ -742,6 +875,9 @@ export class RunnerEnvironment implements vscode.Disposable {
         switch (status.kind) {
             case 'missing-runner':
                 await this.addRunner(status, folder, requirement);
+                break;
+            case 'other-release':
+                await this.changeRelease(status, folder);
                 break;
             case 'runner-source':
                 await this.changeRunnerSource(status, folder);
@@ -765,11 +901,29 @@ export class RunnerEnvironment implements vscode.Disposable {
         requirement: RequirementEdit | undefined
     ): Promise<void> {
         if (status.manager) {
-            if (folder) await this.addWithManager(status.manager, folder);
+            if (folder) await this.addWithManager(status.manager, folder, this.managerRequirement);
         } else if (status.python) {
             const install = { name: 'Install jpipe-runner', ...installRunnerCommand(status.python, this.requirement) };
             if (await this.runStep(install, folder)) this.write(requirement);
         }
+    }
+
+    /**
+     * What a manager is asked to record: the release the settings choose, else any from the
+     * minimum on. Not the machine's release, which is one computer's, while the record is the
+     * project's (jpipe-vscode ADR-VSC-0026).
+     */
+    private get managerRequirement(): string {
+        return this.release ? this.requirement : RUNNER_REQUIREMENT;
+    }
+
+    /** Give an environment the release the settings choose, in place of the one it has. */
+    private async changeRelease(status: Extract<EnvironmentStatus, { kind: 'other-release' }>, folder: vscode.WorkspaceFolder | undefined): Promise<void> {
+        if (status.manager) {
+            if (folder) await this.addWithManager(status.manager, folder, this.managerRequirement);
+            return;
+        }
+        await this.runStep({ name: `Install jpipe-runner ${status.wanted}`, ...installRunnerCommand(status.python, this.requirement) }, folder);
     }
 
     /** Install the local runner the settings name, or put a published one back in its place. */
@@ -778,8 +932,11 @@ export class RunnerEnvironment implements vscode.Disposable {
         folder: vscode.WorkspaceFolder | undefined
     ): Promise<void> {
         if (status.wanted) {
-            const verb = status.stale ? 'Reinstall' : 'Install';
-            await this.runStep({ name: `${verb} the local jpipe-runner`, ...installRunnerCommand(status.python, { local: status.wanted }) }, folder);
+            const verb = status.stale || status.behind ? 'Reinstall' : 'Install';
+            const install = { local: status.wanted, ...(status.branch ? { branch: status.branch } : {}) };
+            const steps = installLocalCommands(status.python, install, verb);
+            if (folder) await this.runSteps(steps, folder);
+            else for (const step of steps) if (!await this.runStep(step, folder)) break;
         } else if (folder) {
             await this.runSteps(restorePublishedCommands(status.python, this.requirement), folder);
         }
@@ -792,7 +949,7 @@ export class RunnerEnvironment implements vscode.Disposable {
             void vscode.window.showErrorMessage(NO_BASE_PYTHON);
             return;
         }
-        const runner = this.localSource ? { local: this.localSource } : this.requirement;
+        const runner = this.localInstall ?? this.requirement;
         const steps = createEnvironmentCommands(base, folder.uri.fsPath, process.platform, runner, environmentNickname(folder.name));
         if (await this.runSteps(steps, folder)) this.write(requirement);
     }
@@ -806,8 +963,8 @@ export class RunnerEnvironment implements vscode.Disposable {
      * nothing else is tried: installing with pip behind the tool's back would put the environment
      * out of step with its lock file.
      */
-    private async addWithManager(manager: Manager, folder: vscode.WorkspaceFolder): Promise<void> {
-        const step = addRunnerCommand(manager);
+    private async addWithManager(manager: Manager, folder: vscode.WorkspaceFolder, runner: string = RUNNER_REQUIREMENT): Promise<void> {
+        const step = addRunnerCommand(manager, runner);
         if (!await this.runStep(step, folder)) {
             void vscode.window.showErrorMessage(
                 `${manager} could not add jpipe-runner — see the terminal. Is ${step.program} installed and on your PATH?`);

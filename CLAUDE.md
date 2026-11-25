@@ -57,7 +57,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
       src/
         extension/              ← extension host. The only place `vscode` may be imported.
           main.ts               ← activate/deactivate: constructs and wires, nothing else
-          commands.ts           ← the 38 contributed commands, as a table (ADR-VSC-0017)
+          commands.ts           ← the 39 contributed commands, as a table (ADR-VSC-0017)
           exclusion-commands.ts ← the exclusion flows and their failure messages
           exclusions.ts         ← excluded-path manager, decorations, code lenses
           process-launcher.ts   ← Windows command resolution, cmd.exe escaping, running a program (tested)
@@ -76,6 +76,8 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             library-scan.ts     ← finds step libraries by reading Python, never importing it (tested)
             step-binding.ts     ← the runner's id → element binding rules, for the Outline (tested)
             runner-invocation.ts ← which runner program, which arguments, `--jobs` from the jobs setting (tested; ADR-VSC-0035)
+            runner-releases.ts  ← the releases PyPI lists, as the release picker shows them (tested; ADR-VSC-0036)
+            release-picker.ts   ← Choose jpipe-runner Release…: fetch, pick, write the version setting, Set Up
             libraries-view.ts   ← the Libraries view; checkboxes = `jpipe.runner.libraries`
             run-model.ts        ← ▶ and ✓: compile to JSON, launch the runner as a VS Code task, hand its report and drawings to the session
             run-report.ts       ← the runner's JSON report → the rows of the Results view (tested; ADR-VSC-0029)
@@ -85,7 +87,7 @@ jpipe-vscode/                   ← monorepo root (npm workspaces)
             run-panel.ts        ← the Run panel beside the editor: lifecycle, messages, open element, save drawing
             run-shell.ts        ← the Run panel's HTML shell
             results-view.ts     ← the Results view, in the bottom panel; opened from the Run panel
-            python-environment.ts ← which environment is the workspace's own? can it run steps? which fix? (tested; ADR-VSC-0026)
+            python-environment.ts ← which environment is the workspace's own? can it run steps? which fix? the chosen release, development mode's copy or branch (tested; ADR-VSC-0026, ADR-VSC-0036)
             pylance.ts          ← is Pylance installed? install it. Wanted, never declared (ADR-VSC-0032)
             environment.ts      ← finds that environment, points the Python extension at it, asks consent, runs fixes
             step-terminal.ts    ← runs a fix step itself, shown in a task's terminal: a task cannot unset an inherited variable
@@ -290,7 +292,7 @@ ADR-VSC-0004.
 
 ## VS Code Commands
 
-`packages/extension/package.json` is the source of truth — it declares **38** commands, with
+`packages/extension/package.json` is the source of truth — it declares **39** commands, with
 their menu placement and `when`-clauses. The ones worth knowing:
 
 | Command ID | Title |
@@ -312,7 +314,8 @@ their menu placement and `when`-clauses. The ones worth knowing:
 | `jpipe.libraries.new` / `checkAll` / `uncheckAll` / `refresh` | Libraries view toolbar |
 | `jpipe.runLibrary` / `checkLibrary` | Run as jPipe / Check as jPipe Library: the ▶ menu (`editor/title/run`) of a Python file that is a checked library; act on the model selected in Models, with every checked library (ADR-VSC-0029) |
 | `jpipe.results.showOutput` | Results view toolbar: the terminal the last run printed in (ADR-VSC-0029) |
-| `jpipe.runner.fixEnvironment` / `checkEnvironment` | Set up / check the workspace's Python environment for runs (linked from the `jpipe.runner.environment` setting; ADR-VSC-0026) |
+| `jpipe.runner.fixEnvironment` / `checkEnvironment` | Set up / check the workspace's Python environment for runs (linked from the runner's settings; ADR-VSC-0026) |
+| `jpipe.runner.selectVersion` | Choose jpipe-runner Release…: a release from PyPI, linked from the `jpipe.runner.version` setting (ADR-VSC-0036) |
 
 Settings groups are titled `jPipe › <Tool> › <Group>` (`Compiler` or `Runner`, each starting with `General`), because VS Code has one level of groups; a new group follows it (ADR-VSC-0028, held by `test/settings.test.ts`). Setting identifiers never change with a group's title.
 

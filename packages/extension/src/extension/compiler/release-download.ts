@@ -119,7 +119,7 @@ export function resolveRedirect(from: string, location: string): string {
  * host allowlist, a redirect ceiling — and it was previously buried in a private method of a
  * class no test could construct.
  */
-export function validateRequestUrl(url: string, redirects: number): URL {
+export function validateRequestUrl(url: string, redirects: number, allows: (host: string) => boolean = isAllowedHost): URL {
     if (redirects > MAX_REDIRECTS) throw new Error('Too many redirects.');
 
     let parsed: URL;
@@ -129,7 +129,7 @@ export function validateRequestUrl(url: string, redirects: number): URL {
         throw new Error(`Invalid URL: ${url}`);
     }
     if (parsed.protocol !== 'https:') throw new Error(`Refusing non-HTTPS URL: ${url}`);
-    if (!isAllowedHost(parsed.hostname)) throw new Error(`Refusing to contact untrusted host: ${parsed.hostname}`);
+    if (!allows(parsed.hostname)) throw new Error(`Refusing to contact untrusted host: ${parsed.hostname}`);
     return parsed;
 }
 
@@ -158,16 +158,28 @@ export const httpsTransport: Transport = (url, onResponse, onError) => {
     req.on('error', onError);
 };
 
+/**
+ * Who a JSON request is made of: the hosts it may reach, and its name in what is said when it
+ * fails. GitHub's by default, for the compiler's releases; jpipe-runner's are listed by PyPI.
+ */
+export interface JsonService {
+    allows: (host: string) => boolean;
+    name: string;
+}
+
+export const GITHUB_API: JsonService = { allows: isAllowedHost, name: 'GitHub API' };
+
 /** Issue a validated GET, rejecting before opening a socket if the URL is not allowed. */
 function get(
     url: string,
     redirects: number,
     onError: (err: Error) => void,
     onResponse: (res: IncomingMessage) => void,
-    transport: Transport = httpsTransport
+    transport: Transport = httpsTransport,
+    allows: (host: string) => boolean = isAllowedHost
 ): void {
     try {
-        validateRequestUrl(url, redirects);
+        validateRequestUrl(url, redirects, allows);
     } catch (err) {
         onError(err as Error);
         return;
@@ -176,23 +188,23 @@ function get(
 }
 
 /** HTTPS GET returning parsed JSON. Enforces the host allowlist and follows redirects. */
-export function httpsGetJson(url: string, redirects = 0, transport: Transport = httpsTransport): Promise<unknown> {
+export function httpsGetJson(url: string, redirects = 0, transport: Transport = httpsTransport, service: JsonService = GITHUB_API): Promise<unknown> {
     return new Promise((resolve, reject) => {
         get(url, redirects, reject, res => {
             const status = res.statusCode ?? 0;
             if (status >= 300 && status < 400 && res.headers.location) {
                 res.resume();
-                resolve(httpsGetJson(resolveRedirect(url, res.headers.location), redirects + 1, transport));
+                resolve(httpsGetJson(resolveRedirect(url, res.headers.location), redirects + 1, transport, service));
                 return;
             }
             if (status === 403) {
                 res.resume();
-                reject(new Error('GitHub API rate limit reached. Please try again later.'));
+                reject(new Error(`${service.name} rate limit reached. Please try again later.`));
                 return;
             }
             if (status !== 200) {
                 res.resume();
-                reject(new Error(`GitHub API request failed (HTTP ${status}).`));
+                reject(new Error(`${service.name} request failed (HTTP ${status}).`));
                 return;
             }
             const chunks: Buffer[] = [];
@@ -201,11 +213,11 @@ export function httpsGetJson(url: string, redirects = 0, transport: Transport = 
                 try {
                     resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
                 } catch {
-                    reject(new Error('Could not parse the GitHub API response.'));
+                    reject(new Error(`Could not parse the ${service.name} response.`));
                 }
             });
             res.on('error', reject);
-        }, transport);
+        }, transport, service.allows);
     });
 }
 

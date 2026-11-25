@@ -119,6 +119,11 @@ export interface RunPanelState {
     elements: string[];
     /** Why the run on show no longer says what a run would, or null while it does. */
     outOfDate: string | null;
+    /**
+     * The development jpipe-runner the run uses, as it is named (`Development jpipe-runner 4.6.0.dev0
+     * · ~/jpipe-runner · branch feat at 1a2b3c4`), or null when it uses a release.
+     */
+    development: string | null;
 }
 
 export type HostToRunPanel =

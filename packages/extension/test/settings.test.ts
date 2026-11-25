@@ -35,6 +35,25 @@ describe('the settings groups', () => {
         expect(new Set(groups.map(group => group.order)).size).toBe(groups.length);
     });
 
+    test('for the runner: General, then Assistance, then Development', () => {
+        // How it is reached first; then what jPipe offers to do for you; then work on the runner itself.
+        const runner = groups.filter(group => toolOf(group.title) === 'Runner');
+        expect(runner.map(group => TITLE.exec(group.title)![2])).toEqual(['General', 'Assistance', 'Development']);
+        const at = (id: string) => TITLE.exec(groups.find(group => id in group.properties)!.title)![2];
+        expect(['jpipe.runner.environment', 'jpipe.runner.version', 'jpipe.runner.command', 'jpipe.runner.jobs'].map(at))
+            .toEqual(['General', 'General', 'General', 'General']);
+        expect(['jpipe.runner.offerSetup', 'jpipe.runner.selectInEditor'].map(at)).toEqual(['Assistance', 'Assistance']);
+        expect(['jpipe.runner.developmentMode', 'jpipe.runner.localSource', 'jpipe.runner.localBranch'].map(at))
+            .toEqual(['Development', 'Development', 'Development']);
+    });
+
+    test('link to what sets them: the release picker, and the environment\'s set-up and check', () => {
+        const description = (id: string) => (groups.find(group => id in group.properties)!.properties as unknown as Record<string, { markdownDescription?: string }>)[id].markdownDescription ?? '';
+        expect(description('jpipe.runner.version')).toContain('(command:jpipe.runner.selectVersion)');
+        expect(description('jpipe.runner.environment')).toContain('(command:jpipe.runner.checkEnvironment)');
+        expect(description('jpipe.runner.offerSetup')).toContain('(command:jpipe.runner.fixEnvironment)');
+    });
+
     test('keep the runner\'s settings out of the compiler\'s groups, and the reverse', () => {
         for (const group of groups) {
             const runner = toolOf(group.title) === 'Runner';

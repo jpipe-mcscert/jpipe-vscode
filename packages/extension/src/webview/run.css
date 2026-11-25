@@ -102,6 +102,14 @@
 
 #notice-banner[data-phase="stopped"] .banner-glyph { color: var(--vscode-descriptionForeground); }
 
+/* A run of a development jpipe-runner, not of a release: said first, for as long as it is on show. */
+#development-banner {
+    background: color-mix(in srgb, var(--vscode-editorInfo-foreground) 15%, var(--vscode-editorWidget-background));
+    border-bottom: 1px solid var(--vscode-editorInfo-foreground);
+}
+
+#development-banner .banner-glyph { color: var(--vscode-editorInfo-foreground); }
+
 #out-of-date-banner {
     background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 15%, var(--vscode-editorWidget-background));
     border-bottom: 1px solid var(--vscode-editorWarning-foreground);

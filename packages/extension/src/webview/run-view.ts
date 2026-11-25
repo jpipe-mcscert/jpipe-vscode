@@ -144,6 +144,7 @@ export class RunPage {
         byId<HTMLButtonElement>(this.doc, 'check-button').disabled = running;
         byId<HTMLButtonElement>(this.doc, 'stop-button').disabled = !running;
         this.showVerdict(state);
+        this.showDevelopment(state);
         this.showNotice(state);
         this.showOutOfDate(state);
         this.showDrawing(state);
@@ -229,6 +230,12 @@ export class RunPage {
         const action = byId<HTMLButtonElement>(this.doc, 'notice-action');
         action.hidden = !notice?.action;
         action.textContent = notice?.action?.label ?? '';
+    }
+
+    /** Which development jpipe-runner the run uses, when it uses one rather than a release. */
+    private showDevelopment(state: RunPanelState): void {
+        byId(this.doc, 'development-banner').classList.toggle('visible', state.development !== null);
+        byId(this.doc, 'development-text').textContent = state.development ?? '';
     }
 
     private showOutOfDate(state: RunPanelState): void {

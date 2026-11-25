@@ -94,7 +94,7 @@ export class LibrariesView implements vscode.TreeDataProvider<Row>, vscode.Dispo
             vscode.workspace.onDidChangeWorkspaceFolders(() => void this.rescanAll()),
             environment.onDidChange(() => {
                 // A run with a checkout of the runner is not a run with a release: say so where runs start.
-                this.view.description = environment.localRunner ? 'local jpipe-runner' : undefined;
+                this.view.description = environment.localRunner ? 'development jpipe-runner' : undefined;
                 this.treeEmitter.fire(undefined);
             })
         );

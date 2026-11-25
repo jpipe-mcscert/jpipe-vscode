@@ -261,7 +261,7 @@ describe('the report', () => {
             'jpipe-runner: not installed',
             'Editor: uses another Python',
             '  /opt/homebrew/bin/python3',
-            'Settings ask for a local copy',
+            'Development mode asks for a local copy',
             `  ${path.join('~', 'work', 'jpipe-runner')}`
         ].join('\n'));
     });
@@ -276,15 +276,15 @@ describe('the report', () => {
     test('a local runner whose version moved since it was installed is to be reinstalled, and still runs', () => {
         const environment = { python: '/w/.venv/bin/python' };
         const installed = probe({ hasRunner: true, runnerVersion: '4.0.0', localSource: '/src/jpipe-runner' });
-        const status = environmentStatus(environment, installed, 'same', '/src/jpipe-runner', '4.1.0.dev0');
+        const status = environmentStatus(environment, installed, 'same', { path: '/src/jpipe-runner', declared: '4.1.0.dev0' });
         expect(status).toMatchObject({ kind: 'runner-source', wanted: '/src/jpipe-runner', stale: { recorded: '4.0.0', declared: '4.1.0.dev0' } });
         expect(statusMessage(status)).toContain('now 4.1.0.dev0');
         expect(fixLabel(status)).toBe('Reinstall the Local jpipe-runner');
         expect(fixConsequences(status)).toContain('so that it is 4.1.0.dev0 there too');
         expect(runnablePython(status)).toBe('/w/.venv/bin/python');
         // The same version, or a project that does not say its version, is left alone.
-        expect(environmentStatus(environment, installed, 'same', '/src/jpipe-runner', '4.0.0').kind).toBe('ready');
-        expect(environmentStatus(environment, installed, 'same', '/src/jpipe-runner').kind).toBe('ready');
+        expect(environmentStatus(environment, installed, 'same', { path: '/src/jpipe-runner', declared: '4.0.0' }).kind).toBe('ready');
+        expect(environmentStatus(environment, installed, 'same', { path: '/src/jpipe-runner' }).kind).toBe('ready');
         expect(environmentReport({ environment, probe: installed, editorFollows: true, declaredLocal: '4.1.0.dev0' }).split('\n'))
             .toContain('  now 4.1.0.dev0: reinstall it');
     });
@@ -541,15 +541,15 @@ describe('a local jpipe-runner, for working on the runner itself', () => {
     });
 
     test('named in the settings and running in the environment: ready, whatever its release', () => {
-        expect(environmentStatus({ python: VENV }, editable, 'same', CHECKOUT).kind).toBe('ready');
-        expect(environmentStatus({ python: VENV }, editable, 'same', CHECKOUT + path.sep).kind).toBe('ready');
+        expect(environmentStatus({ python: VENV }, editable, 'same', { path: CHECKOUT }).kind).toBe('ready');
+        expect(environmentStatus({ python: VENV }, editable, 'same', { path: CHECKOUT + path.sep }).kind).toBe('ready');
         const unreleased = probe({ hasRunner: true, runnerVersion: '0.0.1.dev0', localSource: CHECKOUT });
-        expect(environmentStatus({ python: VENV }, unreleased, 'other', CHECKOUT).kind).toBe('unselected');
+        expect(environmentStatus({ python: VENV }, unreleased, 'other', { path: CHECKOUT }).kind).toBe('unselected');
     });
 
     test('named in the settings while the environment runs a release, or another checkout: install it', () => {
         for (const found of [published, probe(), probe({ hasRunner: true, localSource: '/elsewhere/jpipe-runner' })]) {
-            const status = environmentStatus({ python: VENV }, found, 'same', CHECKOUT);
+            const status = environmentStatus({ python: VENV }, found, 'same', { path: CHECKOUT });
             expect(status).toEqual({ kind: 'runner-source', python: VENV, wanted: CHECKOUT });
             expect(fixLabel(status)).toBe('Install the Local jpipe-runner');
             expect(statusMessage(status)).toContain(CHECKOUT);
@@ -558,7 +558,7 @@ describe('a local jpipe-runner, for working on the runner itself', () => {
     });
 
     test('goes into a managed project\'s environment too, with pip and the warning that its tool does not know', () => {
-        const status = environmentStatus({ python: '/envs/app/bin/python', manager: 'Pipenv' }, published, 'same', CHECKOUT);
+        const status = environmentStatus({ python: '/envs/app/bin/python', manager: 'Pipenv' }, published, 'same', { path: CHECKOUT });
         expect(status).toEqual({ kind: 'runner-source', python: '/envs/app/bin/python', manager: 'Pipenv', wanted: CHECKOUT });
         const agreed = fixConsequences(status)!;
         expect(agreed).toContain(`from your local copy (${CHECKOUT})`);
@@ -585,7 +585,7 @@ describe('a local jpipe-runner, for working on the runner itself', () => {
         expect(installRunnerCommand(VENV, { local: CHECKOUT }).args).toEqual(['-m', 'pip', 'install', '-e', CHECKOUT]);
         expect(createEnvironmentCommands({ program: 'python3', args: [] }, '/w', 'darwin', { local: CHECKOUT })[1].args)
             .toEqual(['-m', 'pip', 'install', '-e', CHECKOUT]);
-        expect(fixConsequences({ kind: 'no-environment' }, { file: 'requirements.txt', change: 'create' }, 'jpipe-w', CHECKOUT))
+        expect(fixConsequences({ kind: 'no-environment' }, { file: 'requirements.txt', change: 'create' }, 'jpipe-w', { path: CHECKOUT }))
             .toContain(`• Install jpipe-runner in it, from your local copy (${CHECKOUT})`);
     });
 

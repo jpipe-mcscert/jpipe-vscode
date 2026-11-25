@@ -50,6 +50,8 @@ export interface ShownRun {
     endedAt: Date | null;
     notice: Notice | null;
     outOfDate: string | null;
+    /** The development jpipe-runner the run uses, as the panel names it, or null for a release. */
+    development: string | null;
 }
 
 /**
@@ -60,7 +62,7 @@ export interface ShownRun {
 export function startedRun(name: string, uri: string, check: boolean, libraries: ShownRun['libraries']): ShownRun {
     return {
         name, uri, check, phase: 'running', report: null, progress: null, labels: new Map(), drawing: null,
-        cwd: null, steps: [], libraries, endedAt: null, notice: null, outOfDate: null
+        cwd: null, steps: [], libraries, endedAt: null, notice: null, outOfDate: null, development: null
     };
 }
 
@@ -119,7 +121,8 @@ export function panelState(run: ShownRun, revision: number): RunPanelState {
         // The report's, once there is one; before it, the events', so that the drawing of a run
         // under way, or stopped short of its report, selects and opens its elements too.
         elements: report?.elements.map(e => e.id) ?? [...(run.progress?.elements ?? [])],
-        outOfDate: run.outOfDate
+        outOfDate: run.outOfDate,
+        development: run.development
     };
 }
 

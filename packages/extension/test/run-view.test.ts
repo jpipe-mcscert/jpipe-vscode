@@ -54,6 +54,7 @@ const state = (over: Partial<RunPanelState> = {}): RunPanelState => ({
     drawingMissing: null,
     elements: ['release:e', 'release:c'],
     outOfDate: null,
+    development: null,
     ...over
 });
 
@@ -361,6 +362,18 @@ describe('notices and banners', () => {
 
         page.apply(state({ revision: 3, phase: 'running', outOfDate: 'x' }));
         expect(byId('out-of-date-banner').classList.contains('visible')).toBe(false);
+    });
+
+    test('a run of a development jpipe-runner says so, whatever its phase; a run of a release says nothing', () => {
+        const page = newPage();
+        const named = 'Development jpipe-runner 4.6.0.dev0 · ~/jpipe-runner · branch feat at aaaaaaa';
+        page.apply(state({ phase: 'running', verdict: null, development: named }));
+        expect(byId('development-banner').classList.contains('visible')).toBe(true);
+        expect(byId('development-text').textContent).toBe(named);
+        page.apply(state({ revision: 2, development: named }));
+        expect(byId('development-banner').classList.contains('visible')).toBe(true);
+        page.apply(state({ revision: 3 }));
+        expect(byId('development-banner').classList.contains('visible')).toBe(false);
     });
 });
 

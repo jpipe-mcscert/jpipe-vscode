@@ -251,6 +251,8 @@ async function launch(
     ];
     const invocation = await chooseInvocation(deps, token, { folder, cwd, askRelease: draw || !check }, argsFor);
     if (!invocation) return undefined;
+    // Said for as long as the run is on show, so that it is never taken for a run of a release.
+    deps.session.update(token, { development: invocation.development ?? null });
     const events = eventsFor(invocation.release);
     const jobs = jobsFor(invocation.release);
     if (events) {
@@ -563,7 +565,7 @@ async function chooseInvocation(
     token: number,
     where: { folder: vscode.WorkspaceFolder | undefined; cwd: string; askRelease: boolean },
     argsFor: (release: string | undefined) => string[]
-): Promise<(Command & { env?: Record<string, string>; release: string | undefined }) | undefined> {
+): Promise<(Command & { env?: Record<string, string>; release: string | undefined; development?: string }) | undefined> {
     const { folder, cwd, askRelease } = where;
     // The option that draws, and whether the run's events can be asked for, depend on the release
     // of the very runner that will run. So it is asked of that runner, now — the last environment
@@ -571,7 +573,7 @@ async function chooseInvocation(
     // that the same program answers. A check that does not draw needs neither.
     const releaseOf = async (ask: () => Promise<string | undefined>): Promise<string | undefined> =>
         askRelease ? ask() : undefined;
-    const status = await deps.environment.settled();
+    const status = await deps.environment.forRun();
     if (status.kind === 'external') {
         const configured = vscode.workspace.getConfiguration('jpipe', folder?.uri).get<string>(RUNNER_COMMAND_SETTING, '') ?? '';
         const program = resolveRunner(configured, os.homedir());
@@ -592,7 +594,8 @@ async function chooseInvocation(
     }
     const env = deps.environment.runEnv(python);
     const release = await releaseOf(() => deps.environment.runnerReleaseNow(python, { cwd, env }));
-    return { ...moduleInvocation(python, argsFor(release)), env: env as Record<string, string>, release };
+    const development = deps.environment.developmentLabel;
+    return { ...moduleInvocation(python, argsFor(release)), env: env as Record<string, string>, release, ...(development ? { development } : {}) };
 }
 
 /** The document and model to run, or `undefined` after saying why there is none. */

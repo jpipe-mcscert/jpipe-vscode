@@ -72,3 +72,4 @@ The compiler's records are at
 | [VSC-0033](vsc-0033-a-run-is-followed-from-its-events.md) | A run is followed from its events, which preview its report | 2026-11-21 | Accepted |
 | [VSC-0034](vsc-0034-composed-models-are-read-from-the-compiler.md) | A composed model's elements are read from the compiler, never recomputed | 2026-11-22 | Accepted |
 | [VSC-0035](vsc-0035-runs-run-independent-steps-together.md) | Runs run independent steps together, unless a setting says otherwise | 2026-11-23 | Accepted |
+| [VSC-0036](vsc-0036-the-runner-is-a-chosen-release-or-a-development-copy.md) | The runner is a release chosen from PyPI, or a development copy | 2026-11-25 | Accepted |

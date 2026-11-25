@@ -466,6 +466,12 @@
                 "category": "jPipe"
             },
             {
+                "command": "jpipe.runner.selectVersion",
+                "title": "Choose jpipe-runner Release…",
+                "category": "jPipe",
+                "icon": "$(versions)"
+            },
+            {
                 "command": "jpipe.models.scaffoldLibrary",
                 "title": "Scaffold Step Library…",
                 "category": "jPipe",
@@ -969,36 +975,6 @@
                 "title": "jPipe › Runner › General",
                 "order": 7,
                 "properties": {
-                    "jpipe.runner.selectInEditor": {
-                        "order": 1,
-                        "type": "boolean",
-                        "default": true,
-                        "scope": "resource",
-                        "markdownDescription": "**[workspace mode only]** Use the same Python environment in the editor as for runs. This is what stops the editor from underlining `from jpipe_runner import …` in your step libraries. Requires the Python extension.\n\nTurn it off if you prefer to choose the editor’s Python interpreter yourself. Runs are not affected."
-                    },
-                    "jpipe.runner.offerSetup": {
-                        "order": 2,
-                        "type": "boolean",
-                        "default": true,
-                        "scope": "resource",
-                        "markdownDescription": "**[workspace mode only]** Let jPipe suggest setting up the Python environment when it notices that your step libraries cannot run yet, and suggest installing Pylance when a workspace with step libraries does not have it.\n\nTurn it off to stop the suggestions. You can still set the environment up whenever you want, from the Libraries view or by pressing ▶, and install Pylance from Check jPipe Installation."
-                    },
-                    "jpipe.runner.libraries": {
-                        "order": 3,
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "default": [],
-                        "scope": "resource",
-                        "markdownDescription": "The step libraries used when you run a model. You normally do not edit this list by hand: tick and untick libraries in the **Libraries** view of the jPipe activity, and the list follows.\n\nEach entry is a Python file, given relative to the workspace folder. Wildcards are not supported."
-                    }
-                }
-            },
-            {
-                "title": "jPipe › Runner › Execution",
-                "order": 8,
-                "properties": {
                     "jpipe.runner.environment": {
                         "order": 1,
                         "type": "string",
@@ -1012,23 +988,62 @@
                         ],
                         "default": "workspace",
                         "scope": "resource",
-                        "markdownDescription": "Which Python environment runs your models when you press ▶.\n\n- **workspace** (recommended): the environment that belongs to this workspace. If there is none yet, jPipe offers to create one for you.\n- **command**: a jpipe-runner program you choose yourself.\n\n[Set up the Python environment](command:jpipe.runner.fixEnvironment) · [Check the Python environment](command:jpipe.runner.checkEnvironment)"
+                        "markdownDescription": "How runs reach jpipe-runner when you press ▶.\n\n- **workspace** (recommended): this workspace's own Python environment, which jPipe can set up for you, with the release you choose below.\n- **command**: a jpipe-runner program you installed yourself, named below.\n\n[Check the Python environment](command:jpipe.runner.checkEnvironment)"
                     },
-                    "jpipe.runner.command": {
+                    "jpipe.runner.version": {
                         "order": 2,
                         "type": "string",
                         "default": "",
+                        "pattern": "^(|[0-9]+(\\.[0-9]+)*)$",
+                        "patternErrorMessage": "Write a release, such as 4.5.0, or leave it empty.",
+                        "scope": "resource",
+                        "markdownDescription": "**[workspace mode only]** The jpipe-runner release this workspace runs with. Leave it empty for any release from 4.0.0 on: a new environment gets the newest.\n\n[Choose a release from PyPI…](command:jpipe.runner.selectVersion)\n\nOnce a release is chosen, jPipe offers to install it, and asks before changing anything. In a Pipenv, Poetry or uv project, that tool records it in the project's files."
+                    },
+                    "jpipe.runner.command": {
+                        "order": 3,
+                        "type": "string",
+                        "default": "jpipe-runner",
                         "scope": "machine-overridable",
-                        "markdownDescription": "**[command mode only]** The jpipe-runner program to use: a name such as `jpipe-runner`, or the full path to it. Leave empty to use the `jpipe-runner` installed on your computer."
+                        "markdownDescription": "**[command mode only]** The jpipe-runner program runs use: a name found on your `PATH`, such as `jpipe-runner`, or the full path to it."
                     },
                     "jpipe.runner.jobs": {
-                        "order": 3,
+                        "order": 4,
                         "type": "string",
                         "default": "auto",
                         "pattern": "^(auto|[1-9][0-9]*)$",
                         "patternErrorMessage": "Write auto, or a whole number of at least 1.",
                         "scope": "resource",
                         "markdownDescription": "How many steps a run may run at the same time, with jpipe-runner 4.4 or newer. Steps that do not depend on each other then run together, which makes runs with slow steps faster. A step still waits for everything that supports it.\n\n- **auto** (default): one step per processor.\n- **a number**, such as `4`: at most that many. `1` runs one step at a time, as jpipe-runner does by default, in CI for example. A number larger than your computer's processors is lowered to that count.\n\nA step library must be ready for steps that run together: a step that writes a file another evidence reads, or that changes the working directory or an environment variable, can fail here and pass when its steps run one at a time. If a run fails in the editor but not elsewhere, set this to `1`. jpipe-runner's guide to writing step libraries lists what to avoid, under \"Steps that run together\". Older jpipe-runner releases always run one step at a time."
+                    },
+                    "jpipe.runner.libraries": {
+                        "order": 5,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "scope": "resource",
+                        "markdownDescription": "The step libraries used when you run a model. You normally do not edit this list by hand: tick and untick libraries in the **Libraries** view of the jPipe activity, and the list follows.\n\nEach entry is a Python file, given relative to the workspace folder. Wildcards are not supported."
+                    }
+                }
+            },
+            {
+                "title": "jPipe › Runner › Assistance",
+                "order": 8,
+                "properties": {
+                    "jpipe.runner.offerSetup": {
+                        "order": 1,
+                        "type": "boolean",
+                        "default": true,
+                        "scope": "resource",
+                        "markdownDescription": "**[workspace mode only]** Let jPipe suggest setting up the Python environment when it notices that your step libraries cannot run yet, and suggest installing Pylance when a workspace with step libraries does not have it.\n\nTurn it off to stop the suggestions. You can still set the environment up whenever you want, from here, the Libraries view or by pressing ▶.\n\n[Set up the Python environment](command:jpipe.runner.fixEnvironment) · [Check the Python environment](command:jpipe.runner.checkEnvironment)"
+                    },
+                    "jpipe.runner.selectInEditor": {
+                        "order": 2,
+                        "type": "boolean",
+                        "default": true,
+                        "scope": "resource",
+                        "markdownDescription": "**[workspace mode only]** Use the same Python environment in the editor as for runs. This is what stops the editor from underlining `from jpipe_runner import …` in your step libraries. Requires the Python extension.\n\nTurn it off if you prefer to choose the editor’s Python interpreter yourself. Runs are not affected."
                     }
                 }
             },
@@ -1036,12 +1051,28 @@
                 "title": "jPipe › Runner › Development",
                 "order": 9,
                 "properties": {
-                    "jpipe.runner.localSource": {
+                    "jpipe.runner.developmentMode": {
                         "order": 1,
+                        "type": "boolean",
+                        "default": false,
+                        "scope": "machine-overridable",
+                        "markdownDescription": "**[workspace mode only]** For working on jpipe-runner itself: run your models with your local copy of jpipe-runner, set below, instead of a published release. The Run panel then says which copy each run used.\n\nTurn it off to go back to a release: jPipe offers to put one back in the workspace's Python environment."
+                    },
+                    "jpipe.runner.localSource": {
+                        "order": 2,
                         "type": "string",
                         "default": "",
                         "scope": "machine-overridable",
-                        "markdownDescription": "**[workspace mode only]** For working on jpipe-runner itself: the folder of a local copy of jpipe-runner to run your models with, instead of a published release. Leave empty to use a published release, which is what you want unless you are changing the runner.\n\nWhen set, jPipe offers to install that copy in the workspace's Python environment, so that a change you make to the runner shows in the next run. Your project files are not changed.\n\n[Set up the Python environment](command:jpipe.runner.fixEnvironment) · [Check the Python environment](command:jpipe.runner.checkEnvironment)"
+                        "markdownDescription": "**[development mode only]** The folder of your local copy of jpipe-runner. Without a branch below, its files are used as they are: a change you make shows in the next run. Your project files are not changed."
+                    },
+                    "jpipe.runner.localBranch": {
+                        "order": 3,
+                        "type": "string",
+                        "default": "",
+                        "pattern": "^[^\\s@#~^:?*\\[\\\\]*$",
+                        "patternErrorMessage": "Write the name of a branch, such as main, or leave it empty.",
+                        "scope": "machine-overridable",
+                        "markdownDescription": "**[development mode only]** A branch of that folder to run, such as `main`, instead of its files as they are. jPipe installs the branch's latest commit, and offers to install it again when the branch has new ones. Changes you have not committed are not used, and your checkout is left as it is.\n\n[Set up the Python environment](command:jpipe.runner.fixEnvironment) · [Check the Python environment](command:jpipe.runner.checkEnvironment)"
                     }
                 }
             }

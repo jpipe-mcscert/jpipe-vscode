@@ -56,6 +56,7 @@ export default defineConfig({
                 'src/extension/runner/run-shell.ts',
                 'src/extension/runner/step-terminal.ts',
                 'src/extension/runner/new-library-flow.ts',
+                'src/extension/runner/release-picker.ts',
                 'src/extension/runner/environment.ts',
                 'src/extension/runner/pylance.ts',
                 'src/extension/installation-check.ts',

@@ -23,8 +23,14 @@ export type EnvironmentMode = 'workspace' | 'command';
 export const RUNNER_COMMAND_SETTING = 'runner.command';
 /** Whether the editor is pointed at the workspace's environment. */
 export const SELECT_IN_EDITOR_SETTING = 'runner.selectInEditor';
-/** A local jpipe-runner checkout to run instead of a published release, for work on the runner. */
+/** The jpipe-runner release the workspace's environment is to have, or empty for any recent enough. */
+export const VERSION_SETTING = 'runner.version';
+/** Whether runs use a local jpipe-runner checkout rather than a published release, for work on the runner. */
+export const DEVELOPMENT_SETTING = 'runner.developmentMode';
+/** That checkout, in development mode. */
 export const LOCAL_SOURCE_SETTING = 'runner.localSource';
+/** The branch of it to install, in development mode; empty for its working copy, as it stands. */
+export const LOCAL_BRANCH_SETTING = 'runner.localBranch';
 /** Whether setting the environment up is offered unasked. */
 export const OFFER_SETUP_SETTING = 'runner.offerSetup';
 /** How many steps a run may run at a time: `auto`, or a number. */
