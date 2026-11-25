@@ -6,7 +6,10 @@
  * with it, that a fix is offered only against its own diagnostic, and that the same action reached
  * twice appears once.
  */
-import { describe, expect, test } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { CodeActionKind } from 'vscode-languageserver';
 import { JpipeIssue, ORGANIZE_LOADS_KIND, issueCodeOf } from 'jpipe-language';
 import { CURSOR, actionTitles, applyCodeAction, expectFixResolves, listCodeActions, listWithRegistry, parseValidated } from './code-action-helper.js';
@@ -719,6 +722,40 @@ describe('fix-inherited-conclusion', () => {
 
     test('is not offered for a conclusion a model may declare', async () => {
         expect(await titlesMatching(BASE, /^Change 'conclusion'/)).toEqual([]);
+    });
+
+    // Above a composition no compiler has built, the elements inherited are only those the bodies
+    // show. A suffix naming one of them may name hidden ones too, and the override would then be
+    // ambiguous; a full id is exact whatever else is hidden.
+    describe('below a composition the compiler has not built', () => {
+        let dir: string;
+        let lib: string;
+
+        beforeAll(() => {
+            dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpipe-unbuilt-'));
+            lib = path.join(dir, 'lib.jd').replaceAll('\\', '/');
+            fs.writeFileSync(lib, [
+                'justification P { conclusion c is "C"  strategy s is "S"  evidence e is "E"  e supports s  s supports c }',
+                'justification Q { conclusion r is "R"  strategy t is "T"  evidence f is "F"  f supports t  t supports r }',
+                'template K is refine(P, Q) { hook: "e" }',
+                'template U implements K { @support a is "A" }'
+            ].join('\n'));
+        });
+
+        afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+        const below = (id: string) => `load "${lib}" as lib\njustification J implements lib:U { conclusion ${id} is "A" }`;
+
+        test('offers no keyword for a suffix, which may name hidden elements too', async () => {
+            expect(await titlesMatching(below('U:a'), /^Change 'conclusion'/)).toEqual([]);
+        });
+
+        test('offers the repair for the full id, which names one element whatever is hidden', async () => {
+            expect(await titlesMatching(below('lib:U:a'), /^Change 'conclusion'/)).toEqual([
+                "Change 'conclusion' to 'evidence'",
+                "Change 'conclusion' to 'sub-conclusion'"
+            ]);
+        });
     });
 });
 

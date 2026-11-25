@@ -63,12 +63,16 @@ export const fixInheritedConclusion = quickFix<typeof JpipeIssue.InheritedConclu
 /**
  * The keywords that make the conclusion valid: none when its qualified id names no `@support` the
  * model inherits, as the compiler binds it, or when that cannot be told.
+ *
+ * Below a composition the compiler has not built, the elements inherited are only those its
+ * bodies show (`whole` false). The id the conclusion has exactly is one of them or none, whatever
+ * is hidden; a suffix naming one of them may name hidden ones too, and the override it would
+ * become could be ambiguous, so it is offered nothing.
  */
 async function keywordsFor(parts: number, id: string, model: Justification | Template, contents: ModelContents): Promise<string[]> {
     if (parts <= 1) return ['sub-conclusion'];
     const inherited = await inheritedElements(model, contents);
     const binding = inherited && bind(inherited.elements, id);
-    return binding?.kind === 'found' && binding.element.kind === 'abstract-support'
-        ? ['evidence', 'sub-conclusion']
-        : [];
+    if (!inherited || binding?.kind !== 'found' || binding.element.kind !== 'abstract-support') return [];
+    return inherited.whole || binding.element.id === id ? ['evidence', 'sub-conclusion'] : [];
 }
